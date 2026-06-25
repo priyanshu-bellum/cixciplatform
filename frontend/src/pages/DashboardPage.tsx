@@ -267,10 +267,17 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
       setSuccess(true)
     } catch (err: any) {
       const d = err.response?.data
-      if (typeof d === 'object' && d !== null) {
-        setError(Object.entries(d).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | '))
+      if (d && typeof d === 'object') {
+        const detail = d.detail
+        if (detail && typeof detail === 'object') {
+          setError(Object.entries(detail).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | '))
+        } else if (typeof detail === 'string') {
+          setError(detail)
+        } else {
+          setError(Object.entries(d).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | '))
+        }
       } else {
-        setError(d?.detail || 'Failed to create company.')
+        setError('Failed to create company.')
       }
     } finally {
       setSubmitting(false)
