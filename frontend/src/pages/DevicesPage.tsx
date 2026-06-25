@@ -1,0 +1,917 @@
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Plus, Search, Smartphone, ChevronRight, Check, Trash2, X, AlertCircle, Download } from 'lucide-react'
+import api from '../lib/apiClient'
+import { useAuthStore } from '../stores/authStore'
+
+const LC_COLORS: Record<string, string> = {
+  available: 'badge-green',
+  inactive: 'badge-muted',
+  archived: 'badge-amber',
+}
+
+const modalStyles = `
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 13, 20, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+.modal-container {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  width: 550px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.25s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+.modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.form-grid-full {
+  grid-column: span 2;
+}
+.validation-errors-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 10px;
+}
+.validation-errors-table th, .validation-errors-table td {
+  padding: 8px;
+  border: 1px solid var(--border);
+}
+.validation-errors-table th {
+  background: var(--bg-elevated);
+  text-align: left;
+}
+.validation-errors-table tr:hover td {
+  background: var(--bg-elevated);
+}
+.checkbox-group {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+`
+
+export default function DevicesPage() {
+  const { user } = useAuthStore()
+  const isBuyer = user?.company_type === 'buyer'
+  const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
+
+  const [search, setSearch] = useState('')
+  const [tab, setTab] = useState<'devices' | 'portfolio'>('devices')
+
+  // Modals state
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+
+  // Add form fields state
+  const [addManufacturer, setAddManufacturer] = useState('')
+  const [addName, setAddName] = useState('')
+  const [addDeviceType, setAddDeviceType] = useState('')
+  const [addLaunchDate, setAddLaunchDate] = useState('')
+  const [addCharging, setAddCharging] = useState('Not Compatible')
+  const [addStorage, setAddStorage] = useState('Not Compatible')
+  const [addMaxStorage, setAddMaxStorage] = useState('Not Compatible')
+  const [addHeadphone, setAddHeadphone] = useState('Not Compatible')
+  const [addBluetooth, setAddBluetooth] = useState('Yes')
+  const [addWireless, setAddWireless] = useState<string[]>([])
+  const [addWatchCase, setAddWatchCase] = useState('Not Compatible')
+  const [addError, setAddError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Import state
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importMode, setImportMode] = useState('Create New Only')
+  const [importErrors, setImportErrors] = useState<any[]>([])
+  const [importErrorGeneral, setImportErrorGeneral] = useState('')
+  const [isImporting, setIsImporting] = useState(false)
+  const [importSuccess, setImportSuccess] = useState('')
+
+  // TanStack queries
+  const { data, isLoading, refetch: refreshDevices } = useQuery({
+    queryKey: ['devices', search],
+    queryFn: () => api.get('/devices/devices/', { params: { search } }).then(r => r.data),
+  })
+
+  const { data: portfolio, refetch: refreshPortfolio } = useQuery({
+    queryKey: ['my-devices'],
+    queryFn: () => api.get('/devices/portfolio/my_devices/').then(r => r.data),
+    enabled: isBuyer,
+  })
+
+  const { data: manufacturersData } = useQuery({
+    queryKey: ['manufacturers'],
+    queryFn: () => api.get('/devices/manufacturers/', { params: { limit: 100 } }).then(r => r.data),
+    enabled: isCixciAdmin && showAddModal,
+  })
+
+  const { data: typesData } = useQuery({
+    queryKey: ['device-types'],
+    queryFn: () => api.get('/devices/types/', { params: { limit: 100 } }).then(r => r.data),
+    enabled: isCixciAdmin && showAddModal,
+  })
+
+  const devices = data?.results ?? data ?? []
+  const myDevices = portfolio ?? []
+  const manufacturers = manufacturersData?.results ?? manufacturersData ?? []
+  const deviceTypes = typesData?.results ?? typesData ?? []
+
+  // Set of device IDs currently in the portfolio
+  const portfolioDeviceIds = new Set(
+    myDevices.filter((ref: any) => ref.active_flag).map((ref: any) => ref.device)
+  )
+
+  const handleAdd = async (deviceId: string) => {
+    try {
+      await api.post('/devices/portfolio/add/', { device_id: deviceId })
+      refreshPortfolio()
+    } catch (err) {
+      alert('Failed to add device to portfolio.')
+    }
+  }
+
+  const handleRemove = async (deviceId: string) => {
+    try {
+      await api.post('/devices/portfolio/remove/', { device_id: deviceId })
+      refreshPortfolio()
+    } catch (err) {
+      alert('Failed to remove device from portfolio.')
+    }
+  }
+
+  const getDeviceCategory = (typeName: string) => {
+    const name = typeName.toLowerCase().trim()
+    if (name === 'phone' || name === 'smartphone') return 'phone'
+    if (name === 'tablet') return 'tablet'
+    if (name === 'smartwatch' || name === 'wearable' || name === 'watch') return 'smartwatch'
+    if (name === 'laptop') return 'laptop'
+    return ''
+  }
+
+  const selectedTypeObj = deviceTypes.find((t: any) => t.id === addDeviceType)
+  const selectedTypeName = selectedTypeObj ? selectedTypeObj.name : ''
+  const selectedCategory = getDeviceCategory(selectedTypeName)
+
+  const handleStorageChange = (val: string) => {
+    setAddStorage(val)
+    if (val === 'microSDXC') {
+      setAddMaxStorage('32GB')
+    } else if (val === 'microSDHC') {
+      setAddMaxStorage('16GB')
+    } else {
+      setAddMaxStorage('Not Compatible')
+    }
+  }
+
+  const handleWirelessChange = (val: string) => {
+    if (val === 'Not Compatible') {
+      setAddWireless(['Not Compatible'])
+      return
+    }
+    let updated = [...addWireless].filter(v => v !== 'Not Compatible')
+    if (updated.includes(val)) {
+      updated = updated.filter(v => v !== val)
+    } else {
+      if (val === 'Qi') {
+        updated = ['Qi']
+      } else {
+        updated = updated.filter(v => v !== 'Qi')
+        updated.push(val)
+      }
+    }
+    setAddWireless(updated)
+  }
+
+  const formatLaunchDate = (dateStr: string) => {
+    if (!dateStr) return ''
+    const parts = dateStr.split('-')
+    if (parts.length === 3) {
+      return `${parts[1]}/${parts[2]}/${parts[0]}`
+    }
+    return dateStr
+  }
+
+  const handleSubmitDevice = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAddError('')
+    setIsSubmitting(true)
+
+    if (!addManufacturer) {
+      setAddError('Manufacturer is required.')
+      setIsSubmitting(false)
+      return
+    }
+    if (!addName.trim()) {
+      setAddError('Device Name is required.')
+      setIsSubmitting(false)
+      return
+    }
+    if (!addDeviceType) {
+      setAddError('Device Type is required.')
+      setIsSubmitting(false)
+      return
+    }
+    if (!addLaunchDate) {
+      setAddError('Launch Date is required.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const payload: any = {
+      manufacturer: addManufacturer,
+      name: addName.trim(),
+      device_type: addDeviceType,
+      launch_date: formatLaunchDate(addLaunchDate),
+      lifecycle_status: 'available',
+    }
+
+    if (selectedCategory === 'phone') {
+      payload.compatible_charging_interface = addCharging
+      payload.storage_expansion_compatibility = addStorage
+      payload.maximum_supported_storage = addStorage !== 'Not Compatible' ? addMaxStorage : 'Not Compatible'
+      payload.headphone_jack_compatibility = addHeadphone
+      payload.bluetooth_compatibility = addBluetooth
+      payload.wireless_charging_compatibility = addWireless.join('+') || 'Not Compatible'
+      payload.compatible_watch_case_size = 'Not Compatible'
+    } else if (selectedCategory === 'tablet') {
+      payload.compatible_charging_interface = addCharging
+      payload.storage_expansion_compatibility = addStorage
+      payload.maximum_supported_storage = addStorage !== 'Not Compatible' ? addMaxStorage : 'Not Compatible'
+      payload.headphone_jack_compatibility = addHeadphone
+      payload.bluetooth_compatibility = addBluetooth
+      payload.wireless_charging_compatibility = 'Not Compatible'
+      payload.compatible_watch_case_size = 'Not Compatible'
+    } else if (selectedCategory === 'smartwatch') {
+      payload.compatible_charging_interface = 'Not Compatible'
+      payload.storage_expansion_compatibility = 'Not Compatible'
+      payload.maximum_supported_storage = 'Not Compatible'
+      payload.headphone_jack_compatibility = 'Not Compatible'
+      payload.bluetooth_compatibility = addBluetooth
+      payload.wireless_charging_compatibility = addWireless.join('+') || 'Not Compatible'
+      payload.compatible_watch_case_size = addWatchCase
+    } else if (selectedCategory === 'laptop') {
+      payload.compatible_charging_interface = addCharging
+      payload.storage_expansion_compatibility = 'Not Compatible'
+      payload.maximum_supported_storage = 'Not Compatible'
+      payload.headphone_jack_compatibility = addHeadphone
+      payload.bluetooth_compatibility = addBluetooth
+      payload.wireless_charging_compatibility = 'Not Compatible'
+      payload.compatible_watch_case_size = 'Not Compatible'
+    }
+
+    try {
+      await api.post('/devices/devices/', payload)
+      setShowAddModal(false)
+      refreshDevices()
+      // Reset form
+      setAddManufacturer('')
+      setAddName('')
+      setAddDeviceType('')
+      setAddLaunchDate('')
+      setAddCharging('Not Compatible')
+      setAddStorage('Not Compatible')
+      setAddMaxStorage('Not Compatible')
+      setAddHeadphone('Not Compatible')
+      setAddBluetooth('Yes')
+      setAddWireless([])
+      setAddWatchCase('Not Compatible')
+    } catch (err: any) {
+      console.error(err)
+      const data = err.response?.data
+      if (data) {
+        if (typeof data === 'object') {
+          const firstErr = Object.entries(data).map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg[0] : msg}`).join('\n')
+          setAddError(firstErr)
+        } else {
+          setAddError(String(data))
+        }
+      } else {
+        setAddError('Failed to add device. Please verify your fields and try again.')
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDownloadTemplate = () => {
+    window.open(`${api.defaults.baseURL}/devices/devices/import_template/`, '_blank')
+  }
+
+  const handleImportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setImportErrors([])
+    setImportErrorGeneral('')
+    setImportSuccess('')
+    setIsImporting(true)
+
+    if (!importFile) {
+      setImportErrorGeneral('Please select a CSV file to import.')
+      setIsImporting(false)
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', importFile)
+    formData.append('import_mode', importMode)
+
+    try {
+      const resp = await api.post('/devices/devices/bulk_import/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      })
+      setImportSuccess(`Import completed successfully! Created: ${resp.data.created_count}, Updated: ${resp.data.updated_count}`)
+      setImportFile(null)
+      refreshDevices()
+      setTimeout(() => {
+        setShowImportModal(false)
+        setImportSuccess('')
+      }, 3000)
+    } catch (err: any) {
+      console.error(err)
+      const data = err.response?.data
+      if (data?.status === 'validation_failed' && Array.isArray(data.errors)) {
+        setImportErrors(data.errors)
+      } else if (data?.error) {
+        setImportErrorGeneral(data.error)
+      } else {
+        setImportErrorGeneral('Failed to import file. Please check the columns and format.')
+      }
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  return (
+    <div>
+      <style dangerouslySetInnerHTML={{ __html: modalStyles }} />
+      <div className="page-header">
+        <div>
+          <div className="page-title">Device Catalog</div>
+          <div className="page-sub">All devices, features, and buyer portfolios</div>
+        </div>
+        {isCixciAdmin && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
+              Import Devices
+            </button>
+            <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+              <Plus size={14} /> Add Device
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="tabs">
+        <div className={`tab ${tab === 'devices' ? 'active' : ''}`} onClick={() => setTab('devices')}>All Devices</div>
+        {isBuyer && (
+          <div className={`tab ${tab === 'portfolio' ? 'active' : ''}`} onClick={() => setTab('portfolio')}>My Portfolio</div>
+        )}
+      </div>
+
+      {tab === 'devices' && (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <div className="search-bar" style={{ width: 280 }}>
+              <Search size={14} />
+              <input
+                placeholder="Search by name…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="table-wrap">
+            {isLoading ? (
+              <div className="loading-overlay"><div className="spinner" /> Loading devices…</div>
+            ) : devices.length === 0 ? (
+              <div className="empty-state">
+                <Smartphone size={40} />
+                <div>No devices found</div>
+                <div style={{ fontSize: 12 }}>Import devices via CSV to get started</div>
+              </div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th><th>Manufacturer</th><th>Type</th>
+                    <th>Status</th>
+                    {isBuyer && <th>Action</th>}
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {devices.map((d: any) => {
+                    const inPortfolio = portfolioDeviceIds.has(d.id)
+                    return (
+                      <tr key={d.id}>
+                        <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{d.name}</td>
+                        <td>{d.manufacturer_name ?? d.manufacturer}</td>
+                        <td>{d.device_type_name ?? d.device_type}</td>
+                        <td>
+                          <span className={`badge ${LC_COLORS[d.lifecycle_status] ?? 'badge-muted'}`}>
+                            {d.lifecycle_status}
+                          </span>
+                        </td>
+                        {isBuyer && (
+                          <td>
+                            {inPortfolio ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <Check size={11} /> In Portfolio
+                                </span>
+                                <button className="btn btn-danger btn-sm" style={{ padding: '3px 6px' }} onClick={() => handleRemove(d.id)}>
+                                  <Trash2 size={11} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px' }} onClick={() => handleAdd(d.id)}>
+                                Add to Portfolio
+                              </button>
+                            )}
+                          </td>
+                        )}
+                        <td><ChevronRight size={14} style={{ color: 'var(--text-muted)' }} /></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+
+      {tab === 'portfolio' && isBuyer && (
+        <div className="table-wrap">
+          {myDevices.length === 0 ? (
+            <div className="empty-state">
+              <Smartphone size={40} />
+              <div>Your portfolio is empty</div>
+              <div style={{ fontSize: 12 }}>Add devices from the All Devices tab</div>
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr><th>Device</th><th>Manufacturer</th><th>Status</th><th>Added</th><th>Action</th></tr>
+              </thead>
+              <tbody>
+                {myDevices.map((ref: any) => (
+                  <tr key={ref.id}>
+                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{ref.device_name}</td>
+                    <td>{ref.device_manufacturer}</td>
+                    <td><span className={`badge ${ref.active_flag ? 'badge-green' : 'badge-muted'}`}>{ref.active_flag ? 'Active' : 'Removed'}</span></td>
+                    <td style={{ fontSize: 12 }}>{new Date(ref.created_at).toLocaleDateString()}</td>
+                    <td>
+                      {ref.active_flag ? (
+                        <button className="btn btn-danger btn-sm" onClick={() => handleRemove(ref.device)}>
+                          <Trash2 size={12} /> Remove
+                        </button>
+                      ) : (
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleAdd(ref.device)}>
+                          Add back
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Add Modal */}
+      {showAddModal && (
+        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div className="modal-container" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Add New Device</div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowAddModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleSubmitDevice}>
+              <div className="modal-body">
+                {addError && (
+                  <div className="auth-error" style={{ whiteSpace: 'pre-wrap', display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                    <div>{addError}</div>
+                  </div>
+                )}
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="label">Manufacturer *</label>
+                    <select
+                      className="input"
+                      value={addManufacturer}
+                      onChange={e => setAddManufacturer(e.target.value)}
+                    >
+                      <option value="">Select Manufacturer</option>
+                      {manufacturers.map((m: any) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Device Name *</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="e.g. iPhone 16 Pro"
+                      value={addName}
+                      onChange={e => setAddName(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Device Type *</label>
+                    <select
+                      className="input"
+                      value={addDeviceType}
+                      onChange={e => setAddDeviceType(e.target.value)}
+                    >
+                      <option value="">Select Device Type</option>
+                      {deviceTypes.map((t: any) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Launch Date *</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={addLaunchDate}
+                      onChange={e => setAddLaunchDate(e.target.value)}
+                    />
+                  </div>
+
+                  {selectedCategory && <div className="divider form-grid-full" style={{ margin: '8px 0' }} />}
+
+                  {/* Phone / Tablet fields */}
+                  {(selectedCategory === 'phone' || selectedCategory === 'tablet' || selectedCategory === 'laptop') && (
+                    <div className="form-group">
+                      <label className="label">Charging Interface *</label>
+                      <select
+                        className="input"
+                        value={addCharging}
+                        onChange={e => setAddCharging(e.target.value)}
+                      >
+                        <option value="Type-C">Type-C</option>
+                        {selectedCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
+                        <option value="Not Compatible">Not Compatible</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {(selectedCategory === 'phone' || selectedCategory === 'tablet') && (
+                    <>
+                      <div className="form-group">
+                        <label className="label">Storage Expansion *</label>
+                        <select
+                          className="input"
+                          value={addStorage}
+                          onChange={e => handleStorageChange(e.target.value)}
+                        >
+                          <option value="Not Compatible">Not Compatible</option>
+                          <option value="microSDXC">microSDXC</option>
+                          <option value="microSDHC">microSDHC</option>
+                        </select>
+                      </div>
+
+                      {addStorage !== 'Not Compatible' && (
+                        <div className="form-group">
+                          <label className="label">Maximum Expansion *</label>
+                          <select
+                            className="input"
+                            value={addMaxStorage}
+                            onChange={e => setAddMaxStorage(e.target.value)}
+                          >
+                            {addStorage === 'microSDXC' ? (
+                              <>
+                                <option value="32GB">32GB</option>
+                                <option value="64GB">64GB</option>
+                                <option value="128GB">128GB</option>
+                                <option value="256GB">256GB</option>
+                                <option value="512GB">512GB</option>
+                                <option value="1TB">1TB</option>
+                                <option value="2TB">2TB</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="16GB">16GB</option>
+                                <option value="32GB">32GB</option>
+                                <option value="64GB">64GB</option>
+                                <option value="128GB">128GB</option>
+                                <option value="256GB">256GB</option>
+                                <option value="512GB">512GB</option>
+                                <option value="1TB">1TB</option>
+                                <option value="1.5TB">1.5TB</option>
+                              </>
+                            )}
+                          </select>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {(selectedCategory === 'phone' || selectedCategory === 'tablet' || selectedCategory === 'laptop') && (
+                    <div className="form-group">
+                      <label className="label">Headphone Jack *</label>
+                      <select
+                        className="input"
+                        value={addHeadphone}
+                        onChange={e => setAddHeadphone(e.target.value)}
+                      >
+                        <option value="Not Compatible">Not Compatible</option>
+                        <option value="Type-C">Type-C</option>
+                        {selectedCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Bluetooth (all categories) */}
+                  {selectedCategory && (
+                    <div className="form-group">
+                      <label className="label">Bluetooth Compatibility *</label>
+                      <select
+                        className="input"
+                        value={addBluetooth}
+                        onChange={e => setAddBluetooth(e.target.value)}
+                      >
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Wireless Charging (Phone / Smartwatch) */}
+                  {(selectedCategory === 'phone' || selectedCategory === 'smartwatch') && (
+                    <div className="form-group form-grid-full">
+                      <label className="label">Wireless Charging Compatibility *</label>
+                      <div className="checkbox-group">
+                        <label className="checkbox-item">
+                          <input
+                            type="checkbox"
+                            checked={addWireless.includes('MagSafe')}
+                            disabled={addWireless.includes('Not Compatible') || addWireless.includes('Qi')}
+                            onChange={() => handleWirelessChange('MagSafe')}
+                          />
+                          MagSafe
+                        </label>
+                        <label className="checkbox-item">
+                          <input
+                            type="checkbox"
+                            checked={addWireless.includes('Qi2')}
+                            disabled={addWireless.includes('Not Compatible') || addWireless.includes('Qi')}
+                            onChange={() => handleWirelessChange('Qi2')}
+                          />
+                          Qi2
+                        </label>
+                        <label className="checkbox-item">
+                          <input
+                            type="checkbox"
+                            checked={addWireless.includes('Qi')}
+                            disabled={addWireless.includes('Not Compatible') || addWireless.includes('MagSafe') || addWireless.includes('Qi2')}
+                            onChange={() => handleWirelessChange('Qi')}
+                          />
+                          Qi
+                        </label>
+                        <label className="checkbox-item">
+                          <input
+                            type="checkbox"
+                            checked={addWireless.includes('Not Compatible')}
+                            onChange={() => handleWirelessChange('Not Compatible')}
+                          />
+                          Not Compatible
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Watch Case Size (Smartwatch) */}
+                  {selectedCategory === 'smartwatch' && (
+                    <div className="form-group">
+                      <label className="label">Watch Case Size *</label>
+                      <select
+                        className="input"
+                        value={addWatchCase}
+                        onChange={e => setAddWatchCase(e.target.value)}
+                      >
+                        <option value="Not Compatible">Not Compatible</option>
+                        <option value="40mm">40mm</option>
+                        <option value="41mm">41mm</option>
+                        <option value="42mm">42mm</option>
+                        <option value="44mm">44mm</option>
+                        <option value="45mm">45mm</option>
+                        <option value="46mm">46mm</option>
+                        <option value="49mm">49mm</option>
+                      </select>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAddModal(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Add Device'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
+          <div className="modal-container" style={{ width: 620 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Import Devices</div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowImportModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleImportSubmit}>
+              <div className="modal-body">
+                {importErrorGeneral && (
+                  <div className="auth-error" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                    <div>{importErrorGeneral}</div>
+                  </div>
+                )}
+                {importSuccess && (
+                  <div className="badge badge-green" style={{ display: 'flex', width: '100%', padding: 12, marginBottom: 16, fontSize: 13, gap: 6, borderRadius: 'var(--radius-sm)' }}>
+                    <Check size={16} />
+                    <div>{importSuccess}</div>
+                  </div>
+                )}
+
+                <div className="form-group" style={{ marginBottom: 18 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <label className="label" style={{ margin: 0 }}>Device CSV Template</label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleDownloadTemplate}
+                      style={{ padding: '4px 8px' }}
+                    >
+                      <Download size={12} /> Download Template
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Download the standard Device CSV Import template to ensure proper columns and validation alignment.
+                  </div>
+                </div>
+
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="label">Import Mode *</label>
+                    <select
+                      className="input"
+                      value={importMode}
+                      onChange={e => setImportMode(e.target.value)}
+                    >
+                      <option value="Create New Only">Create New Only</option>
+                      <option value="Update Existing">Update Existing</option>
+                      <option value="Upsert">Upsert (Create & Update)</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="label">Select CSV File *</label>
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="input"
+                      style={{ padding: '6px 10px' }}
+                      onChange={e => setImportFile(e.target.files?.[0] || null)}
+                    />
+                  </div>
+                </div>
+
+                {importErrors.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--red)', marginBottom: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <AlertCircle size={14} />
+                      Import Validation Failed ({importErrors.length} Errors Found)
+                    </div>
+                    <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                      <table className="validation-errors-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 50 }}>Row</th>
+                            <th style={{ width: 140 }}>Column</th>
+                            <th style={{ width: 130 }}>Submitted Value</th>
+                            <th>Error Message</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importErrors.map((err, i) => (
+                            <tr key={i}>
+                              <td style={{ fontWeight: 600 }}>{err.row}</td>
+                              <td style={{ color: 'var(--text-primary)' }}>{err.column}</td>
+                              <td className="mono" style={{ fontSize: 11 }}>{err.submitted_value || <span style={{ color: 'var(--text-muted)' }}>[empty]</span>}</td>
+                              <td style={{ color: 'var(--red)' }}>{err.error_message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowImportModal(false)}
+                  disabled={isImporting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isImporting || !importFile}
+                >
+                  {isImporting ? 'Importing...' : 'Start Import'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
