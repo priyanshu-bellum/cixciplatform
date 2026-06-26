@@ -1766,34 +1766,9 @@ export default function CatalogPage() {
   };
 
   const handleDownloadTemplate = () => {
-    const headers = [
-      "Accessory Name", "SKU", "Brand", "Product Category", "Product Description",
-      "UPC", "Launch Date", "Color", "System Color", "Brand Warranty", "Vendor Wholesale Price", "MSRP",
-      "MAP Price", "Sale Price", "Recommended Accessory", "Inventory Level", "Inventory Threshold",
-      "Length", "Width", "Height", "Weight", "Device Compatibility"
-    ];
-    const row1 = [
-      "Premium Leather Case", "PRM-LTH-IP15", "Cellhelmet", "Cases", "High quality genuine leather case with MagSafe support",
-      "190123456789", "2026-06-01", "Black", "black", "1 Year Limited", "15.00", "29.99",
-      "24.99", "24.99", "true", "150", "10",
-      "5.8", "2.9", "0.4", "0.12", "iPhone 15 Pro,iPhone 15"
-    ];
-    const row2 = [
-      "Tempered Glass Protector", "TMP-GLS-S24", "Cellhelmet", "Screen Protection", "9H hardness tempered glass screen protector",
-      "190123456790", "2026-06-02", "Clear", "clear", "Lifetime Warranty", "5.00", "12.99",
-      "9.99", "9.99", "false", "500", "5",
-      "6.1", "3.0", "0.02", "0.05", "Galaxy S24,Galaxy S24 Plus"
-    ];
-    
-    const csvContent = [headers, row1, row2]
-      .map(row => row.map(val => `"${val.replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-      
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "product_catalog_template.csv");
+    link.setAttribute("href", "/Download CSV Template.csv");
+    link.setAttribute("download", "Download CSV Template.csv");
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
