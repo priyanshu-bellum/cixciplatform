@@ -79,6 +79,11 @@ for cap_code in sorted(capabilities):
     if created:
         print(f"Created capability: {cap_code}")
 
+# Automatically activate all companies in the system
+from apps.tenant.models import Company
+companies_updated = Company.objects.all().update(status='active')
+print(f"Activated {companies_updated} companies in the system")
+
 # Assign capabilities to all users based on company type
 buyer_modules = ['devices', 'catalog', 'pricing', 'invoicing', 'procurement', 'tenant', 'media', 'analytics', 'integration', 'notifications', 'launch']
 buyer_caps = [c for c in capabilities if c.split('.')[0] in buyer_modules]

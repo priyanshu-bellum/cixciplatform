@@ -122,7 +122,6 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "destroy": "devices.device.manage",
         "capability_evidence": "devices.device.read",
         "feature_assignments": "devices.device.read",
-        "import_template": "devices.device.import",
         "bulk_import": "devices.device.import",
         "audit_history": "devices.device.read",
     }
@@ -131,6 +130,16 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     search_fields = ["name", "sku", "model_number"]
     ordering_fields = ["name", "release_date", "created_at"]
     ordering = ["-created_at"]
+
+    def get_permissions(self):
+        if self.action == "import_template":
+            return []
+        return super().get_permissions()
+
+    def get_authenticators(self):
+        if self.action == "import_template":
+            return []
+        return super().get_authenticators()
 
     def get_serializer_class(self):
         if self.action == "list":
