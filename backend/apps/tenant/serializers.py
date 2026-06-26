@@ -51,7 +51,7 @@ class CompanySerializer(serializers.ModelSerializer):
             # Check required fields
             fields_to_check = [
                 "display_name", "website", "primary_contact_name", 
-                "primary_contact_email", "phone_number", "address_line1"
+                "primary_contact_email", "address_line1"
             ]
             for f in fields_to_check:
                 val = attrs.get(f) or (getattr(self.instance, f) if self.instance else None)
@@ -113,6 +113,7 @@ class UserSerializer(serializers.ModelSerializer):
     company_id = serializers.UUIDField(source="entity.company_id", read_only=True)
     company_name = serializers.CharField(source="entity.company.name", read_only=True)
     company_type = serializers.CharField(source="entity.company.company_type", read_only=True)
+    company_map_pricing_enforced = serializers.BooleanField(source="entity.company.map_pricing_enforced", read_only=True)
     entity_name = serializers.CharField(source="entity.name", read_only=True)
     capabilities = CapabilitySerializer(many=True, read_only=True)
 
@@ -121,6 +122,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             "id", "email", "first_name", "last_name", "full_name",
             "entity", "entity_name", "company_id", "company_name", "company_type",
+            "company_map_pricing_enforced",
             "is_active", "is_cixci_admin", "capabilities",
             "created_at", "updated_at",
         ]

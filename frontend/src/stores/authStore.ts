@@ -11,6 +11,7 @@ interface User {
   company_type?: string
   capabilities?: any[]
   company_id?: string
+  company_map_pricing_enforced?: boolean
 }
 
 interface AuthState {

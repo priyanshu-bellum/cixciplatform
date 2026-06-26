@@ -425,9 +425,10 @@ class ChildOnboardingRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
 
 class CapabilityViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Capability.objects.all()
+    queryset = Capability.objects.filter(is_active=True).order_by('code')
     serializer_class = CapabilitySerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
 
 

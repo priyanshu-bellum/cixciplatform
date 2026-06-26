@@ -225,7 +225,7 @@ export function SettingsPage() {
   const [companyReturnZip, setCompanyReturnZip] = useState('')
   const [companyReturnRegion, setCompanyReturnRegion] = useState('')
   const [companyReturnCountry, setCompanyReturnCountry] = useState('')
-  const [companySameAsReturnAddress, setCompanySameAsReturnAddress] = useState(false)
+  const [companySameAsCompanyAddress, setCompanySameAsCompanyAddress] = useState(false)
   const [companyMapPricingEnforced, setCompanyMapPricingEnforced] = useState(false)
   const [companyOrderDigestEmails, setCompanyOrderDigestEmails] = useState<string[]>([])
   const [companyNewDigestEmail, setCompanyNewDigestEmail] = useState('')
@@ -341,7 +341,7 @@ export function SettingsPage() {
   const [editReturnZip, setEditReturnZip] = useState('')
   const [editReturnRegion, setEditReturnRegion] = useState('')
   const [editReturnCountry, setEditReturnCountry] = useState('')
-  const [editSameAsReturnAddress, setEditSameAsReturnAddress] = useState(false)
+  const [editSameAsCompanyAddress, setEditSameAsCompanyAddress] = useState(false)
   const [editOrderDigestEmails, setEditOrderDigestEmails] = useState<string[]>([])
   const [editNewDigestEmail, setEditNewDigestEmail] = useState('')
 
@@ -621,7 +621,7 @@ export function SettingsPage() {
       setCompanyReturnZip('')
       setCompanyReturnRegion('')
       setCompanyReturnCountry('')
-      setCompanySameAsReturnAddress(false)
+      setCompanySameAsCompanyAddress(false)
       setCompanyMapPricingEnforced(false)
       setCompanyOrderDigestEmails([])
       setCompanyNewDigestEmail('')
@@ -1309,7 +1309,7 @@ export function SettingsPage() {
                             rRegion === (c.region_code || '') &&
                             rCountry === (c.country_code || '')
                           )
-                          setEditSameAsReturnAddress(isSame)
+                          setEditSameAsCompanyAddress(isSame)
                           setEditOrderDigestEmails(c.order_digest_emails || [])
                           setEditNewDigestEmail('')
                           setEditCompanyCity('')
@@ -1484,7 +1484,13 @@ export function SettingsPage() {
                   <input
                     type="text" className="input" placeholder="e.g. Acme Corp" required
                     value={companyName}
-                    onChange={e => setCompanyName(e.target.value)}
+                    onChange={e => {
+                      const val = e.target.value
+                      setCompanyName(val)
+                      if (!companyDisplayName || companyDisplayName === companyName) {
+                        setCompanyDisplayName(val)
+                      }
+                    }}
                     style={{
                       borderColor: companyName.trim() && companiesList.some(
                         (c: any) => c.name?.trim().toLowerCase() === companyName.trim().toLowerCase()
@@ -1572,155 +1578,93 @@ export function SettingsPage() {
                       <option value='accessory_vendor'>Accessory Vendor</option>
                     </select>
                   </div>
-                  <div className="form-group" style={{ marginTop: 10 }}>
-                    <label className="label">Return Address Line 1 *</label>
-                    <AddressAutocomplete
-                      value={companyReturnAddress1}
-                      onChange={val => {
-                        setCompanyReturnAddress1(val)
-                        if (companySameAsReturnAddress) setCompanyAddress1(val)
-                      }}
-                      onSelect={({ address1, city, state, zip, country }) => {
-                        setCompanyReturnAddress1(address1)
-                        setCompanyReturnCity(city)
-                        setCompanyReturnRegion(state)
-                        setCompanyReturnZip(zip)
-                        setCompanyReturnCountry(country)
-                        if (companySameAsReturnAddress) {
-                          setCompanyAddress1(address1)
-                          setCompanyCity(city)
-                          setCompanyRegion(state)
-                          setCompanyZip(zip)
-                          setCompanyCountry(country)
+                </div>
+              )}
+                  
+              {companyType === 'vendor' && (
+                <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 12, marginTop: 8 }}>
+                  <div className="label" style={{ marginBottom: 8 }}>Integration Mode</div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                    {(['api','manual'] as const).map(mode => (
+                      <button key={mode} type='button' onClick={() => {
+                        if (companyIntegrationMode === mode) {
+                          if (mode === 'api') {
+                            setCompanyIntegrationMode('')
+                          } else if (mode === 'manual') {
+                            const isEmpty = (companyDailyEmailTime === '08:00' || !companyDailyEmailTime) && !companyDailyEmailTime2 && companyOrderDigestEmails.length === 0
+                            if (isEmpty) {
+                              setCompanyIntegrationMode('')
+                            }
+                          }
+                        } else {
+                          setCompanyIntegrationMode(mode)
                         }
                       }}
-                      className="input"
-                      placeholder="Start typing return address…"
-                    />
+                        style={{ flex: 1, padding: '8px 0', borderRadius: 6, border: `1.5px solid ${companyIntegrationMode === mode ? 'var(--accent)' : 'var(--border)'}`, background: companyIntegrationMode === mode ? 'rgba(99,102,241,.12)' : 'var(--bg-elevated)', color: companyIntegrationMode === mode ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                        {mode === 'api' ? '🔌 API' : '📋 Manual'}
+                      </button>
+                    ))}
                   </div>
-
-                  <div className="card-grid card-grid-3" style={{ marginTop: 10 }}>
-                    <div className="form-group">
-                      <label className="label">Return Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
-                      <input type="text" className="input" placeholder="e.g. Suite 400" value={companyReturnAddress2} onChange={e => {
-                        setCompanyReturnAddress2(e.target.value)
-                        if (companySameAsReturnAddress) setCompanyAddress2(e.target.value)
-                      }} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Return City</label>
-                      <input type="text" className="input" placeholder="Auto-filled" value={companyReturnCity} onChange={e => {
-                        setCompanyReturnCity(e.target.value)
-                        if (companySameAsReturnAddress) setCompanyCity(e.target.value)
-                      }} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Return ZIP / Postal Code</label>
-                      <input type="text" className="input" placeholder="Auto-filled" value={companyReturnZip} onChange={e => {
-                        setCompanyReturnZip(e.target.value)
-                        if (companySameAsReturnAddress) setCompanyZip(e.target.value)
-                      }} />
-                    </div>
-                  </div>
-
-                  <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                    <div className="form-group">
-                      <label className="label">Return Country Code</label>
-                      <input type="text" className="input" placeholder="USA" value={companyReturnCountry} onChange={e => {
-                        setCompanyReturnCountry(e.target.value)
-                        if (companySameAsReturnAddress) setCompanyCountry(e.target.value)
-                      }} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Return State</label>
-                      <select className="input" value={companyReturnRegion} onChange={e => {
-                        setCompanyReturnRegion(e.target.value)
-                        if (companySameAsReturnAddress) setCompanyRegion(e.target.value)
-                      }}>
-                        <option value=''>— Select state —</option>
-                        {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="form-group" style={{ marginTop: 10 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                      <input type='checkbox' checked={companyMapPricingEnforced} onChange={e => setCompanyMapPricingEnforced(e.target.checked)} />
-                      <strong>Enforce MAP Pricing for this Vendor</strong>
-                    </label>
-                  </div>
-                  
-                  {/* Vendor: Integration Mode */}
-                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 12, marginTop: 8 }}>
-                    <div className="label" style={{ marginBottom: 8 }}>Integration Mode</div>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                      {(['api','manual'] as const).map(mode => (
-                        <button key={mode} type='button' onClick={() => setCompanyIntegrationMode(mode)}
-                          style={{ flex: 1, padding: '8px 0', borderRadius: 6, border: `1.5px solid ${companyIntegrationMode === mode ? 'var(--accent)' : 'var(--border)'}`, background: companyIntegrationMode === mode ? 'rgba(99,102,241,.12)' : 'var(--bg-elevated)', color: companyIntegrationMode === mode ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-                          {mode === 'api' ? '🔌 API' : '📋 Manual'}
-                        </button>
-                      ))}
-                    </div>
-                    {companyIntegrationMode === 'manual' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        <div className="card-grid card-grid-2">
-                          <div className="form-group">
-                            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> First Send Time</label>
-                            <AmPmTimePicker value={companyDailyEmailTime} onChange={setCompanyDailyEmailTime} />
-                          </div>
-                          <div className="form-group">
-                            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></label>
-                            <AmPmTimePicker value={companyDailyEmailTime2} onChange={setCompanyDailyEmailTime2} allowEmpty />
-                          </div>
+                  {companyIntegrationMode === 'manual' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div className="card-grid card-grid-2">
+                        <div className="form-group">
+                          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> First Send Time</label>
+                          <AmPmTimePicker value={companyDailyEmailTime} onChange={setCompanyDailyEmailTime} />
                         </div>
                         <div className="form-group">
-                          <label className="label">Additional Automated Digest Recipients</label>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <input
-                              type="email"
-                              className="input"
-                              placeholder="e.g. sales@vendor.com"
-                              value={companyNewDigestEmail}
-                              onChange={e => setCompanyNewDigestEmail(e.target.value)}
-                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCompanyDigestEmail(); } }}
-                            />
-                            <button
-                              type="button"
-                              onClick={handleAddCompanyDigestEmail}
-                              style={{
-                                background: 'var(--accent)',
-                                border: 'none',
-                                borderRadius: 6,
-                                color: '#fff',
-                                padding: '0 14px',
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                              }}
-                            >
-                              + Add
-                            </button>
-                          </div>
-                          {companyOrderDigestEmails.length > 0 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6, maxHeight: 120, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: 6, padding: 6, border: '1px solid var(--border)' }}>
-                              {companyOrderDigestEmails.map(email => (
-                                <div key={email} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)', padding: '4px 8px', borderRadius: 4, fontSize: 12, border: '1px solid var(--border-light)' }}>
-                                  <span style={{ color: 'var(--text-primary)' }}>{email}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveCompanyDigestEmail(email)}
-                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></label>
+                          <AmPmTimePicker value={companyDailyEmailTime2} onChange={setCompanyDailyEmailTime2} allowEmpty />
                         </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Order digest emailed daily to the configured recipients at these UTC times.</div>
                       </div>
-                    )}
-                  </div>
+                      <div className="form-group">
+                        <label className="label">Additional Automated Digest Recipients</label>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            type="email"
+                            className="input"
+                            placeholder="e.g. sales@vendor.com"
+                            value={companyNewDigestEmail}
+                            onChange={e => setCompanyNewDigestEmail(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCompanyDigestEmail(); } }}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddCompanyDigestEmail}
+                            style={{
+                              background: 'var(--accent)',
+                              border: 'none',
+                              borderRadius: 6,
+                              color: '#fff',
+                              padding: '0 14px',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            + Add
+                          </button>
+                        </div>
+                        {companyOrderDigestEmails.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6, maxHeight: 120, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: 6, padding: 6, border: '1px solid var(--border)' }}>
+                            {companyOrderDigestEmails.map(email => (
+                              <div key={email} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)', padding: '4px 8px', borderRadius: 4, fontSize: 12, border: '1px solid var(--border-light)' }}>
+                                <span style={{ color: 'var(--text-primary)' }}>{email}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveCompanyDigestEmail(email)}
+                                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Order digest emailed daily to the configured recipients at these UTC times.</div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1764,41 +1708,18 @@ export function SettingsPage() {
               </div>
 
               <div className="form-group" style={{ marginTop: 10 }}>
-                <label className="label">Phone Number *</label>
-                <input type="text" className="input" placeholder="+1-555-0199" required value={companyPhone} onChange={e => setCompanyPhone(e.target.value)} />
+                <label className="label">Phone Number (optional)</label>
+                <input type="text" className="input" placeholder="+1-555-0199" value={companyPhone} onChange={e => setCompanyPhone(e.target.value)} />
               </div>
 
               <div style={{ marginTop: 10 }}>
-                {companyType === 'vendor' && (
-                  <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                      <input 
-                        type='checkbox' 
-                        checked={companySameAsReturnAddress} 
-                        onChange={e => {
-                          const checked = e.target.checked
-                          setCompanySameAsReturnAddress(checked)
-                          if (checked) {
-                            setCompanyAddress1(companyReturnAddress1)
-                            setCompanyAddress2(companyReturnAddress2)
-                            setCompanyCity(companyReturnCity)
-                            setCompanyRegion(companyReturnRegion)
-                            setCompanyZip(companyReturnZip)
-                            setCompanyCountry(companyReturnCountry)
-                          }
-                        }} 
-                      />
-                      <strong>same as return address</strong>
-                    </label>
-                  </div>
-                )}
                 <div className="form-group" style={{ marginBottom: 8 }}>
                   <label className="label">Address Line 1 *</label>
                   <AddressAutocomplete
                     value={companyAddress1}
                     onChange={val => {
                       setCompanyAddress1(val)
-                      setCompanySameAsReturnAddress(false)
+                      if (companySameAsCompanyAddress) setCompanyReturnAddress1(val)
                     }}
                     onSelect={({ address1, city, state, zip, country }) => {
                       setCompanyAddress1(address1)
@@ -1806,7 +1727,13 @@ export function SettingsPage() {
                       setCompanyRegion(state)
                       setCompanyZip(zip)
                       setCompanyCountry(country)
-                      setCompanySameAsReturnAddress(false)
+                      if (companySameAsCompanyAddress) {
+                        setCompanyReturnAddress1(address1)
+                        setCompanyReturnCity(city)
+                        setCompanyReturnRegion(state)
+                        setCompanyReturnZip(zip)
+                        setCompanyReturnCountry(country)
+                      }
                     }}
                     className="input"
                     placeholder="Start typing an address…"
@@ -1817,21 +1744,21 @@ export function SettingsPage() {
                     <label className="label">Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
                     <input type="text" className="input" placeholder="e.g. Suite 400" value={companyAddress2} onChange={e => {
                       setCompanyAddress2(e.target.value)
-                      setCompanySameAsReturnAddress(false)
+                      if (companySameAsCompanyAddress) setCompanyReturnAddress2(e.target.value)
                     }} />
                   </div>
                   <div className="form-group">
                     <label className="label">City</label>
                     <input type="text" className="input" placeholder="Auto-filled" value={companyCity} onChange={e => {
                       setCompanyCity(e.target.value)
-                      setCompanySameAsReturnAddress(false)
+                      if (companySameAsCompanyAddress) setCompanyReturnCity(e.target.value)
                     }} />
                   </div>
                   <div className="form-group">
                     <label className="label">ZIP / Postal Code</label>
                     <input type="text" className="input" placeholder="Auto-filled" value={companyZip} onChange={e => {
                       setCompanyZip(e.target.value)
-                      setCompanySameAsReturnAddress(false)
+                      if (companySameAsCompanyAddress) setCompanyReturnZip(e.target.value)
                     }} />
                   </div>
                 </div>
@@ -1842,14 +1769,14 @@ export function SettingsPage() {
                   <label className="label">Country Code</label>
                   <input type="text" className="input" value={companyCountry} onChange={e => {
                     setCompanyCountry(e.target.value)
-                    setCompanySameAsReturnAddress(false)
+                    if (companySameAsCompanyAddress) setCompanyReturnCountry(e.target.value)
                   }} />
                 </div>
                 <div className="form-group">
                   <label className="label">State</label>
                   <select className="input" value={companyRegion} onChange={e => {
                     setCompanyRegion(e.target.value)
-                    setCompanySameAsReturnAddress(false)
+                    if (companySameAsCompanyAddress) setCompanyReturnRegion(e.target.value)
                   }}>
                     <option value=''>— Select state —</option>
                     {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
@@ -1860,6 +1787,96 @@ export function SettingsPage() {
                   <input type="text" className="input" placeholder="e.g. EXT-908" value={companyExternalId} onChange={e => setCompanyExternalId(e.target.value)} />
                 </div>
               </div>
+
+              {companyType === 'vendor' && (
+                <div style={{ marginTop: 15, borderTop: '1px solid var(--border-light)', paddingTop: 15 }}>
+                  <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                      <input 
+                        type='checkbox' 
+                        checked={companySameAsCompanyAddress} 
+                        onChange={e => {
+                          const checked = e.target.checked
+                          setCompanySameAsCompanyAddress(checked)
+                          if (checked) {
+                            setCompanyReturnAddress1(companyAddress1)
+                            setCompanyReturnAddress2(companyAddress2)
+                            setCompanyReturnCity(companyCity)
+                            setCompanyReturnRegion(companyRegion)
+                            setCompanyReturnZip(companyZip)
+                            setCompanyReturnCountry(companyCountry)
+                          }
+                        }} 
+                      />
+                      <strong>Same as company address</strong>
+                    </label>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 8 }}>
+                    <label className="label">Return Address Line 1 *</label>
+                    <AddressAutocomplete
+                      value={companyReturnAddress1}
+                      onChange={val => {
+                        setCompanyReturnAddress1(val)
+                        setCompanySameAsCompanyAddress(false)
+                      }}
+                      onSelect={({ address1, city, state, zip, country }) => {
+                        setCompanyReturnAddress1(address1)
+                        setCompanyReturnCity(city)
+                        setCompanyReturnRegion(state)
+                        setCompanyReturnZip(zip)
+                        setCompanyReturnCountry(country)
+                        setCompanySameAsCompanyAddress(false)
+                      }}
+                      className="input"
+                      placeholder="Start typing return address…"
+                    />
+                  </div>
+
+                  <div className="card-grid card-grid-3" style={{ marginTop: 10 }}>
+                    <div className="form-group">
+                      <label className="label">Return Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
+                      <input type="text" className="input" placeholder="e.g. Suite 400" value={companyReturnAddress2} onChange={e => {
+                        setCompanyReturnAddress2(e.target.value)
+                        setCompanySameAsCompanyAddress(false)
+                      }} />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Return City</label>
+                      <input type="text" className="input" placeholder="Auto-filled" value={companyReturnCity} onChange={e => {
+                        setCompanyReturnCity(e.target.value)
+                        setCompanySameAsCompanyAddress(false)
+                      }} />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Return ZIP / Postal Code</label>
+                      <input type="text" className="input" placeholder="Auto-filled" value={companyReturnZip} onChange={e => {
+                        setCompanyReturnZip(e.target.value)
+                        setCompanySameAsCompanyAddress(false)
+                      }} />
+                    </div>
+                  </div>
+
+                  <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
+                    <div className="form-group">
+                      <label className="label">Return Country Code</label>
+                      <input type="text" className="input" placeholder="USA" value={companyReturnCountry} onChange={e => {
+                        setCompanyReturnCountry(e.target.value)
+                        setCompanySameAsCompanyAddress(false)
+                      }} />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Return State</label>
+                      <select className="input" value={companyReturnRegion} onChange={e => {
+                        setCompanyReturnRegion(e.target.value)
+                        setCompanySameAsCompanyAddress(false)
+                      }}>
+                        <option value=''>— Select state —</option>
+                        {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
                 <div className="form-group">
@@ -1887,6 +1904,16 @@ export function SettingsPage() {
                     />
                     <strong>Allow personal email domain exception</strong>
                   </label>
+                  {companyType === 'vendor' && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={companyMapPricingEnforced}
+                        onChange={e => setCompanyMapPricingEnforced(e.target.checked)}
+                      />
+                      <strong>Enforce MAP Pricing</strong>
+                    </label>
+                  )}
                 </div>
               </div>
 
@@ -2307,92 +2334,13 @@ export function SettingsPage() {
                     </div>
                   )}
                   {selectedCompany.company_type === 'vendor' && (
-                    <>
-                      <div className="form-group" style={{ marginBottom: 10 }}>
-                        <label className="label">Vendor Type</label>
-                        <select className="input" value={editVendorType} onChange={e => setEditVendorType(e.target.value)}>
-                          <option value=''>Select Vendor Type</option>
-                          <option value='accessory_vendor'>Accessory Vendor</option>
-                        </select>
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 10 }}>
-                        <label className="label">MAP Pricing Enforced</label>
-                        <select className="input" value={editMapPricingEnforced ? "true" : "false"} onChange={e => setEditMapPricingEnforced(e.target.value === "true")}>
-                          <option value="false">No</option>
-                          <option value="true">Yes</option>
-                        </select>
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 10 }}>
-                        <label className="label">Return Address Line 1 *</label>
-                        <AddressAutocomplete
-                          value={editReturnAddress1}
-                          onChange={val => {
-                            setEditReturnAddress1(val)
-                            if (editSameAsReturnAddress) setEditCompanyAddress1(val)
-                          }}
-                          onSelect={({ address1, city, state, zip, country }) => {
-                            setEditReturnAddress1(address1)
-                            setEditReturnCity(city)
-                            setEditReturnRegion(state)
-                            setEditReturnZip(zip)
-                            setEditReturnCountry(country)
-                            if (editSameAsReturnAddress) {
-                              setEditCompanyAddress1(address1)
-                              setEditCompanyCity(city)
-                              setEditCompanyRegion(state)
-                              setEditCompanyZip(zip)
-                              setEditCompanyCountry(country)
-                            }
-                          }}
-                          className="input"
-                          placeholder="Start typing return address…"
-                        />
-                      </div>
-
-                      <div className="card-grid card-grid-3" style={{ marginBottom: 10 }}>
-                        <div className="form-group">
-                          <label className="label">Return Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
-                          <input type="text" className="input" placeholder="e.g. Suite 400" value={editReturnAddress2} onChange={e => {
-                            setEditReturnAddress2(e.target.value)
-                            if (editSameAsReturnAddress) setEditCompanyAddress2(e.target.value)
-                          }} />
-                        </div>
-                        <div className="form-group">
-                          <label className="label">Return City</label>
-                          <input type="text" className="input" placeholder="Auto-filled" value={editReturnCity} onChange={e => {
-                            setEditReturnCity(e.target.value)
-                            if (editSameAsReturnAddress) setEditCompanyCity(e.target.value)
-                          }} />
-                        </div>
-                        <div className="form-group">
-                          <label className="label">Return ZIP / Postal Code</label>
-                          <input type="text" className="input" placeholder="Auto-filled" value={editReturnZip} onChange={e => {
-                            setEditReturnZip(e.target.value)
-                            if (editSameAsReturnAddress) setEditCompanyZip(e.target.value)
-                          }} />
-                        </div>
-                      </div>
-
-                      <div className="card-grid card-grid-2" style={{ marginBottom: 10 }}>
-                        <div className="form-group">
-                          <label className="label">Return Country Code</label>
-                          <input type="text" className="input" placeholder="USA" value={editReturnCountry} onChange={e => {
-                            setEditReturnCountry(e.target.value)
-                            if (editSameAsReturnAddress) setEditCompanyCountry(e.target.value)
-                          }} />
-                        </div>
-                        <div className="form-group">
-                          <label className="label">Return State</label>
-                          <select className="input" value={editReturnRegion} onChange={e => {
-                            setEditReturnRegion(e.target.value)
-                            if (editSameAsReturnAddress) setEditCompanyRegion(e.target.value)
-                          }}>
-                            <option value=''>— Select state —</option>
-                            {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    </>
+                    <div className="form-group" style={{ marginBottom: 10 }}>
+                      <label className="label">Vendor Type</label>
+                      <select className="input" value={editVendorType} onChange={e => setEditVendorType(e.target.value)}>
+                        <option value=''>Select Vendor Type</option>
+                        <option value='accessory_vendor'>Accessory Vendor</option>
+                      </select>
+                    </div>
                   )}
                   {/* Logo */}
                   <div className="form-group" style={{ marginBottom: 10 }}>
@@ -2413,7 +2361,13 @@ export function SettingsPage() {
                   <div className="card-grid card-grid-2">
                     <div className="form-group">
                       <label className="label">Company Legal Name</label>
-                      <input type="text" className="input" required value={editCompanyName} onChange={e => setEditCompanyName(e.target.value)} />
+                      <input type="text" className="input" required value={editCompanyName} onChange={e => {
+                        const val = e.target.value
+                        setEditCompanyName(val)
+                        if (!editCompanyDisplayName || editCompanyDisplayName === editCompanyName) {
+                          setEditCompanyDisplayName(val)
+                        }
+                      }} />
                     </div>
                     <div className="form-group">
                       <label className="label">Display Name</label>
@@ -2454,42 +2408,19 @@ export function SettingsPage() {
                       <input type="email" className="input" required value={editCompanyContactEmail} onChange={e => setEditCompanyContactEmail(e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label className="label">Phone Number *</label>
-                      <input type="text" className="input" placeholder="+1-555-0199" required value={editCompanyPhone} onChange={e => setEditCompanyPhone(e.target.value)} />
+                      <label className="label">Phone Number (optional)</label>
+                      <input type="text" className="input" placeholder="+1-555-0199" value={editCompanyPhone} onChange={e => setEditCompanyPhone(e.target.value)} />
                     </div>
                   </div>
 
                   <div style={{ marginTop: 10 }}>
-                    {selectedCompany.company_type === 'vendor' && (
-                      <div className="form-group" style={{ marginBottom: 12 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                          <input 
-                            type='checkbox' 
-                            checked={editSameAsReturnAddress} 
-                            onChange={e => {
-                              const checked = e.target.checked
-                              setEditSameAsReturnAddress(checked)
-                              if (checked) {
-                                setEditCompanyAddress1(editReturnAddress1)
-                                setEditCompanyAddress2(editReturnAddress2)
-                                setEditCompanyCity(editReturnCity)
-                                setEditCompanyRegion(editReturnRegion)
-                                setEditCompanyZip(editReturnZip)
-                                setEditCompanyCountry(editReturnCountry)
-                              }
-                            }} 
-                          />
-                          <strong>same as return address</strong>
-                        </label>
-                      </div>
-                    )}
                     <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label className="label">Address Line 1</label>
+                      <label className="label">Address Line 1 *</label>
                       <AddressAutocomplete
                         value={editCompanyAddress1}
                         onChange={val => {
                           setEditCompanyAddress1(val)
-                          setEditSameAsReturnAddress(false)
+                          if (editSameAsCompanyAddress) setEditReturnAddress1(val)
                         }}
                         onSelect={({ address1, city, state, zip, country }) => {
                           setEditCompanyAddress1(address1)
@@ -2497,7 +2428,13 @@ export function SettingsPage() {
                           setEditCompanyRegion(state)
                           setEditCompanyZip(zip)
                           setEditCompanyCountry(country)
-                          setEditSameAsReturnAddress(false)
+                          if (editSameAsCompanyAddress) {
+                            setEditReturnAddress1(address1)
+                            setEditReturnCity(city)
+                            setEditReturnRegion(state)
+                            setEditReturnZip(zip)
+                            setEditReturnCountry(country)
+                          }
                         }}
                         className="input"
                         placeholder="Start typing an address…"
@@ -2508,39 +2445,39 @@ export function SettingsPage() {
                         <label className="label">Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
                         <input type="text" className="input" placeholder="e.g. Suite 400" value={editCompanyAddress2} onChange={e => {
                           setEditCompanyAddress2(e.target.value)
-                          setEditSameAsReturnAddress(false)
+                          if (editSameAsCompanyAddress) setEditReturnAddress2(e.target.value)
                         }} />
                       </div>
                       <div className="form-group">
                         <label className="label">City</label>
                         <input type="text" className="input" placeholder="Auto-filled" value={editCompanyCity} onChange={e => {
                           setEditCompanyCity(e.target.value)
-                          setEditSameAsReturnAddress(false)
+                          if (editSameAsCompanyAddress) setEditCompanyCity(e.target.value)
                         }} />
                       </div>
                       <div className="form-group">
                         <label className="label">ZIP / Postal Code</label>
                         <input type="text" className="input" placeholder="Auto-filled" value={editCompanyZip} onChange={e => {
                           setEditCompanyZip(e.target.value)
-                          setEditSameAsReturnAddress(false)
+                          if (editSameAsCompanyAddress) setEditCompanyZip(e.target.value)
                         }} />
                       </div>
                     </div>
                   </div>
 
-                  <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
+                  <div className="card-grid card-grid-3" style={{ marginTop: 10 }}>
                     <div className="form-group">
-                      <label className="label">Country</label>
+                      <label className="label">Country Code</label>
                       <input type="text" className="input" value={editCompanyCountry} onChange={e => {
                         setEditCompanyCountry(e.target.value)
-                        setEditSameAsReturnAddress(false)
+                        if (editSameAsCompanyAddress) setEditReturnCountry(e.target.value)
                       }} />
                     </div>
                     <div className="form-group">
                       <label className="label">State</label>
                       <select className="input" value={editCompanyRegion} onChange={e => {
                         setEditCompanyRegion(e.target.value)
-                        setEditSameAsReturnAddress(false)
+                        if (editSameAsCompanyAddress) setEditReturnRegion(e.target.value)
                       }}>
                         <option value=''>— Select state —</option>
                         {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
@@ -2548,13 +2485,116 @@ export function SettingsPage() {
                     </div>
                   </div>
 
+                  {selectedCompany.company_type === 'vendor' && (
+                    <div style={{ marginTop: 15, borderTop: '1px solid var(--border-light)', paddingTop: 15 }}>
+                      <div className="form-group" style={{ marginBottom: 12 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                          <input 
+                            type='checkbox' 
+                            checked={editSameAsCompanyAddress} 
+                            onChange={e => {
+                              const checked = e.target.checked
+                              setEditSameAsCompanyAddress(checked)
+                              if (checked) {
+                                setEditReturnAddress1(editCompanyAddress1)
+                                setEditReturnAddress2(editCompanyAddress2)
+                                setEditReturnCity(editCompanyCity)
+                                setEditReturnRegion(editCompanyRegion)
+                                setEditReturnZip(editCompanyZip)
+                                setEditReturnCountry(editCompanyCountry)
+                              }
+                            }} 
+                          />
+                          <strong>Same as company address</strong>
+                        </label>
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 8 }}>
+                        <label className="label">Return Address Line 1 *</label>
+                        <AddressAutocomplete
+                          value={editReturnAddress1}
+                          onChange={val => {
+                            setEditReturnAddress1(val)
+                            setEditSameAsCompanyAddress(false)
+                          }}
+                          onSelect={({ address1, city, state, zip, country }) => {
+                            setEditReturnAddress1(address1)
+                            setEditReturnCity(city)
+                            setEditReturnRegion(state)
+                            setEditReturnZip(zip)
+                            setEditReturnCountry(country)
+                            setEditSameAsCompanyAddress(false)
+                          }}
+                          className="input"
+                          placeholder="Start typing return address…"
+                        />
+                      </div>
+
+                      <div className="card-grid card-grid-3" style={{ marginTop: 10 }}>
+                        <div className="form-group">
+                          <label className="label">Return Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
+                          <input type="text" className="input" placeholder="e.g. Suite 400" value={editReturnAddress2} onChange={e => {
+                            setEditReturnAddress2(e.target.value)
+                            setEditSameAsCompanyAddress(false)
+                          }} />
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Return City</label>
+                          <input type="text" className="input" placeholder="Auto-filled" value={editReturnCity} onChange={e => {
+                            setEditReturnCity(e.target.value)
+                            setEditSameAsCompanyAddress(false)
+                          }} />
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Return ZIP / Postal Code</label>
+                          <input type="text" className="input" placeholder="Auto-filled" value={editReturnZip} onChange={e => {
+                            setEditReturnZip(e.target.value)
+                            setEditSameAsCompanyAddress(false)
+                          }} />
+                        </div>
+                      </div>
+
+                      <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
+                        <div className="form-group">
+                          <label className="label">Return Country Code</label>
+                          <input type="text" className="input" placeholder="USA" value={editReturnCountry} onChange={e => {
+                            setEditReturnCountry(e.target.value)
+                            setEditSameAsCompanyAddress(false)
+                          }} />
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Return State</label>
+                          <select className="input" value={editReturnRegion} onChange={e => {
+                            setEditReturnRegion(e.target.value)
+                            setEditSameAsCompanyAddress(false)
+                          }}>
+                            <option value=''>— Select state —</option>
+                            {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Vendor: Integration Mode */}
                   {selectedCompany.company_type === 'vendor' && (
                     <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 12, marginTop: 8 }}>
                       <div className="label" style={{ marginBottom: 8 }}>Integration Mode</div>
                       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                         {(['api','manual'] as const).map(mode => (
-                          <button key={mode} type='button' onClick={() => { setEditIntegrationMode(mode) }}
+                          <button key={mode} type='button' onClick={() => {
+                            if (editIntegrationMode === mode) {
+                              if (mode === 'api') {
+                                setEditIntegrationMode('')
+                              } else if (mode === 'manual') {
+                                const isEmpty = (editDailyEmailTime === '08:00' || !editDailyEmailTime) && !editDailyEmailTime2 && editOrderDigestEmails.length === 0
+                                if (isEmpty) {
+                                  setEditIntegrationMode('')
+                                }
+                              }
+                            } else {
+                              setEditIntegrationMode(mode)
+                            }
+                          }}
                             style={{ flex: 1, padding: '8px 0', borderRadius: 6, border: `1.5px solid ${editIntegrationMode === mode ? 'var(--accent)' : 'var(--border)'}`, background: editIntegrationMode === mode ? 'rgba(99,102,241,.12)' : 'var(--bg-elevated)', color: editIntegrationMode === mode ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
                             {mode === 'api' ? '🔌 API' : '📋 Manual'}
                           </button>
@@ -2669,6 +2709,16 @@ export function SettingsPage() {
                       />
                       <strong>Allow personal email domain exception</strong>
                     </label>
+                    {selectedCompany.company_type === 'vendor' && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={editMapPricingEnforced}
+                          onChange={e => setEditMapPricingEnforced(e.target.checked)}
+                        />
+                        <strong>Enforce MAP Pricing</strong>
+                      </label>
+                    )}
                   </div>
 
                   <div className="form-group" style={{ marginTop: 10 }}>

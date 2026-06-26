@@ -90,7 +90,7 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
   const [returnZip, setReturnZip] = useState('')
   const [returnRegion, setReturnRegion] = useState('')
   const [returnCountry, setReturnCountry] = useState('')
-  const [sameAsReturnAddress, setSameAsReturnAddress] = useState(false)
+  const [sameAsCompanyAddress, setSameAsCompanyAddress] = useState(false)
   const [mapPricingEnforced, setMapPricingEnforced] = useState(false)
   const [orderDigestEmails, setOrderDigestEmails] = useState<string[]>([])
   const [newDigestEmail, setNewDigestEmail] = useState('')
@@ -385,87 +385,6 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
                   <option value='accessory_vendor'>Accessory Vendor</option>
                 </select>
               </div>
-              <div style={S.col}>
-                <label style={S.label}>Return Address Line 1 *</label>
-                <AddressAutocomplete
-                  value={returnAddress1}
-                  onChange={val => {
-                    setReturnAddress1(val)
-                    if (sameAsReturnAddress) setAddress1(val)
-                  }}
-                  onSelect={({ address1: a1, city: c, state: s, zip: z, country: co }) => {
-                    setReturnAddress1(a1)
-                    setReturnCity(c)
-                    setReturnRegion(s)
-                    setReturnZip(z)
-                    setReturnCountry(co)
-                    if (sameAsReturnAddress) {
-                      setAddress1(a1)
-                      setCity(c)
-                      setRegion(s)
-                      setZip(z)
-                      setCountry(co)
-                    }
-                  }}
-                  style={S.input}
-                  className=''
-                  placeholder='Start typing return address…'
-                />
-              </div>
-
-              <div style={S.row}>
-                <div style={S.col}>
-                  <label style={S.label}>Return Address Line 2 <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(unit, suite…)</span></label>
-                  <input style={S.input} placeholder='e.g. Suite 400' value={returnAddress2} onChange={e => {
-                    setReturnAddress2(e.target.value)
-                    if (sameAsReturnAddress) setAddress2(e.target.value)
-                  }} />
-                </div>
-                <div style={S.col}>
-                  <label style={S.label}>Return City</label>
-                  <input style={S.input} placeholder='Auto-filled' value={returnCity} onChange={e => {
-                    setReturnCity(e.target.value)
-                    if (sameAsReturnAddress) setCity(e.target.value)
-                  }} />
-                </div>
-              </div>
-
-              <div style={S.row}>
-                <div style={S.col}>
-                  <label style={S.label}>Return ZIP / Postal Code</label>
-                  <input style={S.input} placeholder='Auto-filled' value={returnZip} onChange={e => {
-                    setReturnZip(e.target.value)
-                    if (sameAsReturnAddress) setZip(e.target.value)
-                  }} />
-                </div>
-                <div style={S.col}>
-                  <label style={S.label}>Return State / Province</label>
-                  <select style={S.input} value={returnRegion} onChange={e => {
-                    setReturnRegion(e.target.value)
-                    if (sameAsReturnAddress) setRegion(e.target.value)
-                  }}>
-                    <option value=''>— Select state —</option>
-                    {US_STATES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div style={S.row}>
-                <div style={S.col}>
-                  <label style={S.label}>Return Country Code *</label>
-                  <input style={S.input} placeholder='USA' value={returnCountry} onChange={e => {
-                    setReturnCountry(e.target.value)
-                    if (sameAsReturnAddress) setCountry(e.target.value)
-                  }} />
-                </div>
-                <div style={S.col}></div>
-              </div>
-              <div style={S.col}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', marginTop: 4 }}>
-                  <input type='checkbox' checked={mapPricingEnforced} onChange={e => setMapPricingEnforced(e.target.checked)} />
-                  <strong>Enforce MAP Pricing for this Vendor</strong>
-                </label>
-              </div>
             </div>
           )}
 
@@ -473,7 +392,11 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
           <div style={S.row}>
             <div style={S.col}>
               <label style={S.label}>Company Legal Name *</label>
-              <input style={S.input} placeholder='e.g. Acme Corp Ltd.' required value={companyName} onChange={e => setCompanyName(e.target.value)} />
+              <input style={S.input} placeholder='e.g. Acme Corp Ltd.' required value={companyName} onChange={e => {
+                const val = e.target.value;
+                setCompanyName(val);
+                setDisplayName(prev => (prev === '' || prev === companyName) ? val : prev);
+              }} />
             </div>
             <div style={S.col}>
               <label style={S.label}>Display Name *</label>
@@ -512,40 +435,19 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
               <label style={S.label}>Country Code *</label>
               <input style={S.input} placeholder='USA' required value={country} onChange={e => {
                 setCountry(e.target.value)
-                setSameAsReturnAddress(false)
+                if (sameAsCompanyAddress) setReturnCountry(e.target.value)
               }} />
             </div>
           </div>
 
           {/* Address with Google Places */}
           <div style={S.col}>
-            {companyType === 'vendor' && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', marginBottom: 12 }}>
-                <input 
-                  type='checkbox' 
-                  checked={sameAsReturnAddress} 
-                  onChange={e => {
-                    const checked = e.target.checked
-                    setSameAsReturnAddress(checked)
-                    if (checked) {
-                      setAddress1(returnAddress1)
-                      setAddress2(returnAddress2)
-                      setCity(returnCity)
-                      setRegion(returnRegion)
-                      setZip(returnZip)
-                      setCountry(returnCountry)
-                    }
-                  }} 
-                />
-                <strong>same as return address</strong>
-              </label>
-            )}
             <label style={S.label}>Address Line 1 *</label>
             <AddressAutocomplete
               value={address1}
               onChange={val => {
                 setAddress1(val)
-                setSameAsReturnAddress(false)
+                if (sameAsCompanyAddress) setReturnAddress1(val)
               }}
               onSelect={({ address1: a1, city: c, state: s, zip: z, country: co }) => {
                 setAddress1(a1)
@@ -553,7 +455,13 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
                 setRegion(s)
                 setZip(z)
                 setCountry(co)
-                setSameAsReturnAddress(false)
+                if (sameAsCompanyAddress) {
+                  setReturnAddress1(a1)
+                  setReturnCity(c)
+                  setReturnRegion(s)
+                  setReturnZip(z)
+                  setReturnCountry(co)
+                }
               }}
               style={S.input}
               className=''
@@ -566,14 +474,14 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
               <label style={S.label}>Address Line 2 <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(unit, suite…)</span></label>
               <input style={S.input} placeholder='e.g. Suite 400' value={address2} onChange={e => {
                 setAddress2(e.target.value)
-                setSameAsReturnAddress(false)
+                if (sameAsCompanyAddress) setReturnAddress2(e.target.value)
               }} />
             </div>
             <div style={S.col}>
               <label style={S.label}>City</label>
               <input style={S.input} placeholder='Auto-filled' value={city} onChange={e => {
                 setCity(e.target.value)
-                setSameAsReturnAddress(false)
+                if (sameAsCompanyAddress) setReturnCity(e.target.value)
               }} />
             </div>
           </div>
@@ -583,20 +491,115 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
               <label style={S.label}>ZIP / Postal Code</label>
               <input style={S.input} placeholder='Auto-filled' value={zip} onChange={e => {
                 setZip(e.target.value)
-                setSameAsReturnAddress(false)
+                if (sameAsCompanyAddress) setReturnZip(e.target.value)
               }} />
             </div>
             <div style={S.col}>
               <label style={S.label}>State / Province</label>
               <select style={S.input} value={region} onChange={e => {
                 setRegion(e.target.value)
-                setSameAsReturnAddress(false)
+                if (sameAsCompanyAddress) setReturnRegion(e.target.value)
               }}>
                 <option value=''>— Select state —</option>
                 {US_STATES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
           </div>
+
+          {/* Vendor Return Address Section */}
+          {companyType === 'vendor' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, borderTop: '1px solid var(--border-light)', paddingTop: 14 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', marginBottom: 12 }}>
+                <input 
+                  type='checkbox' 
+                  checked={sameAsCompanyAddress} 
+                  onChange={e => {
+                    const checked = e.target.checked
+                    setSameAsCompanyAddress(checked)
+                    if (checked) {
+                      setReturnAddress1(address1)
+                      setReturnAddress2(address2)
+                      setReturnCity(city)
+                      setReturnRegion(region)
+                      setReturnZip(zip)
+                      setReturnCountry(country)
+                    }
+                  }} 
+                />
+                <strong>Same as company address</strong>
+              </label>
+
+              <div style={S.col}>
+                <label style={S.label}>Return Address Line 1 *</label>
+                <AddressAutocomplete
+                  value={returnAddress1}
+                  onChange={val => {
+                    setReturnAddress1(val)
+                    setSameAsCompanyAddress(false)
+                  }}
+                  onSelect={({ address1: a1, city: c, state: s, zip: z, country: co }) => {
+                    setReturnAddress1(a1)
+                    setReturnCity(c)
+                    setReturnRegion(s)
+                    setReturnZip(z)
+                    setReturnCountry(co)
+                    setSameAsCompanyAddress(false)
+                  }}
+                  style={S.input}
+                  className=''
+                  placeholder='Start typing return address…'
+                />
+              </div>
+
+              <div style={S.row}>
+                <div style={S.col}>
+                  <label style={S.label}>Return Address Line 2 <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(unit, suite…)</span></label>
+                  <input style={S.input} placeholder='e.g. Suite 400' value={returnAddress2} onChange={e => {
+                    setReturnAddress2(e.target.value)
+                    setSameAsCompanyAddress(false)
+                  }} />
+                </div>
+                <div style={S.col}>
+                  <label style={S.label}>Return City</label>
+                  <input style={S.input} placeholder='Auto-filled' value={returnCity} onChange={e => {
+                    setReturnCity(e.target.value)
+                    setSameAsCompanyAddress(false)
+                  }} />
+                </div>
+              </div>
+
+              <div style={S.row}>
+                <div style={S.col}>
+                  <label style={S.label}>Return ZIP / Postal Code</label>
+                  <input style={S.input} placeholder='Auto-filled' value={returnZip} onChange={e => {
+                    setReturnZip(e.target.value)
+                    setSameAsCompanyAddress(false)
+                  }} />
+                </div>
+                <div style={S.col}>
+                  <label style={S.label}>Return State / Province</label>
+                  <select style={S.input} value={returnRegion} onChange={e => {
+                    setReturnRegion(e.target.value)
+                    setSameAsCompanyAddress(false)
+                  }}>
+                    <option value=''>— Select state —</option>
+                    {US_STATES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={S.row}>
+                <div style={S.col}>
+                  <label style={S.label}>Return Country Code *</label>
+                  <input style={S.input} placeholder='USA' value={returnCountry} onChange={e => {
+                    setReturnCountry(e.target.value)
+                    setSameAsCompanyAddress(false)
+                  }} />
+                </div>
+                <div style={S.col}></div>
+              </div>
+            </div>
+          )}
 
           {/* Company Logo */}
           <div style={{ ...S.section }}>
@@ -648,6 +651,12 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
                   <input type='checkbox' checked={isParent} onChange={e => setIsParent(e.target.checked)} />
                   <strong>Mark as Parent Company</strong>
                 </label>
+                {companyType === 'vendor' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    <input type='checkbox' checked={mapPricingEnforced} onChange={e => setMapPricingEnforced(e.target.checked)} />
+                    <strong>Enforce MAP Pricing</strong>
+                  </label>
+                )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
                   <input type='checkbox' checked={allowPersonalEmail} onChange={e => setAllowPersonalEmail(e.target.checked)} />
                   <strong>Allow personal email domain exception</strong>
@@ -696,7 +705,20 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
                   <button
                     key={mode}
                     type='button'
-                    onClick={() => setIntegrationMode(mode)}
+                    onClick={() => {
+                      if (integrationMode === mode) {
+                        if (mode === 'api') {
+                          setIntegrationMode('')
+                        } else if (mode === 'manual') {
+                          const isEmpty = (dailyEmailTime === '08:00' || !dailyEmailTime) && !dailyEmailTime2 && orderDigestEmails.length === 0
+                          if (isEmpty) {
+                            setIntegrationMode('')
+                          }
+                        }
+                      } else {
+                        setIntegrationMode(mode)
+                      }
+                    }}
                     style={{
                       flex: 1, padding: '10px 0', borderRadius: 8, border: `1.5px solid ${integrationMode === mode ? 'var(--accent)' : 'var(--border)'}`,
                       background: integrationMode === mode ? 'rgba(99,102,241,.12)' : 'var(--bg-elevated)',
@@ -1145,7 +1167,7 @@ function VendorDashboard({ count, user }: any) {
           <div className="page-sub">Accessory inventory, catalog listings, fulfillment SLA tracking</div>
         </div>
         <Link to="/catalog" className="btn btn-primary">
-          <ShoppingBag size={14} /> Add New Accessory
+          <ShoppingBag size={14} /> Add New Product
         </Link>
       </div>
 

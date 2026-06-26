@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
 import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
 
@@ -240,13 +241,13 @@ export default function CatalogPage() {
 
   // Add/Edit Product Form State
   const [prodName, setProdName] = useState('')
-  const [prodStatus, setProdStatus] = useState('active')
+  const [prodStatus, setProdStatus] = useState('')
   const [prodSku, setProdSku] = useState('')
   const [prodBrand, setProdBrand] = useState('')
   const [prodType, setProdType] = useState('')
   const [prodCategory, setProdCategory] = useState('')
   const [prodDescription, setProdDescription] = useState('')
-  const [prodPrice, setProdPrice] = useState('19.99')
+  const [prodPrice, setProdPrice] = useState('')
   const [prodCurrency, setProdCurrency] = useState('USD')
   const [prodUpc, setProdUpc] = useState('')
   const [prodLaunchDate, setProdLaunchDate] = useState('')
@@ -279,6 +280,8 @@ export default function CatalogPage() {
   // Image Upload Form State
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string>('')
+  const [prodPrimaryImageUrl, setProdPrimaryImageUrl] = useState<string>('')
+  const [uploadedZipImages, setUploadedZipImages] = useState<{ name: string; url: string }[]>([])
 
   // Device Compatibility Selection State
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([])
@@ -546,13 +549,13 @@ export default function CatalogPage() {
   const isAddFormDirty = () => {
     return (
       prodName !== '' ||
-      prodStatus !== 'active' ||
+      prodStatus !== '' ||
       prodSku !== '' ||
       prodBrand !== '' ||
       prodType !== '' ||
       prodCategory !== '' ||
       prodDescription !== '' ||
-      prodPrice !== '19.99' ||
+      prodPrice !== '' ||
       prodCurrency !== 'USD' ||
       prodUpc !== '' ||
       prodLaunchDate !== '' ||
@@ -582,6 +585,8 @@ export default function CatalogPage() {
       prodMetaDescription !== '' ||
       selectedDeviceIds.length > 0 ||
       selectedImageFile !== null ||
+      prodPrimaryImageUrl !== '' ||
+      uploadedZipImages.length > 0 ||
       compBluetooth !== '' ||
       compHeadphoneJack !== '' ||
       compChargingInterface !== '' ||
@@ -605,11 +610,11 @@ export default function CatalogPage() {
       prodName !== (editingProduct.name || '') ||
       prodSku !== (editingProduct.sku || '') ||
       prodBrand !== (editingProduct.brand || '') ||
-      prodStatus !== (editingProduct.status || 'active') ||
+      prodStatus !== (editingProduct.status || '') ||
       prodType !== (editingProduct.product_type || 'accessory') ||
       prodCategory !== (editingProduct.product_category || '') ||
       prodDescription !== (editingProduct.description || '') ||
-      prodPrice !== String(editingProduct.vendor_wholesale_price_amount || '19.99') ||
+      prodPrice !== (editingProduct.vendor_wholesale_price_amount !== null && editingProduct.vendor_wholesale_price_amount !== undefined ? String(editingProduct.vendor_wholesale_price_amount) : '') ||
       prodCurrency !== (editingProduct.vendor_wholesale_price_currency || 'USD') ||
       prodUpc !== (editingProduct.upc || '') ||
       prodLaunchDate !== (editingProduct.launch_date || '') ||
@@ -639,6 +644,8 @@ export default function CatalogPage() {
       prodMetaDescription !== (editingProduct.meta_description || '') ||
       !compatibilitiesMatch ||
       selectedImageFile !== null ||
+      prodPrimaryImageUrl !== (editingProduct.primary_image_url ? getImageUrl(editingProduct.primary_image_url) : '') ||
+      uploadedZipImages.length > 0 ||
       compBluetooth !== (editingProduct.bluetooth_compatibility || '') ||
       compHeadphoneJack !== (editingProduct.headphone_jack_compatibility || '') ||
       compChargingInterface !== (editingProduct.compatible_charging_interface || '') ||
@@ -660,6 +667,56 @@ export default function CatalogPage() {
       }
     }
     setShowAddModal(false)
+  }
+
+  const resetProductForm = () => {
+    setProdName('')
+    setProdSku('')
+    setProdBrand('')
+    setProdType('')
+    setProdCategory('')
+    setProdDescription('')
+    setProdPrice('')
+    setProdUpc('')
+    setProdStatus('')
+    setProdLaunchDate('')
+    setProdReleaseDate('')
+    setProdEolDate('')
+    setProdColor('')
+    setProdSystemColor('')
+    setProdMsrp('')
+    setProdMapPrice('')
+    setProdSalePrice('')
+    setProdRecommendedAccessory(false)
+    setProdInventoryLevel('')
+    setProdInventoryThreshold('')
+    setProdLength('')
+    setProdWidth('')
+    setProdHeight('')
+    setProdWeight('')
+    setProdWarranty('')
+    setProdShortDescription('')
+    setProdPromoInformation('')
+    setProdImageUrl1('')
+    setProdImageUrl2('')
+    setProdImageUrl3('')
+    setProdImageUrl4('')
+    setProdImageUrl5('')
+    setProdMetaTitle('')
+    setProdMetaDescription('')
+    setSelectedImageFile(null)
+    setImagePreviewUrl('')
+    setProdPrimaryImageUrl('')
+    setUploadedZipImages([])
+    setSelectedDeviceIds([])
+    setCompBluetooth('')
+    setCompHeadphoneJack('')
+    setCompChargingInterface('')
+    setCompWirelessCharging([])
+    setCompStorageExpansion('')
+    setCompMemoryCapacity('')
+    setCompWatchCaseSize('')
+    setFormError(null)
   }
 
   const handleCloseEditModal = () => {
@@ -1093,8 +1150,14 @@ export default function CatalogPage() {
     return `${host}${path}`
   }
 
+  const extractUuid = (str: string): string | null => {
+    if (!str) return null
+    const match = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+    return match ? match[0] : null
+  }
+
   // Handle local file uploads
-  const handleUploadImage = async (file: File): Promise<string> => {
+  const handleUploadImage = async (file: File): Promise<{ id: string; storage_key: string }> => {
     const reqRes = await api.post('/media/assets/request_upload/', {
       filename: file.name,
       mime_type: file.type,
@@ -1105,19 +1168,67 @@ export default function CatalogPage() {
 
     const formData = new FormData()
     formData.append('file', file)
-    await api.post(`/media/assets/${assetId}/upload_file/`, formData, {
+    const uploadRes = await api.post(`/media/assets/${assetId}/upload_file/`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     })
-    return assetId
+    return {
+      id: assetId,
+      storage_key: uploadRes.data.storage_key
+    }
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
-      setSelectedImageFile(file)
-      setImagePreviewUrl(URL.createObjectURL(file))
+      setFormError(null)
+      const isZip = file.name.endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed'
+
+      if (isZip) {
+        try {
+          setFormError('Extracting and uploading images from ZIP... Please wait.')
+          const zip = new JSZip()
+          const contents = await zip.loadAsync(file)
+          const imageFiles: File[] = []
+          for (const [relativePath, entry] of Object.entries(contents.files)) {
+            if (!entry.dir && /\.(png|jpe?g|webp|gif)$/i.test(relativePath)) {
+              const blob = await entry.async('blob')
+              const name = relativePath.split('/').pop() || 'image.jpg'
+              const imgFile = new File([blob], name, { type: blob.type || 'image/jpeg' })
+              imageFiles.push(imgFile)
+            }
+          }
+          if (imageFiles.length === 0) {
+            setFormError('No valid images (PNG, JPG, JPEG, WEBP, GIF) found in the ZIP file.')
+            setSelectedImageFile(null)
+            setImagePreviewUrl('')
+            setUploadedZipImages([])
+            return
+          }
+          
+          const uploadedList: { name: string; url: string }[] = []
+          for (const f of imageFiles) {
+            const uploadRes = await handleUploadImage(f)
+            const absoluteUrl = getImageUrl('/media/' + uploadRes.storage_key)
+            uploadedList.push({ name: f.name, url: absoluteUrl })
+          }
+
+          setUploadedZipImages(uploadedList)
+          setImagePreviewUrl(uploadedList[0].url)
+          setProdPrimaryImageUrl(uploadedList[0].url)
+          setFormError(null)
+        } catch (err: any) {
+          setFormError('Failed to extract images from ZIP file: ' + err.message)
+          setSelectedImageFile(null)
+          setImagePreviewUrl('')
+          setUploadedZipImages([])
+        }
+      } else {
+        setSelectedImageFile(file)
+        setImagePreviewUrl(URL.createObjectURL(file))
+        setUploadedZipImages([])
+      }
     }
   }
 
@@ -1170,10 +1281,6 @@ export default function CatalogPage() {
     }
     try {
       let imageRef = null
-      if (selectedImageFile) {
-        imageRef = await handleUploadImage(selectedImageFile)
-      }
-
       const mediaRefs = [
         prodImageUrl1,
         prodImageUrl2,
@@ -1181,6 +1288,19 @@ export default function CatalogPage() {
         prodImageUrl4,
         prodImageUrl5
       ].filter(url => url.trim() !== '')
+
+      if (prodPrimaryImageUrl) {
+        const uuid = extractUuid(prodPrimaryImageUrl)
+        if (uuid) {
+          imageRef = uuid
+        } else {
+          setFormError('Primary Product Image URL/ID must contain a valid asset UUID.')
+          return
+        }
+      } else if (selectedImageFile) {
+        const uploadRes = await handleUploadImage(selectedImageFile)
+        imageRef = uploadRes.id
+      }
 
       const prodRes = await api.post('/catalog/products/', {
         name: prodName,
@@ -1238,51 +1358,7 @@ export default function CatalogPage() {
       }
 
       setShowAddModal(false)
-      // Reset form
-      setProdName('')
-      setProdSku('')
-      setProdBrand('')
-      setProdType('')
-      setProdCategory('')
-      setProdDescription('')
-      setProdPrice('19.99')
-      setProdUpc('')
-      setProdStatus('active')
-      setProdLaunchDate('')
-      setProdReleaseDate('')
-      setProdEolDate('')
-      setProdColor('')
-      setProdSystemColor('')
-      setProdMsrp('')
-      setProdMapPrice('')
-      setProdSalePrice('')
-      setProdRecommendedAccessory(false)
-      setProdInventoryLevel('')
-      setProdInventoryThreshold('')
-      setProdLength('')
-      setProdWidth('')
-      setProdHeight('')
-      setProdWeight('')
-      setProdWarranty('')
-      setProdShortDescription('')
-      setProdPromoInformation('')
-      setProdImageUrl1('')
-      setProdImageUrl2('')
-      setProdImageUrl3('')
-      setProdImageUrl4('')
-      setProdImageUrl5('')
-      setProdMetaTitle('')
-      setProdMetaDescription('')
-      setSelectedImageFile(null)
-      setImagePreviewUrl('')
-      setSelectedDeviceIds([])
-      setCompBluetooth('')
-      setCompHeadphoneJack('')
-      setCompChargingInterface('')
-      setCompWirelessCharging([])
-      setCompStorageExpansion('')
-      setCompMemoryCapacity('')
-      setCompWatchCaseSize('')
+      resetProductForm()
       refreshProducts()
     } catch (err: any) {
       const data = err.response?.data
@@ -1349,10 +1425,6 @@ export default function CatalogPage() {
     }
     try {
       let imageRef = editingProduct.primary_image_reference
-      if (selectedImageFile) {
-        imageRef = await handleUploadImage(selectedImageFile)
-      }
-
       const mediaRefs = [
         prodImageUrl1,
         prodImageUrl2,
@@ -1360,6 +1432,19 @@ export default function CatalogPage() {
         prodImageUrl4,
         prodImageUrl5
       ].filter(url => url.trim() !== '')
+
+      if (prodPrimaryImageUrl) {
+        const uuid = extractUuid(prodPrimaryImageUrl)
+        if (uuid) {
+          imageRef = uuid
+        } else {
+          setFormError('Primary Product Image URL/ID must contain a valid asset UUID.')
+          return
+        }
+      } else if (selectedImageFile) {
+        const uploadRes = await handleUploadImage(selectedImageFile)
+        imageRef = uploadRes.id
+      }
 
       await api.patch(`/catalog/products/${editingProduct.id}/`, {
         name: prodName,
@@ -1855,6 +1940,7 @@ export default function CatalogPage() {
     setProdPrice(String(p.vendor_wholesale_price_amount || '19.99'))
     setProdCurrency(p.vendor_wholesale_price_currency || 'USD')
     setImagePreviewUrl(p.primary_image_url ? getImageUrl(p.primary_image_url) : '')
+    setProdPrimaryImageUrl(p.primary_image_url ? getImageUrl(p.primary_image_url) : '')
     
     // Prefill all the new fields
     setProdUpc(p.upc || '')
@@ -1951,16 +2037,7 @@ export default function CatalogPage() {
                 <Upload size={14} /> Bulk Upload Catalog
               </button>
               <button className="btn btn-primary" onClick={() => {
-                setProdName('')
-                setProdSku('')
-                setProdBrand('')
-                setProdType('')
-                setProdDescription('')
-                setProdPrice('19.99')
-                setSelectedImageFile(null)
-                setImagePreviewUrl('')
-                setSelectedDeviceIds([])
-                setFormError(null)
+                resetProductForm()
                 setShowAddModal(true)
               }}>
                 <Plus size={14} /> Add Product
@@ -2295,7 +2372,7 @@ export default function CatalogPage() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div className="card" style={{ width: 720, maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>List Product in Catalog</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>Add Product</div>
               <button className="btn btn-ghost" style={{ padding: 4 }} onClick={handleCloseAddModal}>
                 <X size={16} />
               </button>
@@ -2359,11 +2436,11 @@ export default function CatalogPage() {
                     </select>
                   </div>
                 </div>
-                {prodType !== 'branded_merchandise' ? (
+                {prodType === 'accessory' ? (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-group">
                       <label className="label">Product Category *</label>
-                      <select className="input" value={prodCategory} onChange={e => setProdCategory(e.target.value)} required={isVendor && prodType !== 'branded_merchandise'}>
+                      <select className="input" value={prodCategory} onChange={e => setProdCategory(e.target.value)} required={isVendor && prodType === 'accessory'}>
                         <option value="">Select Category</option>
                         {allowedCategories.map((cat: string) => (
                           <option key={cat} value={cat}>{cat}</option>
@@ -2380,6 +2457,14 @@ export default function CatalogPage() {
                         <option value="eol">EOL</option>
                       </select>
                     </div>
+                    {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
+                      <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
+                          Category-Specific Compatibility *
+                        </span>
+                        {renderCategorySpecificCompatibility()}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="form-group">
@@ -2398,7 +2483,7 @@ export default function CatalogPage() {
               {/* 2. Timeline & Attributes */}
               <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16 }}>
                 <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>2. Timeline & Attributes</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: prodStatus === 'eol' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label className="label">Launch Date *</label>
                     <input className="input" type="date" value={prodLaunchDate} onChange={e => setProdLaunchDate(e.target.value)} required={isVendor} />
@@ -2407,10 +2492,12 @@ export default function CatalogPage() {
                     <label className="label">Release Date</label>
                     <input className="input" type="date" value={prodReleaseDate} onChange={e => setProdReleaseDate(e.target.value)} />
                   </div>
-                  <div className="form-group">
-                    <label className="label">EOL Date {prodStatus === 'eol' && '*'}</label>
-                    <input className="input" type="date" value={prodEolDate} onChange={e => setProdEolDate(e.target.value)} required={prodStatus === 'eol'} />
-                  </div>
+                  {prodStatus === 'eol' && (
+                    <div className="form-group">
+                      <label className="label">EOL Date *</label>
+                      <input className="input" type="date" value={prodEolDate} onChange={e => setProdEolDate(e.target.value)} required />
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                   <div className="form-group">
@@ -2430,7 +2517,7 @@ export default function CatalogPage() {
                 <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>3. Pricing & Inventory</h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
                   <div className="form-group">
-                    <label className="label">Wholesale Price *</label>
+                    <label className="label">{isVendor ? 'Vendor Wholesale Price *' : 'Wholesale Price *'}</label>
                     <input className="input" type="number" step="0.01" value={prodPrice} onChange={e => setProdPrice(e.target.value)} required={isVendor} />
                   </div>
                   <div className="form-group">
@@ -2452,8 +2539,8 @@ export default function CatalogPage() {
                     <input className="input" type="number" step="0.01" placeholder="e.g. 29.99" value={prodMsrp} onChange={e => setProdMsrp(e.target.value)} required={isVendor} />
                   </div>
                   <div className="form-group">
-                    <label className="label">MAP Price</label>
-                    <input className="input" type="number" step="0.01" placeholder="e.g. 24.99" value={prodMapPrice} onChange={e => setProdMapPrice(e.target.value)} />
+                    <label className="label">MAP Price {isVendor && user?.company_map_pricing_enforced && '*'}</label>
+                    <input className="input" type="number" step="0.01" placeholder="e.g. 24.99" value={prodMapPrice} onChange={e => setProdMapPrice(e.target.value)} required={isVendor && user?.company_map_pricing_enforced} />
                   </div>
                   <div className="form-group">
                     <label className="label">Sale Price</label>
@@ -2513,7 +2600,7 @@ export default function CatalogPage() {
                 {/* File Upload (for primary image reference) */}
                 <div className="form-group" style={{ marginBottom: 14 }}>
                   <label className="label">Primary Product Image File</label>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4 }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
                     {imagePreviewUrl ? (
                       <img
                         src={imagePreviewUrl}
@@ -2525,20 +2612,63 @@ export default function CatalogPage() {
                         <ShoppingBag size={18} />
                       </div>
                     )}
-                    <div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/*,.zip"
                         id="add-image-file"
                         style={{ display: 'none' }}
                         onChange={handleImageChange}
                       />
-                      <label htmlFor="add-image-file" className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                      <label htmlFor="add-image-file" className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-block', width: 'fit-content' }}>
                         Choose File
                       </label>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>JPEG, PNG, WEBP (Max 5MB)</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>JPEG, PNG, WEBP, ZIP (Max 5MB)</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Or Primary Image URL / Asset ID</span>
+                      <input
+                        className="input input-sm"
+                        placeholder="Paste image URL or asset ID"
+                        value={prodPrimaryImageUrl}
+                        onChange={e => {
+                          setProdPrimaryImageUrl(e.target.value)
+                          setImagePreviewUrl(e.target.value)
+                        }}
+                      />
                     </div>
                   </div>
+                  {uploadedZipImages.length > 0 && (
+                    <div style={{ marginTop: 10, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Check size={14} style={{ color: 'var(--success)' }} /> Generated Image Links:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {uploadedZipImages.map((img, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: 'var(--bg-card)', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                              <img src={img.url} alt={img.name} style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4 }} />
+                              <div style={{ overflow: 'hidden' }}>
+                                <div style={{ fontSize: 11, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.name}</div>
+                                <div style={{ fontSize: 9, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.url}</div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-xs"
+                              style={{ padding: '2px 6px', fontSize: 10, flexShrink: 0 }}
+                              onClick={() => {
+                                navigator.clipboard.writeText(img.url)
+                                alert(`Copied link for ${img.name}!`)
+                              }}
+                            >
+                              Copy Link
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -2721,14 +2851,6 @@ export default function CatalogPage() {
                 </div>
               )}
 
-              {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
-                <div style={{ marginBottom: 20 }}>
-                  <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
-                    Category-Specific Compatibility *
-                  </h4>
-                  {renderCategorySpecificCompatibility()}
-                </div>
-              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
                 <button type="button" className="btn btn-secondary" onClick={handleCloseAddModal}>Cancel</button>
@@ -2808,11 +2930,11 @@ export default function CatalogPage() {
                     </select>
                   </div>
                 </div>
-                {prodType !== 'branded_merchandise' ? (
+                {prodType === 'accessory' ? (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-group">
                       <label className="label">Product Category *</label>
-                      <select className="input" value={prodCategory} onChange={e => setProdCategory(e.target.value)} required={isVendor && prodType !== 'branded_merchandise'}>
+                      <select className="input" value={prodCategory} onChange={e => setProdCategory(e.target.value)} required={isVendor && prodType === 'accessory'}>
                         <option value="">Select Category</option>
                         {allowedCategories.map((cat: string) => (
                           <option key={cat} value={cat}>{cat}</option>
@@ -2829,6 +2951,14 @@ export default function CatalogPage() {
                         <option value="eol">EOL</option>
                       </select>
                     </div>
+                    {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
+                      <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
+                          Category-Specific Compatibility *
+                        </span>
+                        {renderCategorySpecificCompatibility()}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="form-group">
@@ -2847,7 +2977,7 @@ export default function CatalogPage() {
               {/* 2. Timeline & Attributes */}
               <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16 }}>
                 <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>2. Timeline & Attributes</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: prodStatus === 'eol' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label className="label">Launch Date *</label>
                     <input className="input" type="date" value={prodLaunchDate} onChange={e => setProdLaunchDate(e.target.value)} required={isVendor} />
@@ -2856,10 +2986,12 @@ export default function CatalogPage() {
                     <label className="label">Release Date</label>
                     <input className="input" type="date" value={prodReleaseDate} onChange={e => setProdReleaseDate(e.target.value)} />
                   </div>
-                  <div className="form-group">
-                    <label className="label">EOL Date {prodStatus === 'eol' && '*'}</label>
-                    <input className="input" type="date" value={prodEolDate} onChange={e => setProdEolDate(e.target.value)} required={prodStatus === 'eol'} />
-                  </div>
+                  {prodStatus === 'eol' && (
+                    <div className="form-group">
+                      <label className="label">EOL Date *</label>
+                      <input className="input" type="date" value={prodEolDate} onChange={e => setProdEolDate(e.target.value)} required />
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                   <div className="form-group">
@@ -2879,7 +3011,7 @@ export default function CatalogPage() {
                 <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>3. Pricing & Inventory</h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
                   <div className="form-group">
-                    <label className="label">Wholesale Price *</label>
+                    <label className="label">{isVendor ? 'Vendor Wholesale Price *' : 'Wholesale Price *'}</label>
                     <input className="input" type="number" step="0.01" value={prodPrice} onChange={e => setProdPrice(e.target.value)} required={isVendor} />
                   </div>
                   <div className="form-group">
@@ -2901,8 +3033,8 @@ export default function CatalogPage() {
                     <input className="input" type="number" step="0.01" placeholder="e.g. 29.99" value={prodMsrp} onChange={e => setProdMsrp(e.target.value)} required={isVendor} />
                   </div>
                   <div className="form-group">
-                    <label className="label">MAP Price</label>
-                    <input className="input" type="number" step="0.01" placeholder="e.g. 24.99" value={prodMapPrice} onChange={e => setProdMapPrice(e.target.value)} />
+                    <label className="label">MAP Price {isVendor && user?.company_map_pricing_enforced && '*'}</label>
+                    <input className="input" type="number" step="0.01" placeholder="e.g. 24.99" value={prodMapPrice} onChange={e => setProdMapPrice(e.target.value)} required={isVendor && user?.company_map_pricing_enforced} />
                   </div>
                   <div className="form-group">
                     <label className="label">Sale Price</label>
@@ -2962,7 +3094,7 @@ export default function CatalogPage() {
                 {/* File Upload (for primary image reference) */}
                 <div className="form-group" style={{ marginBottom: 14 }}>
                   <label className="label">Primary Product Image File</label>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4 }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
                     {imagePreviewUrl ? (
                       <img
                         src={imagePreviewUrl}
@@ -2974,20 +3106,63 @@ export default function CatalogPage() {
                         <ShoppingBag size={18} />
                       </div>
                     )}
-                    <div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/*,.zip"
                         id="edit-image-file"
                         style={{ display: 'none' }}
                         onChange={handleImageChange}
                       />
-                      <label htmlFor="edit-image-file" className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                      <label htmlFor="edit-image-file" className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-block', width: 'fit-content' }}>
                         Choose File
                       </label>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>JPEG, PNG, WEBP (Leave blank to keep current)</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>JPEG, PNG, WEBP, ZIP (Leave blank to keep current)</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Or Primary Image URL / Asset ID</span>
+                      <input
+                        className="input input-sm"
+                        placeholder="Paste image URL or asset ID"
+                        value={prodPrimaryImageUrl}
+                        onChange={e => {
+                          setProdPrimaryImageUrl(e.target.value)
+                          setImagePreviewUrl(e.target.value)
+                        }}
+                      />
                     </div>
                   </div>
+                  {uploadedZipImages.length > 0 && (
+                    <div style={{ marginTop: 10, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Check size={14} style={{ color: 'var(--success)' }} /> Generated Image Links:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {uploadedZipImages.map((img, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: 'var(--bg-card)', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                              <img src={img.url} alt={img.name} style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4 }} />
+                              <div style={{ overflow: 'hidden' }}>
+                                <div style={{ fontSize: 11, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.name}</div>
+                                <div style={{ fontSize: 9, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.url}</div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-xs"
+                              style={{ padding: '2px 6px', fontSize: 10, flexShrink: 0 }}
+                              onClick={() => {
+                                navigator.clipboard.writeText(img.url)
+                                alert(`Copied link for ${img.name}!`)
+                              }}
+                            >
+                              Copy Link
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -3170,14 +3345,6 @@ export default function CatalogPage() {
                 </div>
               )}
 
-              {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
-                <div style={{ marginBottom: 20 }}>
-                  <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
-                    Category-Specific Compatibility *
-                  </h4>
-                  {renderCategorySpecificCompatibility()}
-                </div>
-              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
                 <button type="button" className="btn btn-secondary" onClick={handleCloseEditModal}>Cancel</button>
