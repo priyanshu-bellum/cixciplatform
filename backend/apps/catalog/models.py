@@ -242,6 +242,98 @@ class Product(models.Model):
             if self.eol_date > today_est and self.status == ProductStatus.EOL:
                 raise ValidationError({"status": "If EOL Date is in the future, the product should remain Active."})
 
+        # Validate category-specific accessory fields
+        if self.product_category:
+            from apps.catalog.models import DynamicDropdownConfig
+            cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=self.product_category).first()
+            if not cat_cfg:
+                raise ValidationError({"product_category": "The selected product category is not recognized."})
+            if cat_cfg.status != 'active':
+                raise ValidationError({"product_category": f"Product Category '{self.product_category}' is '{cat_cfg.status}' and cannot be used for products."})
+            
+            rules = cat_cfg.compatibility_rules or {}
+            compat_fields = [
+                "headphone_jack_compatibility",
+                "bluetooth_compatibility",
+                "compatible_charging_interface",
+                "wireless_charging_compatibility",
+                "storage_expansion_compatibility",
+                "memory_capacity",
+                "compatible_watch_case_size"
+            ]
+
+            # Validate based on mode and specific values
+            for f in compat_fields:
+                val = getattr(self, f)
+                if isinstance(val, str):
+                    val = val.strip()
+                    setattr(self, f, val)
+
+                rule = rules.get(f)
+                mode = rule.get("mode", "hidden") if rule else "hidden"
+
+                if mode == "required":
+                    if not val or val.strip() == "" or val == "Not Compatible":
+                        raise ValidationError({f: f"{f.replace('_', ' ').title()} is required."})
+                elif mode == "hidden":
+                    pass
+                elif mode == "conditional":
+                    cond_field = rule.get("condition_field")
+                    cond_values = rule.get("condition_values", [])
+                    cond_val = getattr(self, cond_field, None)
+                    if cond_field and cond_val in cond_values:
+                        if not val or val.strip() == "" or val == "Not Compatible":
+                            raise ValidationError({f: f"{f.replace('_', ' ').title()} is required when {cond_field.replace('_', ' ').title()} is {cond_val}."})
+
+                if val:
+                    if f == "compatible_charging_interface" or f == "headphone_jack_compatibility":
+                        if val not in ["Not Compatible", "Type-C", "Lightning"]:
+                            raise ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
+
+                    elif f == "bluetooth_compatibility":
+                        if val not in ["Yes", "No"]:
+                            raise ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
+
+                    elif f == "wireless_charging_compatibility":
+                        w_vals = [w.strip() for w in val.split('+') if w.strip()]
+                        if not w_vals:
+                            raise ValidationError({f: "Wireless Charging Compatibility is required."})
+                        if 'Not Compatible' in w_vals and len(w_vals) > 1:
+                            raise ValidationError({f: "Not Compatible cannot be selected with any other value."})
+                        for w in w_vals:
+                            if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                                raise ValidationError({f: f"Invalid Wireless Charging value '{w}'."})
+                        if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
+                            raise ValidationError({f: "Qi cannot be selected with MagSafe or Qi2."})
+
+                    elif f == "storage_expansion_compatibility":
+                        if val not in ["Not Compatible", "microSDXC", "microSDHC"]:
+                            raise ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
+
+                    elif f == "memory_capacity":
+                        storage = getattr(self, "storage_expansion_compatibility", None)
+                        if storage in ["microSDXC", "microSDHC"]:
+                            if storage == "microSDXC":
+                                allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
+                            else:
+                                allowed = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
+                            if val not in allowed:
+                                raise ValidationError({f: "Memory Capacity must match the allowed list for the selected storage type."})
+                        else:
+                            if val != "Not Compatible":
+                                setattr(self, f, "Not Compatible")
+
+                    elif f == "compatible_watch_case_size":
+                        if val not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
+                            raise ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
+
+            # Extra logical rules
+            if self.product_category == "Headphones":
+                jack = getattr(self, "headphone_jack_compatibility", None)
+                bluetooth = getattr(self, "bluetooth_compatibility", None)
+                if jack == "Not Compatible" and bluetooth == "No":
+                    raise ValidationError({"headphone_jack_compatibility": "Headphones must support either Bluetooth or a compatible jack (cannot both be Not Compatible/No)."})
+
         # Resolve vendor
         from apps.tenant.models import Company
         vendor = Company.objects.filter(id=self.vendor_company_reference).first()

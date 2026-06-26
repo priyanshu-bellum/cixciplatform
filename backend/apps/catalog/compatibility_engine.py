@@ -42,39 +42,73 @@ def check_compatibility(product, device):
     if d_type_code not in eligible_codes:
         return False
 
+    # Specific Hardware Exclusions:
+    # Laptop charging-only devices should not match headphones unless bluetooth is explicitly supported by both.
+    if device.device_type.name.strip().lower() == "laptop" and category.strip().lower() == "headphones":
+        p_bt = getattr(product, "bluetooth_compatibility", "No") or "No"
+        d_bt = getattr(device, "bluetooth_compatibility", "No") or "No"
+        if not (p_bt == "Yes" and d_bt == "Yes"):
+            return False
+
+    # Key mappings from backend keys/rule keys to product/accessory fields
+    KEY_TO_PRODUCT_FIELD = {
+        "charging_interface": "compatible_charging_interface",
+        "compatible_charging_interface": "compatible_charging_interface",
+        "storage_expansion_type": "storage_expansion_compatibility",
+        "storage_expansion_compatibility": "storage_expansion_compatibility",
+        "max_supported_storage": "memory_capacity",
+        "maximum_supported_storage": "memory_capacity",
+        "memory_capacity": "memory_capacity",
+        "headphone_jack_type": "headphone_jack_compatibility",
+        "headphone_jack_compatibility": "headphone_jack_compatibility",
+        "bluetooth_supported": "bluetooth_compatibility",
+        "bluetooth_compatibility": "bluetooth_compatibility",
+        "wireless_charging_type": "wireless_charging_compatibility",
+        "wireless_charging_compatibility": "wireless_charging_compatibility",
+        "watch_case_size": "compatible_watch_case_size",
+        "compatible_watch_case_size": "compatible_watch_case_size"
+    }
+
     # Check matching rules dynamically
     def check_field_compatibility(field, p_val, device):
         if not p_val or p_val == "Not Compatible":
             return False
             
-        if field == "bluetooth_compatibility":
-            return p_val == "Yes" and device.bluetooth_compatibility == "Yes"
+        if field in ["bluetooth_compatibility", "bluetooth_supported"]:
+            p_bt = "Yes" if str(p_val).strip().lower() == "yes" else "No"
+            d_bt = "Yes" if str(device.bluetooth_compatibility).strip().lower() == "yes" else "No"
+            return p_bt == "Yes" and d_bt == "Yes"
             
-        elif field == "headphone_jack_compatibility":
-            return device.headphone_jack_compatibility == p_val or device.compatible_charging_interface == p_val
+        elif field in ["headphone_jack_compatibility", "headphone_jack_type"]:
+            p_val_clean = str(p_val).strip()
+            return device.headphone_jack_compatibility == p_val_clean or device.compatible_charging_interface == p_val_clean
             
-        elif field == "compatible_charging_interface":
-            return device.compatible_charging_interface == p_val
+        elif field in ["compatible_charging_interface", "charging_interface"]:
+            return device.compatible_charging_interface == str(p_val).strip()
             
-        elif field == "wireless_charging_compatibility":
-            p_wire = [w.strip() for w in p_val.split('+') if w.strip() and w.strip() != 'Not Compatible']
+        elif field in ["wireless_charging_compatibility", "wireless_charging_type"]:
+            p_wire = [w.strip() for w in str(p_val).split('+') if w.strip() and w.strip() != 'Not Compatible']
             d_wire = [w.strip() for w in (device.wireless_charging_compatibility or "").split('+') if w.strip() and w.strip() != 'Not Compatible']
             if p_wire and d_wire:
                 return any(w in d_wire for w in p_wire)
             return False
             
-        elif field == "storage_expansion_compatibility":
-            return device.storage_expansion_compatibility == p_val
+        elif field in ["storage_expansion_compatibility", "storage_expansion_type"]:
+            return device.storage_expansion_compatibility == str(p_val).strip()
             
-        elif field == "memory_capacity":
+        elif field in ["memory_capacity", "max_supported_storage", "maximum_supported_storage"]:
             p_cap = parse_storage(p_val)
             d_max = parse_storage(device.maximum_supported_storage)
             if p_cap == 0 or d_max == 0:
                 return False
             return p_cap <= d_max
             
-        elif field == "compatible_watch_case_size":
-            return device.compatible_watch_case_size == p_val
+        elif field in ["compatible_watch_case_size", "watch_case_size"]:
+            p_size = str(p_val).strip().lower()
+            d_size = str(device.compatible_watch_case_size).strip().lower()
+            if p_size == "not compatible" or d_size == "not compatible":
+                return False
+            return p_size == d_size
             
         return False
 
@@ -84,9 +118,11 @@ def check_compatibility(product, device):
 
     matches = []
     for f in fields_to_check:
-        p_val = getattr(product, f, None)
+        prod_field = KEY_TO_PRODUCT_FIELD.get(f, f)
+        p_val = getattr(product, prod_field, None)
+        
         # Only check active/enabled rules or non-empty/non-hidden fields
-        rule = cat_cfg.compatibility_rules.get(f) if cat_cfg.compatibility_rules else None
+        rule = cat_cfg.compatibility_rules.get(f) or cat_cfg.compatibility_rules.get(prod_field) if cat_cfg.compatibility_rules else None
         mode = rule.get("mode", "optional") if rule else "optional"
         if mode == "hidden":
             continue
@@ -177,10 +213,25 @@ def run_compatibility_automapping(product, actor_id=None, change_source="Auto-Ma
     cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=category).first()
     if not cat_cfg or cat_cfg.status != 'active':
         return
-
     # If it is explicit compatibility mode:
     if cat_cfg.compatibility_mode == "explicit":
-        cnt = ProductCompatibilityAssertion.objects.filter(product=product, is_compatible=True, is_excluded=False).count()
+        from django.db.models import Q
+        from django.utils import timezone
+        now_date = timezone.now().date()
+        active_device_ids = Device.objects.filter(
+            device_type__status='active'
+        ).exclude(
+            lifecycle_status='retired'
+        ).filter(
+            Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
+        ).values_list('id', flat=True)
+        
+        cnt = ProductCompatibilityAssertion.objects.filter(
+            product=product,
+            is_compatible=True,
+            is_excluded=False,
+            device_reference__in=active_device_ids
+        ).count()
         status = "complete" if cnt >= 1 else "incomplete"
         if product.compatibility_status != status:
             product.compatibility_status = status
@@ -259,9 +310,24 @@ def run_compatibility_automapping(product, actor_id=None, change_source="Auto-Ma
                     match_status="Active"
                 )
                 log_compatibility_change(assertion, "None", "Active", actor_id=actor_id, change_source=change_source)
-
-        # Update compatibility status
-        cnt = ProductCompatibilityAssertion.objects.filter(product=product, is_compatible=True, is_excluded=False).count()
+        # Update compatibility status using only active, launched, non-retired devices
+        from django.db.models import Q
+        from django.utils import timezone
+        now_date = timezone.now().date()
+        active_device_ids = Device.objects.filter(
+            device_type__status='active'
+        ).exclude(
+            lifecycle_status='retired'
+        ).filter(
+            Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
+        ).values_list('id', flat=True)
+        
+        cnt = ProductCompatibilityAssertion.objects.filter(
+            product=product,
+            is_compatible=True,
+            is_excluded=False,
+            device_reference__in=active_device_ids
+        ).count()
         status = "complete" if cnt >= 1 else "incomplete"
         if product.compatibility_status != status:
             product.compatibility_status = status
@@ -331,9 +397,24 @@ def run_device_remapping(device, actor_id=None, change_source="System Remap"):
                         assertion.is_compatible = False
                         log_compatibility_change(assertion, prev_status, "Archived", actor_id=actor_id, change_source=change_source)
                         assertion.delete()
-                        
-            # Recalculate status for product
-            cnt = ProductCompatibilityAssertion.objects.filter(product=product, is_compatible=True, is_excluded=False).count()
+                                    # Recalculate status for product using only active, launched, non-retired devices
+            from django.db.models import Q
+            from django.utils import timezone
+            now_date = timezone.now().date()
+            active_device_ids = Device.objects.filter(
+                device_type__status='active'
+            ).exclude(
+                lifecycle_status='retired'
+            ).filter(
+                Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
+            ).values_list('id', flat=True)
+            
+            cnt = ProductCompatibilityAssertion.objects.filter(
+                product=product,
+                is_compatible=True,
+                is_excluded=False,
+                device_reference__in=active_device_ids
+            ).count()
             status = "complete" if cnt >= 1 else "incomplete"
             if product.compatibility_status != status:
                 product.compatibility_status = status

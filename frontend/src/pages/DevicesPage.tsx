@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, Search, Smartphone, ChevronRight, Check, Trash2, X, AlertCircle, Download } from 'lucide-react'
+import { Plus, Search, Smartphone, ChevronRight, Check, Trash2, X, AlertCircle, Download, Settings } from 'lucide-react'
 import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
 
@@ -153,6 +153,31 @@ export default function DevicesPage() {
   const [manageField, setManageField] = useState<'manufacturer' | 'device_type'>('manufacturer')
   const [newDropdownValue, setNewDropdownValue] = useState('')
   const [dropdownError, setDropdownError] = useState<string | null>(null)
+
+  // Device Type Configuration States
+  const [editingTypeConfig, setEditingTypeConfig] = useState<any | null>(null)
+  const [typeConfigStatus, setTypeConfigStatus] = useState('active')
+  const [typeConfigAutoMappingEligible, setTypeConfigAutoMappingEligible] = useState(true)
+  const [typeConfigSupportedCategories, setTypeConfigSupportedCategories] = useState<string[]>([])
+  const [typeConfigRules, setTypeConfigRules] = useState<Record<string, { mode: string, default?: string }>>({})
+
+  const { data: dropdownConfigsData } = useQuery({
+    queryKey: ['dropdown-configs'],
+    queryFn: () => api.get('/catalog/dropdown-configs/').then(r => r.data),
+  })
+  const categories = useMemo(() => {
+    const data = dropdownConfigsData?.results ?? dropdownConfigsData ?? []
+    return data.filter((c: any) => c.field_name === 'product_category').map((c: any) => c.value)
+  }, [dropdownConfigsData])
+
+  useEffect(() => {
+    if (editingTypeConfig) {
+      setTypeConfigStatus(editingTypeConfig.status || 'active')
+      setTypeConfigAutoMappingEligible(editingTypeConfig.auto_mapping_eligible !== false)
+      setTypeConfigSupportedCategories(editingTypeConfig.supported_accessory_categories || [])
+      setTypeConfigRules(editingTypeConfig.compatibility_rules || {})
+    }
+  }, [editingTypeConfig])
 
   // Edit / Detail Modal state
   const [editingDevice, setEditingDevice] = useState<any>(null)
@@ -308,6 +333,23 @@ export default function DevicesPage() {
         }
       }
       setDropdownError(msg)
+    }
+  }
+
+  const handleSaveTypeConfig = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setDropdownError(null)
+    try {
+      await api.patch(`/devices/types/${editingTypeConfig.id}/`, {
+        status: typeConfigStatus,
+        auto_mapping_eligible: typeConfigAutoMappingEligible,
+        supported_accessory_categories: typeConfigSupportedCategories,
+        compatibility_rules: typeConfigRules,
+      })
+      setEditingTypeConfig(null)
+      refetchTypes()
+    } catch (err: any) {
+      setDropdownError(err.response?.data?.error || err.response?.data?.detail || 'Failed to save configuration.')
     }
   }
 
@@ -1170,15 +1212,17 @@ export default function DevicesPage() {
 
       {/* Dropdown Manager Modal */}
       {showDropdownModal && (
-        <div className="modal-overlay" onClick={() => setShowDropdownModal(false)}>
-          <div className="modal-container" style={{ width: 480 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={() => { setShowDropdownModal(false); setEditingTypeConfig(null); }}>
+          <div className="modal-container" style={{ width: editingTypeConfig ? 520 : 480, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title">Manage Dropdown Values</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowDropdownModal(false)}>
+              <div className="modal-title">
+                {editingTypeConfig ? 'Configure Device Type Rules' : 'Manage Dropdown Values'}
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setShowDropdownModal(false); setEditingTypeConfig(null); }}>
                 <X size={16} />
               </button>
             </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1 }}>
               {dropdownError && (
                 <div className="auth-error" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: 0 }}>
                   <AlertCircle size={16} style={{ flexShrink: 0 }} />
@@ -1186,106 +1230,242 @@ export default function DevicesPage() {
                 </div>
               )}
 
-              <div className="form-group">
-                <label className="label">Select Taxonomy Dropdown</label>
-                <select
-                  className="input"
-                  value={manageField}
-                  onChange={e => {
-                    setManageField(e.target.value as any)
-                    setNewDropdownValue('')
-                    setDropdownError(null)
-                  }}
-                >
-                  <option value="manufacturer">Device Manufacturer</option>
-                  <option value="device_type">Device Type</option>
-                </select>
-              </div>
-
-              <form onSubmit={handleAddDropdownValue} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder={`Add new ${manageField === 'manufacturer' ? 'manufacturer' : 'device type'}…`}
-                  value={newDropdownValue}
-                  onChange={e => setNewDropdownValue(e.target.value)}
-                  style={{ flex: 1 }}
-                />
-                <button type="submit" className="btn btn-primary">
-                  Add Value
-                </button>
-              </form>
-
-              <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-card)', maxHeight: '40vh' }}>
-                {(manageField === 'manufacturer' ? manufacturers : deviceTypes).length === 0 ? (
-                  <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                    No values configured.
+              {editingTypeConfig ? (
+                <form onSubmit={handleSaveTypeConfig} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    Configuring Rules for: <span style={{ color: 'var(--primary)' }}>{editingTypeConfig.name}</span>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {(manageField === 'manufacturer' ? manufacturers : deviceTypes).map((item: any) => (
-                      <div
-                        key={item.id}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '10px 12px',
-                          borderBottom: '1px solid var(--border-light)',
-                        }}
-                      >
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 555 }}>
-                            {item.name}
-                          </span>
-                          {!item.is_active && (
-                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Inactive</span>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{ padding: '2px 4px', fontSize: 11, color: 'var(--text-muted)' }}
-                            onClick={async () => {
-                              try {
-                                if (manageField === 'manufacturer') {
-                                  await api.patch(`/devices/manufacturers/${item.id}/`, { is_active: !item.is_active })
-                                  refetchManufacturers()
+
+                  <div className="form-group">
+                    <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Status</label>
+                    <select
+                      className="input"
+                      value={typeConfigStatus}
+                      onChange={e => setTypeConfigStatus(e.target.value)}
+                    >
+                      <option value="active">Active</option>
+                      <option value="setup_required">Setup Required</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      id="auto_mapping_eligible"
+                      checked={typeConfigAutoMappingEligible}
+                      onChange={e => setTypeConfigAutoMappingEligible(e.target.checked)}
+                    />
+                    <label htmlFor="auto_mapping_eligible" style={{ fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                      Eligible for Auto-Mapping Remap
+                    </label>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Supported Accessory Categories</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
+                      {categories.map((cat: string) => {
+                        const checked = typeConfigSupportedCategories.includes(cat)
+                        return (
+                          <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setTypeConfigSupportedCategories([...typeConfigSupportedCategories, cat])
                                 } else {
-                                  await api.patch(`/devices/types/${item.id}/`, { 
-                                    is_active: !item.is_active,
-                                    status: !item.is_active ? 'active' : 'inactive'
-                                  })
-                                  refetchTypes()
+                                  setTypeConfigSupportedCategories(typeConfigSupportedCategories.filter(x => x !== cat))
                                 }
-                              } catch (err: any) {
-                                setDropdownError(err.response?.data?.error || err.response?.data?.detail || 'Failed to toggle status.')
-                              }
+                              }}
+                            />
+                            {cat}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Device Compatibility Rules</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
+                      {[
+                        { value: 'compatible_charging_interface', label: 'Charging Interface' },
+                        { value: 'storage_expansion_compatibility', label: 'Storage Expansion' },
+                        { value: 'maximum_supported_storage', label: 'Max Supported Storage' },
+                        { value: 'headphone_jack_compatibility', label: 'Headphone Jack' },
+                        { value: 'bluetooth_compatibility', label: 'Bluetooth' },
+                        { value: 'wireless_charging_compatibility', label: 'Wireless Charging' },
+                        { value: 'compatible_watch_case_size', label: 'Watch Case Size' },
+                      ].map(opt => {
+                        const rule = typeConfigRules[opt.value] || { mode: 'hidden' }
+                        return (
+                          <div key={opt.value} style={{ display: 'flex', flexDirection: 'column', padding: 8, background: 'var(--bg-elevated)', borderRadius: 6, border: '1px solid var(--border-light)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, fontWeight: 555 }}>{opt.label}</span>
+                              <select
+                                style={{ padding: '2px 6px', fontSize: 12, borderRadius: 4, background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+                                value={rule.mode}
+                                onChange={e => {
+                                  setTypeConfigRules({
+                                    ...typeConfigRules,
+                                    [opt.value]: { ...rule, mode: e.target.value }
+                                  })
+                                }}
+                              >
+                                <option value="hidden">Hidden</option>
+                                <option value="required">Required</option>
+                                <option value="optional">Optional</option>
+                                <option value="defaulted">Defaulted</option>
+                              </select>
+                            </div>
+                            {rule.mode === 'defaulted' && (
+                              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Default Value:</span>
+                                <input
+                                  type="text"
+                                  className="input"
+                                  style={{ padding: '2px 6px', fontSize: 12, height: 26, flex: 1 }}
+                                  value={rule.default || ''}
+                                  onChange={e => {
+                                    setTypeConfigRules({
+                                      ...typeConfigRules,
+                                      [opt.value]: { ...rule, default: e.target.value }
+                                    })
+                                  }}
+                                  placeholder="Enter default value..."
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setEditingTypeConfig(null)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Save Rules
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="label">Select Taxonomy Dropdown</label>
+                    <select
+                      className="input"
+                      value={manageField}
+                      onChange={e => {
+                        setManageField(e.target.value as any)
+                        setNewDropdownValue('')
+                        setDropdownError(null)
+                      }}
+                    >
+                      <option value="manufacturer">Device Manufacturer</option>
+                      <option value="device_type">Device Type</option>
+                    </select>
+                  </div>
+
+                  <form onSubmit={handleAddDropdownValue} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder={`Add new ${manageField === 'manufacturer' ? 'manufacturer' : 'device type'}…`}
+                      value={newDropdownValue}
+                      onChange={e => setNewDropdownValue(e.target.value)}
+                      style={{ flex: 1 }}
+                    />
+                    <button type="submit" className="btn btn-primary">
+                      Add Value
+                    </button>
+                  </form>
+
+                  <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-card)', maxHeight: '35vh' }}>
+                    {(manageField === 'manufacturer' ? manufacturers : deviceTypes).length === 0 ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                        No values configured.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        {(manageField === 'manufacturer' ? manufacturers : deviceTypes).map((item: any) => (
+                          <div
+                            key={item.id}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '10px 12px',
+                              borderBottom: '1px solid var(--border-light)',
                             }}
                           >
-                            {item.is_active ? 'Deactivate' : 'Activate'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{ padding: 4, color: 'var(--red)', background: 'transparent', border: 'none' }}
-                            onClick={() => handleDeleteDropdownValue(item.id)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 555 }}>
+                                {item.name}
+                              </span>
+                              {!item.is_active && (
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Inactive</span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              {manageField === 'device_type' && (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  style={{ padding: 4, color: 'var(--primary)', background: 'transparent', border: 'none' }}
+                                  onClick={() => setEditingTypeConfig(item)}
+                                >
+                                  <Settings size={14} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                style={{ padding: '2px 4px', fontSize: 11, color: 'var(--text-muted)' }}
+                                onClick={async () => {
+                                  try {
+                                    if (manageField === 'manufacturer') {
+                                      await api.patch(`/devices/manufacturers/${item.id}/`, { is_active: !item.is_active })
+                                      refetchManufacturers()
+                                    } else {
+                                      await api.patch(`/devices/types/${item.id}/`, { 
+                                        is_active: !item.is_active,
+                                        status: !item.is_active ? 'active' : 'inactive'
+                                      })
+                                      refetchTypes()
+                                    }
+                                  } catch (err: any) {
+                                    setDropdownError(err.response?.data?.error || err.response?.data?.detail || 'Failed to toggle status.')
+                                  }
+                                }}
+                              >
+                                {item.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                style={{ padding: 4, color: 'var(--red)', background: 'transparent', border: 'none' }}
+                                onClick={() => handleDeleteDropdownValue(item.id)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowDropdownModal(false)}>
-                  Close
-                </button>
-              </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowDropdownModal(false)}>
+                      Close
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

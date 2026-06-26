@@ -307,3 +307,73 @@ def test_recalculate_and_audit_history(setup_data):
     response = client.get(url_audit)
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) > 0
+
+def test_category_specific_validations(setup_data):
+    from django.core.exceptions import ValidationError
+    from apps.catalog.models import DynamicDropdownConfig
+    
+    # Set up Memory dropdown config
+    DynamicDropdownConfig.objects.update_or_create(
+        field_name="product_category",
+        value="Memory",
+        defaults={
+            "display_name": "Memory",
+            "status": "active",
+            "compatibility_mode": "feature_based",
+            "eligible_device_types": ["smartphone"],
+            "match_logic": "AND",
+            "accessory_fields": ["storage_expansion_compatibility", "memory_capacity"],
+            "compatibility_rules": {
+                "storage_expansion_compatibility": {"mode": "required"},
+                "memory_capacity": {
+                    "mode": "conditional",
+                    "condition_field": "storage_expansion_compatibility",
+                    "condition_values": ["microSDXC", "microSDHC"]
+                }
+            }
+        }
+    )
+    
+    # 1. Headphones jack compatibility and bluetooth
+    p = Product(
+        sku="TEST-VALID-1",
+        name="Test Headphones",
+        brand="BeatMaster",
+        product_type="accessory",
+        product_category="Headphones",
+        status=ProductStatus.PENDING_REVIEW,
+        selling_status="for_sale",
+        vendor_wholesale_price_amount=Decimal("50.00"),
+        msrp=Decimal("100.00"),
+        map_price=Decimal("80.00"),
+        inventory_level=100,
+        bluetooth_compatibility="Yes",
+        headphone_jack_compatibility="Lightning",
+        vendor_company_reference=setup_data["vendor_company"].id,
+        company_scope_reference=setup_data["vendor_company"].id,
+        launch_date=timezone.now().date()
+    )
+    p.clean()  # should not raise
+    
+    p.headphone_jack_compatibility = "Not Compatible"
+    p.bluetooth_compatibility = "No"
+    with pytest.raises(ValidationError) as excinfo:
+        p.clean()
+    assert "cannot both be Not Compatible/No" in str(excinfo.value)
+    
+    # 2. Memory capacity vs storage expansion
+    p.product_category = "Memory"
+    p.storage_expansion_compatibility = "microSDXC"
+    p.memory_capacity = "2TB"
+    p.clean()  # valid
+    
+    p.memory_capacity = "1.5TB"
+    with pytest.raises(ValidationError):
+        p.clean()
+        
+    p.storage_expansion_compatibility = "microSDHC"
+    p.memory_capacity = "2TB"
+    with pytest.raises(ValidationError):
+        p.clean()
+
+

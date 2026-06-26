@@ -881,6 +881,14 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             should_stage = False
             row_num = idx + 2
             
+            row_bluetooth = ""
+            row_jack = ""
+            row_charging = ""
+            row_wireless = ""
+            row_storage = ""
+            row_memory = ""
+            row_watch_size = ""
+            
             # --- SKU ---
             sku = str(row.get("sku") or "").strip()
             if not sku:
@@ -1352,9 +1360,37 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             # --- Device Compatibility ---
             comp_val = row.get("devicecompatibility") or row.get("compatibility") or ""
             normalized_comp = ""
-            if comp_val:
+            
+            row_keys = set(row.keys())
+            possible_compat_cols = [
+                "bluetoothcompatibility", "bluetooth",
+                "headphonejackcompatibility", "headphonejack",
+                "compatiblecharginginterface", "charginginterface",
+                "wirelesschargingcompatibility", "wirelesscharging",
+                "storageexpansioncompatibility", "storageexpansion",
+                "memorycapacity",
+                "compatiblewatchcasesize", "watchcasesize"
+            ]
+            has_separate_cols = any(k in row_keys for k in possible_compat_cols)
+            
+            def get_row_value(r_dict, *keys):
+                for k in keys:
+                    norm_k = "".join(c for c in str(k).lower() if c.isalnum())
+                    if norm_k in r_dict:
+                        return str(r_dict[norm_k] or "").strip()
+                return ""
+
+            row_bluetooth = get_row_value(row, "bluetooth_compatibility", "bluetooth", "bluetoothcompatibility")
+            row_jack = get_row_value(row, "headphone_jack_compatibility", "headphonejack", "headphonejackcompatibility")
+            row_charging = get_row_value(row, "compatible_charging_interface", "charginginterface", "compatiblecharginginterface")
+            row_wireless = get_row_value(row, "wireless_charging_compatibility", "wirelesscharging", "wirelesschargingcompatibility")
+            row_storage = get_row_value(row, "storage_expansion_compatibility", "storageexpansion", "storageexpansioncompatibility")
+            row_memory = get_row_value(row, "memory_capacity", "memorycapacity")
+            row_watch_size = get_row_value(row, "compatible_watch_case_size", "watchcasesize", "compatiblewatchcasesize")
+
+            if comp_val or has_separate_cols:
                 comp_str = str(comp_val).strip()
-                if "," in comp_str:
+                if comp_str and "," in comp_str:
                     row_errors.append({
                         "row_number": row_num,
                         "column_name": "Device Compatibility",
@@ -1364,93 +1400,223 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     })
                 else:
                     # Category-specific structural validation
-                    groups = [g.strip() for g in comp_str.split(";") if g.strip()]
-                    seen_g = set()
-                    unique_groups = []
-                    for g in groups:
-                        gl = g.lower()
-                        if gl not in seen_g:
-                            seen_g.add(gl)
-                            unique_groups.append(g)
-                            
                     comp_errors = []
-                    for g in unique_groups:
-                        parts = [p.strip() for p in g.split("+") if p.strip()]
-                        parts_lower = [p.lower() for p in parts]
+                    
+                    # Parse from compatibility column if separate columns not present
+                    if not has_separate_cols and comp_str:
+                        groups = [g.strip() for g in comp_str.split(";") if g.strip()]
+                        seen_g = set()
+                        unique_groups = []
+                        for g in groups:
+                            gl = g.lower()
+                            if gl not in seen_g:
+                                seen_g.add(gl)
+                                unique_groups.append(g)
                         
-                        if product_category == "Chargers and Cables":
-                            for p in parts:
-                                if p.lower() not in ["iphone", "android", "lightning", "type-c", "magsafe", "qi", "qi2", "not compatible"]:
-                                    comp_errors.append(f"Invalid attribute '{p}' for Chargers and Cables.")
-                            if "qi" in parts_lower and ("magsafe" in parts_lower or "qi2" in parts_lower):
+                        # Set default variables based on parts for category-specific check below
+                        for g in unique_groups:
+                            parts = [p.strip() for p in g.split("+") if p.strip()]
+                            parts_lower = [p.lower() for p in parts]
+                            
+                            if product_category == "Headphones":
+                                row_bluetooth = "Yes" if "bluetooth" in parts_lower else "No"
+                                row_jack = "Not Compatible"
+                                if "lightning" in parts_lower:
+                                    row_jack = "Lightning"
+                                elif "type-c" in parts_lower:
+                                    row_jack = "Type-C"
+                                if "not compatible" in parts_lower:
+                                    if len(parts_lower) > 1:
+                                        comp_errors.append("Not Compatible cannot be combined with other values.")
+                                for p in parts:
+                                    if p.lower() not in ["lightning", "type-c", "bluetooth", "not compatible"]:
+                                        comp_errors.append(f"Invalid attribute '{p}' for Headphones.")
+
+                            elif product_category == "Speakers":
+                                row_bluetooth = "Yes" if "bluetooth" in parts_lower else "No"
+                                row_charging = "Not Compatible"
+                                if "lightning" in parts_lower:
+                                    row_charging = "Lightning"
+                                elif "type-c" in parts_lower:
+                                    row_charging = "Type-C"
+                                if "not compatible" in parts_lower:
+                                    if len(parts_lower) > 1:
+                                        comp_errors.append("Not Compatible cannot be combined with other values.")
+                                for p in parts:
+                                    if p.lower() not in ["type-c", "lightning", "bluetooth", "not compatible"]:
+                                        comp_errors.append(f"Invalid attribute '{p}' for Speakers.")
+
+                            elif product_category == "Chargers and Cables":
+                                row_charging = "Not Compatible"
+                                if "lightning" in parts_lower:
+                                    row_charging = "Lightning"
+                                elif "type-c" in parts_lower:
+                                    row_charging = "Type-C"
+                                w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts_lower]
+                                case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
+                                row_wireless = "+".join(case_map[w] for w in w_list) if w_list else "Not Compatible"
+                                if "not compatible" in parts_lower:
+                                    if len(parts_lower) > 1:
+                                        comp_errors.append("Not Compatible cannot be combined with other values.")
+                                for p in parts:
+                                    if p.lower() not in ["iphone", "android", "lightning", "type-c", "magsafe", "qi", "qi2", "not compatible"]:
+                                        comp_errors.append(f"Invalid attribute '{p}' for Chargers and Cables.")
+
+                            elif product_category == "Memory":
+                                row_storage = "Not Compatible"
+                                if "microsdxc" in parts_lower:
+                                    row_storage = "microSDXC"
+                                elif "microsdhc" in parts_lower:
+                                    row_storage = "microSDHC"
+                                row_memory = "Not Compatible"
+                                valid_sizes = ["16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb"]
+                                for p in parts_lower:
+                                    if p in valid_sizes:
+                                        row_memory = p.upper()
+                                        break
+                                if "not compatible" in parts_lower:
+                                    if len(parts_lower) > 1:
+                                        comp_errors.append("Not Compatible cannot be combined with other values.")
+                                for p in parts:
+                                    pl = p.lower()
+                                    if pl not in valid_sizes and pl not in ["microsdxc", "microsdhc", "not compatible", "mircosdxc", "mircosdhc", "512bg"]:
+                                        comp_errors.append(f"Invalid attribute '{p}' for Memory.")
+
+                            elif product_category == "Wearable Tech":
+                                row_charging = "Not Compatible"
+                                if "lightning" in parts_lower:
+                                    row_charging = "Lightning"
+                                elif "type-c" in parts_lower:
+                                    row_charging = "Type-C"
+                                w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts_lower]
+                                case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
+                                row_wireless = "+".join(case_map[w] for w in w_list) if w_list else "Not Compatible"
+                                if "not compatible" in parts_lower:
+                                    if len(parts_lower) > 1:
+                                        comp_errors.append("Not Compatible cannot be combined with other values.")
+                                for p in parts:
+                                    if p.lower() not in ["type-c", "lightning", "magsafe", "qi", "qi2", "not compatible"]:
+                                        comp_errors.append(f"Invalid attribute '{p}' for Wearable Tech.")
+
+                            elif product_category == "Watch Accessories":
+                                row_watch_size = "Not Compatible"
+                                valid_sizes = ["40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
+                                for p in parts_lower:
+                                    if p in valid_sizes:
+                                        row_watch_size = p
+                                        break
+                                w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts_lower]
+                                case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
+                                row_wireless = "+".join(case_map[w] for w in w_list) if w_list else "Not Compatible"
+                                if "not compatible" in parts_lower:
+                                    if len(parts_lower) > 1:
+                                        comp_errors.append("Not Compatible cannot be combined with other values.")
+                                for p in parts:
+                                    if p.lower() not in ["magsafe", "qi", "qi2", "not compatible"] and p.lower() not in valid_sizes:
+                                        comp_errors.append(f"Invalid attribute '{p}' for Watch Accessories.")
+                        
+                        normalized_comp = ";".join(unique_groups)
+                    else:
+                        normalized_comp = comp_str
+
+                    # Now perform precise validation on the values of the fields
+                    if product_category == "Headphones":
+                        if not row_jack or not row_bluetooth:
+                            comp_errors.append("Headphone Jack Compatibility and Bluetooth Compatibility are required.")
+                        if row_jack and row_jack not in ["Not Compatible", "Lightning", "Type-C"]:
+                            comp_errors.append(f"Invalid Headphone Jack Compatibility '{row_jack}'.")
+                        if row_bluetooth and row_bluetooth not in ["Yes", "No"]:
+                            comp_errors.append(f"Invalid Bluetooth Compatibility '{row_bluetooth}'.")
+                        if row_jack == "Not Compatible" and row_bluetooth == "No":
+                            comp_errors.append("Headphones must support either Bluetooth or a compatible jack (cannot both be Not Compatible/No).")
+
+                    elif product_category == "Speakers":
+                        if not row_charging or not row_bluetooth:
+                            comp_errors.append("Compatible Charging Interface and Bluetooth Compatibility are required.")
+                        if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
+                            comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
+                        if row_bluetooth and row_bluetooth not in ["Yes", "No"]:
+                            comp_errors.append(f"Invalid Bluetooth Compatibility '{row_bluetooth}'.")
+
+                    elif product_category == "Chargers and Cables":
+                        if not row_charging or not row_wireless:
+                            comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
+                        if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
+                            comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
+                        if row_wireless:
+                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                            if 'Not Compatible' in w_vals and len(w_vals) > 1:
+                                comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                            for w in w_vals:
+                                if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                                    comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
+                            if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
                                 comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
-                            if "not compatible" in parts_lower and len(parts_lower) > 1:
-                                comp_errors.append("Not Compatible cannot be combined with other values.")
-                                
-                        elif product_category == "Headphones":
-                            for p in parts:
-                                if p.lower() not in ["lightning", "type-c", "bluetooth", "not compatible"]:
-                                    comp_errors.append(f"Invalid attribute '{p}' for Headphones.")
-                            if "not compatible" in parts_lower and len(parts_lower) > 1:
-                                comp_errors.append("Not Compatible cannot be combined with other values.")
-                                
-                        elif product_category == "Speakers":
-                            for p in parts:
-                                if p.lower() not in ["type-c", "lightning", "bluetooth", "not compatible"]:
-                                    comp_errors.append(f"Invalid attribute '{p}' for Speakers.")
-                            if "not compatible" in parts_lower and len(parts_lower) > 1:
-                                comp_errors.append("Not Compatible cannot be combined with other values.")
-                                
-                        elif product_category == "Memory":
-                            corrected_parts = []
-                            for p in parts:
-                                pl = p.lower()
-                                if pl == "mircosdxc":
-                                    corrected_parts.append("microSDXC")
-                                elif pl == "mircosdhc":
-                                    corrected_parts.append("microSDHC")
-                                elif pl == "512bg":
-                                    corrected_parts.append("512GB")
+
+                    elif product_category == "Memory":
+                        if not row_storage:
+                            comp_errors.append("Storage Expansion Compatibility is required.")
+                        if row_storage and row_storage not in ["Not Compatible", "microSDXC", "microSDHC"]:
+                            # Attempt loose spellings
+                            if row_storage.lower() == "microsdxc" or row_storage.lower() == "mircosdxc":
+                                row_storage = "microSDXC"
+                            elif row_storage.lower() == "microsdhc" or row_storage.lower() == "mircosdhc":
+                                row_storage = "microSDHC"
+                            else:
+                                comp_errors.append(f"Invalid Storage Expansion Compatibility '{row_storage}'.")
+                        
+                        if row_storage in ["microSDXC", "microSDHC"]:
+                            if not row_memory or row_memory == "Not Compatible":
+                                comp_errors.append("Memory Capacity is required when storage expansion is enabled.")
+                            else:
+                                if row_storage == "microSDXC":
+                                    allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
                                 else:
-                                    corrected_parts.append(p)
-                                    
-                            valid_sizes = ["16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb"]
-                            valid_exp = ["microsdxc", "microsdhc", "not compatible"]
-                            for cp in corrected_parts:
-                                if cp.lower() not in valid_sizes and cp.lower() not in valid_exp:
-                                    comp_errors.append(f"Invalid attribute '{cp}' for Memory.")
-                            if "not compatible" in [c.lower() for c in corrected_parts] and len(corrected_parts) > 1:
-                                comp_errors.append("Not Compatible cannot be combined with other values.")
-                                
-                        elif product_category == "Wearable Tech":
-                            for p in parts:
-                                if p.lower() not in ["type-c", "lightning", "magsafe", "qi", "qi2", "not compatible"]:
-                                    comp_errors.append(f"Invalid attribute '{p}' for Wearable Tech.")
-                            if "qi" in parts_lower and ("magsafe" in parts_lower or "qi2" in parts_lower):
+                                    allowed = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
+                                if row_memory.upper() not in [a.upper() for a in allowed]:
+                                    comp_errors.append(f"Memory Capacity '{row_memory}' must match allowed list for {row_storage}.")
+                        else:
+                            if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
+                                comp_errors.append("Memory Capacity must be Not Compatible when Storage Expansion is Not Compatible.")
+
+                    elif product_category == "Wearable Tech":
+                        if not row_charging or not row_wireless:
+                            comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
+                        if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
+                            comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
+                        if row_wireless:
+                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                            if 'Not Compatible' in w_vals and len(w_vals) > 1:
+                                comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                            for w in w_vals:
+                                if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                                    comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
+                            if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
                                 comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
-                            if "not compatible" in parts_lower and len(parts_lower) > 1:
-                                comp_errors.append("Not Compatible cannot be combined with other values.")
-                                
-                        elif product_category == "Watch Accessories":
-                            valid_sizes = ["40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
-                            for p in parts:
-                                if p.lower() not in ["magsafe", "qi", "qi2", "not compatible"] and p.lower() not in valid_sizes:
-                                    comp_errors.append(f"Invalid attribute '{p}' for Watch Accessories.")
-                            if "qi" in parts_lower and ("magsafe" in parts_lower or "qi2" in parts_lower):
+
+                    elif product_category == "Watch Accessories":
+                        if not row_watch_size or not row_wireless:
+                            comp_errors.append("Compatible Watch Case Size and Wireless Charging Compatibility are required.")
+                        if row_watch_size and row_watch_size not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
+                            comp_errors.append(f"Invalid Compatible Watch Case Size '{row_watch_size}'.")
+                        if row_wireless:
+                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                            if 'Not Compatible' in w_vals and len(w_vals) > 1:
+                                comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                            for w in w_vals:
+                                if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                                    comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
+                            if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
                                 comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
-                            if "not compatible" in parts_lower and len(parts_lower) > 1:
-                                comp_errors.append("Not Compatible cannot be combined with other values.")
 
                     if comp_errors:
                         row_errors.append({
                             "row_number": row_num,
                             "column_name": "Device Compatibility",
-                            "submitted_value": comp_str,
+                            "submitted_value": comp_str or f"Bluetooth:{row_bluetooth}, Jack:{row_jack}, Charging:{row_charging}, Wireless:{row_wireless}",
                             "validation_error": " | ".join(comp_errors),
                             "recommended_correction": "Provide correct category-specific compatibility formats."
                         })
-                    else:
-                        normalized_comp = ";".join(unique_groups)
 
             # --- Image URLs ---
             media_refs = []
@@ -1691,83 +1857,49 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 product.status = final_status
                 product.selling_status = "for_sale" if final_status == "active" else "not_for_sale"
                 
-                # Parse and set category-specific compatibility attributes from normalized_comp
+                # Parse and set category-specific compatibility attributes
                 if product_category in ["Headphones", "Speakers", "Chargers and Cables", "Memory", "Wearable Tech", "Watch Accessories"]:
-                    parts = [p.strip().lower() for p in normalized_comp.replace(";", "+").split("+") if p.strip()]
-                    
                     if product_category == "Headphones":
-                        product.bluetooth_compatibility = "Yes" if "bluetooth" in parts else "No"
-                        jack = "Not Compatible"
-                        if "lightning" in parts:
-                            jack = "Lightning"
-                        elif "type-c" in parts:
-                            jack = "Type-C"
-                        product.headphone_jack_compatibility = jack
+                        product.bluetooth_compatibility = row_bluetooth if row_bluetooth else "No"
+                        product.headphone_jack_compatibility = row_jack if row_jack else "Not Compatible"
                         
                     elif product_category == "Speakers":
-                        product.bluetooth_compatibility = "Yes" if "bluetooth" in parts else "No"
-                        charging = "Not Compatible"
-                        if "lightning" in parts:
-                            charging = "Lightning"
-                        elif "type-c" in parts:
-                            charging = "Type-C"
-                        product.compatible_charging_interface = charging
+                        product.bluetooth_compatibility = row_bluetooth if row_bluetooth else "No"
+                        product.compatible_charging_interface = row_charging if row_charging else "Not Compatible"
                         
                     elif product_category == "Chargers and Cables":
-                        charging = "Not Compatible"
-                        if "lightning" in parts:
-                            charging = "Lightning"
-                        elif "type-c" in parts:
-                            charging = "Type-C"
-                        product.compatible_charging_interface = charging
-                        
-                        w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts]
-                        case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
-                        w_str = "+".join(case_map[w] for w in w_list)
-                        product.wireless_charging_compatibility = w_str if w_str else "Not Compatible"
+                        product.compatible_charging_interface = row_charging if row_charging else "Not Compatible"
+                        if row_wireless:
+                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                            case_map_exact = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
+                            product.wireless_charging_compatibility = "+".join(case_map_exact[w.lower()] for w in w_vals if w.lower() in case_map_exact)
+                        else:
+                            product.wireless_charging_compatibility = "Not Compatible"
                         
                     elif product_category == "Memory":
-                        exp = "Not Compatible"
-                        if "microsdxc" in parts:
-                            exp = "microSDXC"
-                        elif "microsdhc" in parts:
-                            exp = "microSDHC"
-                        product.storage_expansion_compatibility = exp
-                        
-                        cap = ""
-                        sizes = ["16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb"]
-                        for s in sizes:
-                            if s in parts:
-                                cap = s.upper()
-                                break
-                        product.memory_capacity = cap
+                        product.storage_expansion_compatibility = row_storage if row_storage else "Not Compatible"
+                        if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
+                            product.memory_capacity = row_memory.upper()
+                        else:
+                            product.memory_capacity = "Not Compatible"
                         
                     elif product_category == "Wearable Tech":
-                        charging = "Not Compatible"
-                        if "lightning" in parts:
-                            charging = "Lightning"
-                        elif "type-c" in parts:
-                            charging = "Type-C"
-                        product.compatible_charging_interface = charging
-                        
-                        w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts]
-                        case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
-                        w_str = "+".join(case_map[w] for w in w_list)
-                        product.wireless_charging_compatibility = w_str if w_str else "Not Compatible"
+                        product.compatible_charging_interface = row_charging if row_charging else "Not Compatible"
+                        if row_wireless:
+                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                            case_map_exact = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
+                            product.wireless_charging_compatibility = "+".join(case_map_exact[w.lower()] for w in w_vals if w.lower() in case_map_exact)
+                        else:
+                            product.wireless_charging_compatibility = "Not Compatible"
                         
                     elif product_category == "Watch Accessories":
-                        size = "Not Compatible"
-                        sizes = ["40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
-                        for s in sizes:
-                            if s in parts:
-                                size = s
-                                break
-                        product.compatible_watch_case_size = size
-                        
-                        w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts]
-                        case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
-                        w_str = "+".join(case_map[w] for w in w_list)
-                        product.wireless_charging_compatibility = w_str if w_str else "Not Compatible"
+                        product.compatible_watch_case_size = row_watch_size if row_watch_size else "Not Compatible"
+                        if row_wireless:
+                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                            case_map_exact = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
+                            product.wireless_charging_compatibility = "+".join(case_map_exact[w.lower()] for w in w_vals if w.lower() in case_map_exact)
+                        else:
+                            product.wireless_charging_compatibility = "Not Compatible"
                 
                 product.save(actor_id=request.user.id)
                 

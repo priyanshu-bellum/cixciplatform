@@ -239,6 +239,34 @@ export default function CatalogPage() {
   const [newDropdownValue, setNewDropdownValue] = useState('')
   const [dropdownError, setDropdownError] = useState<string | null>(null)
 
+  // Category Compatibility Config States
+  const [editingCategoryConfig, setEditingCategoryConfig] = useState<any | null>(null)
+  const [categoryConfigMode, setCategoryConfigMode] = useState('feature_based')
+  const [categoryConfigStatus, setCategoryConfigStatus] = useState('setup_required')
+  const [categoryConfigMatchLogic, setCategoryConfigMatchLogic] = useState('OR')
+  const [categoryConfigEligibleTypes, setCategoryConfigEligibleTypes] = useState<string[]>([])
+  const [categoryConfigAccessoryFields, setCategoryConfigAccessoryFields] = useState<string[]>([])
+  const [categoryConfigRules, setCategoryConfigRules] = useState<Record<string, { mode: string }>>({})
+
+  const { data: deviceTypesData } = useQuery({
+    queryKey: ['deviceTypes'],
+    queryFn: () => api.get('/devices/types/', { params: { limit: 100 } }).then(r => r.data),
+  })
+  const deviceTypes = useMemo(() => {
+    return Array.isArray(deviceTypesData) ? deviceTypesData : (deviceTypesData?.results ?? [])
+  }, [deviceTypesData])
+
+  useEffect(() => {
+    if (editingCategoryConfig) {
+      setCategoryConfigMode(editingCategoryConfig.compatibility_mode || 'feature_based')
+      setCategoryConfigStatus(editingCategoryConfig.status || 'setup_required')
+      setCategoryConfigMatchLogic(editingCategoryConfig.match_logic || 'OR')
+      setCategoryConfigEligibleTypes(editingCategoryConfig.eligible_device_types || [])
+      setCategoryConfigAccessoryFields(editingCategoryConfig.accessory_fields || [])
+      setCategoryConfigRules(editingCategoryConfig.compatibility_rules || {})
+    }
+  }, [editingCategoryConfig])
+
   // Add/Edit Product Form State
   const [prodName, setProdName] = useState('')
   const [prodStatus, setProdStatus] = useState('')
@@ -436,7 +464,15 @@ export default function CatalogPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
           <div>
             <label style={labelStyle}>Storage Expansion Compatibility *</label>
-            <select style={selectStyle} value={compStorageExpansion} onChange={e => setCompStorageExpansion(e.target.value)}>
+            <select style={selectStyle} value={compStorageExpansion} onChange={e => {
+              const val = e.target.value;
+              setCompStorageExpansion(val);
+              if (val === 'Not Compatible') {
+                setCompMemoryCapacity('Not Compatible');
+              } else {
+                setCompMemoryCapacity('');
+              }
+            }}>
               <option value="">Select...</option>
               <option value="microSDXC">microSDXC</option>
               <option value="microSDHC">microSDHC</option>
@@ -445,17 +481,28 @@ export default function CatalogPage() {
           </div>
           <div>
             <label style={labelStyle}>Memory Capacity *</label>
-            <select style={selectStyle} value={compMemoryCapacity} onChange={e => setCompMemoryCapacity(e.target.value)}>
-              <option value="">Select...</option>
-              <option value="16GB">16GB</option>
-              <option value="32GB">32GB</option>
-              <option value="64GB">64GB</option>
-              <option value="128GB">128GB</option>
-              <option value="256GB">256GB</option>
-              <option value="512GB">512GB</option>
-              <option value="1TB">1TB</option>
-              <option value="1.5TB">1.5TB</option>
-              <option value="2TB">2TB</option>
+            <select
+              style={selectStyle}
+              value={compMemoryCapacity}
+              disabled={compStorageExpansion === 'Not Compatible' || !compStorageExpansion}
+              onChange={e => setCompMemoryCapacity(e.target.value)}
+            >
+              {compStorageExpansion === 'Not Compatible' ? (
+                <option value="Not Compatible">Not Compatible</option>
+              ) : (
+                <>
+                  <option value="">Select...</option>
+                  {compStorageExpansion === 'microSDHC' && <option value="16GB">16GB</option>}
+                  <option value="32GB">32GB</option>
+                  <option value="64GB">64GB</option>
+                  <option value="128GB">128GB</option>
+                  <option value="256GB">256GB</option>
+                  <option value="512GB">512GB</option>
+                  <option value="1TB">1TB</option>
+                  {compStorageExpansion === 'microSDHC' && <option value="1.5TB">1.5TB</option>}
+                  {compStorageExpansion === 'microSDXC' && <option value="2TB">2TB</option>}
+                </>
+              )}
             </select>
           </div>
         </div>
@@ -1871,6 +1918,25 @@ export default function CatalogPage() {
       refetchDropdownConfigs()
     } catch (err: any) {
       setDropdownError(err.response?.data?.detail || 'Failed to delete value.')
+    }
+  }
+
+  const handleSaveCategoryConfig = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setDropdownError(null)
+    try {
+      await api.patch(`/catalog/dropdown-configs/${editingCategoryConfig.id}/`, {
+        compatibility_mode: categoryConfigMode,
+        status: categoryConfigStatus,
+        match_logic: categoryConfigMatchLogic,
+        eligible_device_types: categoryConfigEligibleTypes,
+        accessory_fields: categoryConfigAccessoryFields,
+        compatibility_rules: categoryConfigRules,
+      })
+      setEditingCategoryConfig(null)
+      refetchDropdownConfigs()
+    } catch (err: any) {
+      setDropdownError(err.response?.data?.detail || 'Failed to save configuration.')
     }
   }
 
@@ -4047,33 +4113,11 @@ export default function CatalogPage() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div className="card" style={{ width: 500, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid var(--border-light)', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Manage Dropdown Values</div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setShowDropdownManagerModal(false)}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>
+                {editingCategoryConfig ? 'Configure Category Compatibility' : 'Manage Dropdown Values'}
+              </div>
+              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => { setShowDropdownManagerModal(false); setEditingCategoryConfig(null); }}>
                 <X size={16} />
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <button
-                type="button"
-                className={`btn btn-sm ${manageField === 'brand' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => { setManageField('brand'); setDropdownError(null); setNewDropdownValue(''); }}
-              >
-                Brands
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${manageField === 'product_category' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => { setManageField('product_category'); setDropdownError(null); setNewDropdownValue(''); }}
-              >
-                Categories
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${manageField === 'system_color' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => { setManageField('system_color'); setDropdownError(null); setNewDropdownValue(''); }}
-              >
-                System Colors
               </button>
             </div>
 
@@ -4084,62 +4128,258 @@ export default function CatalogPage() {
               </div>
             )}
 
-            <form onSubmit={handleAddDropdownValue} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <input
-                className="input"
-                style={{ flex: 1 }}
-                placeholder={`Add new ${manageField === 'system_color' ? 'color' : manageField === 'product_category' ? 'category' : 'brand'}...`}
-                value={newDropdownValue}
-                onChange={e => setNewDropdownValue(e.target.value)}
-                required
-              />
-              <button type="submit" className="btn btn-primary">
-                Add Value
-              </button>
-            </form>
-
-            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-card)', maxHeight: '40vh' }}>
-              {dropdownConfigs.filter((c: any) => c.field_name === manageField).length === 0 ? (
-                <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                  No values configured.
+            {editingCategoryConfig ? (
+              <form onSubmit={handleSaveCategoryConfig} style={{ display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: 1, paddingRight: 4 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Configuring Category: <span style={{ color: 'var(--primary)' }}>{editingCategoryConfig.value}</span>
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {dropdownConfigs
-                    .filter((c: any) => c.field_name === manageField)
-                    .map((item: any) => (
-                      <div
-                        key={item.id}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '10px 12px',
-                          borderBottom: '1px solid var(--border-light)',
-                        }}
-                      >
-                        <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 550 }}>
-                          {item.value}
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          style={{ padding: 4, color: 'var(--red)', background: 'transparent', border: 'none' }}
-                          onClick={() => handleDeleteDropdownValue(item.id)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setShowDropdownManagerModal(false)}>
-                Close
-              </button>
-            </div>
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Compatibility Mode</label>
+                  <select
+                    className="input"
+                    value={categoryConfigMode}
+                    onChange={e => setCategoryConfigMode(e.target.value)}
+                  >
+                    <option value="feature_based">Feature Based Rule Mapping</option>
+                    <option value="explicit">Explicit Device-Model Mapping</option>
+                    <option value="inactive">Disabled</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Status</label>
+                  <select
+                    className="input"
+                    value={categoryConfigStatus}
+                    onChange={e => setCategoryConfigStatus(e.target.value)}
+                  >
+                    <option value="active">Active</option>
+                    <option value="setup_required">Setup Required</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Match Logic</label>
+                  <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="match_logic"
+                        value="AND"
+                        checked={categoryConfigMatchLogic === 'AND'}
+                        onChange={e => setCategoryConfigMatchLogic(e.target.value)}
+                      />
+                      AND (All fields must match)
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="match_logic"
+                        value="OR"
+                        checked={categoryConfigMatchLogic === 'OR'}
+                        onChange={e => setCategoryConfigMatchLogic(e.target.value)}
+                      />
+                      OR (At least one field must match)
+                    </label>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Eligible Device Types</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
+                    {deviceTypes.map((dt: any) => {
+                      const code = dt.code || dt.name.toLowerCase()
+                      const checked = categoryConfigEligibleTypes.includes(code)
+                      return (
+                        <label key={dt.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setCategoryConfigEligibleTypes([...categoryConfigEligibleTypes, code])
+                              } else {
+                                setCategoryConfigEligibleTypes(categoryConfigEligibleTypes.filter(x => x !== code))
+                              }
+                            }}
+                          />
+                          {dt.name}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Accessory Compatibility Fields</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
+                    {[
+                      { value: 'compatible_charging_interface', label: 'Charging Interface' },
+                      { value: 'storage_expansion_compatibility', label: 'Storage Expansion Compatibility' },
+                      { value: 'memory_capacity', label: 'Memory Capacity' },
+                      { value: 'headphone_jack_compatibility', label: 'Headphone Jack Compatibility' },
+                      { value: 'bluetooth_compatibility', label: 'Bluetooth Compatibility' },
+                      { value: 'wireless_charging_compatibility', label: 'Wireless Charging Compatibility' },
+                      { value: 'compatible_watch_case_size', label: 'Compatible Watch Case Size' },
+                    ].map(opt => {
+                      const checked = categoryConfigAccessoryFields.includes(opt.value)
+                      const rule = categoryConfigRules[opt.value] || { mode: 'optional' }
+                      return (
+                        <div key={opt.value} style={{ display: 'flex', flexDirection: 'column', padding: 8, background: 'var(--bg-elevated)', borderRadius: 6, border: '1px solid var(--border-light)' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 550, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setCategoryConfigAccessoryFields([...categoryConfigAccessoryFields, opt.value])
+                                  if (!categoryConfigRules[opt.value]) {
+                                    setCategoryConfigRules({
+                                      ...categoryConfigRules,
+                                      [opt.value]: { mode: 'optional' }
+                                    })
+                                  }
+                                } else {
+                                  setCategoryConfigAccessoryFields(categoryConfigAccessoryFields.filter(x => x !== opt.value))
+                                  const updatedRules = { ...categoryConfigRules }
+                                  delete updatedRules[opt.value]
+                                  setCategoryConfigRules(updatedRules)
+                                }
+                              }}
+                            />
+                            {opt.label}
+                          </label>
+                          {checked && (
+                            <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 20 }}>
+                              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Rule Mode:</span>
+                              <select
+                                style={{ padding: '2px 6px', fontSize: 12, borderRadius: 4, background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+                                value={rule.mode}
+                                onChange={e => {
+                                  setCategoryConfigRules({
+                                    ...categoryConfigRules,
+                                    [opt.value]: { ...rule, mode: e.target.value }
+                                  })
+                                }}
+                              >
+                                <option value="required">Required</option>
+                                <option value="optional">Optional</option>
+                                <option value="hidden">Hidden</option>
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => setEditingCategoryConfig(null)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    Save Configuration
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${manageField === 'brand' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => { setManageField('brand'); setDropdownError(null); setNewDropdownValue(''); }}
+                  >
+                    Brands
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${manageField === 'product_category' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => { setManageField('product_category'); setDropdownError(null); setNewDropdownValue(''); }}
+                  >
+                    Categories
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${manageField === 'system_color' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => { setManageField('system_color'); setDropdownError(null); setNewDropdownValue(''); }}
+                  >
+                    System Colors
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddDropdownValue} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    placeholder={`Add new ${manageField === 'system_color' ? 'color' : manageField === 'product_category' ? 'category' : 'brand'}...`}
+                    value={newDropdownValue}
+                    onChange={e => setNewDropdownValue(e.target.value)}
+                    required
+                  />
+                  <button type="submit" className="btn btn-primary">
+                    Add Value
+                  </button>
+                </form>
+
+                <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-card)', maxHeight: '40vh' }}>
+                  {dropdownConfigs.filter((c: any) => c.field_name === manageField).length === 0 ? (
+                    <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                      No values configured.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {dropdownConfigs
+                        .filter((c: any) => c.field_name === manageField)
+                        .map((item: any) => (
+                          <div
+                            key={item.id}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '10px 12px',
+                              borderBottom: '1px solid var(--border-light)',
+                            }}
+                          >
+                            <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 550 }}>
+                              {item.value}
+                            </span>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              {manageField === 'product_category' && (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  style={{ padding: 4, color: 'var(--primary)', background: 'transparent', border: 'none' }}
+                                  onClick={() => setEditingCategoryConfig(item)}
+                                >
+                                  <Settings size={14} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                style={{ padding: 4, color: 'var(--red)', background: 'transparent', border: 'none' }}
+                                onClick={() => handleDeleteDropdownValue(item.id)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowDropdownManagerModal(false)}>
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

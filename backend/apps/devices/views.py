@@ -44,9 +44,30 @@ class DeviceTypeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "update": "devices.type.manage",
         "partial_update": "devices.type.manage",
         "destroy": "devices.type.manage",
+        "recalculate_compatibility": "devices.type.manage",
     }
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "code"]
+
+    @action(detail=True, methods=["post"], url_path="recalculate-compatibility")
+    def recalculate_compatibility(self, request, pk=None):
+        """Trigger remapping for all devices belonging to this Device Type."""
+        is_cixci_admin = getattr(request.user, "is_cixci_admin", False)
+        if not is_cixci_admin:
+            return Response({"error": "Only CIXCI Admins can trigger compatibility recalculation."}, status=403)
+        device_type = self.get_object()
+        try:
+            from apps.catalog.compatibility_engine import run_device_remapping
+            from django.db import transaction
+            devices = device_type.devices.all()
+            count = 0
+            with transaction.atomic():
+                for dev in devices:
+                    run_device_remapping(dev, actor_id=request.user.id, change_source="Device Type Recalculation")
+                    count += 1
+            return Response({"status": "success", "recalculated_count": count})
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -124,6 +145,8 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "feature_assignments": "devices.device.read",
         "bulk_import": "devices.device.import",
         "audit_history": "devices.device.read",
+        "recalculate_compatibility": "devices.device.manage",
+        "recalculate_bulk_compatibility": "devices.device.manage",
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["lifecycle_status", "device_type", "manufacturer"]
@@ -131,13 +154,20 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     ordering_fields = ["name", "release_date", "created_at"]
     ordering = ["-created_at"]
 
+    def initialize_request(self, request, *args, **kwargs):
+        if "import_template" in request.path:
+            self.action = "import_template"
+        return super().initialize_request(request, *args, **kwargs)
+
     def get_permissions(self):
-        if self.action == "import_template":
+        action = getattr(self, "action", None)
+        if action == "import_template":
             return []
         return super().get_permissions()
 
     def get_authenticators(self):
-        if self.action == "import_template":
+        action = getattr(self, "action", None)
+        if action == "import_template":
             return []
         return super().get_authenticators()
 
@@ -271,7 +301,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         from apps.devices.models import Manufacturer, DeviceType, Device
         
         manufacturers_by_name = {m.name.strip().lower(): m for m in Manufacturer.objects.filter(is_active=True)}
-        device_types_by_name = {t.name.strip().lower(): t for t in DeviceType.objects.filter(is_active=True, status='active')}
+        device_types_by_name = {t.name.strip().lower(): t for t in DeviceType.objects.all()}
         
         for idx, row in enumerate(rows, start=1):
             row = [r.strip() for r in row]
@@ -306,7 +336,9 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 else:
                     t_obj = device_types_by_name.get(t_lower)
                     if not t_obj:
-                        row_errors["Device Type"] = f"Device Type '{t_val}' does not exist or is inactive."
+                        row_errors["Device Type"] = f"Device Type '{t_val}' does not exist."
+                    elif not t_obj.is_active or t_obj.status != 'active':
+                        row_errors["Device Type"] = f"Device Type '{t_val}' is in {t_obj.status} status and must be configured/Active before it can be used."
                         
             if not name_val:
                 row_errors["Device Name"] = "Device Name is required."
@@ -340,7 +372,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     if import_mode == "Update Existing":
                         row_errors["Device Name"] = f"Device with Manufacturer '{m_obj.name}' and Name '{cleaned_name}' does not exist."
                         
-            if m_obj and t_obj and not row_errors.get("Launch Date") and parsed_date:
+            if m_obj and t_obj and not row_errors.get("Launch Date") and parsed_date and not row_errors.get("Device Type"):
                 serializer_data = {
                     "manufacturer": m_obj.id,
                     "name": cleaned_name,
@@ -365,7 +397,10 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         "headphone_jack_compatibility": "Headphone Jack Compatibility",
                         "bluetooth_compatibility": "Bluetooth Compatibility",
                         "wireless_charging_compatibility": "Wireless Charging Compatibility",
-                        "compatible_watch_case_size": "Compatible Watch Case Size"
+                        "compatible_watch_case_size": "Compatible Watch Case Size",
+                        "device_type": "Device Type",
+                        "launch_date": "Launch Date",
+                        "name": "Device Name"
                     }
                     for field, err_list in serializer.errors.items():
                         col_name = field_to_col.get(field, field)
@@ -424,71 +459,35 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     
                 device = Device.objects.filter(manufacturer=m_obj, name__iexact=cleaned_name).first()
                 
-                bt = row[8]
-                if not bt or bt == "":
-                    bt = "Yes"
-                    
-                charging = row[4]
-                storage = row[5]
-                max_storage = row[6]
-                headphone = row[7]
-                wireless = row[9]
-                case_size = row[10]
+                serializer_data = {
+                    "manufacturer": m_obj.id,
+                    "name": cleaned_name,
+                    "device_type": t_obj.id,
+                    "launch_date": launch_date_val,
+                    "compatible_charging_interface": row[4],
+                    "storage_expansion_compatibility": row[5],
+                    "maximum_supported_storage": row[6],
+                    "headphone_jack_compatibility": row[7],
+                    "bluetooth_compatibility": row[8],
+                    "wireless_charging_compatibility": row[9],
+                    "compatible_watch_case_size": row[10],
+                }
                 
-                d_type = t_obj.name.strip().lower()
-                if d_type == 'phone':
-                    if storage == 'Not Compatible':
-                        max_storage = 'Not Compatible'
-                    case_size = 'Not Compatible'
-                elif d_type == 'tablet':
-                    if storage == 'Not Compatible':
-                        max_storage = 'Not Compatible'
-                    wireless = 'Not Compatible'
-                    case_size = 'Not Compatible'
-                elif d_type == 'smartwatch':
-                    charging = 'Not Compatible'
-                    storage = 'Not Compatible'
-                    max_storage = 'Not Compatible'
-                    headphone = 'Not Compatible'
-                elif d_type == 'laptop':
-                    storage = 'Not Compatible'
-                    max_storage = 'Not Compatible'
-                    wireless = 'Not Compatible'
-                    case_size = 'Not Compatible'
-                    
                 if device:
                     if import_mode == "Create New Only":
                         continue
-                    device.device_type = t_obj
-                    device.launch_date = parsed_date
-                    device.compatible_charging_interface = charging
-                    device.storage_expansion_compatibility = storage
-                    device.maximum_supported_storage = max_storage
-                    device.headphone_jack_compatibility = headphone
-                    device.bluetooth_compatibility = bt
-                    device.wireless_charging_compatibility = wireless
-                    device.compatible_watch_case_size = case_size
-                    device.save(actor_id=request.user.id)
-                    updated_count += 1
+                    serializer = DeviceDetailSerializer(instance=device, data=serializer_data)
+                    if serializer.is_valid():
+                        serializer.save(actor_id=request.user.id)
+                        updated_count += 1
                 else:
                     if import_mode == "Update Existing":
                         continue
-                    device = Device.objects.create(
-                        manufacturer=m_obj,
-                        name=cleaned_name,
-                        device_type=t_obj,
-                        launch_date=parsed_date,
-                        compatible_charging_interface=charging,
-                        storage_expansion_compatibility=storage,
-                        maximum_supported_storage=max_storage,
-                        headphone_jack_compatibility=headphone,
-                        bluetooth_compatibility=bt,
-                        wireless_charging_compatibility=wireless,
-                        compatible_watch_case_size=case_size,
-                        lifecycle_status="available"
-                    )
-                    device.save(actor_id=request.user.id)
-                    imported_count += 1
+                    serializer_data["lifecycle_status"] = "available"
+                    serializer = DeviceDetailSerializer(data=serializer_data)
+                    if serializer.is_valid():
+                        serializer.save(actor_id=request.user.id)
+                        imported_count += 1
                     
         from apps.devices.services import log_device_audit
         log_device_audit(
@@ -503,6 +502,55 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             "created_count": imported_count,
             "updated_count": updated_count
         })
+
+    @action(detail=True, methods=["post"], url_path="recalculate-compatibility")
+    def recalculate_compatibility(self, request, pk=None):
+        """Trigger compatibility remapping for a single device."""
+        is_cixci_admin = getattr(request.user, "is_cixci_admin", False)
+        if not is_cixci_admin:
+            return Response({"error": "Only CIXCI Admins can trigger compatibility recalculation."}, status=403)
+        device = self.get_object()
+        try:
+            from apps.catalog.compatibility_engine import run_device_remapping
+            from django.db import transaction
+            with transaction.atomic():
+                run_device_remapping(device, actor_id=request.user.id, change_source="Manual Recalculation")
+            return Response({"status": "success", "device_name": device.name})
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
+    @action(detail=False, methods=["post"], url_path="recalculate-compatibility")
+    def recalculate_bulk_compatibility(self, request):
+        """Trigger bulk compatibility remapping at device type, manufacturer, or all active devices level."""
+        is_cixci_admin = getattr(request.user, "is_cixci_admin", False)
+        if not is_cixci_admin:
+            return Response({"error": "Only CIXCI Admins can trigger compatibility recalculation."}, status=403)
+            
+        device_type_id = request.data.get("device_type_id")
+        manufacturer_id = request.data.get("manufacturer_id")
+        recalculate_all = request.data.get("all")
+        
+        if not device_type_id and not manufacturer_id and not recalculate_all:
+            return Response({"error": "Please provide 'device_type_id', 'manufacturer_id', or 'all' to recalculate compatibility."}, status=400)
+            
+        from apps.catalog.compatibility_engine import run_device_remapping
+        from django.db import transaction
+        
+        devices = Device.objects.all()
+        if device_type_id:
+            devices = devices.filter(device_type_id=device_type_id)
+        if manufacturer_id:
+            devices = devices.filter(manufacturer_id=manufacturer_id)
+            
+        count = 0
+        try:
+            with transaction.atomic():
+                for dev in devices:
+                    run_device_remapping(dev, actor_id=request.user.id, change_source="Bulk Recalculation")
+                    count += 1
+            return Response({"status": "success", "recalculated_count": count})
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
 
 
 class FeatureGroupViewSet(CheckAccessMixin, viewsets.ModelViewSet):

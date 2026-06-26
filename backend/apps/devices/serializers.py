@@ -39,56 +39,64 @@ class DeviceTypeSerializer(serializers.ModelSerializer):
         # Enforce compatibility rules
         compatibility_rules = data.get("compatibility_rules", self.instance.compatibility_rules if self.instance else {})
         if name and not compatibility_rules:
-            # Auto-configure default compatibility rules
+            # Auto-configure default compatibility rules using backend keys
             name_lower = name.strip().lower()
             if name_lower == "phone":
                 compatibility_rules = {
-                    "compatible_charging_interface": {"mode": "required"},
-                    "storage_expansion_compatibility": {"mode": "required"},
-                    "maximum_supported_storage": {"mode": "conditional", "condition_field": "storage_expansion_compatibility", "condition_values": ["microSDXC", "microSDHC"]},
-                    "headphone_jack_compatibility": {"mode": "required"},
-                    "bluetooth_compatibility": {"mode": "required", "default_value": "Yes"},
-                    "wireless_charging_compatibility": {"mode": "required"}
+                    "charging_interface": {"mode": "required"},
+                    "storage_expansion_type": {"mode": "required"},
+                    "max_supported_storage": {"mode": "conditional", "condition_field": "storage_expansion_type", "condition_values": ["microSDXC", "microSDHC"]},
+                    "headphone_jack_type": {"mode": "required"},
+                    "bluetooth_supported": {"mode": "required", "default_value": "Yes"},
+                    "wireless_charging_type": {"mode": "required"}
                 }
             elif name_lower == "tablet":
                 compatibility_rules = {
-                    "compatible_charging_interface": {"mode": "required"},
-                    "storage_expansion_compatibility": {"mode": "required"},
-                    "maximum_supported_storage": {"mode": "conditional", "condition_field": "storage_expansion_compatibility", "condition_values": ["microSDXC", "microSDHC"]},
-                    "headphone_jack_compatibility": {"mode": "required"},
-                    "bluetooth_compatibility": {"mode": "required", "default_value": "Yes"}
+                    "charging_interface": {"mode": "required"},
+                    "storage_expansion_type": {"mode": "required"},
+                    "max_supported_storage": {"mode": "conditional", "condition_field": "storage_expansion_type", "condition_values": ["microSDXC", "microSDHC"]},
+                    "headphone_jack_type": {"mode": "required"},
+                    "bluetooth_supported": {"mode": "required", "default_value": "Yes"}
                 }
             elif name_lower == "smartwatch":
                 compatibility_rules = {
-                    "bluetooth_compatibility": {"mode": "required", "default_value": "Yes"},
-                    "wireless_charging_compatibility": {"mode": "required"},
-                    "compatible_watch_case_size": {"mode": "required"}
+                    "bluetooth_supported": {"mode": "required", "default_value": "Yes"},
+                    "wireless_charging_type": {"mode": "required"},
+                    "watch_case_size": {"mode": "required"}
                 }
             elif name_lower == "laptop":
                 compatibility_rules = {
-                    "compatible_charging_interface": {"mode": "required"},
-                    "headphone_jack_compatibility": {"mode": "required"},
-                    "bluetooth_compatibility": {"mode": "required", "default_value": "Yes"}
+                    "charging_interface": {"mode": "required"},
+                    "headphone_jack_type": {"mode": "required"},
+                    "bluetooth_supported": {"mode": "required", "default_value": "Yes"}
                 }
             data["compatibility_rules"] = compatibility_rules
 
         # Set status to active if rules are present
         if compatibility_rules and (not self.instance or self.instance.status == "setup_required"):
-            data["status"] = "active"
+            # Only set to active if supported categories are present as well
+            cats = data.get("supported_accessory_categories", self.instance.supported_accessory_categories if self.instance else [])
+            if cats:
+                data["status"] = "active"
 
         status = data.get("status", self.instance.status if self.instance else "setup_required")
         if status == "active":
             if not compatibility_rules:
                 raise serializers.ValidationError({"compatibility_rules": "Compatibility rules must be configured before a Device Type can be active."})
             
+            # Active Device Type must define eligible Product Categories
+            cats = data.get("supported_accessory_categories", self.instance.supported_accessory_categories if self.instance else [])
+            if not cats:
+                raise serializers.ValidationError({"supported_accessory_categories": "Active Device Type must define eligible Product Categories."})
+
             valid_fields = [
-                "compatible_charging_interface",
-                "storage_expansion_compatibility",
-                "maximum_supported_storage",
-                "headphone_jack_compatibility",
-                "bluetooth_compatibility",
-                "wireless_charging_compatibility",
-                "compatible_watch_case_size"
+                "compatible_charging_interface", "charging_interface",
+                "storage_expansion_compatibility", "storage_expansion_type",
+                "maximum_supported_storage", "max_supported_storage",
+                "headphone_jack_compatibility", "headphone_jack_type",
+                "bluetooth_compatibility", "bluetooth_supported",
+                "wireless_charging_compatibility", "wireless_charging_type",
+                "compatible_watch_case_size", "watch_case_size"
             ]
             valid_modes = ["required", "optional", "hidden", "defaulted", "conditional"]
             for field, rule in compatibility_rules.items():
@@ -185,294 +193,224 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
         if not device_type:
             raise serializers.ValidationError({"device_type": "Device Type is required."})
             
-        t_name = device_type.name.strip().lower()
-        if t_name == "smartphone":
-            t_name = "phone"
-        if t_name not in ['phone', 'tablet', 'smartwatch', 'laptop']:
-            raise serializers.ValidationError({"device_type": "Device Type must be Phone, Tablet, Smartwatch or Laptop."})
-            
+        # Validate Device Type Status
         if not self.instance:
-            if not device_type.is_active or device_type.status != 'active':
-                raise serializers.ValidationError({"device_type": f"Device Type '{device_type.name}' is inactive."})
+            request = self.context.get('request')
+            is_admin = request and request.user and getattr(request.user, 'is_cixci_admin', False)
+            if device_type.status == 'setup_required':
+                if not is_admin:
+                    raise serializers.ValidationError({"device_type": f"Device Type '{device_type.name}' is in Setup Required status and only CIXCI Admins can create devices with it."})
+            elif device_type.status != 'active':
+                raise serializers.ValidationError({"device_type": f"Device Type '{device_type.name}' is not Active."})
 
-        # 3. Clean and Validate Compatibility Fields by Device Type
-        compat_fields = [
-            "compatible_charging_interface",
-            "storage_expansion_compatibility",
-            "maximum_supported_storage",
-            "headphone_jack_compatibility",
-            "bluetooth_compatibility",
-            "wireless_charging_compatibility",
-            "compatible_watch_case_size"
-        ]
+        # 3. Dynamic Compatibility Rules
+        rules = device_type.compatibility_rules or {}
         
-        raw_vals = {}
-        for f in compat_fields:
-            raw_vals[f] = attrs.get(f)
-            if raw_vals[f] is None:
+        # We have 7 compatibility fields. Let's map model fields to backend keys and vice versa:
+        FIELD_MAP = {
+            "compatible_charging_interface": "charging_interface",
+            "storage_expansion_compatibility": "storage_expansion_type",
+            "maximum_supported_storage": "max_supported_storage",
+            "headphone_jack_compatibility": "headphone_jack_type",
+            "bluetooth_compatibility": "bluetooth_supported",
+            "wireless_charging_compatibility": "wireless_charging_type",
+            "compatible_watch_case_size": "watch_case_size"
+        }
+        
+        # Resolve the rule mode and details for each model field:
+        # Note: rules may be keyed by model field OR by backend key.
+        def get_rule_for_field(model_field):
+            b_key = FIELD_MAP[model_field]
+            if model_field in rules:
+                return rules[model_field]
+            if b_key in rules:
+                return rules[b_key]
+            return None
+
+        # Clean/normalize all fields first
+        cleaned_vals = {}
+        for f in FIELD_MAP.keys():
+            val = attrs.get(f)
+            if val is None:
                 if self.instance and hasattr(self.instance, f):
-                    raw_vals[f] = getattr(self.instance, f)
+                    val = getattr(self.instance, f)
                 else:
-                    raw_vals[f] = ""
-            raw_vals[f] = str(raw_vals[f]).strip()
+                    val = ""
+            cleaned_vals[f] = str(val).strip()
 
-        # Enforce defaults & requirements per type
-        bt_val = raw_vals["bluetooth_compatibility"]
-        if not bt_val or bt_val == "" or bt_val.lower() == "yes":
-            bt_val = "Yes"
-        elif bt_val.lower() == "no":
-            bt_val = "No"
-        else:
-            raise serializers.ValidationError({"bluetooth_compatibility": "Bluetooth Compatibility must be Yes or No."})
-        attrs["bluetooth_compatibility"] = bt_val
+        # Helper to check if a value is "empty"
+        def is_empty(val, field_name):
+            if field_name == "bluetooth_compatibility":
+                return not val or val.lower() == "no"
+            return not val or val == "" or val.lower() == "not compatible"
 
-        if t_name == "phone":
-            # charging
-            chg = raw_vals["compatible_charging_interface"]
-            if not chg or chg == "":
-                raise serializers.ValidationError({"compatible_charging_interface": "Compatible Charging Interface is required."})
-            chg_lower = chg.lower()
-            if chg_lower == "type-c":
-                chg = "Type-C"
-            elif chg_lower == "lightning":
-                chg = "Lightning"
-            elif chg_lower == "not compatible":
-                chg = "Not Compatible"
-            else:
-                raise serializers.ValidationError({"compatible_charging_interface": "Compatible Charging Interface must be Type-C, Lightning, or Not Compatible."})
-            attrs["compatible_charging_interface"] = chg
+        # Apply rules for each field
+        for f, b_key in FIELD_MAP.items():
+            rule = get_rule_for_field(f)
+            mode = rule.get("mode", "optional") if rule else "optional"
+            
+            # 1. Hidden mode
+            if mode == "hidden":
+                attrs[f] = "No" if f == "bluetooth_compatibility" else "Not Compatible"
+                cleaned_vals[f] = attrs[f]
+                continue
+                
+            # 2. Defaulted mode
+            if mode == "defaulted":
+                if is_empty(cleaned_vals[f], f):
+                    default_val = rule.get("default_value")
+                    if not default_val:
+                        default_val = "Yes" if f == "bluetooth_compatibility" else "Not Compatible"
+                    attrs[f] = default_val
+                    cleaned_vals[f] = default_val
 
-            # storage expansion
-            se = raw_vals["storage_expansion_compatibility"]
-            if not se or se == "":
-                raise serializers.ValidationError({"storage_expansion_compatibility": "Storage Expansion Compatibility is required."})
-            se_lower = se.lower()
-            if se_lower == "microsdxc":
-                se = "microSDXC"
-            elif se_lower == "microsdhc":
-                se = "microSDHC"
-            elif se_lower == "not compatible":
-                se = "Not Compatible"
-            else:
-                raise serializers.ValidationError({"storage_expansion_compatibility": "Storage Expansion Compatibility must be microSDXC, microSDHC, or Not Compatible."})
-            attrs["storage_expansion_compatibility"] = se
+            # 3. Required mode
+            if mode == "required":
+                if is_empty(cleaned_vals[f], f):
+                    raise serializers.ValidationError({f: f"{f.replace('_', ' ').title().replace('Compatibility', '').strip()} is required."})
 
-            # max storage
-            ms = raw_vals["maximum_supported_storage"]
-            if se in ["microSDXC", "microSDHC"]:
-                if not ms or ms == "":
-                    raise serializers.ValidationError({"maximum_supported_storage": "Maximum Supported Storage is required."})
-                ms_upper = ms.upper()
-                if se == "microSDXC":
-                    allowed_ms = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
+            # 4. Conditional mode
+            if mode == "conditional":
+                cond_field = rule.get("condition_field")
+                cond_values = rule.get("condition_values", [])
+                # The condition field in rules could be a model field or a backend key
+                cond_model_field = cond_field
+                if cond_field in FIELD_MAP.values():
+                    # Map backend key to model field
+                    for k, v in FIELD_MAP.items():
+                        if v == cond_field:
+                            cond_model_field = k
+                            break
+                            
+                # Get the value of the condition field
+                cond_val = cleaned_vals.get(cond_model_field, "")
+                # Normalize condition values and value for comparison
+                cond_val_norm = cond_val.lower()
+                cond_values_norm = [cv.lower() for cv in cond_values]
+                
+                if cond_val_norm in cond_values_norm:
+                    # Required!
+                    if is_empty(cleaned_vals[f], f):
+                        raise serializers.ValidationError({f: f"{f.replace('_', ' ').title().replace('Compatibility', '').strip()} is required."})
                 else:
-                    allowed_ms = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
-                if ms_upper not in allowed_ms:
-                    raise serializers.ValidationError({"maximum_supported_storage": "Maximum Supported Storage must match the allowed list for the selected storage type."})
-                attrs["maximum_supported_storage"] = ms_upper
-            else:
-                attrs["maximum_supported_storage"] = "Not Compatible"
+                    # Not required; if empty, we can default to Not Compatible
+                    if is_empty(cleaned_vals[f], f):
+                        attrs[f] = "No" if f == "bluetooth_compatibility" else "Not Compatible"
+                        cleaned_vals[f] = attrs[f]
 
-            # headphone jack
-            hj = raw_vals["headphone_jack_compatibility"]
-            if not hj or hj == "":
-                raise serializers.ValidationError({"headphone_jack_compatibility": "Headphone Jack Compatibility is required."})
-            hj_lower = hj.lower()
-            if hj_lower == "type-c":
-                hj = "Type-C"
-            elif hj_lower == "lightning":
-                hj = "Lightning"
-            elif hj_lower == "not compatible":
-                hj = "Not Compatible"
-            else:
-                raise serializers.ValidationError({"headphone_jack_compatibility": "Headphone Jack Compatibility must be Type-C, Lightning, or Not Compatible."})
-            attrs["headphone_jack_compatibility"] = hj
+        # 4. Validate value lists for each field
+        for f, val in cleaned_vals.items():
+            # If field is hidden, it has already been forced above.
+            rule = get_rule_for_field(f)
+            mode = rule.get("mode", "optional") if rule else "optional"
+            if mode == "hidden":
+                continue
 
-            # wireless charging
-            wc = raw_vals["wireless_charging_compatibility"]
-            if not wc or wc == "":
-                raise serializers.ValidationError({"wireless_charging_compatibility": "Wireless Charging Compatibility is required."})
-            wc_vals = [w.strip() for w in wc.split('+') if w.strip()]
-            if not wc_vals:
-                raise serializers.ValidationError({"wireless_charging_compatibility": "Wireless Charging Compatibility is required."})
-            
-            normalized_wc_vals = []
-            for w in wc_vals:
-                wl = w.lower()
-                if wl == "magsafe":
-                    normalized_wc_vals.append("MagSafe")
-                elif wl == "qi":
-                    normalized_wc_vals.append("Qi")
-                elif wl == "qi2":
-                    normalized_wc_vals.append("Qi2")
-                elif wl == "not compatible":
-                    normalized_wc_vals.append("Not Compatible")
+            if f == "bluetooth_compatibility":
+                if val.lower() == "yes" or not val:
+                    attrs[f] = "Yes"
+                elif val.lower() == "no":
+                    attrs[f] = "No"
                 else:
-                    raise serializers.ValidationError({"wireless_charging_compatibility": f"Invalid Wireless Charging value '{w}'."})
-            
-            if "Not Compatible" in normalized_wc_vals and len(normalized_wc_vals) > 1:
-                raise serializers.ValidationError({"wireless_charging_compatibility": "Not Compatible cannot be selected with any other value."})
-            if "Qi" in normalized_wc_vals and ("MagSafe" in normalized_wc_vals or "Qi2" in normalized_wc_vals):
-                raise serializers.ValidationError({"wireless_charging_compatibility": "Qi cannot be selected with MagSafe or Qi2."})
-            
-            attrs["wireless_charging_compatibility"] = "+".join(normalized_wc_vals)
-            attrs["compatible_watch_case_size"] = "Not Compatible"
-
-        elif t_name == "tablet":
-            # charging
-            chg = raw_vals["compatible_charging_interface"]
-            if not chg or chg == "":
-                raise serializers.ValidationError({"compatible_charging_interface": "Compatible Charging Interface is required."})
-            chg_lower = chg.lower()
-            if chg_lower == "type-c":
-                chg = "Type-C"
-            elif chg_lower == "lightning":
-                chg = "Lightning"
-            elif chg_lower == "not compatible":
-                chg = "Not Compatible"
-            else:
-                raise serializers.ValidationError({"compatible_charging_interface": "Compatible Charging Interface must be Type-C, Lightning, or Not Compatible."})
-            attrs["compatible_charging_interface"] = chg
-
-            # storage expansion
-            se = raw_vals["storage_expansion_compatibility"]
-            if not se or se == "":
-                raise serializers.ValidationError({"storage_expansion_compatibility": "Storage Expansion Compatibility is required."})
-            se_lower = se.lower()
-            if se_lower == "microsdxc":
-                se = "microSDXC"
-            elif se_lower == "microsdhc":
-                se = "microSDHC"
-            elif se_lower == "not compatible":
-                se = "Not Compatible"
-            else:
-                raise serializers.ValidationError({"storage_expansion_compatibility": "Storage Expansion Compatibility must be microSDXC, microSDHC, or Not Compatible."})
-            attrs["storage_expansion_compatibility"] = se
-
-            # max storage
-            ms = raw_vals["maximum_supported_storage"]
-            if se in ["microSDXC", "microSDHC"]:
-                if not ms or ms == "":
-                    raise serializers.ValidationError({"maximum_supported_storage": "Maximum Supported Storage is required."})
-                ms_upper = ms.upper()
-                if se == "microSDXC":
-                    allowed_ms = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
+                    raise serializers.ValidationError({f: "Bluetooth Compatibility must be Yes or No."})
+                    
+            elif f == "compatible_charging_interface":
+                vl = val.lower()
+                if vl == "type-c":
+                    attrs[f] = "Type-C"
+                elif vl == "lightning":
+                    attrs[f] = "Lightning"
+                elif vl == "not compatible" or not val:
+                    attrs[f] = "Not Compatible"
                 else:
-                    allowed_ms = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
-                if ms_upper not in allowed_ms:
-                    raise serializers.ValidationError({"maximum_supported_storage": "Maximum Supported Storage must match the allowed list for the selected storage type."})
-                attrs["maximum_supported_storage"] = ms_upper
-            else:
-                attrs["maximum_supported_storage"] = "Not Compatible"
-
-            # headphone jack
-            hj = raw_vals["headphone_jack_compatibility"]
-            if not hj or hj == "":
-                raise serializers.ValidationError({"headphone_jack_compatibility": "Headphone Jack Compatibility is required."})
-            hj_lower = hj.lower()
-            if hj_lower == "type-c":
-                hj = "Type-C"
-            elif hj_lower == "lightning":
-                hj = "Lightning"
-            elif hj_lower == "not compatible":
-                hj = "Not Compatible"
-            else:
-                raise serializers.ValidationError({"headphone_jack_compatibility": "Headphone Jack Compatibility must be Type-C, Lightning, or Not Compatible."})
-            attrs["headphone_jack_compatibility"] = hj
-
-            # force others
-            attrs["wireless_charging_compatibility"] = "Not Compatible"
-            attrs["compatible_watch_case_size"] = "Not Compatible"
-
-        elif t_name == "smartwatch":
-            # wireless charging
-            wc = raw_vals["wireless_charging_compatibility"]
-            if not wc or wc == "":
-                raise serializers.ValidationError({"wireless_charging_compatibility": "Wireless Charging Compatibility is required."})
-            wc_vals = [w.strip() for w in wc.split('+') if w.strip()]
-            if not wc_vals:
-                raise serializers.ValidationError({"wireless_charging_compatibility": "Wireless Charging Compatibility is required."})
-            
-            normalized_wc_vals = []
-            for w in wc_vals:
-                wl = w.lower()
-                if wl == "magsafe":
-                    normalized_wc_vals.append("MagSafe")
-                elif wl == "qi":
-                    normalized_wc_vals.append("Qi")
-                elif wl == "qi2":
-                    normalized_wc_vals.append("Qi2")
-                elif wl == "not compatible":
-                    normalized_wc_vals.append("Not Compatible")
+                    raise serializers.ValidationError({f: "Compatible Charging Interface must be Type-C, Lightning, or Not Compatible."})
+                    
+            elif f == "headphone_jack_compatibility":
+                vl = val.lower()
+                if vl == "type-c":
+                    attrs[f] = "Type-C"
+                elif vl == "lightning":
+                    attrs[f] = "Lightning"
+                elif vl == "not compatible" or not val:
+                    attrs[f] = "Not Compatible"
                 else:
-                    raise serializers.ValidationError({"wireless_charging_compatibility": f"Invalid Wireless Charging value '{w}'."})
-            
-            if "Not Compatible" in normalized_wc_vals and len(normalized_wc_vals) > 1:
-                raise serializers.ValidationError({"wireless_charging_compatibility": "Not Compatible cannot be selected with any other value."})
-            if "Qi" in normalized_wc_vals and ("MagSafe" in normalized_wc_vals or "Qi2" in normalized_wc_vals):
-                raise serializers.ValidationError({"wireless_charging_compatibility": "Qi cannot be selected with MagSafe or Qi2."})
-            
-            attrs["wireless_charging_compatibility"] = "+".join(normalized_wc_vals)
-
-            # watch case size
-            wcs = raw_vals["compatible_watch_case_size"]
-            if not wcs or wcs == "":
-                raise serializers.ValidationError({"compatible_watch_case_size": "Compatible Watch Case Size is required."})
-            wcs_lower = wcs.lower()
-            allowed_wcs = ["not compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
-            if wcs_lower not in allowed_wcs:
-                raise serializers.ValidationError({"compatible_watch_case_size": "Compatible Watch Case Size must be 40mm, 41mm, 42mm, 44mm, 45mm, 46mm, 49mm, or Not Compatible."})
-            
-            if wcs_lower == "not compatible":
-                wcs = "Not Compatible"
-            else:
-                wcs = wcs_lower
-            attrs["compatible_watch_case_size"] = wcs
-
-            # force others
-            attrs["compatible_charging_interface"] = "Not Compatible"
-            attrs["storage_expansion_compatibility"] = "Not Compatible"
-            attrs["maximum_supported_storage"] = "Not Compatible"
-            attrs["headphone_jack_compatibility"] = "Not Compatible"
-
-        elif t_name == "laptop":
-            # charging
-            chg = raw_vals["compatible_charging_interface"]
-            if not chg or chg == "":
-                raise serializers.ValidationError({"compatible_charging_interface": "Compatible Charging Interface is required."})
-            chg_lower = chg.lower()
-            if chg_lower == "type-c":
-                chg = "Type-C"
-            elif chg_lower == "lightning":
-                chg = "Lightning"
-            elif chg_lower == "not compatible":
-                chg = "Not Compatible"
-            else:
-                raise serializers.ValidationError({"compatible_charging_interface": "Compatible Charging Interface must be Type-C, Lightning, or Not Compatible."})
-            attrs["compatible_charging_interface"] = chg
-
-            # headphone jack
-            hj = raw_vals["headphone_jack_compatibility"]
-            if not hj or hj == "":
-                raise serializers.ValidationError({"headphone_jack_compatibility": "Headphone Jack Compatibility is required."})
-            hj_lower = hj.lower()
-            if hj_lower == "type-c":
-                hj = "Type-C"
-            elif hj_lower == "lightning":
-                hj = "Lightning"
-            elif hj_lower == "not compatible":
-                hj = "Not Compatible"
-            else:
-                raise serializers.ValidationError({"headphone_jack_compatibility": "Headphone Jack Compatibility must be Type-C, Lightning, or Not Compatible."})
-            attrs["headphone_jack_compatibility"] = hj
-
-            # force others
-            attrs["storage_expansion_compatibility"] = "Not Compatible"
-            attrs["maximum_supported_storage"] = "Not Compatible"
-            attrs["wireless_charging_compatibility"] = "Not Compatible"
-            attrs["compatible_watch_case_size"] = "Not Compatible"
-
+                    raise serializers.ValidationError({f: "Headphone Jack Compatibility must be Type-C, Lightning, or Not Compatible."})
+                    
+            elif f == "storage_expansion_compatibility":
+                vl = val.lower()
+                if vl == "microsdxc":
+                    attrs[f] = "microSDXC"
+                elif vl == "microsdhc":
+                    attrs[f] = "microSDHC"
+                elif vl == "not compatible" or not val:
+                    attrs[f] = "Not Compatible"
+                else:
+                    raise serializers.ValidationError({f: "Storage Expansion Compatibility must be microSDXC, microSDHC, or Not Compatible."})
+                    
+            elif f == "maximum_supported_storage":
+                se_val = attrs.get("storage_expansion_compatibility", "Not Compatible")
+                if se_val in ["microSDXC", "microSDHC"]:
+                    vu = val.upper()
+                    if se_val == "microSDXC":
+                        allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
+                    else:
+                        allowed = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
+                    if vu not in allowed:
+                        raise serializers.ValidationError({f: f"Maximum Supported Storage must match the allowed list ({', '.join(allowed)}) for {se_val}."})
+                    attrs[f] = vu
+                else:
+                    attrs[f] = "Not Compatible"
+                    
+            elif f == "compatible_watch_case_size":
+                vl = val.lower()
+                allowed_wcs = ["not compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
+                if not val or vl == "" or vl == "not compatible":
+                    attrs[f] = "Not Compatible"
+                elif vl not in allowed_wcs:
+                    raise serializers.ValidationError({f: "Compatible Watch Case Size must be 40mm, 41mm, 42mm, 44mm, 45mm, 46mm, 49mm, or Not Compatible."})
+                else:
+                    attrs[f] = vl
+                    
+            elif f == "wireless_charging_compatibility":
+                if not val or val.lower() == "not compatible":
+                    attrs[f] = "Not Compatible"
+                else:
+                    import re
+                    parts = [p.strip() for p in re.split(r'[\+,;]', val) if p.strip()]
+                    normalized = []
+                    for p in parts:
+                        pl = p.lower()
+                        if pl == "magsafe":
+                            normalized.append("MagSafe")
+                        elif pl == "qi":
+                            normalized.append("Qi")
+                        elif pl == "qi2":
+                            normalized.append("Qi2")
+                        elif pl == "not compatible":
+                            normalized.append("Not Compatible")
+                        else:
+                            raise serializers.ValidationError({f: f"Invalid Wireless Charging value '{p}'."})
+                            
+                    if "Not Compatible" in normalized and len(normalized) > 1:
+                        raise serializers.ValidationError({f: "Not Compatible cannot be selected with any other value."})
+                    if "Qi" in normalized and ("MagSafe" in normalized or "Qi2" in normalized):
+                        raise serializers.ValidationError({f: "Qi cannot be selected with MagSafe or Qi2."})
+                        
+                    attrs[f] = "+".join(normalized)
+                    
         return attrs
+
+    def create(self, validated_data):
+        actor_id = validated_data.pop("actor_id", None)
+        if actor_id:
+            validated_data["imported_by"] = actor_id
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        actor_id = validated_data.pop("actor_id", None)
+        if actor_id:
+            validated_data["imported_by"] = actor_id
+        return super().update(instance, validated_data)
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

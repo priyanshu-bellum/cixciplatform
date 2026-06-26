@@ -457,4 +457,70 @@ class TestOutOfStockStatus:
         assert resp.data["rows_failed"] == 1
         assert "was not found for this vendor" in resp.data["errors"][0]["validation_error"]
 
+    def test_bulk_upload_compatibility_fields(self, buyer_client, buyer_user):
+        """Test bulk upload endpoint parsing separate compatibility columns and validation."""
+        import io
+        from apps.catalog.models import DynamicDropdownConfig, Product
+
+        # Setup drop down configs
+        DynamicDropdownConfig.objects.get_or_create(field_name="brand", value="TestBrand", display_name="TestBrand")
+        DynamicDropdownConfig.objects.update_or_create(
+            field_name="product_category",
+            value="Memory",
+            defaults={
+                "display_name": "Memory",
+                "status": "active",
+                "compatibility_mode": "feature_based",
+                "eligible_device_types": ["smartphone"],
+                "match_logic": "AND",
+                "accessory_fields": ["storage_expansion_compatibility", "memory_capacity"],
+                "compatibility_rules": {
+                    "storage_expansion_compatibility": {"mode": "required"},
+                    "memory_capacity": {
+                        "mode": "conditional",
+                        "condition_field": "storage_expansion_compatibility",
+                        "condition_values": ["microSDXC", "microSDHC"]
+                    }
+                }
+            }
+        )
+
+        # 1. Upload valid Memory product with separate columns
+        csv_data = (
+            "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,Storage Expansion Compatibility,Memory Capacity\n"
+            "MEM-SKU-100,TestBrand,Memory,123456789012,06/18/2026,10.00,20.00,Test Memory,Premium memory,Active,microSDXC,2TB\n"
+        )
+        file_obj = io.BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "catalog_import.csv"
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "create_only"},
+            format="multipart"
+        )
+        assert resp.status_code == 200
+        assert resp.data["rows_failed"] == 0
+        assert resp.data["rows_staged"] + resp.data["rows_passed"] == 1
+        
+        # Verify created product compatibility fields
+        prod = Product.objects.get(sku="MEM-SKU-100")
+        assert prod.storage_expansion_compatibility == "microSDXC"
+        assert prod.memory_capacity == "2TB"
+
+        # 2. Upload invalid Memory product (microSDXC + 1.5TB is invalid)
+        csv_data_invalid = (
+            "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,Storage Expansion Compatibility,Memory Capacity\n"
+            "MEM-SKU-200,TestBrand,Memory,123456789013,06/18/2026,10.00,20.00,Test Memory 2,Premium memory,Active,microSDXC,1.5TB\n"
+        )
+        file_obj = io.BytesIO(csv_data_invalid.encode("utf-8"))
+        file_obj.name = "catalog_import_fail.csv"
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "create_only"},
+            format="multipart"
+        )
+        assert resp.status_code == 207
+        assert resp.data["rows_failed"] == 1
+        assert "must match allowed list" in resp.data["errors"][0]["validation_error"]
+
+
 
