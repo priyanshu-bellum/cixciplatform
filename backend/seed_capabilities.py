@@ -79,28 +79,33 @@ for cap_code in sorted(capabilities):
     if created:
         print(f"Created capability: {cap_code}")
 
-# Get standard users
-buyer_user = User.objects.filter(email='buyer@cixci.com').first()
-vendor_user = User.objects.filter(email='vendor@cixci.com').first()
+# Assign capabilities to all users based on company type
+buyer_modules = ['devices', 'catalog', 'pricing', 'invoicing', 'procurement', 'tenant', 'media', 'analytics', 'integration', 'notifications', 'launch']
+buyer_caps = [c for c in capabilities if c.split('.')[0] in buyer_modules]
 
-if buyer_user:
-    buyer_modules = ['devices', 'catalog', 'pricing', 'invoicing', 'procurement', 'tenant', 'media', 'analytics', 'integration', 'notifications', 'launch']
-    buyer_caps = [c for c in capabilities if c.split('.')[0] in buyer_modules]
-    buyer_user.capabilities.clear()
-    for cap_code in buyer_caps:
-        cap = Capability.objects.get(code=cap_code)
-        buyer_user.capabilities.add(cap)
-    print(f"Assigned {len(buyer_caps)} capabilities to buyer@cixci.com")
+vendor_modules = ['catalog', 'routing', 'fulfillment', 'invoicing', 'tenant', 'media', 'notifications']
+vendor_caps = [c for c in capabilities if c.split('.')[0] in vendor_modules]
+# Explicitly add read-only device capabilities for mapping compatibility
+for c in capabilities:
+    if c in ["devices.device.list", "devices.device.read"]:
+        vendor_caps.append(c)
 
-if vendor_user:
-    vendor_modules = ['catalog', 'routing', 'fulfillment', 'invoicing', 'tenant', 'media', 'notifications']
-    vendor_caps = [c for c in capabilities if c.split('.')[0] in vendor_modules]
-    # Explicitly add read-only device capabilities for mapping compatibility
-    for c in capabilities:
-        if c in ["devices.device.list", "devices.device.read"]:
-            vendor_caps.append(c)
-    vendor_user.capabilities.clear()
-    for cap_code in vendor_caps:
-        cap = Capability.objects.get(code=cap_code)
-        vendor_user.capabilities.add(cap)
-    print(f"Assigned {len(vendor_caps)} capabilities to vendor@cixci.com")
+for user in User.objects.all():
+    if not user.entity or not user.entity.company:
+        continue
+        
+    company_type = user.entity.company.company_type
+    if company_type == 'buyer':
+        user.capabilities.clear()
+        for cap_code in buyer_caps:
+            cap = Capability.objects.get(code=cap_code)
+            user.capabilities.add(cap)
+            user.entity.company.capabilities.add(cap)
+        print(f"Assigned {len(buyer_caps)} capabilities to buyer user: {user.email}")
+    elif company_type == 'vendor':
+        user.capabilities.clear()
+        for cap_code in vendor_caps:
+            cap = Capability.objects.get(code=cap_code)
+            user.capabilities.add(cap)
+            user.entity.company.capabilities.add(cap)
+        print(f"Assigned {len(vendor_caps)} capabilities to vendor user: {user.email}")
