@@ -117,6 +117,11 @@ class TestDeviceEndpoints:
             "device_type": str(device_type.id),
             "manufacturer": str(manufacturer.id),
             "lifecycle_status": "announced",
+            "compatible_charging_interface": "Type-C",
+            "storage_expansion_compatibility": "Not Compatible",
+            "headphone_jack_compatibility": "Not Compatible",
+            "bluetooth_compatibility": "Yes",
+            "wireless_charging_compatibility": "MagSafe",
         })
         assert resp.status_code == 201
         assert resp.data["name"] == "NewPhone Pro"
@@ -261,3 +266,40 @@ class TestPortfolioService:
 
         with pytest.raises(PermissionError, match="check_access denied"):
             add_device_to_portfolio(user_no_cap, dev.id)
+
+
+# ── CSV Import Tests ──────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+class TestDeviceBulkImport:
+    def test_bulk_import_csv_normalizes_smartphone_and_handles_extra_commas(self, admin_client, db):
+        from apps.devices.models import Manufacturer, DeviceType, Device
+        
+        # Setup active manufacturer and device types
+        m = Manufacturer.objects.create(name="Apple", is_active=True)
+        t = DeviceType.objects.create(name="Phone", code="phone", status="active", is_active=True)
+        
+        import csv
+        import io
+        
+        csv_content = (
+            "Device Manufacturer,Device Name,Device Type,Launch Date,Compatible Charging Interface,"
+            "Storage Expansion Compatibility,Maximum Supported Storage,Headphone Jack Compatibility,"
+            "Bluetooth Compatibility,Wireless Charging Compatibility,Compatible Watch Case Size,,,,,,,,,,,,,,,,\n"
+            "Apple,iPhone 17,Smartphone,9/15/2026,Type-C,Not Compatible,,Type-C,Yes,MagSafe,Not Compatible,,,,,,,,,,,,,,,,\n"
+        )
+        
+        file_obj = io.BytesIO(csv_content.encode('utf-8-sig'))
+        file_obj.name = "import_test.csv"
+        
+        resp = admin_client.post("/api/v1/devices/devices/bulk_import/", {
+            "file": file_obj,
+            "import_mode": "Create New Only"
+        }, format="multipart")
+        
+        assert resp.status_code == 200, resp.data
+        assert resp.data["created_count"] == 1
+        
+        # Verify device was created and type was mapped to Phone
+        dev = Device.objects.get(name="iPhone 17", manufacturer=m)
+        assert dev.device_type == t

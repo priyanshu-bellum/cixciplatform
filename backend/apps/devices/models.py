@@ -181,12 +181,17 @@ class Device(models.Model):
             "storage_expansion_compatibility", "maximum_supported_storage",
             "compatible_watch_case_size"
         ]
-
+        old_manufacturer = None
+        old_type = None
+        old_name = None
         if not is_new:
             try:
                 old_self = Device.objects.get(pk=self.pk)
                 old_status = old_self.lifecycle_status
                 old_launch = old_self.launch_date
+                old_manufacturer = old_self.manufacturer
+                old_type = old_self.device_type
+                old_name = old_self.name
                 for f in compat_fields:
                     old_compat_fields[f] = getattr(old_self, f)
             except Device.DoesNotExist:
@@ -194,20 +199,40 @@ class Device(models.Model):
 
         super().save(*args, **kwargs)
 
-        # Log status change in audit log
-        if not is_new and old_status != self.lifecycle_status:
-            try:
-                from apps.devices.services import log_device_audit
+        # Log detailed changes in audit log
+        try:
+            from apps.devices.services import log_device_audit
+            if is_new:
                 log_device_audit(
-                    event_code="devices.device.status_changed",
-                    description=f"Device lifecycle status changed from '{old_status}' to '{self.lifecycle_status}'.",
+                    event_code="devices.device.created",
+                    description=f"Device created: '{self.manufacturer.name} {self.name}'. Status: '{self.lifecycle_status}'. Type: '{self.device_type.name}'.",
                     device_id=self.id,
                     actor_id=actor_id or self.imported_by
                 )
-            except Exception as e:
-                import logging
-                logger = logging.getLogger("apps.devices")
-                logger.error(f"Failed to log device status change: {e}")
+            else:
+                changes = []
+                if old_status != self.lifecycle_status:
+                    changes.append(f"status from '{old_status}' to '{self.lifecycle_status}'")
+                if old_manufacturer != self.manufacturer:
+                    changes.append(f"manufacturer from '{old_manufacturer.name if old_manufacturer else 'None'}' to '{self.manufacturer.name}'")
+                if old_type != self.device_type:
+                    changes.append(f"type from '{old_type.name if old_type else 'None'}' to '{self.device_type.name}'")
+                if old_name != self.name:
+                    changes.append(f"name from '{old_name}' to '{self.name}'")
+                if old_launch != self.launch_date:
+                    changes.append(f"launch date from '{old_launch}' to '{self.launch_date}'")
+                
+                if changes:
+                    log_device_audit(
+                        event_code="devices.device.updated",
+                        description=f"Device updated: {', '.join(changes)}.",
+                        device_id=self.id,
+                        actor_id=actor_id or self.imported_by
+                    )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger("apps.devices")
+            logger.error(f"Failed to log device audit record: {e}")
 
         trigger_remap = is_new
         if not is_new:

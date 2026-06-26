@@ -55,7 +55,14 @@ class DeviceTypeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 {"error": "Cannot delete Device Type. It is already tied to existing devices. You may deactivate it instead."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        return super().destroy(request, *args, **kwargs)
+        from django.db.models.deletion import ProtectedError
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {"error": "Cannot delete. It is already in use. You may deactivate or archive it instead."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class ManufacturerViewSet(CheckAccessMixin, viewsets.ModelViewSet):
@@ -79,7 +86,14 @@ class ManufacturerViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 {"error": "Cannot delete manufacturer. It is already tied to existing devices. You may deactivate it instead."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        return super().destroy(request, *args, **kwargs)
+        from django.db.models.deletion import ProtectedError
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {"error": "Cannot delete. It is already in use. You may deactivate or archive it instead."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
@@ -110,6 +124,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "feature_assignments": "devices.device.read",
         "import_template": "devices.device.import",
         "bulk_import": "devices.device.import",
+        "audit_history": "devices.device.read",
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["lifecycle_status", "device_type", "manufacturer"]
@@ -144,10 +159,55 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         )
         return Response(DeviceFeatureAssignmentSerializer(assignments, many=True).data)
 
+    @action(detail=True, methods=["get"])
+    def audit_history(self, request, pk=None):
+        """Retrieves audit logs for a device."""
+        device = self.get_object()
+        from apps.audit.models import AuditRecord
+        
+        records = AuditRecord.objects.filter(
+            source_module="devices",
+            source_record_type="Device",
+            source_record_id=str(device.id)
+        ).order_by("-created_at")
+        
+        history = []
+        for r in records:
+            history.append({
+                "id": str(r.id),
+                "created_at": r.created_at,
+                "event_code": r.event_code,
+                "description": r.event_description,
+                "status": r.status,
+                "actor_id": str(r.actor_reference) if r.actor_reference else None,
+            })
+        return Response(history)
+
     @action(detail=False, methods=["get"])
     def import_template(self, request):
-        import csv
+        import os
         from django.http import HttpResponse
+        from django.conf import settings
+        
+        file_paths = [
+            os.path.join(settings.BASE_DIR, "Device CSV Template test.csv"),
+            os.path.join(settings.BASE_DIR, "..", "Device CSV Template test.csv"),
+            os.path.abspath("Device CSV Template test.csv"),
+            os.path.abspath("../Device CSV Template test.csv"),
+        ]
+        
+        for path in file_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, 'rb') as f:
+                        content = f.read()
+                    response = HttpResponse(content, content_type='text/csv')
+                    response['Content-Disposition'] = 'attachment; filename="device_import_template.csv"'
+                    return response
+                except Exception:
+                    pass
+                    
+        import csv
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="device_import_template.csv"'
         writer = csv.writer(response)
@@ -158,9 +218,9 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             "Compatible Watch Case Size"
         ])
         writer.writerow([
-            "Apple", "iPhone 16 Pro Max", "Phone", "09/20/2024",
+            "Apple", "iPhone 17", "Phone", "09/15/2026",
             "Type-C", "Not Compatible", "",
-            "Not Compatible", "Yes", "MagSafe+Qi2", "Not Compatible"
+            "Type-C", "Yes", "MagSafe", "Not Compatible"
         ])
         return response
 
@@ -190,7 +250,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             "Compatible Watch Case Size"
         ]
         
-        headers = [h.strip() for h in headers]
+        headers = [h.strip() for h in headers if h.strip()]
         if headers != expected_cols:
             return Response({"error": f"CSV columns do not match the expected template. Expected: {', '.join(expected_cols)}"}, status=400)
             
@@ -201,18 +261,21 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         validation_errors = []
         from apps.devices.models import Manufacturer, DeviceType, Device
         
-        manufacturers_by_name = {m.name.strip().lower(): m for m in Manufacturer.objects.all()}
-        device_types_by_name = {t.name.strip().lower(): t for t in DeviceType.objects.all()}
+        manufacturers_by_name = {m.name.strip().lower(): m for m in Manufacturer.objects.filter(is_active=True)}
+        device_types_by_name = {t.name.strip().lower(): t for t in DeviceType.objects.filter(is_active=True, status='active')}
         
         for idx, row in enumerate(rows, start=1):
-            if len(row) < len(expected_cols):
+            row = [r.strip() for r in row]
+            if len(row) > len(expected_cols):
+                row = row[:len(expected_cols)]
+            elif len(row) < len(expected_cols):
                 row = row + [""] * (len(expected_cols) - len(row))
                 
             row_errors = {}
-            m_val = row[0].strip()
-            name_val = row[1].strip()
-            t_val = row[2].strip()
-            launch_date_val = row[3].strip()
+            m_val = row[0]
+            name_val = row[1]
+            t_val = row[2]
+            launch_date_val = row[3]
             
             m_obj = None
             if not m_val:
@@ -220,18 +283,21 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             else:
                 m_obj = manufacturers_by_name.get(m_val.lower())
                 if not m_obj:
-                    row_errors["Device Manufacturer"] = f"Device Manufacturer '{m_val}' does not exist. Please add it to the Device Manufacturer List before importing."
+                    row_errors["Device Manufacturer"] = f"Device Manufacturer '{m_val}' does not exist or is inactive."
                     
             t_obj = None
             if not t_val:
                 row_errors["Device Type"] = "Device Type is required."
             else:
-                if t_val.lower() not in ['phone', 'tablet', 'smartwatch', 'laptop']:
+                t_lower = t_val.lower()
+                if t_lower == 'smartphone':
+                    t_lower = 'phone'
+                if t_lower not in ['phone', 'tablet', 'smartwatch', 'laptop']:
                     row_errors["Device Type"] = "Device Type must be Phone, Tablet, Smartwatch or Laptop."
                 else:
-                    t_obj = device_types_by_name.get(t_val.lower())
+                    t_obj = device_types_by_name.get(t_lower)
                     if not t_obj:
-                        row_errors["Device Type"] = f"Device Type '{t_val}' does not exist. Please add it to the Device Type List before importing."
+                        row_errors["Device Type"] = f"Device Type '{t_val}' does not exist or is inactive."
                         
             if not name_val:
                 row_errors["Device Name"] = "Device Name is required."
@@ -259,8 +325,11 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if m_obj and cleaned_name and not row_errors.get("Device Name") and not row_errors.get("Device Manufacturer"):
                 existing_device = Device.objects.filter(manufacturer=m_obj, name__iexact=cleaned_name).first()
                 if existing_device:
-                    if import_mode == "Create New Only":
+                    if import_mode == "Create New Only" or not import_mode:
                         row_errors["Device Name"] = f"Device with Manufacturer '{m_obj.name}' and Name '{cleaned_name}' already exists."
+                else:
+                    if import_mode == "Update Existing":
+                        row_errors["Device Name"] = f"Device with Manufacturer '{m_obj.name}' and Name '{cleaned_name}' does not exist."
                         
             if m_obj and t_obj and not row_errors.get("Launch Date") and parsed_date:
                 serializer_data = {
@@ -268,13 +337,13 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "name": cleaned_name,
                     "device_type": t_obj.id,
                     "launch_date": launch_date_val,
-                    "compatible_charging_interface": row[4].strip(),
-                    "storage_expansion_compatibility": row[5].strip(),
-                    "maximum_supported_storage": row[6].strip(),
-                    "headphone_jack_compatibility": row[7].strip(),
-                    "bluetooth_compatibility": row[8].strip(),
-                    "wireless_charging_compatibility": row[9].strip(),
-                    "compatible_watch_case_size": row[10].strip(),
+                    "compatible_charging_interface": row[4],
+                    "storage_expansion_compatibility": row[5],
+                    "maximum_supported_storage": row[6],
+                    "headphone_jack_compatibility": row[7],
+                    "bluetooth_compatibility": row[8],
+                    "wireless_charging_compatibility": row[9],
+                    "compatible_watch_case_size": row[10],
                 }
                 
                 existing_device = Device.objects.filter(manufacturer=m_obj, name__iexact=cleaned_name).first()
@@ -321,13 +390,16 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         
         with transaction.atomic():
             for row in rows:
-                m_val = row[0].strip()
-                name_val = row[1].strip()
-                t_val = row[2].strip()
-                launch_date_val = row[3].strip()
+                m_val = row[0]
+                name_val = row[1]
+                t_val = row[2]
+                launch_date_val = row[3]
                 
                 m_obj = manufacturers_by_name.get(m_val.lower())
-                t_obj = device_types_by_name.get(t_val.lower())
+                t_lookup = t_val.lower()
+                if t_lookup == 'smartphone':
+                    t_lookup = 'phone'
+                t_obj = device_types_by_name.get(t_lookup)
                 
                 from datetime import datetime
                 try:
@@ -343,16 +415,16 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     
                 device = Device.objects.filter(manufacturer=m_obj, name__iexact=cleaned_name).first()
                 
-                bt = row[8].strip()
+                bt = row[8]
                 if not bt or bt == "":
                     bt = "Yes"
                     
-                charging = row[4].strip()
-                storage = row[5].strip()
-                max_storage = row[6].strip()
-                headphone = row[7].strip()
-                wireless = row[9].strip()
-                case_size = row[10].strip()
+                charging = row[4]
+                storage = row[5]
+                max_storage = row[6]
+                headphone = row[7]
+                wireless = row[9]
+                case_size = row[10]
                 
                 d_type = t_obj.name.strip().lower()
                 if d_type == 'phone':
@@ -376,6 +448,8 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     case_size = 'Not Compatible'
                     
                 if device:
+                    if import_mode == "Create New Only":
+                        continue
                     device.device_type = t_obj
                     device.launch_date = parsed_date
                     device.compatible_charging_interface = charging
@@ -388,6 +462,8 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     device.save(actor_id=request.user.id)
                     updated_count += 1
                 else:
+                    if import_mode == "Update Existing":
+                        continue
                     device = Device.objects.create(
                         manufacturer=m_obj,
                         name=cleaned_name,
