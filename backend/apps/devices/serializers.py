@@ -11,6 +11,8 @@ from .models import (
 
 
 class DeviceTypeSerializer(serializers.ModelSerializer):
+    code = serializers.SlugField(required=False)
+
     class Meta:
         model = DeviceType
         fields = [

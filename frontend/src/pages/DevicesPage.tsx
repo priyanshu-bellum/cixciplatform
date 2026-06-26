@@ -261,7 +261,27 @@ export default function DevicesPage() {
       }
       setNewDropdownValue('')
     } catch (err: any) {
-      setDropdownError(err.response?.data?.error || err.response?.data?.detail || err.response?.data?.name?.[0] || 'Failed to add value.')
+      const data = err.response?.data
+      let msg = 'Failed to add value.'
+      if (data) {
+        if (typeof data === 'string') {
+          msg = data
+        } else if (data.error) {
+          msg = data.error
+        } else if (data.detail) {
+          msg = data.detail
+        } else {
+          const errors = Object.entries(data).map(([field, msgs]) => {
+            const fieldName = field.charAt(0).toUpperCase() + field.slice(1)
+            const fieldMsgs = Array.isArray(msgs) ? msgs.join(' ') : String(msgs)
+            return `${fieldName}: ${fieldMsgs}`
+          })
+          if (errors.length > 0) {
+            msg = errors.join('; ')
+          }
+        }
+      }
+      setDropdownError(msg)
     }
   }
 
@@ -276,7 +296,18 @@ export default function DevicesPage() {
         refetchTypes()
       }
     } catch (err: any) {
-      setDropdownError(err.response?.data?.error || err.response?.data?.detail || 'Failed to delete value.')
+      const data = err.response?.data
+      let msg = 'Failed to delete value.'
+      if (data) {
+        if (typeof data === 'string') {
+          msg = data
+        } else if (data.error) {
+          msg = data.error
+        } else if (data.detail) {
+          msg = data.detail
+        }
+      }
+      setDropdownError(msg)
     }
   }
 
