@@ -418,7 +418,7 @@ export default function DevicesPage() {
     }
   }
 
-  const getDeviceCategory = (typeName: string) => {
+  function getDeviceCategory(typeName: string) {
     const name = typeName.toLowerCase().trim()
     if (name === 'phone' || name === 'smartphone') return 'phone'
     if (name === 'tablet') return 'tablet'
