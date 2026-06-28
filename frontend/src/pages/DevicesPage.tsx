@@ -477,9 +477,19 @@ export default function DevicesPage() {
       console.error(err)
       const data = err.response?.data
       if (data) {
-        if (typeof data === 'object') {
-          const firstErr = Object.entries(data).map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg[0] : msg}`).join('\n')
-          setEditError(firstErr)
+        const errorSource = (data.detail && typeof data.detail === 'object') ? data.detail : data
+        if (typeof errorSource === 'object') {
+          const firstErr = Object.entries(errorSource)
+            .map(([field, msg]) => {
+              if (field === 'error' || field === 'status_code') return null
+              const cleanMsg = Array.isArray(msg)
+                ? msg[0]
+                : (typeof msg === 'object' && msg !== null ? JSON.stringify(msg) : msg)
+              return `${field}: ${cleanMsg}`
+            })
+            .filter(Boolean)
+            .join('\n')
+          setEditError(firstErr || 'Failed to update device.')
         } else {
           setEditError(String(data))
         }
@@ -631,9 +641,19 @@ export default function DevicesPage() {
       console.error(err)
       const data = err.response?.data
       if (data) {
-        if (typeof data === 'object') {
-          const firstErr = Object.entries(data).map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg[0] : msg}`).join('\n')
-          setAddError(firstErr)
+        const errorSource = (data.detail && typeof data.detail === 'object') ? data.detail : data
+        if (typeof errorSource === 'object') {
+          const firstErr = Object.entries(errorSource)
+            .map(([field, msg]) => {
+              if (field === 'error' || field === 'status_code') return null
+              const cleanMsg = Array.isArray(msg)
+                ? msg[0]
+                : (typeof msg === 'object' && msg !== null ? JSON.stringify(msg) : msg)
+              return `${field}: ${cleanMsg}`
+            })
+            .filter(Boolean)
+            .join('\n')
+          setAddError(firstErr || 'Failed to add device.')
         } else {
           setAddError(String(data))
         }
