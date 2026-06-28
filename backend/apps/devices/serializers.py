@@ -240,9 +240,8 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
 
         # Helper to check if a value is "empty"
         def is_empty(val, field_name):
-            if field_name == "bluetooth_compatibility":
-                return not val or val.lower() == "no"
-            return not val or val == "" or val.lower() == "not compatible"
+            val_str = str(val).strip().lower()
+            return not val or val_str in ["", "select", "select...", "select options", "select option"]
 
         # Apply rules for each field
         for f, b_key in FIELD_MAP.items():

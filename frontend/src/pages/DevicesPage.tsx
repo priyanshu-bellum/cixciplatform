@@ -138,13 +138,13 @@ export default function DevicesPage() {
   const [addName, setAddName] = useState('')
   const [addDeviceType, setAddDeviceType] = useState('')
   const [addLaunchDate, setAddLaunchDate] = useState('')
-  const [addCharging, setAddCharging] = useState('Not Compatible')
-  const [addStorage, setAddStorage] = useState('Not Compatible')
-  const [addMaxStorage, setAddMaxStorage] = useState('Not Compatible')
-  const [addHeadphone, setAddHeadphone] = useState('Not Compatible')
-  const [addBluetooth, setAddBluetooth] = useState('Yes')
+  const [addCharging, setAddCharging] = useState('')
+  const [addStorage, setAddStorage] = useState('')
+  const [addMaxStorage, setAddMaxStorage] = useState('')
+  const [addHeadphone, setAddHeadphone] = useState('')
+  const [addBluetooth, setAddBluetooth] = useState('')
   const [addWireless, setAddWireless] = useState<string[]>([])
-  const [addWatchCase, setAddWatchCase] = useState('Not Compatible')
+  const [addWatchCase, setAddWatchCase] = useState('')
   const [addError, setAddError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -630,13 +630,13 @@ export default function DevicesPage() {
       setAddName('')
       setAddDeviceType('')
       setAddLaunchDate('')
-      setAddCharging('Not Compatible')
-      setAddStorage('Not Compatible')
-      setAddMaxStorage('Not Compatible')
-      setAddHeadphone('Not Compatible')
-      setAddBluetooth('Yes')
+      setAddCharging('')
+      setAddStorage('')
+      setAddMaxStorage('')
+      setAddHeadphone('')
+      setAddBluetooth('')
       setAddWireless([])
-      setAddWatchCase('Not Compatible')
+      setAddWatchCase('')
     } catch (err: any) {
       console.error(err)
       const data = err.response?.data
@@ -932,6 +932,7 @@ export default function DevicesPage() {
                         value={addCharging}
                         onChange={e => setAddCharging(e.target.value)}
                       >
+                        <option value="">Select Charging Interface</option>
                         <option value="Type-C">Type-C</option>
                         {selectedCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
                         <option value="Not Compatible">Not Compatible</option>
@@ -948,6 +949,7 @@ export default function DevicesPage() {
                           value={addStorage}
                           onChange={e => handleStorageChange(e.target.value)}
                         >
+                          <option value="">Select Storage Expansion</option>
                           <option value="Not Compatible">Not Compatible</option>
                           <option value="microSDXC">microSDXC</option>
                           <option value="microSDHC">microSDHC</option>
@@ -998,6 +1000,7 @@ export default function DevicesPage() {
                         value={addHeadphone}
                         onChange={e => setAddHeadphone(e.target.value)}
                       >
+                        <option value="">Select Headphone Jack</option>
                         <option value="Not Compatible">Not Compatible</option>
                         <option value="Type-C">Type-C</option>
                         {selectedCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
@@ -1014,6 +1017,7 @@ export default function DevicesPage() {
                         value={addBluetooth}
                         onChange={e => setAddBluetooth(e.target.value)}
                       >
+                        <option value="">Select Bluetooth Compatibility</option>
                         <option value="Yes">Yes</option>
                         <option value="No">No</option>
                       </select>
@@ -1073,6 +1077,7 @@ export default function DevicesPage() {
                         value={addWatchCase}
                         onChange={e => setAddWatchCase(e.target.value)}
                       >
+                        <option value="">Select Watch Case Size</option>
                         <option value="Not Compatible">Not Compatible</option>
                         <option value="40mm">40mm</option>
                         <option value="41mm">41mm</option>
