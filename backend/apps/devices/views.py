@@ -131,7 +131,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             qs = qs.filter(
                 Q(launch_date__isnull=True) | Q(launch_date__lte=today)
             ).exclude(
-                lifecycle_status="inactive"
+                Q(lifecycle_status="inactive") & (Q(launch_date__isnull=True) | Q(launch_date__gt=today))
             )
         return qs
     action_capability_map = {
@@ -150,7 +150,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["lifecycle_status", "device_type", "manufacturer"]
-    search_fields = ["name", "sku", "model_number"]
+    search_fields = ["name", "sku", "model_number", "manufacturer__name", "device_type__name", "lifecycle_status"]
     ordering_fields = ["name", "release_date", "created_at"]
     ordering = ["-created_at"]
 

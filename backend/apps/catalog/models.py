@@ -121,7 +121,7 @@ class Product(models.Model):
     warranty = models.CharField(max_length=200, blank=True, null=True)
     short_description = models.TextField(blank=True, null=True)
     promo_information = models.TextField(blank=True, null=True)
-    meta_title = models.CharField(max_length=200, blank=True, null=True)
+    meta_title = models.CharField(max_length=500, blank=True, null=True)
     meta_description = models.TextField(blank=True, null=True)
 
     # Category-specific compatibility fields

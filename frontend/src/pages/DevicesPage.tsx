@@ -127,6 +127,9 @@ export default function DevicesPage() {
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
 
   const [search, setSearch] = useState('')
+  const [filterManufacturer, setFilterManufacturer] = useState('')
+  const [filterType, setFilterType] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
   const [tab, setTab] = useState<'devices' | 'portfolio'>('devices')
 
   // Modals state
@@ -187,13 +190,13 @@ export default function DevicesPage() {
   const [editDeviceType, setEditDeviceType] = useState('')
   const [editLaunchDate, setEditLaunchDate] = useState('')
   const [editStatus, setEditStatus] = useState('')
-  const [editCharging, setEditCharging] = useState('Not Compatible')
-  const [editStorage, setEditStorage] = useState('Not Compatible')
-  const [editMaxStorage, setEditMaxStorage] = useState('Not Compatible')
-  const [editHeadphone, setEditHeadphone] = useState('Not Compatible')
-  const [editBluetooth, setEditBluetooth] = useState('Yes')
+  const [editCharging, setEditCharging] = useState('')
+  const [editStorage, setEditStorage] = useState('')
+  const [editMaxStorage, setEditMaxStorage] = useState('')
+  const [editHeadphone, setEditHeadphone] = useState('')
+  const [editBluetooth, setEditBluetooth] = useState('')
   const [editWireless, setEditWireless] = useState<string[]>([])
-  const [editWatchCase, setEditWatchCase] = useState('Not Compatible')
+  const [editWatchCase, setEditWatchCase] = useState('')
   const [editError, setEditError] = useState('')
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
 
@@ -213,10 +216,40 @@ export default function DevicesPage() {
   const [isImporting, setIsImporting] = useState(false)
   const [importSuccess, setImportSuccess] = useState('')
 
+  const resetImportState = () => {
+    setImportFile(null)
+    setImportErrors([])
+    setImportErrorGeneral('')
+    setImportSuccess('')
+    setImportMode('Create New Only')
+  }
+
+  const resetAddState = () => {
+    setAddManufacturer('')
+    setAddName('')
+    setAddDeviceType('')
+    setAddLaunchDate('')
+    setAddCharging('')
+    setAddStorage('')
+    setAddMaxStorage('')
+    setAddHeadphone('')
+    setAddBluetooth('')
+    setAddWireless([])
+    setAddWatchCase('')
+    setAddError('')
+  }
+
   // TanStack queries
   const { data, isLoading, refetch: refreshDevices } = useQuery({
-    queryKey: ['devices', search],
-    queryFn: () => api.get('/devices/devices/', { params: { search } }).then(r => r.data),
+    queryKey: ['devices', search, filterManufacturer, filterType, filterStatus],
+    queryFn: () => api.get('/devices/devices/', {
+      params: {
+        search,
+        manufacturer: filterManufacturer || undefined,
+        device_type: filterType || undefined,
+        lifecycle_status: filterStatus || undefined,
+      }
+    }).then(r => r.data),
   })
 
   const { data: portfolio, refetch: refreshPortfolio } = useQuery({
@@ -228,13 +261,11 @@ export default function DevicesPage() {
   const { data: manufacturersData, refetch: refetchManufacturers } = useQuery({
     queryKey: ['manufacturers'],
     queryFn: () => api.get('/devices/manufacturers/', { params: { limit: 100 } }).then(r => r.data),
-    enabled: isCixciAdmin,
   })
 
   const { data: typesData, refetch: refetchTypes } = useQuery({
     queryKey: ['device-types'],
     queryFn: () => api.get('/devices/types/', { params: { limit: 100 } }).then(r => r.data),
-    enabled: isCixciAdmin,
   })
 
   const devices = data?.results ?? data ?? []
@@ -359,7 +390,18 @@ export default function DevicesPage() {
     setEditManufacturer(d.manufacturer || '')
     setEditName(d.name || '')
     setEditDeviceType(d.device_type || '')
-    setEditLaunchDate(d.launch_date || '')
+    
+    let formattedLaunchDate = ''
+    if (d.launch_date) {
+      const parts = d.launch_date.split('/')
+      if (parts.length === 3) {
+        formattedLaunchDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`
+      } else {
+        formattedLaunchDate = d.launch_date
+      }
+    }
+    setEditLaunchDate(formattedLaunchDate)
+    
     setEditStatus(d.lifecycle_status || 'available')
     setEditCharging(d.compatible_charging_interface || 'Not Compatible')
     setEditStorage(d.storage_expansion_compatibility || 'Not Compatible')
@@ -436,6 +478,36 @@ export default function DevicesPage() {
     }
 
     if (selectedEditCategory === 'phone') {
+      if (!editCharging) {
+        setEditError('Charging Interface is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (!editStorage) {
+        setEditError('Storage Expansion is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (editStorage !== 'Not Compatible' && !editMaxStorage) {
+        setEditError('Maximum Expansion is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (!editHeadphone) {
+        setEditError('Headphone Jack is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (!editBluetooth) {
+        setEditError('Bluetooth Compatibility is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (editWireless.length === 0) {
+        setEditError('Wireless Charging Compatibility is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
       payload.compatible_charging_interface = editCharging
       payload.storage_expansion_compatibility = editStorage
       payload.maximum_supported_storage = editStorage !== 'Not Compatible' ? editMaxStorage : 'Not Compatible'
@@ -444,6 +516,31 @@ export default function DevicesPage() {
       payload.wireless_charging_compatibility = editWireless.join('+') || 'Not Compatible'
       payload.compatible_watch_case_size = 'Not Compatible'
     } else if (selectedEditCategory === 'tablet') {
+      if (!editCharging) {
+        setEditError('Charging Interface is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (!editStorage) {
+        setEditError('Storage Expansion is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (editStorage !== 'Not Compatible' && !editMaxStorage) {
+        setEditError('Maximum Expansion is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (!editHeadphone) {
+        setEditError('Headphone Jack is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (!editBluetooth) {
+        setEditError('Bluetooth Compatibility is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
       payload.compatible_charging_interface = editCharging
       payload.storage_expansion_compatibility = editStorage
       payload.maximum_supported_storage = editStorage !== 'Not Compatible' ? editMaxStorage : 'Not Compatible'
@@ -452,6 +549,21 @@ export default function DevicesPage() {
       payload.wireless_charging_compatibility = 'Not Compatible'
       payload.compatible_watch_case_size = 'Not Compatible'
     } else if (selectedEditCategory === 'smartwatch') {
+      if (!editBluetooth) {
+        setEditError('Bluetooth Compatibility is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (editWireless.length === 0) {
+        setEditError('Wireless Charging Compatibility is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (!editWatchCase) {
+        setEditError('Compatible Watch Case Size is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
       payload.compatible_charging_interface = 'Not Compatible'
       payload.storage_expansion_compatibility = 'Not Compatible'
       payload.maximum_supported_storage = 'Not Compatible'
@@ -460,6 +572,21 @@ export default function DevicesPage() {
       payload.wireless_charging_compatibility = editWireless.join('+') || 'Not Compatible'
       payload.compatible_watch_case_size = editWatchCase
     } else if (selectedEditCategory === 'laptop') {
+      if (!editCharging) {
+        setEditError('Charging Interface is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (!editHeadphone) {
+        setEditError('Headphone Jack is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
+      if (!editBluetooth) {
+        setEditError('Bluetooth Compatibility is required.')
+        setIsSubmittingEdit(false)
+        return
+      }
       payload.compatible_charging_interface = editCharging
       payload.storage_expansion_compatibility = 'Not Compatible'
       payload.maximum_supported_storage = 'Not Compatible'
@@ -588,6 +715,36 @@ export default function DevicesPage() {
     }
 
     if (selectedCategory === 'phone') {
+      if (!addCharging) {
+        setAddError('Charging Interface is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (!addStorage) {
+        setAddError('Storage Expansion is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (addStorage !== 'Not Compatible' && !addMaxStorage) {
+        setAddError('Maximum Expansion is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (!addHeadphone) {
+        setAddError('Headphone Jack is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (!addBluetooth) {
+        setAddError('Bluetooth Compatibility is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (addWireless.length === 0) {
+        setAddError('Wireless Charging Compatibility is required.')
+        setIsSubmitting(false)
+        return
+      }
       payload.compatible_charging_interface = addCharging
       payload.storage_expansion_compatibility = addStorage
       payload.maximum_supported_storage = addStorage !== 'Not Compatible' ? addMaxStorage : 'Not Compatible'
@@ -596,6 +753,31 @@ export default function DevicesPage() {
       payload.wireless_charging_compatibility = addWireless.join('+') || 'Not Compatible'
       payload.compatible_watch_case_size = 'Not Compatible'
     } else if (selectedCategory === 'tablet') {
+      if (!addCharging) {
+        setAddError('Charging Interface is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (!addStorage) {
+        setAddError('Storage Expansion is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (addStorage !== 'Not Compatible' && !addMaxStorage) {
+        setAddError('Maximum Expansion is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (!addHeadphone) {
+        setAddError('Headphone Jack is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (!addBluetooth) {
+        setAddError('Bluetooth Compatibility is required.')
+        setIsSubmitting(false)
+        return
+      }
       payload.compatible_charging_interface = addCharging
       payload.storage_expansion_compatibility = addStorage
       payload.maximum_supported_storage = addStorage !== 'Not Compatible' ? addMaxStorage : 'Not Compatible'
@@ -604,6 +786,21 @@ export default function DevicesPage() {
       payload.wireless_charging_compatibility = 'Not Compatible'
       payload.compatible_watch_case_size = 'Not Compatible'
     } else if (selectedCategory === 'smartwatch') {
+      if (!addBluetooth) {
+        setAddError('Bluetooth Compatibility is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (addWireless.length === 0) {
+        setAddError('Wireless Charging Compatibility is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (!addWatchCase) {
+        setAddError('Compatible Watch Case Size is required.')
+        setIsSubmitting(false)
+        return
+      }
       payload.compatible_charging_interface = 'Not Compatible'
       payload.storage_expansion_compatibility = 'Not Compatible'
       payload.maximum_supported_storage = 'Not Compatible'
@@ -612,6 +809,21 @@ export default function DevicesPage() {
       payload.wireless_charging_compatibility = addWireless.join('+') || 'Not Compatible'
       payload.compatible_watch_case_size = addWatchCase
     } else if (selectedCategory === 'laptop') {
+      if (!addCharging) {
+        setAddError('Charging Interface is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (!addHeadphone) {
+        setAddError('Headphone Jack is required.')
+        setIsSubmitting(false)
+        return
+      }
+      if (!addBluetooth) {
+        setAddError('Bluetooth Compatibility is required.')
+        setIsSubmitting(false)
+        return
+      }
       payload.compatible_charging_interface = addCharging
       payload.storage_expansion_compatibility = 'Not Compatible'
       payload.maximum_supported_storage = 'Not Compatible'
@@ -727,10 +939,10 @@ export default function DevicesPage() {
             <button className="btn btn-secondary" onClick={() => setShowDropdownModal(true)}>
               Manage Dropdown Values
             </button>
-            <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
+            <button className="btn btn-secondary" onClick={() => { resetImportState(); setShowImportModal(true); }}>
               Import Devices
             </button>
-            <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+            <button className="btn btn-primary" onClick={() => { resetAddState(); setShowAddModal(true); }}>
               <Plus size={14} /> Add Device
             </button>
           </div>
@@ -746,15 +958,67 @@ export default function DevicesPage() {
 
       {tab === 'devices' && (
         <>
-          <div style={{ marginBottom: 16 }}>
-            <div className="search-bar" style={{ width: 280 }}>
+          <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="search-bar" style={{ width: 280, margin: 0 }}>
               <Search size={14} />
               <input
-                placeholder="Search by name…"
+                placeholder="Search by name, SKU, model…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
+
+            <select
+              className="input"
+              style={{ width: 180, height: 36, padding: '0 10px', fontSize: 13 }}
+              value={filterManufacturer}
+              onChange={e => setFilterManufacturer(e.target.value)}
+            >
+              <option value="">All Manufacturers</option>
+              {manufacturers.map((m: any) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+
+            <select
+              className="input"
+              style={{ width: 180, height: 36, padding: '0 10px', fontSize: 13 }}
+              value={filterType}
+              onChange={e => setFilterType(e.target.value)}
+            >
+              <option value="">All Device Types</option>
+              {deviceTypes.map((t: any) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+
+            <select
+              className="input"
+              style={{ width: 150, height: 36, padding: '0 10px', fontSize: 13 }}
+              value={filterStatus}
+              onChange={e => setFilterStatus(e.target.value)}
+            >
+              <option value="">All Statuses</option>
+              <option value="available">Available</option>
+              <option value="launching">Launching</option>
+              <option value="inactive">Inactive</option>
+              <option value="eol">EOL</option>
+            </select>
+
+            {(search || filterManufacturer || filterType || filterStatus) && (
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ height: 36, fontSize: 13 }}
+                onClick={() => {
+                  setSearch('')
+                  setFilterManufacturer('')
+                  setFilterType('')
+                  setFilterStatus('')
+                }}
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
           <div className="table-wrap">
             {isLoading ? (
@@ -1116,11 +1380,11 @@ export default function DevicesPage() {
 
       {/* Import Modal */}
       {showImportModal && (
-        <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
+        <div className="modal-overlay" onClick={() => { setShowImportModal(false); resetImportState(); }}>
           <div className="modal-container" style={{ width: 620 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">Import Devices</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowImportModal(false)}>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setShowImportModal(false); resetImportState(); }}>
                 <X size={16} />
               </button>
             </div>
@@ -1175,6 +1439,7 @@ export default function DevicesPage() {
                     <input
                       type="file"
                       accept=".csv"
+                      key={importFile ? 'has-file' : 'no-file'}
                       className="input"
                       style={{ padding: '6px 10px' }}
                       onChange={e => setImportFile(e.target.files?.[0] || null)}
@@ -1188,7 +1453,7 @@ export default function DevicesPage() {
                       <AlertCircle size={14} />
                       Import Validation Failed ({importErrors.length} Errors Found)
                     </div>
-                    <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
                       <table className="validation-errors-table">
                         <thead>
                           <tr>
@@ -1217,7 +1482,7 @@ export default function DevicesPage() {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setShowImportModal(false)}
+                  onClick={() => { setShowImportModal(false); resetImportState(); }}
                   disabled={isImporting}
                 >
                   Cancel
@@ -1606,7 +1871,6 @@ export default function DevicesPage() {
                     </div>
 
                     {selectedEditCategory && <div className="divider form-grid-full" style={{ margin: '8px 0' }} />}
-
                     {/* Conditional Compatibility Fields */}
                     {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
                       <div className="form-group">
@@ -1617,6 +1881,7 @@ export default function DevicesPage() {
                             value={editCharging}
                             onChange={e => setEditCharging(e.target.value)}
                           >
+                            <option value="">Select Charging Interface</option>
                             <option value="Type-C">Type-C</option>
                             {selectedEditCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
                             <option value="Not Compatible">Not Compatible</option>
@@ -1637,6 +1902,7 @@ export default function DevicesPage() {
                               value={editStorage}
                               onChange={e => handleEditStorageChange(e.target.value)}
                             >
+                              <option value="">Select Storage Expansion</option>
                               <option value="Not Compatible">Not Compatible</option>
                               <option value="microSDXC">microSDXC</option>
                               <option value="microSDHC">microSDHC</option>
@@ -1646,7 +1912,7 @@ export default function DevicesPage() {
                           )}
                         </div>
 
-                        {editStorage !== 'Not Compatible' && (
+                        {editStorage !== 'Not Compatible' && editStorage !== '' && (
                           <div className="form-group">
                             <label className="label">Maximum Expansion *</label>
                             {isCixciAdmin ? (
@@ -1695,6 +1961,7 @@ export default function DevicesPage() {
                             value={editHeadphone}
                             onChange={e => setEditHeadphone(e.target.value)}
                           >
+                            <option value="">Select Headphone Jack</option>
                             <option value="Not Compatible">Not Compatible</option>
                             <option value="Type-C">Type-C</option>
                             {selectedEditCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
@@ -1714,6 +1981,7 @@ export default function DevicesPage() {
                             value={editBluetooth}
                             onChange={e => setEditBluetooth(e.target.value)}
                           >
+                            <option value="">Select Bluetooth Compatibility</option>
                             <option value="Yes">Yes</option>
                             <option value="No">No</option>
                           </select>
@@ -1779,6 +2047,7 @@ export default function DevicesPage() {
                             value={editWatchCase}
                             onChange={e => setEditWatchCase(e.target.value)}
                           >
+                            <option value="">Select Watch Case Size</option>
                             <option value="Not Compatible">Not Compatible</option>
                             <option value="40mm">40mm</option>
                             <option value="41mm">41mm</option>

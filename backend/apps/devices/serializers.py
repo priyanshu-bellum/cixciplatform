@@ -120,15 +120,11 @@ class DeviceListSerializer(serializers.ModelSerializer):
     """Compact serializer for list views."""
     manufacturer_name = serializers.CharField(source="manufacturer.name", read_only=True)
     device_type_name = serializers.CharField(source="device_type.name", read_only=True)
+    launch_date = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = Device
-        fields = [
-            "id", "name", "sku", "model_number",
-            "manufacturer", "manufacturer_name",
-            "device_type", "device_type_name",
-            "lifecycle_status", "release_date", "created_at",
-        ]
+        fields = "__all__"
         read_only_fields = ["id", "created_at"]
 
 

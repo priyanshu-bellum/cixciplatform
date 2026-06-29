@@ -782,6 +782,7 @@ export default function CatalogPage() {
       }
     }
     setShowBulkModal(false)
+    setBulkFile(null)
     setBulkResult(null)
     setBulkError(null)
     setCsvHeaders([])
@@ -2745,11 +2746,11 @@ export default function CatalogPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label className="label">Meta Title</label>
-                    <input className="input" placeholder="SEO optimized title" value={prodMetaTitle} onChange={e => setProdMetaTitle(e.target.value)} />
+                    <textarea className="input" style={{ height: 60, resize: 'vertical', padding: '8px 10px' }} placeholder="SEO optimized title" value={prodMetaTitle} onChange={e => setProdMetaTitle(e.target.value)} />
                   </div>
                   <div className="form-group">
                     <label className="label">Meta Description</label>
-                    <input className="input" placeholder="SEO optimized description" value={prodMetaDescription} onChange={e => setProdMetaDescription(e.target.value)} />
+                    <textarea className="input" style={{ height: 60, resize: 'vertical', padding: '8px 10px' }} placeholder="SEO optimized description" value={prodMetaDescription} onChange={e => setProdMetaDescription(e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -3239,11 +3240,11 @@ export default function CatalogPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label className="label">Meta Title</label>
-                    <input className="input" placeholder="SEO optimized title" value={prodMetaTitle} onChange={e => setProdMetaTitle(e.target.value)} />
+                    <textarea className="input" style={{ height: 60, resize: 'vertical', padding: '8px 10px' }} placeholder="SEO optimized title" value={prodMetaTitle} onChange={e => setProdMetaTitle(e.target.value)} />
                   </div>
                   <div className="form-group">
                     <label className="label">Meta Description</label>
-                    <input className="input" placeholder="SEO optimized description" value={prodMetaDescription} onChange={e => setProdMetaDescription(e.target.value)} />
+                    <textarea className="input" style={{ height: 60, resize: 'vertical', padding: '8px 10px' }} placeholder="SEO optimized description" value={prodMetaDescription} onChange={e => setProdMetaDescription(e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -3932,6 +3933,7 @@ export default function CatalogPage() {
                   <input
                     type="file"
                     accept=".csv,.xlsx,.xls"
+                    key={bulkFile ? 'has-file' : 'no-file'}
                     onChange={e => {
                       if (e.target.files && e.target.files[0]) {
                         const file = e.target.files[0]
@@ -3988,7 +3990,7 @@ export default function CatalogPage() {
               {csvPreviewRows.length > 0 && (
                 <div className="form-group" style={{ marginTop: 14 }}>
                   <label className="label">Data Grid (All Rows & Columns - Click any cell to edit)</label>
-                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6, maxHeight: 320, background: 'var(--bg-main)', marginTop: 4 }}>
+                  <div style={{ overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6, maxHeight: 320, background: 'var(--bg-main)', marginTop: 4 }}>
                     <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                       <thead>
                         <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 1 }}>

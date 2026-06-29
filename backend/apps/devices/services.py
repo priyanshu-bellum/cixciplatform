@@ -43,7 +43,8 @@ def add_device_to_portfolio(user, device_id: UUID, admin_on_behalf: bool = False
     device = Device.objects.get(id=device_id)
 
     if not admin_on_behalf:
-        if device.lifecycle_status == "inactive":
+        is_inactive = device.lifecycle_status == "inactive" and (device.launch_date is None or device.launch_date > timezone.localdate())
+        if is_inactive:
             raise ValueError("Inactive devices cannot be added to portfolio.")
         if device.lifecycle_status == "archived":
             raise ValueError("Archived devices cannot be added to portfolio.")

@@ -76,7 +76,8 @@ def recalculate_buyer_compatibility_projection(
                     id__in=device_ids,
                     device_type__status='active'
                 ).exclude(
-                    lifecycle_status__in=["inactive", "archived"]
+                    Q(lifecycle_status="archived") |
+                    (Q(lifecycle_status="inactive") & (Q(launch_date__isnull=True) | Q(launch_date__gt=today_local)))
                 ).filter(
                     Q(launch_date__isnull=True) | Q(launch_date__lte=today_local)
                 ).values_list("id", flat=True)

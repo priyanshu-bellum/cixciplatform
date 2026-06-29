@@ -170,6 +170,13 @@ class Device(models.Model):
         return f"{self.manufacturer.name} {self.name}"
 
     def save(self, *args, **kwargs):
+        if self.launch_date:
+            from django.utils import timezone
+            if self.launch_date > timezone.localdate():
+                self.lifecycle_status = "inactive"
+            elif self.lifecycle_status == "inactive":
+                self.lifecycle_status = "available"
+
         actor_id = kwargs.pop("actor_id", None)
         is_new = not self.pk or not Device.objects.filter(pk=self.pk).exists()
         old_status = None
