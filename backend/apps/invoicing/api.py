@@ -171,9 +171,17 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         result = check_access(request.user, "invoicing.reconciliation.upload")
         if not result.granted:
             return Response({"error": result.reason}, status=403)
+        
+        company_id = request.user.entity.company_id if request.user.entity else None
+        if not company_id:
+            from apps.tenant.models import Company
+            company = Company.objects.filter(company_type="vendor").first() or Company.objects.first()
+            if company:
+                company_id = company.id
+                
         job = VendorReconciliationUploadJob.objects.create(
             invoice=invoice,
-            vendor_company_reference=request.user.entity.company_id,
+            vendor_company_reference=company_id,
             uploaded_by=request.user.id,
         )
         return Response(ReconciliationUploadJobSerializer(job).data, status=201)

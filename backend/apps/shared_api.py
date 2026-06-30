@@ -68,8 +68,16 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     search_fields = ["original_filename"]
 
     def perform_create(self, serializer):
+        company_id = None
+        if self.request.user.entity:
+            company_id = self.request.user.entity.company_id
+        else:
+            from apps.tenant.models import Company
+            company = Company.objects.filter(company_type="cixci_internal").first() or Company.objects.first()
+            if company:
+                company_id = company.id
         serializer.save(
-            company_scope_reference=self.request.user.entity.company_id,
+            company_scope_reference=company_id,
             uploaded_by=self.request.user.id,
         )
 
@@ -94,7 +102,15 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         filename = request.data.get("filename", "upload")
         mime_type = request.data.get("mime_type", "application/octet-stream")
         asset_type = request.data.get("asset_type", "other")
-        company_id = request.user.entity.company_id
+        
+        company_id = None
+        if request.user.entity:
+            company_id = request.user.entity.company_id
+        else:
+            from apps.tenant.models import Company
+            company = Company.objects.filter(company_type="cixci_internal").first() or Company.objects.first()
+            if company:
+                company_id = company.id
 
         asset_id = uuid.uuid4()
         storage_key = f"{company_id}/{asset_type}/{asset_id}/{filename}"
