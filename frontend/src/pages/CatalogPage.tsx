@@ -3951,7 +3951,7 @@ export default function CatalogPage() {
                   <input
                     type="file"
                     accept=".csv,.xlsx,.xls"
-                    key={bulkFile ? 'has-file' : 'no-file'}
+                    key="bulk-import-file-input"
                     onChange={e => {
                       if (e.target.files && e.target.files[0]) {
                         const file = e.target.files[0]

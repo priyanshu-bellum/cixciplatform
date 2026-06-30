@@ -81,6 +81,14 @@ class ProductListSerializer(ProductSerializerBase):
 class ProductDetailSerializer(ProductSerializerBase):
     primary_image_url = serializers.SerializerMethodField()
 
+    headphone_jack_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    bluetooth_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    compatible_charging_interface = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    wireless_charging_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    storage_expansion_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    memory_capacity = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    compatible_watch_case_size = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
     class Meta:
         model = Product
         fields = "__all__"
