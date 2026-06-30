@@ -1787,29 +1787,47 @@ export default function CatalogPage() {
   }, [showManageModal])
 
   const parseCSV = (text: string): string[][] => {
-    const lines = text.split(/\r?\n/);
     const result: string[][] = [];
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    let row: string[] = [];
+    let currentCell = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
       
-      const row: string[] = [];
-      let inQuotes = false;
-      let currentCell = '';
-      for (let j = 0; j < line.length; j++) {
-        const char = line[j];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          row.push(currentCell.trim());
-          currentCell = '';
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          currentCell += '"';
+          i++; // skip next quote
         } else {
-          currentCell += char;
+          inQuotes = !inQuotes;
         }
+      } else if (char === ',' && !inQuotes) {
+        row.push(currentCell.trim());
+        currentCell = '';
+      } else if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && nextChar === '\n') {
+          i++;
+        }
+        row.push(currentCell.trim());
+        if (row.some(cell => cell !== '')) {
+          result.push(row);
+        }
+        row = [];
+        currentCell = '';
+      } else {
+        currentCell += char;
       }
-      row.push(currentCell.trim());
-      result.push(row);
     }
+    
+    if (currentCell !== '' || row.length > 0) {
+      row.push(currentCell.trim());
+      if (row.some(cell => cell !== '')) {
+        result.push(row);
+      }
+    }
+    
     return result;
   };
 
