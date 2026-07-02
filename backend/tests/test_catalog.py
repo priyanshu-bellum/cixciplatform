@@ -12,8 +12,12 @@ from apps.catalog.models import Product, BuyerScopedCompatibilityProjection
 
 @pytest.fixture
 def product(buyer_user):
-    """A product scoped to buyer_user's company."""
-    return Product.objects.create(
+    """A product scoped to buyer_user's company, compatible with a device in their portfolio."""
+    from apps.devices.models import Device, DeviceType, Manufacturer
+    from apps.devices.services import add_device_to_portfolio
+    from apps.catalog.models import ProductCompatibilityAssertion
+
+    p = Product.objects.create(
         name="Test Accessory",
         sku="ACC-001",
         brand="TestBrand",
@@ -25,6 +29,20 @@ def product(buyer_user):
         company_scope_reference=buyer_user.entity.company_id,
         vendor_company_reference=uuid.uuid4(),
     )
+
+    dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+    mfr, _ = Manufacturer.objects.get_or_create(name="TestMfr")
+    device, _ = Device.objects.get_or_create(name="TestDevice", device_type=dt, manufacturer=mfr)
+
+    add_device_to_portfolio(buyer_user, device.id)
+
+    ProductCompatibilityAssertion.objects.create(
+        product=p,
+        device_reference=device.id,
+        is_compatible=True,
+        is_excluded=False
+    )
+    return p
 
 
 @pytest.mark.django_db
@@ -371,17 +389,19 @@ class TestOutOfStockStatus:
         assert product.msrp == 999.00
 
     def test_ai_review_trigger_on_content_change(self, product, buyer_user):
-        """Updates to content-related fields like description on an active product trigger pending_review state."""
+        """Updates to content-related fields like description on an active product keep status active (CIXCI admin review bypassed)."""
         # Non-admin changes description
         product.description = "New description with no color"
         product.save(actor_id=buyer_user.id)
         
-        # Product status moves to pending_review
-        assert product.status == "pending_review"
+        # Product status remains active
+        assert product.status == "active"
 
     def test_compatibility_additive_and_permissions(self, buyer_client, admin_user, buyer_user, product):
         """Check compatibility API action for additive updates and permissions."""
         from apps.catalog.models import ProductCompatibilityAssertion
+
+        ProductCompatibilityAssertion.objects.filter(product=product).delete()
 
         # Prepare first assertion
         device_id = str(uuid.uuid4())

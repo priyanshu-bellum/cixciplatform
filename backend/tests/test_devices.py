@@ -253,11 +253,12 @@ class TestPortfolioService:
         assert snap.device_count == 0
         assert snap.snapshot_reason == "device_removed"
 
-    def test_add_without_capability_raises_permission_error(self, buyer_entity):
+    def test_add_without_capability_raises_permission_error(self, vendor_company):
         """User without devices.portfolio.self_modify cannot add devices."""
-        from apps.tenant.models import User
+        from apps.tenant.models import User, CompanyEntity
+        ent = CompanyEntity.objects.create(company=vendor_company, name="Vendor Ent", status="active")
         user_no_cap = User.objects.create_user(
-            email="nocap@buyer.test", entity=buyer_entity, password="pass",
+            email="nocap@buyer.test", entity=ent, password="pass",
         )
         from apps.devices.models import Device as D, DeviceType as DT, Manufacturer as M
         dt = DT.objects.create(name="Tablet", code="tablet")

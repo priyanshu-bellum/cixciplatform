@@ -79,6 +79,35 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 logger.debug("check_access DENIED: company %s is not active (status: %s)", company.id, company.status)
                 return AccessResult(granted=False, reason="company_inactive", actor_id=user.id, capability_code=capability_code)
             
+            # Fallback for standard buyer capabilities if company type is buyer
+            buyer_safe_caps = {
+                "devices.portfolio.self_modify",
+                "devices.device.list",
+                "devices.device.read",
+                "devices.type.list",
+                "devices.type.read",
+                "devices.manufacturer.list",
+                "devices.manufacturer.read",
+                "devices.feature.list",
+                "devices.feature.read",
+                "catalog.product.list",
+                "catalog.product.read",
+            }
+            if company.company_type == "buyer" and capability_code in buyer_safe_caps:
+                if company_id and str(user.entity.company_id) != str(company_id):
+                    logger.debug(
+                        "check_access DENIED (buyer fallback): user %s company %s != requested %s",
+                        user.id, user.entity.company_id, company_id
+                    )
+                    return AccessResult(granted=False, reason="company_scope_mismatch", actor_id=user.id, capability_code=capability_code)
+                if entity_id and str(user.entity_id) != str(entity_id):
+                    logger.debug(
+                        "check_access DENIED (buyer fallback): user %s entity %s != requested %s",
+                        user.id, user.entity_id, entity_id
+                    )
+                    return AccessResult(granted=False, reason="entity_scope_mismatch", actor_id=user.id, capability_code=capability_code)
+                return AccessResult(granted=True, reason="buyer_default_capability", actor_id=user.id, capability_code=capability_code)
+
             # Check user capability first
             has_user_cap = user.capabilities.filter(code=capability_code, is_active=True).exists()
             if not has_user_cap:

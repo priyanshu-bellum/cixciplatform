@@ -216,6 +216,13 @@ function MultiSelectColor({
   )
 }
 
+const formatCurrency = (amount: number | string | null | undefined, currency: string = 'USD') => {
+  if (amount === null || amount === undefined || amount === '') return '—';
+  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(numericAmount)) return '—';
+  return `${currency} ${numericAmount.toFixed(2)}`;
+};
+
 export default function CatalogPage() {
   const { user } = useAuthStore()
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
@@ -1182,6 +1189,12 @@ export default function CatalogPage() {
     enabled: tab === 'export_jobs' && isBuyer,
   })
 
+  const { data: portfolio } = useQuery({
+    queryKey: ['my-devices'],
+    queryFn: () => api.get('/devices/portfolio/my_devices/').then(r => r.data).catch(() => []),
+    enabled: isBuyer,
+  })
+
   const products = data?.results ?? data ?? []
   const compatibleProducts = products.filter((p: any) =>
     projection?.compatible_product_ids?.includes(p.id)
@@ -2116,9 +2129,6 @@ export default function CatalogPage() {
             <div className={`tab ${tab === 'projection' ? 'active' : ''}`} onClick={() => setTab('projection')}>
               My Compatibility
             </div>
-            <div className={`tab ${tab === 'export_jobs' ? 'active' : ''}`} onClick={() => setTab('export_jobs')}>
-              Export Jobs
-            </div>
           </>
         )}
       </div>
@@ -2135,9 +2145,6 @@ export default function CatalogPage() {
                 <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                   {selectedIds.length} accessories selected
                 </span>
-                <button className="btn btn-primary btn-sm" onClick={() => setShowExportModal(true)}>
-                  <FileText size={13} /> Export Selection
-                </button>
                 <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIds([])}>
                   Clear
                 </button>
@@ -2148,7 +2155,14 @@ export default function CatalogPage() {
             {isLoading ? (
               <div className="loading-overlay"><div className="spinner" /> Loading products…</div>
             ) : products.length === 0 ? (
-              <div className="empty-state"><ShoppingBag size={40} /><div>No products yet</div></div>
+              <div className="empty-state">
+                <ShoppingBag size={40} />
+                {isBuyer && (!portfolio || portfolio.filter((d: any) => d.active_flag).length === 0) ? (
+                  <div>Please add devices to your portfolio to view compatible products</div>
+                ) : (
+                  <div>No products yet</div>
+                )}
+              </div>
             ) : (
               <table>
                 <thead>
@@ -2163,10 +2177,12 @@ export default function CatalogPage() {
                       </th>
                     )}
                     <th style={{ width: 60 }}>Image</th>
-                    <th>Name</th>
+                    <th>Product Name</th>
                     <th>Brand</th>
                     <th>Type</th>
+                    <th>Category</th>
                     <th>Wholesale Price</th>
+                    <th>MSRP</th>
                     <th>Status</th>
                     <th>Selling</th>
                   </tr>
@@ -2176,13 +2192,10 @@ export default function CatalogPage() {
                     <tr
                       key={p.id}
                       onClick={() => {
-                        if (isBuyer) toggleSelectProduct(p.id)
-                        if (isVendor || isCixciAdmin) {
-                          setSelectedManageProduct(p)
-                          setShowManageModal(true)
-                        }
+                        setSelectedManageProduct(p)
+                        setShowManageModal(true)
                       }}
-                      style={{ cursor: (isBuyer || isVendor || isCixciAdmin) ? 'pointer' : 'default' }}
+                      style={{ cursor: 'pointer' }}
                     >
                       {isBuyer && (
                         <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -2209,7 +2222,14 @@ export default function CatalogPage() {
                       <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.name}</td>
                       <td>{p.brand}</td>
                       <td>{p.product_type}</td>
-                      <td className="mono">{p.vendor_wholesale_price_amount ? `${p.vendor_wholesale_price_currency || 'USD'} ${p.vendor_wholesale_price_amount}` : '—'}</td>
+                      <td>{p.product_category || '—'}</td>
+                      <td className="mono">
+                        {isBuyer
+                          ? formatCurrency(p.buyer_wholesale_price, p.vendor_wholesale_price_currency)
+                          : formatCurrency(p.vendor_wholesale_price_amount, p.vendor_wholesale_price_currency)
+                        }
+                      </td>
+                      <td className="mono">{formatCurrency(p.msrp)}</td>
                       <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
                       <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
                     </tr>
@@ -2269,9 +2289,6 @@ export default function CatalogPage() {
                       <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                         {selectedIds.length} selected
                       </span>
-                      <button className="btn btn-primary btn-sm" onClick={() => setShowExportModal(true)}>
-                        <FileText size={13} /> Export Selection
-                      </button>
                       <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIds([])}>
                         Clear
                       </button>
@@ -2307,10 +2324,12 @@ export default function CatalogPage() {
                             />
                           </th>
                           <th style={{ width: 60 }}>Image</th>
-                          <th>Name</th>
+                          <th>Product Name</th>
                           <th>Brand</th>
                           <th>Type</th>
+                          <th>Category</th>
                           <th>Wholesale Price</th>
+                          <th>MSRP</th>
                           <th>Status</th>
                           <th>Selling</th>
                         </tr>
@@ -2320,11 +2339,8 @@ export default function CatalogPage() {
                           <tr
                             key={p.id}
                             onClick={() => {
-                              if (selectedIds.includes(p.id)) {
-                                setSelectedIds(selectedIds.filter(x => x !== p.id))
-                              } else {
-                                setSelectedIds([...selectedIds, p.id])
-                              }
+                              setSelectedManageProduct(p)
+                              setShowManageModal(true)
                             }}
                             style={{ cursor: 'pointer' }}
                           >
@@ -2357,7 +2373,14 @@ export default function CatalogPage() {
                             <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.name}</td>
                             <td>{p.brand}</td>
                             <td>{p.product_type}</td>
-                            <td className="mono">{p.vendor_wholesale_price_amount ? `${p.vendor_wholesale_price_currency || 'USD'} ${p.vendor_wholesale_price_amount}` : '—'}</td>
+                            <td>{p.product_category || '—'}</td>
+                            <td className="mono">
+                              {isBuyer
+                                ? formatCurrency(p.buyer_wholesale_price, p.vendor_wholesale_price_currency)
+                                : formatCurrency(p.vendor_wholesale_price_amount, p.vendor_wholesale_price_currency)
+                              }
+                            </td>
+                            <td className="mono">{formatCurrency(p.msrp)}</td>
                             <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
                             <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
                           </tr>
@@ -2372,7 +2395,7 @@ export default function CatalogPage() {
         </div>
       )}
 
-      {tab === 'export_jobs' && isBuyer && (
+      {tab === 'export_jobs' && isBuyer && false && (
         <div>
           <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Procurement Export Jobs</div>
@@ -3420,7 +3443,7 @@ export default function CatalogPage() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div className="card" style={{ width: 640, maxWidth: '95%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Manage Accessory</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{isBuyer ? 'Product Details' : 'Manage Accessory'}</div>
               <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setShowManageModal(false)}>
                 <X size={16} />
               </button>
@@ -3442,45 +3465,50 @@ export default function CatalogPage() {
                 <div style={{ fontSize: 17, fontWeight: 650, color: 'var(--text-primary)' }}>{selectedManageProduct.name}</div>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>Brand: {selectedManageProduct.brand || '—'} | SKU: {selectedManageProduct.sku}</div>
                 <div style={{ fontSize: 14, color: 'var(--accent)', fontWeight: 600, marginTop: 4 }}>
-                  {selectedManageProduct.vendor_wholesale_price_amount ? `${selectedManageProduct.vendor_wholesale_price_currency || 'USD'} ${selectedManageProduct.vendor_wholesale_price_amount}` : 'Free'}
+                  {isBuyer
+                    ? formatCurrency(selectedManageProduct.buyer_wholesale_price, selectedManageProduct.vendor_wholesale_price_currency)
+                    : formatCurrency(selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)
+                  }
                 </div>
               </div>
             </div>
 
             {/* Tab navigation */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16, gap: 16 }}>
-              {[
-                { id: 'details', label: 'Details' },
-                { id: 'compatibility', label: 'Device Compatibility' },
-                { id: 'bulk', label: 'Bulk Update' },
-                { id: 'audit', label: 'Audit Trail' }
-              ].map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setManageTab(t.id as any)}
-                  style={{
-                    padding: '8px 4px',
-                    fontSize: 13,
-                    fontWeight: manageTab === t.id ? 600 : 500,
-                    color: manageTab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
-                    borderBottom: manageTab === t.id ? '2px solid var(--accent)' : 'none',
-                    background: 'none',
-                    borderLeft: 'none',
-                    borderRight: 'none',
-                    borderTop: 'none',
-                    cursor: 'pointer',
-                    outline: 'none',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            {!isBuyer && (
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16, gap: 16 }}>
+                {[
+                  { id: 'details', label: 'Details' },
+                  { id: 'compatibility', label: 'Device Compatibility' },
+                  { id: 'bulk', label: 'Bulk Update' },
+                  { id: 'audit', label: 'Audit Trail' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setManageTab(t.id as any)}
+                    style={{
+                      padding: '8px 4px',
+                      fontSize: 13,
+                      fontWeight: manageTab === t.id ? 600 : 500,
+                      color: manageTab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
+                      borderBottom: manageTab === t.id ? '2px solid var(--accent)' : 'none',
+                      background: 'none',
+                      borderLeft: 'none',
+                      borderRight: 'none',
+                      borderTop: 'none',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* 1. Details Tab */}
-            {manageTab === 'details' && (
+            {(manageTab === 'details' || isBuyer) && (
               <>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</div>
@@ -3493,26 +3521,36 @@ export default function CatalogPage() {
                 <div style={{ marginBottom: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Specifications & Metadata</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {selectedManageProduct.upc && <div><strong>UPC:</strong> {selectedManageProduct.upc}</div>}
-                    {selectedManageProduct.msrp && <div><strong>MSRP:</strong> USD {selectedManageProduct.msrp}</div>}
-                    {selectedManageProduct.map_price && <div><strong>MAP Price:</strong> USD {selectedManageProduct.map_price}</div>}
-                    {selectedManageProduct.sale_price && <div><strong>Sale Price:</strong> USD {selectedManageProduct.sale_price}</div>}
-                    {selectedManageProduct.color && <div><strong>Color:</strong> {selectedManageProduct.color}</div>}
-                    {selectedManageProduct.system_color && <div><strong>System Color:</strong> {selectedManageProduct.system_color}</div>}
-                    {selectedManageProduct.inventory_level !== undefined && selectedManageProduct.inventory_level !== null && <div><strong>Inventory:</strong> {selectedManageProduct.inventory_level} units</div>}
-                    {selectedManageProduct.warranty && <div><strong>Warranty:</strong> {selectedManageProduct.warranty}</div>}
-                    {(selectedManageProduct.length || selectedManageProduct.width || selectedManageProduct.height) && (
-                      <div><strong>Dimensions:</strong> {selectedManageProduct.length || 0}L × {selectedManageProduct.width || 0}W × {selectedManageProduct.height || 0}H in</div>
+                    {isBuyer ? (
+                      <>
+                        {selectedManageProduct.msrp && <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>}
+                        {selectedManageProduct.color && <div><strong>Color:</strong> {selectedManageProduct.color}</div>}
+                        {selectedManageProduct.warranty && <div><strong>Warranty:</strong> {selectedManageProduct.warranty}</div>}
+                      </>
+                    ) : (
+                      <>
+                        {selectedManageProduct.upc && <div><strong>UPC:</strong> {selectedManageProduct.upc}</div>}
+                        {selectedManageProduct.msrp && <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>}
+                        {selectedManageProduct.map_price && <div><strong>MAP Price:</strong> {formatCurrency(selectedManageProduct.map_price)}</div>}
+                        {selectedManageProduct.sale_price && <div><strong>Sale Price:</strong> {formatCurrency(selectedManageProduct.sale_price)}</div>}
+                        {selectedManageProduct.color && <div><strong>Color:</strong> {selectedManageProduct.color}</div>}
+                        {selectedManageProduct.system_color && <div><strong>System Color:</strong> {selectedManageProduct.system_color}</div>}
+                        {selectedManageProduct.inventory_level !== undefined && selectedManageProduct.inventory_level !== null && <div><strong>Inventory:</strong> {selectedManageProduct.inventory_level} units</div>}
+                        {selectedManageProduct.warranty && <div><strong>Warranty:</strong> {selectedManageProduct.warranty}</div>}
+                        {(selectedManageProduct.length || selectedManageProduct.width || selectedManageProduct.height) && (
+                          <div><strong>Dimensions:</strong> {selectedManageProduct.length || 0}L × {selectedManageProduct.width || 0}W × {selectedManageProduct.height || 0}H in</div>
+                        )}
+                        {selectedManageProduct.weight && <div><strong>Weight:</strong> {selectedManageProduct.weight} lbs</div>}
+                        {selectedManageProduct.recommended_accessory && <div><strong>Status:</strong> Recommended Accessory</div>}
+                      </>
                     )}
-                    {selectedManageProduct.weight && <div><strong>Weight:</strong> {selectedManageProduct.weight} lbs</div>}
-                    {selectedManageProduct.recommended_accessory && <div><strong>Status:</strong> Recommended Accessory</div>}
                   </div>
                 </div>
               </>
             )}
 
             {/* 2. Device Compatibility Tab */}
-            {manageTab === 'compatibility' && (
+            {manageTab === 'compatibility' && !isBuyer && (
               <div style={{ maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}>
                 {/* Recalculate button (admin only) */}
                 {isCixciAdmin && (
@@ -3652,7 +3690,7 @@ export default function CatalogPage() {
             )}
 
             {/* 3. Bulk Compatibility Tab */}
-            {manageTab === 'bulk' && (
+            {manageTab === 'bulk' && !isBuyer && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 300, overflowY: 'auto' }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                   Select devices and choose the update type. 
@@ -3748,7 +3786,7 @@ export default function CatalogPage() {
             )}
 
             {/* 4. Audit History Tab */}
-            {manageTab === 'audit' && (
+            {manageTab === 'audit' && !isBuyer && (
               <div style={{ maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}>
                 {isLoadingAudit ? (
                   <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: 13 }}>
@@ -3792,20 +3830,28 @@ export default function CatalogPage() {
             )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
-              <button
-                type="button"
-                className="btn btn-danger"
-                style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
-                onClick={() => handleDeleteProduct(selectedManageProduct.id)}
-              >
-                <Trash2 size={14} /> Delete
-              </button>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowManageModal(false)}>Close</button>
-                <button type="button" className="btn btn-primary" onClick={() => openEditModal(selectedManageProduct)}>
-                  <Edit size={14} /> Edit Product
-                </button>
-              </div>
+              {isBuyer ? (
+                <div style={{ display: 'flex', width: '100%', justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowManageModal(false)}>Close</button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
+                    onClick={() => handleDeleteProduct(selectedManageProduct.id)}
+                  >
+                    <Trash2 size={14} /> Delete
+                  </button>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowManageModal(false)}>Close</button>
+                    <button type="button" className="btn btn-primary" onClick={() => openEditModal(selectedManageProduct)}>
+                      <Edit size={14} /> Edit Product
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

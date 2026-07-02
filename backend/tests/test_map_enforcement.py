@@ -80,6 +80,38 @@ class TestMapPricingEnforcement:
         p_missing_map.refresh_from_db()
         p_violating_price.refresh_from_db()
         
+        # Create a device, add to buyer portfolio, and link compatibility to prevent catalog filtering
+        from apps.devices.models import Device, DeviceType, Manufacturer
+        from apps.devices.services import add_device_to_portfolio
+        from apps.catalog.models import ProductCompatibilityAssertion
+
+        dt = DeviceType.objects.create(name="Smartphone", code="smartphone", status="active")
+        mfr = Manufacturer.objects.create(name="TestMaker")
+        dev = Device.objects.create(
+            name="TestPhone X",
+            sku="TP-X-001",
+            device_type=dt,
+            manufacturer=mfr,
+            lifecycle_status="current",
+        )
+        add_device_to_portfolio(buyer_user, dev.id)
+
+        ProductCompatibilityAssertion.objects.create(
+            product=p_missing_map,
+            device_reference=str(dev.id),
+            is_compatible=True
+        )
+        ProductCompatibilityAssertion.objects.create(
+            product=p_violating_price,
+            device_reference=str(dev.id),
+            is_compatible=True
+        )
+        ProductCompatibilityAssertion.objects.create(
+            product=p_compliant,
+            device_reference=str(dev.id),
+            is_compatible=True
+        )
+
         # Enforce MAP pricing now
         vendor.map_pricing_enforced = True
         vendor.save()

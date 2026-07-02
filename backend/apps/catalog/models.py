@@ -178,6 +178,13 @@ class Product(models.Model):
 
         return False
 
+    @property
+    def buyer_wholesale_price(self):
+        if self.vendor_wholesale_price_amount is not None and self.msrp is not None:
+            from decimal import Decimal
+            return self.vendor_wholesale_price_amount + self.msrp * Decimal("0.14")
+        return self.vendor_wholesale_price_amount
+
     def clean(self):
         super().clean()
         from django.core.exceptions import ValidationError
@@ -530,10 +537,7 @@ class Product(models.Model):
                         self.meta_description = f"Purchase the high-quality {self.name} ({self.sku}) in our {self.product_category or 'accessory'} section."
                         if len(self.meta_description) > 160:
                             self.meta_description = self.meta_description[:157] + "..."
-                    
-                    # Transition to PENDING_REVIEW if status is ACTIVE
-                    if self.status == ProductStatus.ACTIVE:
-                        self.status = ProductStatus.PENDING_REVIEW
+
 
         self.clean()
         

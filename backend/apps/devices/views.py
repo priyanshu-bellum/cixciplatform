@@ -130,9 +130,13 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             from django.db.models import Q
             qs = qs.filter(
                 Q(launch_date__isnull=True) | Q(launch_date__lte=today)
-            ).exclude(
-                Q(lifecycle_status="inactive") & (Q(launch_date__isnull=True) | Q(launch_date__gt=today))
             )
+            if hasattr(user, "entity") and user.entity and user.entity.company and user.entity.company.company_type == "buyer":
+                qs = qs.exclude(lifecycle_status="inactive")
+            else:
+                qs = qs.exclude(
+                    Q(lifecycle_status="inactive") & (Q(launch_date__isnull=True) | Q(launch_date__gt=today))
+                )
         return qs
     action_capability_map = {
         "list": "devices.device.list",

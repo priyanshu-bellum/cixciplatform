@@ -1001,8 +1001,12 @@ export default function DevicesPage() {
               <option value="">All Statuses</option>
               <option value="available">Available</option>
               <option value="launching">Launching</option>
-              <option value="inactive">Inactive</option>
-              <option value="eol">EOL</option>
+              {!isBuyer && (
+                <>
+                  <option value="inactive">Inactive</option>
+                  <option value="eol">EOL</option>
+                </>
+              )}
             </select>
 
             {(search || filterManufacturer || filterType || filterStatus) && (
@@ -1849,7 +1853,13 @@ export default function DevicesPage() {
                           onChange={e => setEditLaunchDate(e.target.value)}
                         />
                       ) : (
-                        <div className="input-read-only">{editingDevice.launch_date || 'N/A'}</div>
+                        <div className="input-read-only">
+                          {editingDevice.launch_date ? (
+                            editingDevice.launch_date.match(/^\d{4}-\d{2}-\d{2}$/) ? 
+                            editingDevice.launch_date.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2-$3-$1') : 
+                            editingDevice.launch_date
+                          ) : 'N/A'}
+                        </div>
                       )}
                     </div>
 

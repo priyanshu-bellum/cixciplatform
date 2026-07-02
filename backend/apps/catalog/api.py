@@ -40,6 +40,7 @@ class ProductSerializerBase(serializers.ModelSerializer):
 
 class ProductListSerializer(ProductSerializerBase):
     primary_image_url = serializers.SerializerMethodField()
+    buyer_wholesale_price = serializers.ReadOnlyField()
 
     class Meta:
         model = Product
@@ -49,6 +50,7 @@ class ProductListSerializer(ProductSerializerBase):
             "vendor_company_reference", "created_at",
             "description", "vendor_wholesale_price_amount",
             "vendor_wholesale_price_currency", "primary_image_url",
+            "buyer_wholesale_price",
             "upc", "launch_date", "release_date", "eol_date", "color", "system_color",
             "msrp", "map_price", "sale_price", "recommended_accessory",
             "inventory_level", "inventory_threshold", "length", "width", "height", "weight",
@@ -80,6 +82,7 @@ class ProductListSerializer(ProductSerializerBase):
 
 class ProductDetailSerializer(ProductSerializerBase):
     primary_image_url = serializers.SerializerMethodField()
+    buyer_wholesale_price = serializers.ReadOnlyField()
 
     headphone_jack_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     bluetooth_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -92,7 +95,7 @@ class ProductDetailSerializer(ProductSerializerBase):
     class Meta:
         model = Product
         fields = "__all__"
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at", "company_scope_reference"]
 
     def validate(self, attrs):
         category = attrs.get('product_category') or (self.instance.product_category if self.instance else None)
@@ -316,7 +319,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     def get_serializer_class(self):
-        return ProductDetailSerializer if self.action == "retrieve" else ProductListSerializer
+        if self.action in ["retrieve", "create", "update", "partial_update"]:
+            return ProductDetailSerializer
+        return ProductListSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -343,6 +348,25 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         qs = qs.filter(status=ProductStatus.ACTIVE).exclude(compatibility_status="incomplete").filter(
             Q(release_date__isnull=True) | Q(release_date__lte=today_est)
         )
+
+        if getattr(self, "action", None) == "list" and company.company_type == "buyer":
+            from apps.devices.models import BuyerDevicePortfolioReference
+            portfolio_device_ids = BuyerDevicePortfolioReference.objects.filter(
+                buyer_reference=user.id,
+                company_scope_reference=company.id,
+                active_flag=True
+            ).values_list("device_id", flat=True)
+
+            if not portfolio_device_ids:
+                return Product.objects.none()
+
+            compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
+                device_reference__in=portfolio_device_ids,
+                is_compatible=True,
+                is_excluded=False
+            ).values_list("product_id", flat=True)
+
+            qs = qs.filter(id__in=compatible_product_ids)
 
         buyer_regions = company.approved_regions or []
         if not isinstance(buyer_regions, list):
@@ -1520,104 +1544,104 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     else:
                         normalized_comp = comp_str
 
-                    # Now perform precise validation on the values of the fields
-                    if product_category == "Headphones":
-                        if not row_jack or not row_bluetooth:
-                            comp_errors.append("Headphone Jack Compatibility and Bluetooth Compatibility are required.")
-                        if row_jack and row_jack not in ["Not Compatible", "Lightning", "Type-C"]:
-                            comp_errors.append(f"Invalid Headphone Jack Compatibility '{row_jack}'.")
-                        if row_bluetooth and row_bluetooth not in ["Yes", "No"]:
-                            comp_errors.append(f"Invalid Bluetooth Compatibility '{row_bluetooth}'.")
-                        if row_jack == "Not Compatible" and row_bluetooth == "No":
-                            comp_errors.append("Headphones must support either Bluetooth or a compatible jack (cannot both be Not Compatible/No).")
+                # Now perform precise validation on the values of the fields
+                if product_category == "Headphones":
+                    if not row_jack or not row_bluetooth:
+                        comp_errors.append("Headphone Jack Compatibility and Bluetooth Compatibility are required.")
+                    if row_jack and row_jack not in ["Not Compatible", "Lightning", "Type-C"]:
+                        comp_errors.append(f"Invalid Headphone Jack Compatibility '{row_jack}'.")
+                    if row_bluetooth and row_bluetooth not in ["Yes", "No"]:
+                        comp_errors.append(f"Invalid Bluetooth Compatibility '{row_bluetooth}'.")
+                    if row_jack == "Not Compatible" and row_bluetooth == "No":
+                        comp_errors.append("Headphones must support either Bluetooth or a compatible jack (cannot both be Not Compatible/No).")
 
-                    elif product_category == "Speakers":
-                        if not row_charging or not row_bluetooth:
-                            comp_errors.append("Compatible Charging Interface and Bluetooth Compatibility are required.")
-                        if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
-                            comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
-                        if row_bluetooth and row_bluetooth not in ["Yes", "No"]:
-                            comp_errors.append(f"Invalid Bluetooth Compatibility '{row_bluetooth}'.")
+                elif product_category == "Speakers":
+                    if not row_charging or not row_bluetooth:
+                        comp_errors.append("Compatible Charging Interface and Bluetooth Compatibility are required.")
+                    if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
+                        comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
+                    if row_bluetooth and row_bluetooth not in ["Yes", "No"]:
+                        comp_errors.append(f"Invalid Bluetooth Compatibility '{row_bluetooth}'.")
 
-                    elif product_category == "Chargers and Cables":
-                        if not row_charging or not row_wireless:
-                            comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
-                        if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
-                            comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
-                        if row_wireless:
-                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                            if 'Not Compatible' in w_vals and len(w_vals) > 1:
-                                comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
-                            for w in w_vals:
-                                if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
-                                    comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
-                            if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
-                                comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
+                elif product_category == "Chargers and Cables":
+                    if not row_charging or not row_wireless:
+                        comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
+                    if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
+                        comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
+                    if row_wireless:
+                        w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                        if 'Not Compatible' in w_vals and len(w_vals) > 1:
+                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                        for w in w_vals:
+                            if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                                comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
+                        if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
+                            comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
 
-                    elif product_category == "Memory":
-                        if not row_storage:
-                            comp_errors.append("Storage Expansion Compatibility is required.")
-                        if row_storage and row_storage not in ["Not Compatible", "microSDXC", "microSDHC"]:
-                            # Attempt loose spellings
-                            if row_storage.lower() == "microsdxc" or row_storage.lower() == "mircosdxc":
-                                row_storage = "microSDXC"
-                            elif row_storage.lower() == "microsdhc" or row_storage.lower() == "mircosdhc":
-                                row_storage = "microSDHC"
-                            else:
-                                comp_errors.append(f"Invalid Storage Expansion Compatibility '{row_storage}'.")
-                        
-                        if row_storage in ["microSDXC", "microSDHC"]:
-                            if not row_memory or row_memory == "Not Compatible":
-                                comp_errors.append("Memory Capacity is required when storage expansion is enabled.")
-                            else:
-                                if row_storage == "microSDXC":
-                                    allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
-                                else:
-                                    allowed = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
-                                if row_memory.upper() not in [a.upper() for a in allowed]:
-                                    comp_errors.append(f"Memory Capacity '{row_memory}' must match allowed list for {row_storage}.")
+                elif product_category == "Memory":
+                    if not row_storage:
+                        comp_errors.append("Storage Expansion Compatibility is required.")
+                    if row_storage and row_storage not in ["Not Compatible", "microSDXC", "microSDHC"]:
+                        # Attempt loose spellings
+                        if row_storage.lower() == "microsdxc" or row_storage.lower() == "mircosdxc":
+                            row_storage = "microSDXC"
+                        elif row_storage.lower() == "microsdhc" or row_storage.lower() == "mircosdhc":
+                            row_storage = "microSDHC"
                         else:
-                            if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
-                                comp_errors.append("Memory Capacity must be Not Compatible when Storage Expansion is Not Compatible.")
+                            comp_errors.append(f"Invalid Storage Expansion Compatibility '{row_storage}'.")
+                    
+                    if row_storage in ["microSDXC", "microSDHC"]:
+                        if not row_memory or row_memory == "Not Compatible":
+                            comp_errors.append("Memory Capacity is required when storage expansion is enabled.")
+                        else:
+                            if row_storage == "microSDXC":
+                                allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
+                            else:
+                                allowed = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
+                            if row_memory.upper() not in [a.upper() for a in allowed]:
+                                comp_errors.append(f"Memory Capacity '{row_memory}' must match allowed list for {row_storage}.")
+                    else:
+                        if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
+                            comp_errors.append("Memory Capacity must be Not Compatible when Storage Expansion is Not Compatible.")
 
-                    elif product_category == "Wearable Tech":
-                        if not row_charging or not row_wireless:
-                            comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
-                        if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
-                            comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
-                        if row_wireless:
-                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                            if 'Not Compatible' in w_vals and len(w_vals) > 1:
-                                comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
-                            for w in w_vals:
-                                if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
-                                    comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
-                            if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
-                                comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
+                elif product_category == "Wearable Tech":
+                    if not row_charging or not row_wireless:
+                        comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
+                    if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
+                        comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
+                    if row_wireless:
+                        w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                        if 'Not Compatible' in w_vals and len(w_vals) > 1:
+                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                        for w in w_vals:
+                            if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                                comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
+                        if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
+                            comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
 
-                    elif product_category == "Watch Accessories":
-                        if not row_watch_size or not row_wireless:
-                            comp_errors.append("Compatible Watch Case Size and Wireless Charging Compatibility are required.")
-                        if row_watch_size and row_watch_size not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
-                            comp_errors.append(f"Invalid Compatible Watch Case Size '{row_watch_size}'.")
-                        if row_wireless:
-                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                            if 'Not Compatible' in w_vals and len(w_vals) > 1:
-                                comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
-                            for w in w_vals:
-                                if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
-                                    comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
-                            if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
-                                comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
+                elif product_category == "Watch Accessories":
+                    if not row_watch_size or not row_wireless:
+                        comp_errors.append("Compatible Watch Case Size and Wireless Charging Compatibility are required.")
+                    if row_watch_size and row_watch_size not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
+                        comp_errors.append(f"Invalid Compatible Watch Case Size '{row_watch_size}'.")
+                    if row_wireless:
+                        w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                        if 'Not Compatible' in w_vals and len(w_vals) > 1:
+                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                        for w in w_vals:
+                            if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                                comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
+                        if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
+                            comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
 
-                    if comp_errors:
-                        row_errors.append({
-                            "row_number": row_num,
-                            "column_name": "Device Compatibility",
-                            "submitted_value": comp_str or f"Bluetooth:{row_bluetooth}, Jack:{row_jack}, Charging:{row_charging}, Wireless:{row_wireless}",
-                            "validation_error": " | ".join(comp_errors),
-                            "recommended_correction": "Provide correct category-specific compatibility formats."
-                        })
+                if comp_errors:
+                    row_errors.append({
+                        "row_number": row_num,
+                        "column_name": "Device Compatibility",
+                        "submitted_value": comp_str or f"Bluetooth:{row_bluetooth}, Jack:{row_jack}, Charging:{row_charging}, Wireless:{row_wireless}",
+                        "validation_error": " | ".join(comp_errors),
+                        "recommended_correction": "Provide correct category-specific compatibility formats."
+                    })
 
             # --- Image URLs ---
             media_refs = []
@@ -1773,14 +1797,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 failed_count += 1
                 validation_errors.extend(row_errors)
             else:
-                final_status = "active"
                 if should_stage:
                     staged_count += 1
-                    final_status = "pending_review"
                 else:
                     passed_count += 1
-                    # Set the requested status
-                    final_status = status_str
+                final_status = status_str or "active"
 
                 # AI Enrichment Simulation
                 # 1. Clean Name
@@ -1902,7 +1923,37 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         else:
                             product.wireless_charging_compatibility = "Not Compatible"
                 
-                product.save(actor_id=request.user.id)
+                try:
+                    product.save(actor_id=request.user.id)
+                except Exception as ve:
+                    from django.core.exceptions import ValidationError as DjangoValidationError
+                    if "ValidationError" in ve.__class__.__name__ or isinstance(ve, DjangoValidationError):
+                        if should_stage:
+                            staged_count -= 1
+                        else:
+                            passed_count -= 1
+                        failed_count += 1
+                        
+                        err_msg = str(ve)
+                        if hasattr(ve, "message_dict"):
+                            err_msg = "; ".join(f"{f}: {', '.join(msgs)}" for f, msgs in ve.message_dict.items())
+                        elif hasattr(ve, "messages"):
+                            err_msg = "; ".join(ve.messages)
+                        elif hasattr(ve, "detail"):
+                            # Handle rest_framework validation error detail dict/list
+                            err_msg = str(ve.detail)
+                            
+                        row_errors.append({
+                            "row_number": row_num,
+                            "column_name": "Product Fields",
+                            "submitted_value": "",
+                            "validation_error": err_msg,
+                            "recommended_correction": "Correct the invalid fields."
+                        })
+                        validation_errors.extend(row_errors)
+                        continue
+                    else:
+                        raise ve
                 
                 # AI Enrichment logging
                 log_catalog_audit(
