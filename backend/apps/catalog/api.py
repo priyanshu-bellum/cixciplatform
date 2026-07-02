@@ -1398,28 +1398,21 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             if comp_val or has_separate_cols:
                 comp_str = str(comp_val).strip()
-                if comp_str and "," in comp_str:
-                    row_errors.append({
-                        "row_number": row_num,
-                        "column_name": "Device Compatibility",
-                        "submitted_value": comp_str,
-                        "validation_error": "Multiple compatibility groups must be separated by semicolons, not commas.",
-                        "recommended_correction": "Replace all commas with semicolons."
-                    })
-                else:
-                    # Category-specific structural validation
-                    comp_errors = []
-                    
-                    # Parse from compatibility column if separate columns not present
-                    if not has_separate_cols and comp_str:
-                        groups = [g.strip() for g in comp_str.split(";") if g.strip()]
-                        seen_g = set()
-                        unique_groups = []
-                        for g in groups:
-                            gl = g.lower()
-                            if gl not in seen_g:
-                                seen_g.add(gl)
-                                unique_groups.append(g)
+                # Category-specific structural validation
+                comp_errors = []
+                
+                # Parse from compatibility column if separate columns not present
+                if not has_separate_cols and comp_str:
+                    # Support both comma and semicolon separation
+                    unified_comp_str = comp_str.replace(",", ";")
+                    groups = [g.strip() for g in unified_comp_str.split(";") if g.strip()]
+                    seen_g = set()
+                    unique_groups = []
+                    for g in groups:
+                        gl = g.lower()
+                        if gl not in seen_g:
+                            seen_g.add(gl)
+                            unique_groups.append(g)
                         
                         # Set default variables based on parts for category-specific check below
                         for g in unique_groups:
