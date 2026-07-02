@@ -182,7 +182,9 @@ class Product(models.Model):
     def buyer_wholesale_price(self):
         if self.vendor_wholesale_price_amount is not None and self.msrp is not None:
             from decimal import Decimal
-            return self.vendor_wholesale_price_amount + self.msrp * Decimal("0.14")
+            wholesale = Decimal(str(self.vendor_wholesale_price_amount))
+            msrp_val = Decimal(str(self.msrp))
+            return wholesale + msrp_val * Decimal("0.14")
         return self.vendor_wholesale_price_amount
 
     def clean(self):
@@ -375,7 +377,9 @@ class Product(models.Model):
             # Buyer Wholesale Price must be lower than MAP Price unless an approved pricing exception exists.
             if self.vendor_wholesale_price_amount is not None and self.msrp is not None:
                 from decimal import Decimal
-                buyer_wholesale_price = self.vendor_wholesale_price_amount + self.msrp * Decimal("0.14")
+                wholesale = Decimal(str(self.vendor_wholesale_price_amount))
+                msrp_val = Decimal(str(self.msrp))
+                buyer_wholesale_price = wholesale + msrp_val * Decimal("0.14")
                 from apps.pricing.services import check_pricing_exception_exists
                 has_exception = check_pricing_exception_exists(self.vendor_company_reference, self.sku)
                 if buyer_wholesale_price >= self.map_price and not has_exception:

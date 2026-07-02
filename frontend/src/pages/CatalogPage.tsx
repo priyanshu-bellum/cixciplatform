@@ -220,7 +220,14 @@ const formatCurrency = (amount: number | string | null | undefined, currency: st
   if (amount === null || amount === undefined || amount === '') return '—';
   const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
   if (isNaN(numericAmount)) return '—';
-  return `${currency} ${numericAmount.toFixed(2)}`;
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD',
+    }).format(numericAmount);
+  } catch (e) {
+    return `${currency} ${numericAmount.toFixed(2)}`;
+  }
 };
 
 export default function CatalogPage() {

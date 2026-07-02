@@ -414,7 +414,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 continue
 
             if p.map_price is not None:
-                buyer_wholesale_price = (p.vendor_wholesale_price_amount or Decimal("0.00")) + (p.msrp or Decimal("0.00")) * Decimal("0.14")
+                wholesale = Decimal(str(p.vendor_wholesale_price_amount or "0.00"))
+                msrp_val = Decimal(str(p.msrp or "0.00"))
+                buyer_wholesale_price = wholesale + msrp_val * Decimal("0.14")
                 if buyer_wholesale_price >= p.map_price and p.sku not in except_skus:
                     excluded_product_ids.append(p.id)
                     continue
@@ -2168,7 +2170,9 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
                     
                 if p.map_price is not None:
                     # 1. Buyer wholesale price vs MAP price
-                    buyer_wholesale_price = (p.vendor_wholesale_price_amount or Decimal("0.00")) + (p.msrp or Decimal("0.00")) * Decimal("0.14")
+                    wholesale = Decimal(str(p.vendor_wholesale_price_amount or "0.00"))
+                    msrp_val = Decimal(str(p.msrp or "0.00"))
+                    buyer_wholesale_price = wholesale + msrp_val * Decimal("0.14")
                     if buyer_wholesale_price >= p.map_price and p.sku not in except_skus:
                         violations.append((p, f"Product {p.sku} Buyer Wholesale Price ({buyer_wholesale_price}) is not lower than MAP Price ({p.map_price})."))
                         continue

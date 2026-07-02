@@ -32,7 +32,7 @@ def device(device_type, manufacturer):
         sku="TP-X-001",
         device_type=device_type,
         manufacturer=manufacturer,
-        lifecycle_status=DeviceLifecycleStatus.CURRENT,
+        lifecycle_status=DeviceLifecycleStatus.AVAILABLE,
     )
 
 
@@ -137,10 +137,10 @@ class TestDeviceEndpoints:
         assert any(d["sku"] == "TP-X-001" for d in resp.data["results"])
 
     def test_filter_by_lifecycle_status(self, buyer_client, device):
-        resp = buyer_client.get("/api/v1/devices/devices/?lifecycle_status=current")
+        resp = buyer_client.get("/api/v1/devices/devices/?lifecycle_status=available")
         assert resp.status_code == 200
         for d in resp.data["results"]:
-            assert d["lifecycle_status"] == "current"
+            assert d["lifecycle_status"] == "available"
 
     def test_unauthenticated_cannot_list_devices(self, api_client):
         resp = api_client.get("/api/v1/devices/devices/")

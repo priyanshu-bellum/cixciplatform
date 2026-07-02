@@ -60,16 +60,16 @@ class TestDeviceLaunchDateVisibility:
             launch_date=past_date
         )
         
-        # Non-admin user list devices
+        # Non-admin user list devices (buyer can see future-dated devices as "launching")
         resp = buyer_client.get("/api/v1/devices/devices/")
         assert resp.status_code == 200
         names = [d["name"] for d in resp.data["results"]]
         assert "Past Phone" in names
-        assert "Future Phone" not in names
+        assert "Future Phone" in names
         
-        # Non-admin get future device should return 404 (due to get_queryset filtering)
+        # Non-admin get future device should return 200 for buyer
         resp_get = buyer_client.get(f"/api/v1/devices/devices/{dev_future.id}/")
-        assert resp_get.status_code == 404
+        assert resp_get.status_code == 200
         
         # Admin user list devices should see both
         resp_admin = admin_client.get("/api/v1/devices/devices/")

@@ -123,20 +123,43 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = Device.objects.select_related("manufacturer", "device_type")
-        if not (user and user.is_authenticated and user.is_cixci_admin):
-            import datetime
-            from django.utils import timezone
-            today = timezone.localdate()
-            from django.db.models import Q
-            qs = qs.filter(
-                Q(launch_date__isnull=True) | Q(launch_date__lte=today)
-            )
-            if hasattr(user, "entity") and user.entity and user.entity.company and user.entity.company.company_type == "buyer":
-                qs = qs.exclude(lifecycle_status="inactive")
+        status_param = self.request.query_params.get("lifecycle_status")
+        
+        import datetime
+        from django.utils import timezone
+        today = timezone.localdate()
+        from django.db.models import Q
+        
+        is_buyer = False
+        if user and user.is_authenticated and hasattr(user, "entity") and user.entity and user.entity.company and user.entity.company.company_type == "buyer":
+            is_buyer = True
+            
+        if is_buyer:
+            if status_param == "available":
+                qs = qs.filter(lifecycle_status="available")
+            elif status_param == "launching":
+                qs = qs.filter(lifecycle_status="inactive", launch_date__gt=today)
+            elif status_param:
+                qs = qs.none()
             else:
-                qs = qs.exclude(
-                    Q(lifecycle_status="inactive") & (Q(launch_date__isnull=True) | Q(launch_date__gt=today))
+                qs = qs.filter(
+                    Q(lifecycle_status="available") |
+                    (Q(lifecycle_status="inactive") & Q(launch_date__gt=today))
                 )
+        else:
+            if not (user and user.is_authenticated and user.is_cixci_admin):
+                qs = qs.filter(
+                    Q(launch_date__isnull=True) | Q(launch_date__lte=today)
+                )
+                if status_param:
+                    qs = qs.filter(lifecycle_status=status_param)
+                else:
+                    qs = qs.exclude(
+                        Q(lifecycle_status="inactive") & (Q(launch_date__isnull=True) | Q(launch_date__gt=today))
+                    )
+            else:
+                if status_param:
+                    qs = qs.filter(lifecycle_status=status_param)
         return qs
     action_capability_map = {
         "list": "devices.device.list",
@@ -153,7 +176,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "recalculate_bulk_compatibility": "devices.device.manage",
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["lifecycle_status", "device_type", "manufacturer"]
+    filterset_fields = ["device_type", "manufacturer"]
     search_fields = ["name", "sku", "model_number", "manufacturer__name", "device_type__name", "lifecycle_status"]
     ordering_fields = ["name", "release_date", "created_at"]
     ordering = ["-created_at"]

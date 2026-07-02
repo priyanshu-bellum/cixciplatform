@@ -8,6 +8,7 @@ const LC_COLORS: Record<string, string> = {
   available: 'badge-green',
   inactive: 'badge-muted',
   archived: 'badge-amber',
+  launching: 'badge-amber',
 }
 
 const modalStyles = `
@@ -1052,9 +1053,15 @@ export default function DevicesPage() {
                         <td>{d.manufacturer_name ?? d.manufacturer}</td>
                         <td>{d.device_type_name ?? d.device_type}</td>
                         <td>
-                          <span className={`badge ${LC_COLORS[d.lifecycle_status] ?? 'badge-muted'}`}>
-                            {d.lifecycle_status}
-                          </span>
+                          {(() => {
+                            const isLaunching = d.lifecycle_status === 'inactive' && d.launch_date && new Date(d.launch_date) > new Date();
+                            const displayStatus = isLaunching ? 'launching' : d.lifecycle_status;
+                            return (
+                              <span className={`badge ${LC_COLORS[displayStatus] ?? 'badge-muted'}`}>
+                                {displayStatus}
+                              </span>
+                            );
+                          })()}
                         </td>
                         {isBuyer && (
                           <td onClick={e => e.stopPropagation()}>
@@ -1876,7 +1883,12 @@ export default function DevicesPage() {
                           <option value="archived">Archived</option>
                         </select>
                       ) : (
-                        <div className="input-read-only">{editingDevice.lifecycle_status}</div>
+                        <div className="input-read-only">
+                          {(() => {
+                            const isLaunching = editingDevice.lifecycle_status === 'inactive' && editingDevice.launch_date && new Date(editingDevice.launch_date) > new Date();
+                            return isLaunching ? 'launching' : editingDevice.lifecycle_status;
+                          })()}
+                        </div>
                       )}
                     </div>
 
