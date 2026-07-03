@@ -34,7 +34,7 @@ function CellInput({
   }, [value])
 
   const normHeader = headerName.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const isScrollable = ['productdescription', 'description', 'metatitle', 'metadescription'].includes(normHeader)
+  const isScrollable = ['productdescription', 'description', 'metatitle', 'metadescription', 'shortdescription', 'promoinformation'].includes(normHeader)
   const isProductName = ['productname', 'accessoryname', 'name'].includes(normHeader)
 
   if (isScrollable) {
@@ -43,7 +43,8 @@ function CellInput({
         style={{
           width: '100%',
           minWidth: 180,
-          height: 50,
+          minHeight: 60,
+          height: 80,
           background: hasError ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
           border: hasError ? '1px solid var(--red)' : '1px solid var(--border)',
           color: hasError ? 'var(--red)' : 'var(--text-secondary)',
@@ -52,7 +53,7 @@ function CellInput({
           padding: '4px 6px',
           borderRadius: 4,
           transition: 'all 0.15s ease',
-          resize: 'none',
+          resize: 'vertical',
           overflowY: 'auto',
           fontFamily: 'inherit',
           lineHeight: '1.3',
@@ -1248,12 +1249,16 @@ export default function CatalogPage() {
   }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0]
-      setFormError(null)
-      const isZip = file.name.endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed'
+    if (e.target.files && e.target.files.length > 0) {
+      const isZip = e.target.files.length === 1 && (
+        e.target.files[0].name.endsWith('.zip') || 
+        e.target.files[0].type === 'application/zip' || 
+        e.target.files[0].type === 'application/x-zip-compressed'
+      )
 
       if (isZip) {
+        const file = e.target.files[0]
+        setFormError(null)
         try {
           setFormError('Extracting and uploading images from ZIP... Please wait.')
           const zip = new JSZip()
@@ -1293,9 +1298,34 @@ export default function CatalogPage() {
           setUploadedZipImages([])
         }
       } else {
-        setSelectedImageFile(file)
-        setImagePreviewUrl(URL.createObjectURL(file))
-        setUploadedZipImages([])
+        const files = Array.from(e.target.files)
+        setFormError(null)
+        try {
+          if (files.length === 1) {
+            const file = files[0]
+            setSelectedImageFile(file)
+            setImagePreviewUrl(URL.createObjectURL(file))
+            setUploadedZipImages([])
+          } else {
+            setFormError('Uploading selected images... Please wait.')
+            const uploadedList: { name: string; url: string }[] = []
+            for (const f of files) {
+              const uploadRes = await handleUploadImage(f)
+              const absoluteUrl = getImageUrl('/media/' + uploadRes.storage_key)
+              uploadedList.push({ name: f.name, url: absoluteUrl })
+            }
+            setUploadedZipImages(uploadedList)
+            setImagePreviewUrl(uploadedList[0].url)
+            setProdPrimaryImageUrl(uploadedList[0].url)
+            setSelectedImageFile(files[0])
+            setFormError(null)
+          }
+        } catch (err: any) {
+          setFormError('Failed to upload one or more images: ' + err.message)
+          setSelectedImageFile(null)
+          setImagePreviewUrl('')
+          setUploadedZipImages([])
+        }
       }
     }
   }
@@ -2675,7 +2705,7 @@ export default function CatalogPage() {
                 </div>
                 <div className="form-group">
                   <label className="label">Product Description *</label>
-                  <textarea className="input" style={{ height: 60, resize: 'none' }} placeholder="Full detailed product capabilities and specifications…" value={prodDescription} onChange={e => setProdDescription(e.target.value)} required={isVendor} />
+                  <textarea className="input" style={{ minHeight: 80, resize: 'vertical', overflowY: 'auto' }} placeholder="Full detailed product capabilities and specifications…" value={prodDescription} onChange={e => setProdDescription(e.target.value)} required={isVendor} />
                 </div>
                 <div className="form-group">
                   <label className="label">Promo Information</label>
@@ -2709,6 +2739,7 @@ export default function CatalogPage() {
                         id="add-image-file"
                         style={{ display: 'none' }}
                         onChange={handleImageChange}
+                        multiple
                       />
                       <label htmlFor="add-image-file" className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-block', width: 'fit-content' }}>
                         Choose File
@@ -2794,11 +2825,11 @@ export default function CatalogPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label className="label">Meta Title</label>
-                    <textarea className="input" style={{ height: 60, resize: 'vertical', padding: '8px 10px' }} placeholder="SEO optimized title" value={prodMetaTitle} onChange={e => setProdMetaTitle(e.target.value)} />
+                    <textarea className="input" style={{ minHeight: 80, resize: 'vertical', padding: '8px 10px', overflowY: 'auto' }} placeholder="SEO optimized title" value={prodMetaTitle} onChange={e => setProdMetaTitle(e.target.value)} />
                   </div>
                   <div className="form-group">
                     <label className="label">Meta Description</label>
-                    <textarea className="input" style={{ height: 60, resize: 'vertical', padding: '8px 10px' }} placeholder="SEO optimized description" value={prodMetaDescription} onChange={e => setProdMetaDescription(e.target.value)} />
+                    <textarea className="input" style={{ minHeight: 80, resize: 'vertical', padding: '8px 10px', overflowY: 'auto' }} placeholder="SEO optimized description" value={prodMetaDescription} onChange={e => setProdMetaDescription(e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -3169,7 +3200,7 @@ export default function CatalogPage() {
                 </div>
                 <div className="form-group">
                   <label className="label">Product Description *</label>
-                  <textarea className="input" style={{ height: 60, resize: 'none' }} placeholder="Full detailed product capabilities and specifications…" value={prodDescription} onChange={e => setProdDescription(e.target.value)} required={isVendor} />
+                  <textarea className="input" style={{ minHeight: 80, resize: 'vertical', overflowY: 'auto' }} placeholder="Full detailed product capabilities and specifications…" value={prodDescription} onChange={e => setProdDescription(e.target.value)} required={isVendor} />
                 </div>
                 <div className="form-group">
                   <label className="label">Promo Information</label>
@@ -3203,6 +3234,7 @@ export default function CatalogPage() {
                         id="edit-image-file"
                         style={{ display: 'none' }}
                         onChange={handleImageChange}
+                        multiple
                       />
                       <label htmlFor="edit-image-file" className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-block', width: 'fit-content' }}>
                         Choose File
@@ -3288,11 +3320,11 @@ export default function CatalogPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label className="label">Meta Title</label>
-                    <textarea className="input" style={{ height: 60, resize: 'vertical', padding: '8px 10px' }} placeholder="SEO optimized title" value={prodMetaTitle} onChange={e => setProdMetaTitle(e.target.value)} />
+                    <textarea className="input" style={{ minHeight: 80, resize: 'vertical', padding: '8px 10px', overflowY: 'auto' }} placeholder="SEO optimized title" value={prodMetaTitle} onChange={e => setProdMetaTitle(e.target.value)} />
                   </div>
                   <div className="form-group">
                     <label className="label">Meta Description</label>
-                    <textarea className="input" style={{ height: 60, resize: 'vertical', padding: '8px 10px' }} placeholder="SEO optimized description" value={prodMetaDescription} onChange={e => setProdMetaDescription(e.target.value)} />
+                    <textarea className="input" style={{ minHeight: 80, resize: 'vertical', padding: '8px 10px', overflowY: 'auto' }} placeholder="SEO optimized description" value={prodMetaDescription} onChange={e => setProdMetaDescription(e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -3953,14 +3985,23 @@ export default function CatalogPage() {
                 <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8, marginBottom: 14 }}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--green)', fontWeight: 600, fontSize: 14 }}>
                     <Check size={16} />
-                    <span>Successfully imported {bulkResult.created_count} products!</span>
+                    <span>
+                      Bulk upload complete. Processed: {bulkResult.total_rows_processed} | Passed: {bulkResult.rows_passed} | Failed: {bulkResult.rows_failed} | Staged: {bulkResult.rows_staged}
+                    </span>
                   </div>
-                  {bulkResult.errors.length > 0 && (
-                    <div style={{ marginTop: 8, fontSize: 12, maxHeight: 100, overflowY: 'auto' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--red)', marginBottom: 2 }}>Errors encountered:</div>
-                      {bulkResult.errors.map((err: any, i: number) => (
-                        <div key={i} style={{ color: 'var(--text-muted)', marginBottom: 2 }}>• {err}</div>
-                      ))}
+                  {bulkResult.errors && bulkResult.errors.length > 0 && (
+                    <div style={{ marginTop: 8, fontSize: 12, maxHeight: 150, overflowY: 'auto' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--red)', marginBottom: 4 }}>Errors encountered:</div>
+                      {bulkResult.errors.map((err: any, i: number) => {
+                        const errMsg = typeof err === 'object' && err !== null
+                          ? `Row ${err.row_number || '?'}${err.column_name ? ` (Col: ${err.column_name})` : ''}: ${err.validation_error || JSON.stringify(err)}${err.recommended_correction ? ` [Correction: ${err.recommended_correction}]` : ''}`
+                          : String(err);
+                        return (
+                          <div key={i} style={{ color: 'var(--text-secondary)', marginBottom: 4, paddingLeft: 8, borderLeft: '2px solid var(--red)' }}>
+                            {errMsg}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

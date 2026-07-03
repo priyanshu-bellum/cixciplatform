@@ -189,6 +189,17 @@ class Product(models.Model):
 
     def clean(self):
         super().clean()
+        for f in [
+            "headphone_jack_compatibility",
+            "bluetooth_compatibility",
+            "compatible_charging_interface",
+            "wireless_charging_compatibility",
+            "storage_expansion_compatibility",
+            "memory_capacity",
+            "compatible_watch_case_size"
+        ]:
+            if getattr(self, f) is None:
+                setattr(self, f, "")
         from django.core.exceptions import ValidationError
         from datetime import datetime, date
         import pytz

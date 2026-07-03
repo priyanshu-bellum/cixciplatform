@@ -205,6 +205,18 @@ class ProductDetailSerializer(ProductSerializerBase):
                     if val not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
                         raise serializers.ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
 
+        for f in [
+            "headphone_jack_compatibility",
+            "bluetooth_compatibility",
+            "compatible_charging_interface",
+            "wireless_charging_compatibility",
+            "storage_expansion_compatibility",
+            "memory_capacity",
+            "compatible_watch_case_size"
+        ]:
+            if f in attrs and attrs[f] is None:
+                attrs[f] = ""
+
         return attrs
 
 

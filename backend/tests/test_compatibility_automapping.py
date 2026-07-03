@@ -9,6 +9,8 @@ from apps.audit.models import AuditRecord
 from django.utils import timezone
 from decimal import Decimal
 import uuid
+import pytz
+today_est = timezone.now().astimezone(pytz.timezone("US/Eastern")).date()
 
 def grant_capability(user, code):
     cap, _ = Capability.objects.get_or_create(
@@ -117,7 +119,7 @@ def test_compatibility_automapping_on_create(setup_data):
         "inventory_level": 100,
         "bluetooth_compatibility": "Yes",
         "headphone_jack_compatibility": "Not Compatible",
-        "launch_date": str(timezone.now().date()),
+        "launch_date": str(today_est),
         "company_scope_reference": str(setup_data["vendor_company"].id),
         "vendor_company_reference": str(setup_data["vendor_company"].id)
     }
@@ -151,7 +153,7 @@ def test_reverse_device_remapping(setup_data):
         headphone_jack_compatibility="Not Compatible",
         vendor_company_reference=setup_data["vendor_company"].id,
         company_scope_reference=setup_data["vendor_company"].id,
-        launch_date=timezone.now().date()
+        launch_date=today_est
     )
     
     assert ProductCompatibilityAssertion.objects.filter(product=product).count() == 2
@@ -190,7 +192,7 @@ def test_exclusion_reasons_validation(setup_data):
         headphone_jack_compatibility="Not Compatible",
         vendor_company_reference=setup_data["vendor_company"].id,
         company_scope_reference=setup_data["vendor_company"].id,
-        launch_date=timezone.now().date()
+        launch_date=today_est
     )
     
     client = APIClient()
@@ -233,7 +235,7 @@ def test_restore_permissions_and_locks(setup_data):
         headphone_jack_compatibility="Not Compatible",
         vendor_company_reference=setup_data["vendor_company"].id,
         company_scope_reference=setup_data["vendor_company"].id,
-        launch_date=timezone.now().date()
+        launch_date=today_est
     )
     
     assertion = ProductCompatibilityAssertion.objects.get(product=product, device_reference=setup_data["device1"].id)
@@ -288,7 +290,7 @@ def test_recalculate_and_audit_history(setup_data):
         headphone_jack_compatibility="Not Compatible",
         vendor_company_reference=setup_data["vendor_company"].id,
         company_scope_reference=setup_data["vendor_company"].id,
-        launch_date=timezone.now().date()
+        launch_date=today_est
     )
     
     client = APIClient()
@@ -351,7 +353,7 @@ def test_category_specific_validations(setup_data):
         headphone_jack_compatibility="Lightning",
         vendor_company_reference=setup_data["vendor_company"].id,
         company_scope_reference=setup_data["vendor_company"].id,
-        launch_date=timezone.now().date()
+        launch_date=today_est
     )
     p.clean()  # should not raise
     
