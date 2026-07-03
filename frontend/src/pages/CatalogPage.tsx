@@ -2166,6 +2166,9 @@ export default function CatalogPage() {
             <div className={`tab ${tab === 'projection' ? 'active' : ''}`} onClick={() => setTab('projection')}>
               My Compatibility
             </div>
+            <div className={`tab ${tab === 'export_jobs' ? 'active' : ''}`} onClick={() => setTab('export_jobs')}>
+              Export Jobs
+            </div>
           </>
         )}
       </div>
@@ -2182,6 +2185,9 @@ export default function CatalogPage() {
                 <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                   {selectedIds.length} accessories selected
                 </span>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowExportModal(true)}>
+                  Export Selection
+                </button>
                 <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIds([])}>
                   Clear
                 </button>
@@ -2191,14 +2197,15 @@ export default function CatalogPage() {
           <div className="table-wrap">
             {isLoading ? (
               <div className="loading-overlay"><div className="spinner" /> Loading products…</div>
+            ) : isBuyer && (!portfolio || portfolio.filter((d: any) => d.active_flag).length === 0) ? (
+              <div className="empty-state">
+                <ShoppingBag size={40} />
+                <div>Please add devices to your portfolio to view compatible products</div>
+              </div>
             ) : products.length === 0 ? (
               <div className="empty-state">
                 <ShoppingBag size={40} />
-                {isBuyer && (!portfolio || portfolio.filter((d: any) => d.active_flag).length === 0) ? (
-                  <div>Please add devices to your portfolio to view compatible products</div>
-                ) : (
-                  <div>No products yet</div>
-                )}
+                <div>No products yet</div>
               </div>
             ) : (
               <table>
@@ -2326,6 +2333,9 @@ export default function CatalogPage() {
                       <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                         {selectedIds.length} selected
                       </span>
+                      <button className="btn btn-primary btn-sm" onClick={() => setShowExportModal(true)}>
+                        Export Selection
+                      </button>
                       <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIds([])}>
                         Clear
                       </button>
@@ -2432,7 +2442,7 @@ export default function CatalogPage() {
         </div>
       )}
 
-      {tab === 'export_jobs' && isBuyer && false && (
+      {tab === 'export_jobs' && isBuyer && (
         <div>
           <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Procurement Export Jobs</div>

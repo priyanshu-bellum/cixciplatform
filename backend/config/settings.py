@@ -238,3 +238,6 @@ LOGGING = {
         "apps": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
     },
 }
+
+SESSION_COOKIE_NAME = "cixci_sessionid"
+
