@@ -332,6 +332,8 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         
         for idx, row in enumerate(rows, start=1):
             row = [r.strip() for r in row]
+            if not any(row):
+                continue
             if len(row) > len(expected_cols):
                 row = row[:len(expected_cols)]
             elif len(row) < len(expected_cols):
@@ -442,7 +444,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if row_errors:
                 for col_name, err_msg in row_errors.items():
                     validation_errors.append({
-                        "row": idx,
+                        "row": idx + 1,
                         "column": col_name,
                         "submitted_value": row[expected_cols.index(col_name)] if col_name in expected_cols else "",
                         "error_message": err_msg
@@ -467,6 +469,9 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         
         with transaction.atomic():
             for row in rows:
+                row = [r.strip() for r in row]
+                if not any(row):
+                    continue
                 m_val = row[0]
                 name_val = row[1]
                 t_val = row[2]

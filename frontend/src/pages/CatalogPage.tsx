@@ -3564,7 +3564,7 @@ export default function CatalogPage() {
                 {[
                   { id: 'details', label: 'Details' },
                   { id: 'compatibility', label: 'Device Compatibility' },
-                  { id: 'bulk', label: 'Bulk Update' },
+                  ...(!isCixciAdmin ? [{ id: 'bulk', label: 'Bulk Update' }] : []),
                   { id: 'audit', label: 'Audit Trail' }
                 ].map(t => (
                   <button
@@ -3820,7 +3820,7 @@ export default function CatalogPage() {
             )}
 
             {/* 3. Bulk Compatibility Tab */}
-            {manageTab === 'bulk' && !isBuyer && (
+            {manageTab === 'bulk' && !isBuyer && !isCixciAdmin && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 300, overflowY: 'auto' }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                   Select devices and choose the update type. 

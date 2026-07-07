@@ -304,3 +304,67 @@ class TestDeviceBulkImport:
         # Verify device was created and type was mapped to Phone
         dev = Device.objects.get(name="iPhone 17", manufacturer=m)
         assert dev.device_type == t
+
+    def test_bulk_import_csv_skips_empty_rows(self, admin_client, db):
+        from apps.devices.models import Manufacturer, DeviceType, Device
+        
+        m = Manufacturer.objects.create(name="Apple", is_active=True)
+        t = DeviceType.objects.create(name="Phone", code="phone", status="active", is_active=True)
+        
+        import io
+        
+        csv_content = (
+            "Device Manufacturer,Device Name,Device Type,Launch Date,Compatible Charging Interface,"
+            "Storage Expansion Compatibility,Maximum Supported Storage,Headphone Jack Compatibility,"
+            "Bluetooth Compatibility,Wireless Charging Compatibility,Compatible Watch Case Size\n"
+            "Apple,iPhone 17,Smartphone,9/15/2026,Type-C,Not Compatible,,Type-C,Yes,MagSafe,Not Compatible\n"
+            ",,,,,,,,,,\n"
+            "  ,  ,  ,  ,  ,  ,  ,  ,  ,  ,  \n"
+        )
+        
+        file_obj = io.BytesIO(csv_content.encode('utf-8-sig'))
+        file_obj.name = "import_test.csv"
+        
+        resp = admin_client.post("/api/v1/devices/devices/bulk_import/", {
+            "file": file_obj,
+            "import_mode": "Create New Only"
+        }, format="multipart")
+        
+        assert resp.status_code == 200, resp.data
+        assert resp.data["created_count"] == 1
+
+    def test_bulk_import_csv_reports_correct_row_numbers(self, admin_client, db):
+        from apps.devices.models import Manufacturer, DeviceType
+        
+        m = Manufacturer.objects.create(name="Apple", is_active=True)
+        t = DeviceType.objects.create(name="Phone", code="phone", status="active", is_active=True)
+        
+        import io
+        
+        # Row 1: Headers
+        # Row 2: iPhone 17 (valid)
+        # Row 3: iPhone 18 (missing type and launch date)
+        csv_content = (
+            "Device Manufacturer,Device Name,Device Type,Launch Date,Compatible Charging Interface,"
+            "Storage Expansion Compatibility,Maximum Supported Storage,Headphone Jack Compatibility,"
+            "Bluetooth Compatibility,Wireless Charging Compatibility,Compatible Watch Case Size\n"
+            "Apple,iPhone 17,Smartphone,9/15/2026,Type-C,Not Compatible,,Type-C,Yes,MagSafe,Not Compatible\n"
+            "Apple,iPhone 18,,,,,,\n"
+        )
+        
+        file_obj = io.BytesIO(csv_content.encode('utf-8-sig'))
+        file_obj.name = "import_test.csv"
+        
+        resp = admin_client.post("/api/v1/devices/devices/bulk_import/", {
+            "file": file_obj,
+            "import_mode": "Create New Only"
+        }, format="multipart")
+        
+        assert resp.status_code == 400
+        assert resp.data["status"] == "validation_failed"
+        # Since it is Row 3 of the Excel/CSV file (the 2nd data row), the row reported should be 3.
+        errors = resp.data["errors"]
+        assert len(errors) > 0
+        for err in errors:
+            assert err["row"] == 3
+
