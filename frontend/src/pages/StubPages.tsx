@@ -126,6 +126,61 @@ const getCapabilityInfo = (code: string) => {
   }
 }
 
+const isCapabilityAllowedForCompany = (code: string, companyType: string, buyerType?: string): boolean => {
+  if (companyType === 'cixci_internal') return true;
+
+  if (companyType === 'vendor') {
+    const allowedPrefixes = [
+      'catalog.product.',
+      'media.asset.',
+      'analytics.metrics.',
+      'analytics.summary.',
+      'tenant.relationship.read',
+      'tenant.relationship.list',
+    ];
+    return allowedPrefixes.some(pref => code.startsWith(pref));
+  }
+
+  if (companyType === 'buyer') {
+    const buyerSafeCaps = new Set([
+      'devices.portfolio.self_modify',
+      'devices.device.list',
+      'devices.device.read',
+      'devices.type.list',
+      'devices.type.read',
+      'devices.manufacturer.list',
+      'devices.manufacturer.read',
+      'devices.feature.list',
+      'devices.feature.read',
+      'catalog.product.list',
+      'catalog.product.read',
+      'tenant.company.read',
+      'tenant.entity.list',
+      'tenant.entity.read',
+      'tenant.user.list',
+      'tenant.user.read',
+      'tenant.relationship.list',
+      'tenant.relationship.read',
+      'tenant.relationship.create',
+    ]);
+    if (buyerSafeCaps.has(code)) return true;
+
+    if (buyerType === 'mvno' || buyerType === 'wireless_carrier') {
+      const dqeCaps = new Set([
+        'devices.dqe.create',
+        'devices.dqe.read',
+        'devices.dqe.list',
+      ]);
+      if (dqeCaps.has(code)) return true;
+    }
+
+    return false;
+  }
+
+  return true;
+};
+
+
 // AM/PM Time Picker — converts between 24hr storage and 12hr display
 function AmPmTimePicker({ value, onChange, allowEmpty }: { value: string; onChange: (v: string) => void; allowEmpty?: boolean }) {
   const parseTime = (v: string) => {
@@ -2767,6 +2822,7 @@ export function SettingsPage() {
                       <option value="">Select one</option>
                       {allCapabilitiesList
                         .filter((cap: any) => !selectedCompany.capabilities?.some((c: any) => c.code === cap.code))
+                        .filter((cap: any) => isCapabilityAllowedForCompany(cap.code, selectedCompany.company_type, editBuyerType))
                         .map((cap: any) => {
                           const info = getCapabilityInfo(cap.code)
                           return (

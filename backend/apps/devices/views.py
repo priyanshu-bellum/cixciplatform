@@ -390,8 +390,15 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 if d_name.lower().startswith(m_name):
                     cleaned_name = d_name[len(m_name):].strip().lstrip(" -/\\")
                     
+            existing_device = None
             if m_obj and cleaned_name and not row_errors.get("Device Name") and not row_errors.get("Device Manufacturer"):
                 existing_device = Device.objects.filter(manufacturer=m_obj, name__iexact=cleaned_name).first()
+                if not existing_device:
+                    norm_cleaned = cleaned_name.replace(" ", "").lower()
+                    for dev in Device.objects.filter(manufacturer=m_obj):
+                        if dev.name.replace(" ", "").lower() == norm_cleaned:
+                            existing_device = dev
+                            break
                 if existing_device:
                     if import_mode == "Create New Only" or not import_mode:
                         row_errors["Device Name"] = f"Device with Manufacturer '{m_obj.name}' and Name '{cleaned_name}' already exists."
@@ -402,7 +409,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if m_obj and t_obj and not row_errors.get("Launch Date") and parsed_date and not row_errors.get("Device Type"):
                 serializer_data = {
                     "manufacturer": m_obj.id,
-                    "name": cleaned_name,
+                    "name": existing_device.name if existing_device else cleaned_name,
                     "device_type": t_obj.id,
                     "launch_date": launch_date_val,
                     "compatible_charging_interface": row[4],
@@ -414,7 +421,6 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "compatible_watch_case_size": row[10],
                 }
                 
-                existing_device = Device.objects.filter(manufacturer=m_obj, name__iexact=cleaned_name).first()
                 serializer = DeviceDetailSerializer(instance=existing_device if (existing_device and import_mode != "Create New Only") else None, data=serializer_data)
                 if not serializer.is_valid():
                     field_to_col = {

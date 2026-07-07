@@ -296,6 +296,8 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
 
 
 class DynamicDropdownConfigSerializer(serializers.ModelSerializer):
+    display_name = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = DynamicDropdownConfig
         fields = [
@@ -304,6 +306,11 @@ class DynamicDropdownConfigSerializer(serializers.ModelSerializer):
             "match_logic", "accessory_fields", "compatibility_rules"
         ]
         read_only_fields = ["id", "created_at"]
+
+    def validate(self, attrs):
+        if not attrs.get("display_name"):
+            attrs["display_name"] = attrs.get("value", "")
+        return attrs
 
 
 # ─── ViewSets ─────────────────────────────────────────────────────────────────
@@ -362,6 +369,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         )
 
         if getattr(self, "action", None) == "list" and company.company_type == "buyer":
+            device_id_param = self.request.query_params.get("device_id")
             from apps.devices.models import BuyerDevicePortfolioReference
             portfolio_device_ids = BuyerDevicePortfolioReference.objects.filter(
                 buyer_reference=user.id,
@@ -372,8 +380,21 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if not portfolio_device_ids:
                 return Product.objects.none()
 
+            if device_id_param:
+                from uuid import UUID
+                try:
+                    dev_uuid = UUID(device_id_param)
+                    if dev_uuid in portfolio_device_ids:
+                        target_device_ids = [dev_uuid]
+                    else:
+                        return Product.objects.none()
+                except ValueError:
+                    return Product.objects.none()
+            else:
+                target_device_ids = portfolio_device_ids
+
             compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
-                device_reference__in=portfolio_device_ids,
+                device_reference__in=target_device_ids,
                 is_compatible=True,
                 is_excluded=False
             ).values_list("product_id", flat=True)
@@ -914,13 +935,33 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         today_est = timezone.now().astimezone(est).date()
         
         # Determine update mode
-        update_mode = request.data.get("update_mode") or request.query_params.get("update_mode")
-        if not update_mode:
+        raw_mode = request.data.get("update_mode") or request.query_params.get("update_mode")
+        if raw_mode:
+            raw_mode = str(raw_mode).strip().lower()
+            if raw_mode in ["create new products only", "create_only", "create_new"]:
+                update_mode = "create_only"
+            elif raw_mode in ["update existing products only", "update_only", "update_existing"]:
+                update_mode = "update_only"
+            elif raw_mode in ["create and update / upsert", "upsert", "create_update"]:
+                update_mode = "upsert"
+            else:
+                update_mode = "upsert"
+        else:
             fn = file_obj.name.lower() if hasattr(file_obj, 'name') else ""
             if "update" in fn:
                 update_mode = "update_only"
             else:
                 update_mode = "create_only"
+
+        # Determine compatibility update type
+        compatibility_update_type = request.data.get("compatibility_update_type") or request.query_params.get("compatibility_update_type") or "add"
+        compatibility_update_type = str(compatibility_update_type).strip().lower()
+        if compatibility_update_type not in ["add", "replace", "remove"]:
+            compatibility_update_type = "add"
+
+        from django.db import transaction
+        sid = transaction.savepoint()
+
         
         for idx, row in enumerate(rows):
             row_errors = []
@@ -966,7 +1007,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         "row_number": row_num,
                         "column_name": "SKU",
                         "submitted_value": sku,
-                        "validation_error": f"Product with SKU '{sku}' already exists for this vendor.",
+                        "validation_error": f"The Device Already Exists. Product with SKU '{sku}' already exists for this vendor.",
                         "recommended_correction": "Import using Update mode or change SKU."
                     })
                 elif update_mode == "update_only" and product is None:
@@ -1687,6 +1728,17 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             # --- State-based validation constraints for existing products ---
             if product is not None:
+                if product.status == "active" and compatibility_update_type in ["replace", "remove"]:
+                    is_admin = getattr(request.user, "is_cixci_admin", False)
+                    if not is_admin:
+                        row_errors.append({
+                            "row_number": row_num,
+                            "column_name": "Device Compatibility",
+                            "submitted_value": compatibility_update_type,
+                            "validation_error": "Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval.",
+                            "recommended_correction": "Contact CIXCI Admin or use Additive mode."
+                        })
+
                 is_admin = getattr(request.user, "is_cixci_admin", False)
                 if not is_admin:
                     # 1. Identity & Brand cannot be edited by vendors in any state
@@ -1968,7 +2020,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         continue
                     else:
                         raise ve
-                
+
                 # AI Enrichment logging
                 log_catalog_audit(
                     event_code="catalog.product.ai_enriched",
@@ -1977,64 +2029,102 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     actor_id=request.user.id
                 )
 
+                # Convert original image URLs to CIXCI MediaAsset records and link primary image reference
+                if media_refs:
+                    from apps.media.models import MediaAsset, AssetType, AssetStatus
+                    import uuid
+                    first_asset_id = None
+                    for idx, url in enumerate(media_refs):
+                        filename = url.split("/")[-1] or f"image_{idx}.png"
+                        if "?" in filename:
+                            filename = filename.split("?")[0]
+                        ext = filename.split(".")[-1] if "." in filename else "png"
+                        mime = "image/png"
+                        if ext.lower() in ["jpg", "jpeg"]:
+                            mime = "image/jpeg"
+                        elif ext.lower() == "gif":
+                            mime = "image/gif"
+                        
+                        asset_id = uuid.uuid4()
+                        storage_key = f"{vendor_company_id}/product_image/{asset_id}/{filename}"
+                        
+                        MediaAsset.objects.create(
+                            id=asset_id,
+                            asset_type=AssetType.PRODUCT_IMAGE,
+                            status=AssetStatus.READY,
+                            owner_module="catalog",
+                            owner_record_id=product.id,
+                            company_scope_reference=uuid.UUID(str(vendor_company_id)),
+                            original_filename=filename,
+                            file_extension=ext,
+                            mime_type=mime,
+                            storage_key=storage_key,
+                            is_public=True
+                        )
+                        if idx == 0:
+                            first_asset_id = asset_id
+                    
+                    if first_asset_id:
+                        product.primary_image_reference = first_asset_id
+                        super(Product, product).save()
+
                 # Parse and Save Device Compatibility
                 if normalized_comp:
-                    # Clear previous assertions only if the user is a CIXCI Admin or the product is inactive pre-launch
-                    is_admin = getattr(request.user, "is_cixci_admin", False)
-                    is_inactive_prelaunch = (product.status == "inactive" and product.launch_date and product.launch_date > today_est)
-                    
-                    if is_admin or is_inactive_prelaunch:
+                    if compatibility_update_type == "replace":
                         ProductCompatibilityAssertion.objects.filter(product=product).delete()
                     
                     dev_names = [d.strip() for d in normalized_comp.split(';') if d.strip()]
-                    for dev_name in dev_names:
-                        # Find or create device records
-                        # (Original logic to auto-create device if missing)
-                        device = Device.objects.filter(name__iexact=dev_name).first()
-                        if not device:
-                            dev_name_lower = dev_name.lower()
-                            if "iphone" in dev_name_lower or "ipad" in dev_name_lower:
-                                mfg_name = "Apple"
-                            elif "galaxy" in dev_name_lower or "samsung" in dev_name_lower:
-                                mfg_name = "Samsung"
-                            elif "pixel" in dev_name_lower or "google" in dev_name_lower:
-                                mfg_name = "Google"
-                            else:
-                                words = dev_name.split()
-                                mfg_name = words[0] if words else "Other"
+                    if compatibility_update_type == "remove":
+                        for dev_name in dev_names:
+                            device = Device.objects.filter(name__iexact=dev_name).first()
+                            if device:
+                                ProductCompatibilityAssertion.objects.filter(product=product, device_reference=device.id).delete()
+                    else: # add or replace
+                        for dev_name in dev_names:
+                            device = Device.objects.filter(name__iexact=dev_name).first()
+                            if not device:
+                                dev_name_lower = dev_name.lower()
+                                if "iphone" in dev_name_lower or "ipad" in dev_name_lower:
+                                    mfg_name = "Apple"
+                                elif "galaxy" in dev_name_lower or "samsung" in dev_name_lower:
+                                    mfg_name = "Samsung"
+                                elif "pixel" in dev_name_lower or "google" in dev_name_lower:
+                                    mfg_name = "Google"
+                                else:
+                                    words = dev_name.split()
+                                    mfg_name = words[0] if words else "Other"
+                                    
+                                mfg = Manufacturer.objects.filter(name__iexact=mfg_name).first()
+                                if not mfg:
+                                    mfg = Manufacturer.objects.create(name=mfg_name)
+                                    
+                                if "ipad" in dev_name_lower or "tablet" in dev_name_lower:
+                                    dt_name = "Tablet"
+                                    dt_code = "tablet"
+                                else:
+                                    dt_name = "Smartphone"
+                                    dt_code = "smartphone"
+                                    
+                                dt = DeviceType.objects.filter(name__iexact=dt_name).first()
+                                if not dt:
+                                    dt = DeviceType.objects.create(name=dt_name, code=dt_code)
+                                    
+                                device = Device.objects.create(
+                                    name=dev_name,
+                                    manufacturer=mfg,
+                                    device_type=dt,
+                                    lifecycle_status="available"
+                                )
                                 
-                            mfg = Manufacturer.objects.filter(name__iexact=mfg_name).first()
-                            if not mfg:
-                                mfg = Manufacturer.objects.create(name=mfg_name)
-                                
-                            if "ipad" in dev_name_lower or "tablet" in dev_name_lower:
-                                dt_name = "Tablet"
-                                dt_code = "tablet"
-                            else:
-                                dt_name = "Smartphone"
-                                dt_code = "smartphone"
-                                
-                            dt = DeviceType.objects.filter(name__iexact=dt_name).first()
-                            if not dt:
-                                dt = DeviceType.objects.create(name=dt_name, code=dt_code)
-                                
-                            device = Device.objects.create(
-                                name=dev_name,
-                                manufacturer=mfg,
-                                device_type=dt,
-                                lifecycle_status="available"
+                            ProductCompatibilityAssertion.objects.update_or_create(
+                                product=product,
+                                device_reference=device.id,
+                                defaults={
+                                    "is_compatible": True,
+                                    "compatibility_basis": "imported",
+                                    "notes": f"Auto-imported compatibility with {dev_name}"
+                                }
                             )
-                            
-                        # Use update_or_create to prevent duplicating assertions on additive updates
-                        ProductCompatibilityAssertion.objects.update_or_create(
-                            product=product,
-                            device_reference=device.id,
-                            defaults={
-                                "is_compatible": True,
-                                "compatibility_basis": "imported",
-                                "notes": f"Auto-imported compatibility with {dev_name}"
-                            }
-                        )
                     # Recalculate compatibility status based on imported assertions
                     try:
                         from apps.catalog.compatibility_engine import run_compatibility_automapping
@@ -2043,8 +2133,18 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         pass
 
                 products_created.append(product)
+                
+
 
         # 3. Save import details to the audit trail
+        if validation_errors:
+            transaction.savepoint_rollback(sid)
+            products_created = []
+            passed_count = 0
+            staged_count = 0
+        else:
+            transaction.savepoint_commit(sid)
+
         log_catalog_audit(
             event_code="catalog.product.bulk_import",
             description=f"Bulk upload complete. Total: {len(rows)}, Passed: {passed_count}, Failed: {failed_count}, Staged: {staged_count}",

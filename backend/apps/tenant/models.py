@@ -166,6 +166,8 @@ class Company(models.Model):
                 country_code=self.country_code or 'USA',
                 region_code=self.region_code or '',
             )
+        from apps.tenant.services import assign_default_capabilities_for_company
+        assign_default_capabilities_for_company(self)
 
     def __str__(self):
         return f"{self.name} ({self.company_type})"

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Smartphone, ChevronRight, Check, Trash2, X, AlertCircle, Download, Settings } from 'lucide-react'
 import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
@@ -123,6 +124,7 @@ const modalStyles = `
 `
 
 export default function DevicesPage() {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const isBuyer = user?.company_type === 'buyer'
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
@@ -185,7 +187,11 @@ export default function DevicesPage() {
 
   // Edit / Detail Modal state
   const [editingDevice, setEditingDevice] = useState<any>(null)
-  const [editTab, setEditTab] = useState<'details' | 'audit'>('details')
+  const [editTab, setEditTab] = useState<'details' | 'compatibility' | 'audit'>('details')
+
+  // Remove confirmation state
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+  const [confirmRemoveName, setConfirmRemoveName] = useState('')
   const [editManufacturer, setEditManufacturer] = useState('')
   const [editName, setEditName] = useState('')
   const [editDeviceType, setEditDeviceType] = useState('')
@@ -291,12 +297,40 @@ export default function DevicesPage() {
     }
   }
 
-  const handleRemove = async (deviceId: string) => {
+  const handleRemoveClick = (deviceId: string, deviceName: string) => {
+    setConfirmRemoveId(deviceId)
+    setConfirmRemoveName(deviceName)
+  }
+
+  const handleConfirmRemove = async () => {
+    if (!confirmRemoveId) return
     try {
-      await api.post('/devices/portfolio/remove/', { device_id: deviceId })
+      await api.post('/devices/portfolio/remove/', { device_id: confirmRemoveId })
       refreshPortfolio()
     } catch (err) {
       alert('Failed to remove device from portfolio.')
+    } finally {
+      setConfirmRemoveId(null)
+      setConfirmRemoveName('')
+    }
+  }
+
+  const handlePortfolioDeviceClick = async (ref: any) => {
+    const found = devices.find((d: any) => d.id === ref.device)
+    if (found) {
+      handleRowClick(found)
+    } else {
+      try {
+        const resp = await api.get(`/devices/devices/${ref.device}/`)
+        handleRowClick(resp.data)
+      } catch {
+        handleRowClick({
+          id: ref.device,
+          name: ref.device_name,
+          manufacturer_name: ref.device_manufacturer,
+          lifecycle_status: ref.active_flag ? 'available' : 'inactive',
+        })
+      }
     }
   }
 
@@ -1066,14 +1100,9 @@ export default function DevicesPage() {
                         {isBuyer && (
                           <td onClick={e => e.stopPropagation()}>
                             {inPortfolio ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  <Check size={11} /> In Portfolio
-                                </span>
-                                <button className="btn btn-danger btn-sm" style={{ padding: '3px 6px' }} onClick={() => handleRemove(d.id)}>
-                                  <Trash2 size={11} />
-                                </button>
-                              </div>
+                              <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <Check size={11} /> In Portfolio
+                              </span>
                             ) : (
                               <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px' }} onClick={() => handleAdd(d.id)}>
                                 Add to Portfolio
@@ -1108,13 +1137,26 @@ export default function DevicesPage() {
               <tbody>
                 {myDevices.map((ref: any) => (
                   <tr key={ref.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{ref.device_name}</td>
+                    <td 
+                      style={{ 
+                        color: 'var(--accent)', 
+                        fontWeight: 500, 
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        textDecorationColor: 'var(--accent)',
+                        textUnderlineOffset: '2px'
+                      }}
+                      onClick={() => handlePortfolioDeviceClick(ref)}
+                      title="View device details"
+                    >
+                      {ref.device_name}
+                    </td>
                     <td>{ref.device_manufacturer}</td>
                     <td><span className={`badge ${ref.active_flag ? 'badge-green' : 'badge-muted'}`}>{ref.active_flag ? 'Active' : 'Removed'}</span></td>
                     <td style={{ fontSize: 12 }}>{new Date(ref.created_at).toLocaleDateString()}</td>
                     <td>
                       {ref.active_flag ? (
-                        <button className="btn btn-danger btn-sm" onClick={() => handleRemove(ref.device)}>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleRemoveClick(ref.device, ref.device_name)}>
                           <Trash2 size={12} /> Remove
                         </button>
                       ) : (
@@ -1128,6 +1170,39 @@ export default function DevicesPage() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Remove Confirmation Modal */}
+      {confirmRemoveId && (
+        <div className="modal-overlay" onClick={() => { setConfirmRemoveId(null); setConfirmRemoveName(''); }}>
+          <div className="modal-container" style={{ width: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Confirm Removal</div>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmRemoveId(null); setConfirmRemoveName(''); }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <AlertCircle size={40} style={{ color: 'var(--red)', marginBottom: 12 }} />
+                <div style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 500, marginBottom: 8 }}>
+                  Are you sure you want to remove this device from your My Portfolio?
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                  {confirmRemoveName && <><strong>{confirmRemoveName}</strong> will be removed from your portfolio.</>}
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ justifyContent: 'center', gap: 12 }}>
+              <button className="btn btn-secondary" onClick={() => { setConfirmRemoveId(null); setConfirmRemoveName(''); }}>
+                Cancel
+              </button>
+              <button className="btn btn-danger" onClick={handleConfirmRemove}>
+                Remove
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1231,7 +1306,7 @@ export default function DevicesPage() {
                         </select>
                       </div>
 
-                      {addStorage !== 'Not Compatible' && (
+                      {(addStorage === 'microSDXC' || addStorage === 'microSDHC') && (
                         <div className="form-group">
                           <label className="label">Maximum Expansion *</label>
                           <select
@@ -1788,6 +1863,9 @@ export default function DevicesPage() {
               <div className={`tab ${editTab === 'details' ? 'active' : ''}`} onClick={() => setEditTab('details')}>
                 {isCixciAdmin ? 'Edit Details' : 'View Details'}
               </div>
+              <div className={`tab ${editTab === 'compatibility' ? 'active' : ''}`} onClick={() => setEditTab('compatibility')}>
+                Device Compatibility
+              </div>
               <div className={`tab ${editTab === 'audit' ? 'active' : ''}`} onClick={() => setEditTab('audit')}>
                 Audit History
               </div>
@@ -1892,9 +1970,41 @@ export default function DevicesPage() {
                       )}
                     </div>
 
-                    {selectedEditCategory && <div className="divider form-grid-full" style={{ margin: '8px 0' }} />}
-                    {/* Conditional Compatibility Fields */}
-                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
+                    {/* Extra identity fields for buyer view */}
+                    {!isCixciAdmin && (
+                      <>
+                        <div className="form-group">
+                          <label className="label">SKU</label>
+                          <div className="input-read-only">{editingDevice.sku || 'N/A'}</div>
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Model Number</label>
+                          <div className="input-read-only">{editingDevice.model_number || 'N/A'}</div>
+                        </div>
+                        {editingDevice.announced_date && (
+                          <div className="form-group">
+                            <label className="label">Announced Date</label>
+                            <div className="input-read-only">{editingDevice.announced_date}</div>
+                          </div>
+                        )}
+                        {editingDevice.release_date && (
+                          <div className="form-group">
+                            <label className="label">Release Date</label>
+                            <div className="input-read-only">{editingDevice.release_date}</div>
+                          </div>
+                        )}
+                        {editingDevice.eol_date && (
+                          <div className="form-group">
+                            <label className="label">EOL Date</label>
+                            <div className="input-read-only">{editingDevice.eol_date}</div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {isCixciAdmin && selectedEditCategory && <div className="divider form-grid-full" style={{ margin: '8px 0' }} />}
+                    {/* Conditional Compatibility Fields - admin only in details tab */}
+                    {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
                       <div className="form-group">
                         <label className="label">Charging Interface *</label>
                         {isCixciAdmin ? (
@@ -1914,7 +2024,7 @@ export default function DevicesPage() {
                       </div>
                     )}
 
-                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet') && (
+                    {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet') && (
                       <>
                         <div className="form-group">
                           <label className="label">Storage Expansion *</label>
@@ -1934,7 +2044,7 @@ export default function DevicesPage() {
                           )}
                         </div>
 
-                        {editStorage !== 'Not Compatible' && editStorage !== '' && (
+                        {(editStorage === 'microSDXC' || editStorage === 'microSDHC') && (
                           <div className="form-group">
                             <label className="label">Maximum Expansion *</label>
                             {isCixciAdmin ? (
@@ -1974,7 +2084,7 @@ export default function DevicesPage() {
                       </>
                     )}
 
-                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
+                    {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
                       <div className="form-group">
                         <label className="label">Headphone Jack *</label>
                         {isCixciAdmin ? (
@@ -1994,7 +2104,7 @@ export default function DevicesPage() {
                       </div>
                     )}
 
-                    {selectedEditCategory && (
+                    {isCixciAdmin && selectedEditCategory && (
                       <div className="form-group">
                         <label className="label">Bluetooth Compatibility *</label>
                         {isCixciAdmin ? (
@@ -2013,7 +2123,7 @@ export default function DevicesPage() {
                       </div>
                     )}
 
-                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
+                    {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
                       <div className="form-group form-grid-full">
                         <label className="label">Wireless Charging Compatibility *</label>
                         {isCixciAdmin ? (
@@ -2060,7 +2170,7 @@ export default function DevicesPage() {
                       </div>
                     )}
 
-                    {selectedEditCategory === 'smartwatch' && (
+                    {isCixciAdmin && selectedEditCategory === 'smartwatch' && (
                       <div className="form-group">
                         <label className="label">Watch Case Size *</label>
                         {isCixciAdmin ? (
@@ -2084,6 +2194,7 @@ export default function DevicesPage() {
                         )}
                       </div>
                     )}
+                    {/* End admin-only compatibility fields in details tab */}
 
                   </div>
                 </div>
@@ -2106,6 +2217,81 @@ export default function DevicesPage() {
                   )}
                 </div>
               </form>
+            ) : editTab === 'compatibility' ? (
+              <div className="modal-body">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
+                    Hardware compatibility specifications for this device. {!isCixciAdmin && <span>These fields are managed by CIXCI administrators.</span>}
+                  </div>
+
+                  <div className="form-grid">
+                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
+                      <div className="form-group">
+                        <label className="label">Charging Interface</label>
+                        <div className="input-read-only">{editingDevice.compatible_charging_interface || 'Not Compatible'}</div>
+                      </div>
+                    )}
+
+                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet') && (
+                      <>
+                        <div className="form-group">
+                          <label className="label">Storage Expansion</label>
+                          <div className="input-read-only">{editingDevice.storage_expansion_compatibility || 'Not Compatible'}</div>
+                        </div>
+                        {editingDevice.storage_expansion_compatibility && editingDevice.storage_expansion_compatibility !== 'Not Compatible' && (
+                          <div className="form-group">
+                            <label className="label">Maximum Supported Storage</label>
+                            <div className="input-read-only">{editingDevice.maximum_supported_storage || 'Not Compatible'}</div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
+                      <div className="form-group">
+                        <label className="label">Headphone Jack</label>
+                        <div className="input-read-only">{editingDevice.headphone_jack_compatibility || 'Not Compatible'}</div>
+                      </div>
+                    )}
+
+                    {selectedEditCategory && (
+                      <div className="form-group">
+                        <label className="label">Bluetooth Compatibility</label>
+                        <div className="input-read-only">{editingDevice.bluetooth_compatibility || 'N/A'}</div>
+                      </div>
+                    )}
+
+                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
+                      <div className="form-group form-grid-full">
+                        <label className="label">Wireless Charging Compatibility</label>
+                        <div className="input-read-only">{editingDevice.wireless_charging_compatibility?.replace(/\+/g, ', ') || 'Not Compatible'}</div>
+                      </div>
+                    )}
+
+                    {selectedEditCategory === 'smartwatch' && (
+                      <div className="form-group">
+                        <label className="label">Watch Case Size</label>
+                        <div className="input-read-only">{editingDevice.compatible_watch_case_size || 'Not Compatible'}</div>
+                      </div>
+                    )}
+
+                    {!selectedEditCategory && (
+                      <div className="form-grid-full" style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No compatibility data available for this device type.
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="modal-footer" style={{ padding: '16px 0 0 0', marginTop: 16 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setEditingDevice(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="modal-body">
                 <div style={{ maxHeight: 400, overflowY: 'auto' }}>

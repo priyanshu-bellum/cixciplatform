@@ -245,3 +245,102 @@ def send_onboarding_invite(user):
         fail_silently=False,
     )
 
+
+def is_capability_allowed_for_company(capability_code: str, company_type: str, buyer_type: Optional[str] = None) -> bool:
+    """Check if a capability is allowed to be assigned to a company based on its type."""
+    from apps.tenant.models import CompanyType
+    
+    if company_type == CompanyType.CIXCI_INTERNAL:
+        return True
+
+    if company_type == CompanyType.VENDOR:
+        # Vendor allowed patterns/prefixes
+        allowed_prefixes = (
+            "catalog.product.",
+            "media.asset.",
+            "analytics.metrics.",
+            "analytics.summary.",
+            "tenant.relationship.read",
+            "tenant.relationship.list"
+        )
+        return capability_code.startswith(allowed_prefixes)
+
+    if company_type == CompanyType.BUYER:
+        # Buyer allowed capabilities
+        buyer_safe_caps = {
+            "devices.portfolio.self_modify",
+            "devices.device.list",
+            "devices.device.read",
+            "devices.type.list",
+            "devices.type.read",
+            "devices.manufacturer.list",
+            "devices.manufacturer.read",
+            "devices.feature.list",
+            "devices.feature.read",
+            "catalog.product.list",
+            "catalog.product.read",
+            "tenant.company.read",
+            "tenant.entity.list",
+            "tenant.entity.read",
+            "tenant.user.list",
+            "tenant.user.read",
+            "tenant.relationship.list",
+            "tenant.relationship.read",
+            "tenant.relationship.create",
+        }
+        if capability_code in buyer_safe_caps:
+            return True
+
+        # DQE capabilities are only allowed for MVNO / Wireless Carrier
+        if buyer_type in ("mvno", "wireless_carrier"):
+            dqe_caps = {
+                "devices.dqe.create",
+                "devices.dqe.read",
+                "devices.dqe.list",
+            }
+            if capability_code in dqe_caps:
+                return True
+
+        return False
+
+    return True
+
+
+def assign_default_capabilities_for_company(company) -> None:
+    """Automatically assigns default capabilities based on company type and buyer type."""
+    from apps.tenant.models import Capability, CompanyType
+    import json
+
+    buyer_type = None
+    if company.external_id:
+        try:
+            meta = json.loads(company.external_id)
+            buyer_type = meta.get("buyer_type")
+        except Exception:
+            pass
+
+    default_codes = []
+    if company.company_type == CompanyType.VENDOR:
+        default_codes = [
+            "catalog.product.create",
+            "catalog.product.update",
+            "catalog.product.delete",
+            "catalog.product.manage_selling",
+        ]
+    elif company.company_type == CompanyType.BUYER:
+        # Every buyer gets self_modify by default
+        default_codes = ["devices.portfolio.self_modify"]
+        if buyer_type in ("mvno", "wireless_carrier"):
+            default_codes.extend([
+                "devices.dqe.create",
+                "devices.dqe.read",
+                "devices.dqe.list",
+            ])
+
+    if default_codes:
+        caps = Capability.objects.filter(code__in=default_codes)
+        for cap in caps:
+            if not company.capabilities.filter(id=cap.id).exists():
+                company.capabilities.add(cap)
+
+

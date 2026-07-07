@@ -99,6 +99,22 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         except Capability.DoesNotExist:
             return Response({"error": "Capability not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        import json
+        buyer_type = None
+        if company.external_id:
+            try:
+                meta = json.loads(company.external_id)
+                buyer_type = meta.get("buyer_type")
+            except Exception:
+                pass
+
+        from apps.tenant.services import is_capability_allowed_for_company
+        if not is_capability_allowed_for_company(capability_code, company.company_type, buyer_type):
+            return Response(
+                {"error": f"Capability {capability_code} is not allowed for this company type or buyer type."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         company.capabilities.add(capability)
         from apps.tenant.services import log_tenant_audit
         log_tenant_audit(

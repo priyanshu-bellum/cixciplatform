@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
@@ -232,6 +233,7 @@ const formatCurrency = (amount: number | string | null | undefined, currency: st
 };
 
 export default function CatalogPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
   const isVendor = user?.company_type === 'vendor'
@@ -1165,10 +1167,12 @@ export default function CatalogPage() {
   // Projection recalculation state
   const [refreshingProj, setRefreshingProj] = useState(false)
 
+  const filterDeviceId = searchParams.get('device') || ''
+
   // TanStack Queries
   const { data, isLoading, refetch: refreshProducts } = useQuery({
-    queryKey: ['products', search],
-    queryFn: () => api.get('/catalog/products/', { params: { search } }).then(r => r.data),
+    queryKey: ['products', search, filterDeviceId],
+    queryFn: () => api.get('/catalog/products/', { params: { search, device_id: filterDeviceId || undefined } }).then(r => r.data),
   })
 
 
@@ -1204,6 +1208,8 @@ export default function CatalogPage() {
   })
 
   const products = data?.results ?? data ?? []
+  const filteredDeviceRef = portfolio?.find((ref: any) => ref.device === filterDeviceId)
+  const filteredDeviceName = filteredDeviceRef ? filteredDeviceRef.device_name : 'Selected Device'
   const compatibleProducts = products.filter((p: any) =>
     projection?.compatible_product_ids?.includes(p.id)
   )
@@ -1803,7 +1809,7 @@ export default function CatalogPage() {
     }
     setIsRecalculating(true)
     try {
-      await api.post(`/catalog/products/${selectedManageProduct.id}/recalculate_compatibility/`)
+      await api.post(`/catalog/products/${selectedManageProduct.id}/recalculate-compatibility/`)
       refetchCompatibilities()
       alert("Compatibility recalculated successfully.")
     } catch (err: any) {
@@ -2172,6 +2178,36 @@ export default function CatalogPage() {
           </>
         )}
       </div>
+
+      {isBuyer && filterDeviceId && (
+        <div style={{
+          marginBottom: 16,
+          padding: '10px 14px',
+          background: 'var(--accent-dim)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12
+        }}>
+          <span style={{ fontSize: 13, color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <AlertCircle size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+            <span>Filtering compatible accessories for device: <strong>{filteredDeviceName}</strong></span>
+          </span>
+          <button 
+            className="btn btn-secondary btn-sm" 
+            style={{ padding: '3px 8px', fontSize: 12 }}
+            onClick={() => {
+              const newParams = new URLSearchParams(searchParams)
+              newParams.delete('device')
+              setSearchParams(newParams)
+            }}
+          >
+            Clear Filter
+          </button>
+        </div>
+      )}
 
       {tab === 'products' && (
         <>
@@ -3490,9 +3526,9 @@ export default function CatalogPage() {
       {/* ─── MANAGE PRODUCT (DETAILS) MODAL ─────────────────────────────────────── */}
       {showManageModal && selectedManageProduct && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 640, maxWidth: '95%' }}>
+          <div className="card" style={{ width: 640, maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{isBuyer ? 'Product Details' : 'Manage Accessory'}</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{isBuyer ? 'Product Details' : 'Manage Product'}</div>
               <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setShowManageModal(false)}>
                 <X size={16} />
               </button>
@@ -3559,42 +3595,107 @@ export default function CatalogPage() {
             {/* 1. Details Tab */}
             {(manageTab === 'details' || isBuyer) && (
               <>
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</div>
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4, background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
-                    {selectedManageProduct.description || 'No description provided.'}
-                  </div>
-                </div>
+                {isCixciAdmin ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px', fontSize: 12, color: 'var(--text-secondary)' }}>
+                      <div><strong>Product Name:</strong> {selectedManageProduct.name || '—'}</div>
+                      <div><strong>Brand:</strong> {selectedManageProduct.brand || '—'}</div>
+                      <div><strong>Product Status:</strong> <span style={{ textTransform: 'capitalize' }}>{selectedManageProduct.status || '—'}</span></div>
+                      <div><strong>SKU:</strong> {selectedManageProduct.sku || '—'}</div>
+                      <div><strong>UPC:</strong> {selectedManageProduct.upc || '—'}</div>
+                      <div><strong>Launch Date:</strong> {selectedManageProduct.launch_date || '—'}</div>
+                      <div><strong>Release Date:</strong> {selectedManageProduct.release_date || '—'}</div>
+                      <div><strong>Color:</strong> {selectedManageProduct.color || '—'}</div>
+                      <div><strong>System Color:</strong> {selectedManageProduct.system_color || '—'}</div>
+                      <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>
+                      <div><strong>MAP Price:</strong> {formatCurrency(selectedManageProduct.map_price)}</div>
+                      <div><strong>Vendor Wholesale Price:</strong> {formatCurrency(selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)}</div>
+                      <div><strong>Sale Price:</strong> {formatCurrency(selectedManageProduct.sale_price)}</div>
+                      <div><strong>Product Category:</strong> {selectedManageProduct.product_category || '—'}</div>
+                      <div><strong>Brand Warranty:</strong> {selectedManageProduct.warranty || '—'}</div>
+                      <div><strong>Inventory Level:</strong> {selectedManageProduct.inventory_level !== null && selectedManageProduct.inventory_level !== undefined ? `${selectedManageProduct.inventory_level} units` : '—'}</div>
+                      <div><strong>Inventory Threshold:</strong> {selectedManageProduct.inventory_threshold !== null && selectedManageProduct.inventory_threshold !== undefined ? `${selectedManageProduct.inventory_threshold} units` : '—'}</div>
+                      <div><strong>Dimensions:</strong> {selectedManageProduct.length || 0}L × {selectedManageProduct.width || 0}W × {selectedManageProduct.height || 0}H in</div>
+                      <div><strong>Recommended:</strong> {selectedManageProduct.recommended_accessory ? 'Yes' : 'No'}</div>
+                    </div>
+                    
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 4 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Product Description</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4 }}>
+                        {selectedManageProduct.description || '—'}
+                      </div>
+                    </div>
 
-                {/* Specifications & Metadata */}
-                <div style={{ marginBottom: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Specifications & Metadata</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {isBuyer ? (
-                      <>
-                        {selectedManageProduct.msrp && <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>}
-                        {selectedManageProduct.color && <div><strong>Color:</strong> {selectedManageProduct.color}</div>}
-                        {selectedManageProduct.warranty && <div><strong>Warranty:</strong> {selectedManageProduct.warranty}</div>}
-                      </>
-                    ) : (
-                      <>
-                        {selectedManageProduct.upc && <div><strong>UPC:</strong> {selectedManageProduct.upc}</div>}
-                        {selectedManageProduct.msrp && <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>}
-                        {selectedManageProduct.map_price && <div><strong>MAP Price:</strong> {formatCurrency(selectedManageProduct.map_price)}</div>}
-                        {selectedManageProduct.sale_price && <div><strong>Sale Price:</strong> {formatCurrency(selectedManageProduct.sale_price)}</div>}
-                        {selectedManageProduct.color && <div><strong>Color:</strong> {selectedManageProduct.color}</div>}
-                        {selectedManageProduct.system_color && <div><strong>System Color:</strong> {selectedManageProduct.system_color}</div>}
-                        {selectedManageProduct.inventory_level !== undefined && selectedManageProduct.inventory_level !== null && <div><strong>Inventory:</strong> {selectedManageProduct.inventory_level} units</div>}
-                        {selectedManageProduct.warranty && <div><strong>Warranty:</strong> {selectedManageProduct.warranty}</div>}
-                        {(selectedManageProduct.length || selectedManageProduct.width || selectedManageProduct.height) && (
-                          <div><strong>Dimensions:</strong> {selectedManageProduct.length || 0}L × {selectedManageProduct.width || 0}W × {selectedManageProduct.height || 0}H in</div>
-                        )}
-                        {selectedManageProduct.weight && <div><strong>Weight:</strong> {selectedManageProduct.weight} lbs</div>}
-                        {selectedManageProduct.recommended_accessory && <div><strong>Status:</strong> Recommended Accessory</div>}
-                      </>
-                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Short Description</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4, minHeight: 40 }}>
+                          {selectedManageProduct.short_description || '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Promo Description</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4, minHeight: 40 }}>
+                          {selectedManageProduct.promo_information || '—'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Meta Title</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4 }}>
+                          {selectedManageProduct.meta_title || '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Meta Description</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4 }}>
+                          {selectedManageProduct.meta_description || '—'}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4, background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
+                        {selectedManageProduct.description || 'No description provided.'}
+                      </div>
+                    </div>
+
+                    {/* Specifications & Metadata */}
+                    <div style={{ marginBottom: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Specifications & Metadata</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: 12, color: 'var(--text-secondary)' }}>
+                        {isBuyer ? (
+                          <>
+                            {selectedManageProduct.msrp && <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>}
+                            {selectedManageProduct.color && <div><strong>Color:</strong> {selectedManageProduct.color}</div>}
+                            {selectedManageProduct.warranty && <div><strong>Warranty:</strong> {selectedManageProduct.warranty}</div>}
+                          </>
+                        ) : (
+                          <>
+                            {selectedManageProduct.upc && <div><strong>UPC:</strong> {selectedManageProduct.upc}</div>}
+                            {selectedManageProduct.msrp && <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>}
+                            {selectedManageProduct.map_price && <div><strong>MAP Price:</strong> {formatCurrency(selectedManageProduct.map_price)}</div>}
+                            {selectedManageProduct.sale_price && <div><strong>Sale Price:</strong> {formatCurrency(selectedManageProduct.sale_price)}</div>}
+                            {selectedManageProduct.color && <div><strong>Color:</strong> {selectedManageProduct.color}</div>}
+                            {selectedManageProduct.system_color && <div><strong>System Color:</strong> {selectedManageProduct.system_color}</div>}
+                            {selectedManageProduct.inventory_level !== undefined && selectedManageProduct.inventory_level !== null && <div><strong>Inventory:</strong> {selectedManageProduct.inventory_level} units</div>}
+                            {selectedManageProduct.warranty && <div><strong>Warranty:</strong> {selectedManageProduct.warranty}</div>}
+                            {(selectedManageProduct.length || selectedManageProduct.width || selectedManageProduct.height) && (
+                              <div><strong>Dimensions:</strong> {selectedManageProduct.length || 0}L × {selectedManageProduct.width || 0}W × {selectedManageProduct.height || 0}H in</div>
+                            )}
+                            {selectedManageProduct.weight && <div><strong>Weight:</strong> {selectedManageProduct.weight} lbs</div>}
+                            {selectedManageProduct.recommended_accessory && <div><strong>Status:</strong> Recommended Accessory</div>}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
@@ -3618,31 +3719,33 @@ export default function CatalogPage() {
                 )}
 
                 {/* Add single device quick-form */}
-                <div style={{ display: 'flex', gap: 10, marginBottom: 16, background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
-                  <select
-                    id="quick-add-device-select"
-                    style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '6px 10px', borderRadius: 4, fontSize: 13 }}
-                    value={quickAddDeviceId}
-                    onChange={e => setQuickAddDeviceId(e.target.value)}
-                  >
-                    <option value="">-- Select Device to Add --</option>
-                    {devices
-                      .filter((d: any) => !activeCompatibilities?.some((c: any) => c.device_reference === d.id && !c.is_excluded))
-                      .map((d: any) => (
-                        <option key={d.id} value={d.id}>
-                          {d.manufacturer_name} {d.name}
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={handleQuickAddDevice}
-                    disabled={!quickAddDeviceId}
-                  >
-                    <Plus size={14} /> Add Device
-                  </button>
-                </div>
+                {!isCixciAdmin && (
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 16, background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
+                    <select
+                      id="quick-add-device-select"
+                      style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '6px 10px', borderRadius: 4, fontSize: 13 }}
+                      value={quickAddDeviceId}
+                      onChange={e => setQuickAddDeviceId(e.target.value)}
+                    >
+                      <option value="">-- Select Device to Add --</option>
+                      {devices
+                        .filter((d: any) => !activeCompatibilities?.some((c: any) => c.device_reference === d.id && !c.is_excluded))
+                        .map((d: any) => (
+                          <option key={d.id} value={d.id}>
+                            {d.manufacturer_name} {d.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={handleQuickAddDevice}
+                      disabled={!quickAddDeviceId}
+                    >
+                      <Plus size={14} /> Add Device
+                    </button>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {!activeCompatibilities || activeCompatibilities.length === 0 ? (
@@ -3667,55 +3770,33 @@ export default function CatalogPage() {
                                 <span className="badge badge-green" style={{ fontSize: 10, padding: '2px 6px' }}>Active</span>
                               )}
                             </div>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              {/* Action: Restore */}
-                              {c.is_excluded && (
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ padding: '3px 8px', fontSize: 11 }}
-                                  onClick={() => handleRestoreCompatibility(c.device_reference, c.exclusion_type, c.is_locked)}
-                                >
-                                  Restore
-                                </button>
-                              )}
+                            {!isCixciAdmin && (
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                {/* Action: Restore */}
+                                {c.is_excluded && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ padding: '3px 8px', fontSize: 11 }}
+                                    onClick={() => handleRestoreCompatibility(c.device_reference, c.exclusion_type, c.is_locked)}
+                                  >
+                                    Restore
+                                  </button>
+                                )}
 
-                              {/* Action: Exclude */}
-                              {!c.is_excluded && (
-                                <button
-                                  type="button"
-                                  className="btn btn-danger btn-sm"
-                                  style={{ padding: '3px 8px', fontSize: 11, background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)' }}
-                                  onClick={() => handleOpenExcludeModal(dev || { id: c.device_reference, name: deviceName })}
-                                >
-                                  Exclude
-                                </button>
-                              )}
-
-                              {/* Action: Lock (Admin only) */}
-                              {isCixciAdmin && !c.is_locked && (
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ padding: '3px 8px', fontSize: 11 }}
-                                  onClick={() => handleLockCompatibility(c.device_reference)}
-                                >
-                                  Lock
-                                </button>
-                              )}
-
-                              {/* Action: Convert to Admin Exclusion (Admin only) */}
-                              {isCixciAdmin && c.is_excluded && c.exclusion_type === 'vendor' && (
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ padding: '3px 8px', fontSize: 11 }}
-                                  onClick={() => handleConvertToAdminExclusion(c.device_reference)}
-                                >
-                                  Convert to Admin Exclusion
-                                </button>
-                              )}
-                            </div>
+                                {/* Action: Exclude */}
+                                {!c.is_excluded && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-danger btn-sm"
+                                    style={{ padding: '3px 8px', fontSize: 11, background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)' }}
+                                    onClick={() => handleOpenExcludeModal(dev || { id: c.device_reference, name: deviceName })}
+                                  >
+                                    Exclude
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           {/* Exclusion Details */}
@@ -3885,19 +3966,23 @@ export default function CatalogPage() {
                 </div>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
-                    onClick={() => handleDeleteProduct(selectedManageProduct.id)}
-                  >
-                    <Trash2 size={14} /> Delete
-                  </button>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button type="button" className="btn btn-secondary" onClick={() => setShowManageModal(false)}>Close</button>
-                    <button type="button" className="btn btn-primary" onClick={() => openEditModal(selectedManageProduct)}>
-                      <Edit size={14} /> Edit Product
+                  {!isCixciAdmin && (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
+                      onClick={() => handleDeleteProduct(selectedManageProduct.id)}
+                    >
+                      <Trash2 size={14} /> Delete
                     </button>
+                  )}
+                  <div style={{ display: 'flex', gap: 10, marginLeft: isCixciAdmin ? 'auto' : 0 }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowManageModal(false)}>Close</button>
+                    {!isCixciAdmin && (
+                      <button type="button" className="btn btn-primary" onClick={() => openEditModal(selectedManageProduct)}>
+                        <Edit size={14} /> Edit Product
+                      </button>
+                    )}
                   </div>
                 </>
               )}

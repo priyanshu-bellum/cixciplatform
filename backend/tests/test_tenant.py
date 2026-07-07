@@ -343,3 +343,114 @@ class TestRegionalVendorDiscovery:
         names = [c["name"] for c in resp.data["results"]]
         assert "Vendor Inc" in names
         assert "Vendor Europe" not in names
+
+
+@pytest.mark.django_db
+class TestCapabilityAssignmentRules:
+    def test_default_capabilities_assigned_on_company_save(self, cap_factory):
+        # We need to make sure the capability records exist for defaulting to find them
+        cap_factory("devices.portfolio.self_modify")
+        cap_factory("devices.dqe.create")
+        cap_factory("devices.dqe.read")
+        cap_factory("devices.dqe.list")
+        cap_factory("catalog.product.create")
+        cap_factory("catalog.product.update")
+        cap_factory("catalog.product.delete")
+        cap_factory("catalog.product.manage_selling")
+
+        # 1. Buyer company without buyer_type
+        company_buyer = Company.objects.create(
+            name="Buyer One",
+            company_type=CompanyType.BUYER,
+            status=CompanyStatus.PENDING_SETUP,
+            slug="buyer-one",
+        )
+        buyer_caps = list(company_buyer.capabilities.values_list("code", flat=True))
+        assert "devices.portfolio.self_modify" in buyer_caps
+        assert "devices.dqe.create" not in buyer_caps
+
+        # 2. Buyer company with buyer_type=mvno
+        company_mvno = Company.objects.create(
+            name="MVNO One",
+            company_type=CompanyType.BUYER,
+            status=CompanyStatus.PENDING_SETUP,
+            slug="mvno-one",
+            external_id='{"buyer_type": "mvno"}',
+        )
+        mvno_caps = list(company_mvno.capabilities.values_list("code", flat=True))
+        assert "devices.portfolio.self_modify" in mvno_caps
+        assert "devices.dqe.create" in mvno_caps
+        assert "devices.dqe.read" in mvno_caps
+        assert "devices.dqe.list" in mvno_caps
+
+        # 3. Vendor company
+        company_vendor = Company.objects.create(
+            name="Vendor One",
+            company_type=CompanyType.VENDOR,
+            status=CompanyStatus.PENDING_SETUP,
+            slug="vendor-one",
+        )
+        vendor_caps = list(company_vendor.capabilities.values_list("code", flat=True))
+        assert "catalog.product.create" in vendor_caps
+        assert "catalog.product.update" in vendor_caps
+        assert "catalog.product.delete" in vendor_caps
+        assert "catalog.product.manage_selling" in vendor_caps
+        assert "devices.portfolio.self_modify" not in vendor_caps
+
+    def test_assign_capability_endpoint_validation(self, admin_client, cap_factory):
+        # Setup Capabilities
+        cap_factory("devices.portfolio.self_modify")
+        cap_factory("devices.dqe.create")
+        cap_factory("catalog.product.create")
+
+        # 1. Retailer buyer company
+        company_retailer = Company.objects.create(
+            name="Retailer One",
+            company_type=CompanyType.BUYER,
+            status=CompanyStatus.PENDING_SETUP,
+            slug="retailer-one",
+            external_id='{"buyer_type": "retailer"}',
+        )
+
+        # Clear automatically assigned defaults to test manual assignment cleanly
+        company_retailer.capabilities.clear()
+
+        # Assign allowed capability (devices.portfolio.self_modify) -> success
+        resp = admin_client.post(
+            f"/api/v1/tenant/companies/{company_retailer.id}/assign_capability/",
+            {"capability_code": "devices.portfolio.self_modify"}
+        )
+        assert resp.status_code == 200
+        assert company_retailer.capabilities.filter(code="devices.portfolio.self_modify").exists()
+
+        # Assign forbidden capability (devices.dqe.create - forbidden for retailer) -> 400
+        resp = admin_client.post(
+            f"/api/v1/tenant/companies/{company_retailer.id}/assign_capability/",
+            {"capability_code": "devices.dqe.create"}
+        )
+        assert resp.status_code == 400
+
+        # Assign forbidden capability (catalog.product.create - vendor only) -> 400
+        resp = admin_client.post(
+            f"/api/v1/tenant/companies/{company_retailer.id}/assign_capability/",
+            {"capability_code": "catalog.product.create"}
+        )
+        assert resp.status_code == 400
+
+        # 2. MVNO buyer company
+        company_mvno = Company.objects.create(
+            name="MVNO Two",
+            company_type=CompanyType.BUYER,
+            status=CompanyStatus.PENDING_SETUP,
+            slug="mvno-two",
+            external_id='{"buyer_type": "mvno"}',
+        )
+        company_mvno.capabilities.clear()
+
+        # Assign allowed DQE capability -> success
+        resp = admin_client.post(
+            f"/api/v1/tenant/companies/{company_mvno.id}/assign_capability/",
+            {"capability_code": "devices.dqe.create"}
+        )
+        assert resp.status_code == 200
+

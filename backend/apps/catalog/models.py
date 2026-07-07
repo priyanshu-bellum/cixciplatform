@@ -123,6 +123,8 @@ class Product(models.Model):
     promo_information = models.TextField(blank=True, null=True)
     meta_title = models.CharField(max_length=500, blank=True, null=True)
     meta_description = models.TextField(blank=True, null=True)
+    deactivation_reason = models.CharField(max_length=200, blank=True, null=True)
+
 
     # Category-specific compatibility fields
     headphone_jack_compatibility = models.CharField(max_length=50, default="", blank=True)
@@ -261,6 +263,25 @@ class Product(models.Model):
             # If EOL Date is in the future, the product should remain Active
             if self.eol_date > today_est and self.status == ProductStatus.EOL:
                 raise ValidationError({"status": "If EOL Date is in the future, the product should remain Active."})
+
+        # EOL Date cannot conflict with open orders
+        if self.id and (self.status == ProductStatus.EOL or self.eol_date):
+            from apps.procurement.models import PurchaseOrderLine, POStatus
+            open_pos = PurchaseOrderLine.objects.filter(
+                product_reference=self.id,
+                purchase_order__status__in=[
+                    POStatus.DRAFT,
+                    POStatus.PENDING_APPROVAL,
+                    POStatus.APPROVED,
+                    POStatus.SUBMITTED,
+                    POStatus.ACKNOWLEDGED,
+                    POStatus.PARTIALLY_FULFILLED,
+                    POStatus.DISPUTE
+                ]
+            )
+            if open_pos.exists():
+                raise ValidationError({"eol_date": "EOL Date cannot conflict with open orders. Product has active open orders."})
+
 
         # Validate category-specific accessory fields
         if self.product_category:
@@ -410,6 +431,21 @@ class Product(models.Model):
             if eff_map is not None and self.sale_price < eff_map:
                 raise ValidationError({"sale_price": "Sale Price must not be lower than MAP Price."})
 
+        # Margin validations for Buyer Wholesale Price
+        if self.vendor_wholesale_price_amount is not None and self.msrp is not None:
+            from decimal import Decimal
+            wholesale = Decimal(str(self.vendor_wholesale_price_amount))
+            msrp_val = Decimal(str(self.msrp))
+            buyer_wholesale_price = wholesale + msrp_val * Decimal("0.14")
+            
+            from apps.pricing.services import check_pricing_exception_exists
+            has_exception = check_pricing_exception_exists(self.vendor_company_reference, self.sku)
+            
+            if buyer_wholesale_price <= wholesale and not has_exception:
+                raise ValidationError({"vendor_wholesale_price_amount": "Calculated Buyer Wholesale Price must be greater than Vendor Wholesale Price unless an approved exception exists."})
+            if buyer_wholesale_price >= msrp_val and not has_exception:
+                raise ValidationError({"msrp": "Calculated Buyer Wholesale Price must be lower than MSRP unless an approved exception exists."})
+
         # State-based validation constraints for existing products
         if self.pk:
             actor_id = getattr(self, "_actor_id", None)
@@ -426,12 +462,30 @@ class Product(models.Model):
                 # Default to admin to avoid blocking non-api actions (migrations, admin commands, tests without actor_id)
                 is_admin = True
 
-            if not is_admin:
-                try:
-                    orig = Product.objects.get(pk=self.pk)
-                except Product.DoesNotExist:
-                    orig = None
+            try:
+                orig = Product.objects.get(pk=self.pk)
+            except Product.DoesNotExist:
+                orig = None
 
+            if orig:
+                if orig.status == ProductStatus.ACTIVE and self.status == ProductStatus.INACTIVE:
+                    if not is_admin:
+                        raise ValidationError({"status": "Deactivating an active product requires CIXCI Admin approval."})
+                    if not self.deactivation_reason:
+                        raise ValidationError({"deactivation_reason": "Reason for deactivation is required when deactivating an active product."})
+                    valid_reasons = [
+                        "Vendor discontinued temporarily",
+                        "Inventory issue",
+                        "Content correction needed",
+                        "Pricing correction needed",
+                        "Compliance issue",
+                        "CIXCI administrative hold",
+                        "Other"
+                    ]
+                    if self.deactivation_reason not in valid_reasons:
+                        raise ValidationError({"deactivation_reason": f"Invalid deactivation reason. Must be one of: {', '.join(valid_reasons)}"})
+
+            if not is_admin:
                 if orig:
                     # 1. Identity & Brand cannot be edited by vendors in any state
                     if self.sku != orig.sku:
@@ -482,6 +536,7 @@ class Product(models.Model):
                                 raise ValidationError({field: f"Field '{label}' cannot be updated for active products without CIXCI Admin approval."})
 
     def save(self, *args, actor_id=None, **kwargs):
+        from django.utils import timezone
         is_new = not self.pk or not Product.objects.filter(pk=self.pk).exists()
         self._actor_id = actor_id
         
@@ -643,11 +698,84 @@ class Product(models.Model):
             if old_eol != self.eol_date:
                 changes.append(f"EOL Date changed from {old_eol} to {self.eol_date}")
                 
-        if changes:
+        if changes or is_new:
+            import json
+            from django.utils import timezone
+            
+            detailed_changes = []
+            if is_new:
+                detailed_changes.append({
+                    "field": "all",
+                    "old_value": None,
+                    "new_value": "Product created"
+                })
+            else:
+                for field in self._meta.fields:
+                    f_name = field.name
+                    if f_name in ["created_at", "updated_at"]:
+                        continue
+                    old_val = getattr(old_self, f_name)
+                    new_val = getattr(self, f_name)
+                    if old_val != new_val:
+                        detailed_changes.append({
+                            "field": f_name,
+                            "old_value": str(old_val) if old_val is not None else None,
+                            "new_value": str(new_val) if new_val is not None else None
+                        })
+
+            # Determine actor is admin
+            is_admin = False
+            if actor_id:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                try:
+                    actor = User.objects.get(id=actor_id)
+                    is_admin = getattr(actor, "is_cixci_admin", False)
+                except Exception:
+                    pass
+
+            source = getattr(self, "_update_source", None)
+            if not source:
+                if actor_id:
+                    source = "CIXCI Admin Update" if is_admin else "Vendor Manual Update"
+                else:
+                    source = "System Automation"
+
+            reason = self.deactivation_reason or None
+
+            affected_buyers = []
+            try:
+                from apps.catalog.models import BuyerScopedCompatibilityProjection
+                affected_buyers = [str(x) for x in BuyerScopedCompatibilityProjection.objects.values_list("buyer_reference", flat=True).distinct()]
+            except Exception:
+                pass
+
+            affected_devices = []
+            try:
+                from apps.catalog.models import ProductCompatibilityAssertion
+                affected_devices = [str(x) for x in ProductCompatibilityAssertion.objects.filter(product=self.id).values_list("device_reference", flat=True).distinct()]
+            except Exception:
+                pass
+
+            audit_payload = {
+                "product_id": str(self.id),
+                "vendor": str(self.vendor_company_reference),
+                "sku": self.sku,
+                "changed_by": str(actor_id) if actor_id else "System",
+                "changed_datetime": timezone.now().isoformat(),
+                "update_source": source,
+                "approval_status": "Approved" if (source == "CIXCI Admin Update" or is_new) else "Pending Review",
+                "reason": reason,
+                "changes": detailed_changes,
+                "affected_buyers": affected_buyers,
+                "affected_devices": affected_devices,
+                "legacy_description": " | ".join(changes)
+            }
+            
             from apps.catalog.services import log_catalog_audit
             log_catalog_audit(
                 event_code="catalog.product.updated" if not is_new else "catalog.product.created",
-                description=" | ".join(changes),
+                description=json.dumps(audit_payload),
                 product_id=self.id,
                 actor_id=actor_id
             )

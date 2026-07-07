@@ -182,7 +182,7 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError({"name": "Device Manufacturer + Device Name must be unique."})
+            raise serializers.ValidationError({"name": "The Device Already Exists"})
 
         # 2. Check Device Type
         device_type = attrs.get('device_type') or (self.instance.device_type if self.instance else None)

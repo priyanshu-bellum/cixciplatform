@@ -95,6 +95,21 @@ class TestProductEndpoints:
         for p in resp.data["results"]:
             assert p["status"] == "active"
 
+    def test_filter_by_device_id(self, buyer_client, buyer_user, product):
+        from apps.devices.models import BuyerDevicePortfolioReference
+        portfolio_ref = BuyerDevicePortfolioReference.objects.filter(
+            buyer_reference=buyer_user.id,
+            active_flag=True
+        ).first()
+        device_id = portfolio_ref.device_id
+        resp = buyer_client.get(f"/api/v1/catalog/products/?device_id={device_id}")
+        assert resp.status_code == 200
+        assert any(p["id"] == str(product.id) for p in resp.data["results"])
+
+        resp2 = buyer_client.get(f"/api/v1/catalog/products/?device_id={uuid.uuid4()}")
+        assert resp2.status_code == 200
+        assert len(resp2.data["results"]) == 0
+
 
 @pytest.mark.django_db
 class TestSellingStatusTransition:
@@ -541,6 +556,122 @@ class TestOutOfStockStatus:
         assert resp.status_code == 207
         assert resp.data["rows_failed"] == 1
         assert "must match allowed list" in resp.data["errors"][0]["validation_error"]
+
+
+class TestGovernanceAndCompatibilityImport:
+    @pytest.mark.django_db
+    def test_bulk_upload_rollback_on_error(self, buyer_client):
+        """Verify that any row error rolls back the entire bulk upload transaction."""
+        import io
+        from apps.catalog.models import Product, DynamicDropdownConfig
+        
+        # Verify initial count
+        initial_count = Product.objects.count()
+        
+        # Row 1 is valid, Row 2 has an invalid price (0)
+        csv_data = (
+            "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status\n"
+            "ROLLBACK-1,TestBrand,Memory,123456789012,06/18/2026,10.00,20.00,Rollback 1,Premium memory,Active\n"
+            "ROLLBACK-2,TestBrand,Memory,123456789013,06/18/2026,0.00,20.00,Rollback 2,Premium memory,Active\n"
+        )
+        file_obj = io.BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "catalog_import.csv"
+        
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "create_only"},
+            format="multipart"
+        )
+        assert resp.status_code == 207
+        assert resp.data["rows_failed"] == 1
+        # Transaction must have rolled back completely, so ROLLBACK-1 is NOT in the database
+        assert not Product.objects.filter(sku="ROLLBACK-1").exists()
+        assert Product.objects.count() == initial_count
+
+    @pytest.mark.django_db
+    def test_bulk_upload_active_product_compatibility_update_type_restrictions(self, buyer_client, buyer_user):
+        """Verify non-admin cannot use replace/remove compatibility mode on active products."""
+        import io
+        from apps.catalog.models import Product, ProductStatus
+        import datetime
+        
+        # Create an active product
+        product = Product.objects.create(
+            sku="ACTIVE-SKU-1",
+            brand="TestBrand",
+            product_category="Memory",
+            upc="123456789014",
+            launch_date=datetime.date.today() - datetime.timedelta(days=1),
+            vendor_wholesale_price_amount=10.00,
+            msrp=20.00,
+            name="Active Memory",
+            status=ProductStatus.ACTIVE,
+            company_scope_reference=buyer_user.entity.company_id,
+            vendor_company_reference=buyer_user.entity.company_id,
+        )
+        
+        csv_data = (
+            "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,Device Compatibility,Storage Expansion Compatibility,Memory Capacity\n"
+            "ACTIVE-SKU-1,TestBrand,Memory,123456789014,06/18/2026,10.00,20.00,Active Memory,Premium memory,Active,iPhone 16,microSDXC,128GB\n"
+        )
+        
+        # 1. Try with compatibility_update_type=replace as vendor (non-admin)
+        file_obj = io.BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "catalog_import.csv"
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "update_only", "compatibility_update_type": "replace"},
+            format="multipart"
+        )
+        assert resp.status_code == 207
+        assert "Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval." in resp.data["errors"][0]["validation_error"]
+
+        # 2. Try with compatibility_update_type=remove as vendor (non-admin)
+        file_obj = io.BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "catalog_import.csv"
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "update_only", "compatibility_update_type": "remove"},
+            format="multipart"
+        )
+        assert resp.status_code == 207
+        assert "Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval." in resp.data["errors"][0]["validation_error"]
+
+    @pytest.mark.django_db
+    def test_bulk_upload_media_asset_conversion(self, buyer_client):
+        """Verify image URLs are converted to MediaAsset records during bulk upload."""
+        import io
+        from apps.catalog.models import Product
+        from apps.media.models import MediaAsset
+        
+        csv_data = (
+            "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,ImageUrl1,ImageUrl2,Storage Expansion Compatibility,Memory Capacity\n"
+            "MEDIA-SKU,TestBrand,Memory,123456789015,06/18/2026,10.00,20.00,Media Memory,Premium memory,Active,https://some-vendor.com/images/accessory1.jpg,https://some-vendor.com/images/accessory2.png,microSDXC,128GB\n"
+        )
+        file_obj = io.BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "catalog_import.csv"
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "create_only"},
+            format="multipart"
+        )
+        assert resp.status_code == 200
+        
+        # Verify product and media assets
+        prod = Product.objects.get(sku="MEDIA-SKU")
+        assert prod.primary_image_reference is not None
+        
+        # Verify MediaAsset records
+        assets = MediaAsset.objects.filter(owner_record_id=prod.id)
+        assert assets.count() == 2
+        
+        # Verify first asset details
+        first_asset = assets.get(id=prod.primary_image_reference)
+        assert first_asset.original_filename == "accessory1.jpg"
+        assert first_asset.file_extension == "jpg"
+        assert first_asset.mime_type == "image/jpeg"
+        assert first_asset.storage_key.endswith("/accessory1.jpg")
+
 
 
 
