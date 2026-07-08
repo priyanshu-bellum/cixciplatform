@@ -672,6 +672,203 @@ class TestGovernanceAndCompatibilityImport:
         assert first_asset.mime_type == "image/jpeg"
         assert first_asset.storage_key.endswith("/accessory1.jpg")
 
+    @pytest.mark.django_db
+    def test_product_upc_validation(self, buyer_client, buyer_user):
+        """Verify UPC format, uniqueness, and non-emptiness constraints."""
+        # 1. Invalid UPC format (non-numeric or not 12 chars)
+        resp = buyer_client.post("/api/v1/catalog/products/", {
+            "name": "Invalid UPC Product",
+            "sku": "SKU-UPC-1",
+            "brand": "Brand",
+            "product_type": "accessory",
+            "launch_date": "2026-06-18",
+            "upc": "abc123456789",  # non-numeric
+            "vendor_company_reference": str(uuid.uuid4()),
+        })
+        assert resp.status_code == 400
+        assert "UPC must follow valid UPC-A format" in str(resp.data)
+
+        resp = buyer_client.post("/api/v1/catalog/products/", {
+            "name": "Invalid UPC Product 2",
+            "sku": "SKU-UPC-2",
+            "brand": "Brand",
+            "product_type": "accessory",
+            "launch_date": "2026-06-18",
+            "upc": "12345",  # too short
+            "vendor_company_reference": str(uuid.uuid4()),
+        })
+        assert resp.status_code == 400
+        assert "UPC must follow valid UPC-A format" in str(resp.data)
+
+        # 2. Valid UPC creation
+        resp = buyer_client.post("/api/v1/catalog/products/", {
+            "name": "Valid Product 1",
+            "sku": "SKU-VALID-1",
+            "brand": "Brand",
+            "product_type": "accessory",
+            "launch_date": "2026-06-18",
+            "upc": "012345678905",  # valid
+            "vendor_company_reference": str(uuid.uuid4()),
+        })
+        assert resp.status_code == 201
+
+        # 3. Duplicate UPC validation
+        resp = buyer_client.post("/api/v1/catalog/products/", {
+            "name": "Valid Product 2",
+            "sku": "SKU-VALID-2",
+            "brand": "Brand",
+            "product_type": "accessory",
+            "launch_date": "2026-06-18",
+            "upc": "012345678905",  # duplicate UPC
+            "vendor_company_reference": str(uuid.uuid4()),
+        })
+        assert resp.status_code == 400
+        assert "UPC must be unique per product" in str(resp.data)
+
+    @pytest.mark.django_db
+    def test_vendor_admin_delete_product_restrictions(self, buyer_client, buyer_user):
+        """Verify vendor admins cannot delete Active products tied to commercial activity."""
+        # Setup vendor company for user
+        from apps.tenant.models import CompanyType
+        buyer_user.company.company_type = CompanyType.VENDOR
+        buyer_user.company.save()
+
+        # Create active product
+        prod = Product.objects.create(
+            name="Restricted Delete Product",
+            sku="DEL-SKU-1",
+            brand="Brand",
+            product_type="accessory",
+            status="active",
+            selling_status="for_sale",
+            launch_date="2026-06-18",
+            upc="098765432101",
+            compatibility_status="complete",
+            company_scope_reference=buyer_user.entity.company_id,
+            vendor_company_reference=buyer_user.company.id,
+        )
+
+        # Mock tied to activity by creating PurchaseOrder and PurchaseOrderLine
+        from apps.procurement.models import PurchaseOrder, PurchaseOrderLine
+        po = PurchaseOrder.objects.create(
+            company_scope_reference=prod.company_scope_reference,
+            buyer_reference=uuid.uuid4(),
+            vendor_company_reference=prod.vendor_company_reference,
+            status="draft"
+        )
+        PurchaseOrderLine.objects.create(
+            purchase_order=po,
+            product_reference=prod.id,
+            quantity=1,
+            unit_price_snapshot=10.00,
+            line_total=10.00
+        )
+        assert prod.is_tied_to_activity is True
+
+        # Try to delete as vendor admin
+        resp = buyer_client.delete(f"/api/v1/catalog/products/{prod.id}/")
+        assert resp.status_code == 400
+        assert "Active products that are live and being sold by buyers cannot be deleted." in resp.data["detail"]
+
+        # Ensure product still exists
+        assert Product.objects.filter(id=prod.id).exists()
+
+    @pytest.mark.django_db
+    def test_sale_price_buyer_wholesale_validation(self, buyer_client, buyer_user):
+        """Verify sale price cannot be lower than calculated buyer wholesale price."""
+        from django.core.exceptions import ValidationError
+        
+        # MSRP = 100.00, Vendor Wholesale = 50.00
+        # Buyer Wholesale = 50.00 + 100.00 * 0.14 = 64.00
+        prod = Product(
+            name="Sale Price Test Product",
+            sku="SALE-SKU-1",
+            brand="Brand",
+            product_type="accessory",
+            status="draft",
+            upc="012345678912",
+            launch_date="2026-06-18",
+            vendor_wholesale_price_amount=50.00,
+            msrp=100.00,
+            sale_price=60.00,  # lower than 64.00
+            company_scope_reference=buyer_user.entity.company_id,
+            vendor_company_reference=buyer_user.company.id,
+        )
+        with pytest.raises(ValidationError) as excinfo:
+            prod.clean()
+        assert "Sale Price must not be lower than buyer Wholesale Price" in str(excinfo.value)
+
+        # Correcting sale_price to 65.00 (>= 64.00) should pass clean()
+        prod.sale_price = 65.00
+        prod.clean()  # should not raise ValidationError
+
+    @pytest.mark.django_db
+    def test_extended_vendor_search(self, buyer_client, buyer_user):
+        """Verify searching by category, wholesale price, color, status, MSRP, and SKU is supported."""
+        from apps.tenant.models import CompanyType
+        buyer_user.company.company_type = CompanyType.VENDOR
+        buyer_user.company.save()
+
+        # Create products with specific searchable fields
+        Product.objects.create(
+            name="Alpha Product",
+            sku="SEARCH-SKU-123",
+            brand="Brand A",
+            product_type="accessory",
+            product_category="Cases",
+            color="Vibrant Red",
+            status="draft",
+            launch_date="2026-06-18",
+            msrp=19.99,
+            vendor_wholesale_price_amount=10.00,
+            company_scope_reference=buyer_user.entity.company_id,
+            vendor_company_reference=buyer_user.company.id,
+        )
+        Product.objects.create(
+            name="Beta Product",
+            sku="SEARCH-SKU-456",
+            brand="Brand B",
+            product_type="accessory",
+            product_category="Screen Protection",
+            color="Glossy White",
+            status="active",
+            launch_date="2026-06-18",
+            msrp=29.99,
+            vendor_wholesale_price_amount=15.00,
+            company_scope_reference=buyer_user.entity.company_id,
+            vendor_company_reference=buyer_user.company.id,
+        )
+
+        # 1. Search by category
+        resp = buyer_client.get("/api/v1/catalog/products/?search=Cases")
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 1
+        assert resp.data["results"][0]["sku"] == "SEARCH-SKU-123"
+
+        # 2. Search by color
+        resp = buyer_client.get("/api/v1/catalog/products/?search=white")
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 1
+        assert resp.data["results"][0]["sku"] == "SEARCH-SKU-456"
+
+        # 3. Search by status
+        resp = buyer_client.get("/api/v1/catalog/products/?search=draft")
+        assert resp.status_code == 200
+        assert any(p["sku"] == "SEARCH-SKU-123" for p in resp.data["results"])
+
+        # 4. Search by MSRP
+        resp = buyer_client.get("/api/v1/catalog/products/?search=29.99")
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 1
+        assert resp.data["results"][0]["sku"] == "SEARCH-SKU-456"
+
+        # 5. Search by Wholesale Price
+        resp = buyer_client.get("/api/v1/catalog/products/?search=10")
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 1
+        assert resp.data["results"][0]["sku"] == "SEARCH-SKU-123"
+
+
 
 
 

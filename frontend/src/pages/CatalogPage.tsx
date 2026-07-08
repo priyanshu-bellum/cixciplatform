@@ -348,6 +348,10 @@ export default function CatalogPage() {
 
   // Compatibility Management States
   const [manageTab, setManageTab] = useState<'details' | 'compatibility' | 'bulk' | 'audit'>('details')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [filterBrand, setFilterBrand] = useState('')
+  const [filterColor, setFilterColor] = useState('')
+  const [filterMaxPrice, setFilterMaxPrice] = useState('')
   const [showExcludeModal, setShowExcludeModal] = useState(false)
   const [excludeDevice, setExcludeDevice] = useState<any>(null)
   const [excludeReason, setExcludeReason] = useState('physical_mismatch')
@@ -386,7 +390,7 @@ export default function CatalogPage() {
     if (!prodCategory) return null;
     
     const labelStyle: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 };
-    const selectStyle: React.CSSProperties = { width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-main)', color: 'var(--text-primary)', fontSize: 13 };
+    const selectStyle: React.CSSProperties = { width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: 13 };
     const checkboxContainerStyle: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6 };
     const checkboxLabelStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' };
 
@@ -936,8 +940,8 @@ export default function CatalogPage() {
         if (!val) {
           errors.push("UPC is required.")
           cellErrors[`${rowIdx}-${upcColIdx}`] = true
-        } else if (val.length > 100) {
-          errors.push("UPC exceeds database limit of 100 characters.")
+        } else if (!/^\d{12}$/.test(val)) {
+          errors.push("UPC must follow valid UPC-A format (12 numeric characters).")
           cellErrors[`${rowIdx}-${upcColIdx}`] = true
         }
       }
@@ -1208,13 +1212,98 @@ export default function CatalogPage() {
   })
 
   const products = data?.results ?? data ?? []
+
+  const [activeDetailImageUrl, setActiveDetailImageUrl] = useState<string | null>(null)
+
+  // Sync activeDetailImageUrl on product select
+  useEffect(() => {
+    if (selectedManageProduct) {
+      setActiveDetailImageUrl(selectedManageProduct.primary_image_url || null)
+    } else {
+      setActiveDetailImageUrl(null)
+    }
+  }, [selectedManageProduct])
+
+  // Extract all images
+  const allImages = useMemo(() => {
+    if (!selectedManageProduct) return []
+    const list: string[] = []
+    if (selectedManageProduct.primary_image_url) {
+      list.push(selectedManageProduct.primary_image_url)
+    }
+    if (Array.isArray(selectedManageProduct.media_references)) {
+      selectedManageProduct.media_references.forEach((ref: any) => {
+        const url = typeof ref === 'string' ? ref : (ref?.url || ref?.storage_key)
+        if (url && !list.includes(url)) {
+          list.push(url)
+        }
+      })
+    }
+    return list
+  }, [selectedManageProduct])
+
+  const filteredProducts = useMemo(() => {
+    if (!products) return []
+    return products.filter((p: any) => {
+      if (isBuyer) {
+        if (filterCategory && p.product_category !== filterCategory) return false
+        if (filterBrand && p.brand !== filterBrand) return false
+        if (filterColor && p.color !== filterColor && p.system_color !== filterColor) return false
+        if (filterMaxPrice) {
+          const priceVal = p.buyer_wholesale_price !== undefined ? parseFloat(p.buyer_wholesale_price) : parseFloat(p.vendor_wholesale_price_amount || '0')
+          const maxVal = parseFloat(filterMaxPrice)
+          if (!isNaN(priceVal) && !isNaN(maxVal) && priceVal > maxVal) return false
+        }
+      }
+      return true
+    })
+  }, [products, isBuyer, filterCategory, filterBrand, filterColor, filterMaxPrice])
+
+  const brandsList = useMemo(() => {
+    const unique = new Set<string>()
+    allowedBrands.forEach(b => { if (b) unique.add(b) })
+    products.forEach((p: any) => { if (p.brand) unique.add(p.brand) })
+    return Array.from(unique).sort()
+  }, [allowedBrands, products])
+
   const filteredDeviceRef = portfolio?.find((ref: any) => ref.device === filterDeviceId)
   const filteredDeviceName = filteredDeviceRef ? filteredDeviceRef.device_name : 'Selected Device'
-  const compatibleProducts = products.filter((p: any) =>
+  const compatibleProducts = filteredProducts.filter((p: any) =>
     projection?.compatible_product_ids?.includes(p.id)
   )
   const jobs = Array.isArray(exportJobs) ? exportJobs : (exportJobs?.results ?? [])
   const devices = devicesData?.results ?? devicesData ?? []
+
+  const formatExcelDate = (val: any): string => {
+    if (val === undefined || val === null) return ''
+    if (val instanceof Date) {
+      const month = String(val.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(val.getUTCDate()).padStart(2, '0')
+      const year = val.getUTCFullYear()
+      return `${month}/${day}/${year}`
+    }
+    const str = String(val).trim()
+    if (!str) return ''
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
+      return str
+    }
+    const num = Number(str)
+    if (!isNaN(num) && num > 25569 && num < 100000) {
+      const date = new Date((num - 25569) * 24 * 60 * 60 * 1000)
+      const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(date.getUTCDate()).padStart(2, '0')
+      const year = date.getUTCFullYear()
+      return `${month}/${day}/${year}`
+    }
+    const parsedDate = new Date(str)
+    if (!isNaN(parsedDate.getTime())) {
+      const month = String(parsedDate.getMonth() + 1).padStart(2, '0')
+      const day = String(parsedDate.getDate()).padStart(2, '0')
+      const year = parsedDate.getFullYear()
+      return `${month}/${day}/${year}`
+    }
+    return str
+  }
 
   // Helper to build media URLs
   const getImageUrl = (path: string) => {
@@ -1344,6 +1433,7 @@ export default function CatalogPage() {
       if (!prodName) { setFormError('Product Name is required.'); return; }
       if (!prodSku) { setFormError('SKU is required.'); return; }
       if (!prodUpc) { setFormError('UPC is required.'); return; }
+      if (!/^\d{12}$/.test(prodUpc)) { setFormError('UPC must follow valid UPC-A format (12 numeric characters).'); return; }
       if (prodType !== 'branded_merchandise' && !prodCategory) { setFormError('Product Category is required.'); return; }
       if (!prodLaunchDate) { setFormError('Launch Date is required.'); return; }
       if (!prodColor) { setFormError('Color is required.'); return; }
@@ -1488,6 +1578,7 @@ export default function CatalogPage() {
       if (!prodName) { setFormError('Product Name is required.'); return; }
       if (!prodSku) { setFormError('SKU is required.'); return; }
       if (!prodUpc) { setFormError('UPC is required.'); return; }
+      if (!/^\d{12}$/.test(prodUpc)) { setFormError('UPC must follow valid UPC-A format (12 numeric characters).'); return; }
       if (prodType !== 'branded_merchandise' && !prodCategory) { setFormError('Product Category is required.'); return; }
       if (!prodLaunchDate) { setFormError('Launch Date is required.'); return; }
       if (!prodColor) { setFormError('Color is required.'); return; }
@@ -1665,7 +1756,11 @@ export default function CatalogPage() {
   }
 
   const handleDeleteProduct = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this accessory?")) return
+    if (selectedManageProduct && selectedManageProduct.status === 'active' && selectedManageProduct.is_tied_to_activity) {
+      alert("Active products that are live and being sold by buyers cannot be deleted.")
+      return
+    }
+    if (!window.confirm("Are you sure you want to delete this product?")) return
     try {
       await api.delete(`/catalog/products/${id}/`)
       setShowManageModal(false)
@@ -2179,55 +2274,130 @@ export default function CatalogPage() {
         )}
       </div>
 
-      {isBuyer && filterDeviceId && (
-        <div style={{
-          marginBottom: 16,
-          padding: '10px 14px',
-          background: 'var(--accent-dim)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-sm)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12
-        }}>
-          <span style={{ fontSize: 13, color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <AlertCircle size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-            <span>Filtering compatible accessories for device: <strong>{filteredDeviceName}</strong></span>
-          </span>
-          <button 
-            className="btn btn-secondary btn-sm" 
-            style={{ padding: '3px 8px', fontSize: 12 }}
-            onClick={() => {
-              const newParams = new URLSearchParams(searchParams)
-              newParams.delete('device')
-              setSearchParams(newParams)
-            }}
-          >
-            Clear Filter
-          </button>
-        </div>
-      )}
-
       {tab === 'products' && (
         <>
-          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div className="search-bar" style={{ width: 280 }}>
-              <Search size={14} />
-              <input placeholder="Search by name, SKU, brand…" value={search} onChange={e => setSearch(e.target.value)} />
-            </div>
-            {selectedIds.length > 0 && isBuyer && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
-                  {selectedIds.length} accessories selected
-                </span>
-                <button className="btn btn-primary btn-sm" onClick={() => setShowExportModal(true)}>
-                  Export Selection
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIds([])}>
-                  Clear
-                </button>
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+            padding: 16,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            marginBottom: 16,
+            alignItems: 'center'
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Search</label>
+              <div className="search-bar" style={{ width: 240, margin: 0 }}>
+                <Search size={14} />
+                <input placeholder="Search by name, SKU, brand, category, color, status, price…" value={search} onChange={e => setSearch(e.target.value)} />
               </div>
+            </div>
+
+            {isBuyer && (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Filter by Device</label>
+                  <select
+                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 180 }}
+                    value={filterDeviceId}
+                    onChange={(e) => {
+                      const newParams = new URLSearchParams(searchParams)
+                      if (e.target.value) {
+                        newParams.set('device', e.target.value)
+                      } else {
+                        newParams.delete('device')
+                      }
+                      setSearchParams(newParams)
+                    }}
+                  >
+                    <option value="">All Devices (My Portfolio)</option>
+                    {portfolio?.filter((d: any) => d.active_flag).map((d: any) => (
+                      <option key={d.device} value={d.device}>
+                        {d.device_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Category</label>
+                  <select
+                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 150 }}
+                    value={filterCategory}
+                    onChange={e => setFilterCategory(e.target.value)}
+                  >
+                    <option value="">All Categories</option>
+                    {allowedCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Brand</label>
+                  <select
+                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 140 }}
+                    value={filterBrand}
+                    onChange={e => setFilterBrand(e.target.value)}
+                  >
+                    <option value="">All Brands</option>
+                    {brandsList.map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Color</label>
+                  <select
+                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 120 }}
+                    value={filterColor}
+                    onChange={e => setFilterColor(e.target.value)}
+                  >
+                    <option value="">All Colors</option>
+                    {allowedColors.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Max Price (Wholesale)</label>
+                  <select
+                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 120 }}
+                    value={filterMaxPrice}
+                    onChange={e => setFilterMaxPrice(e.target.value)}
+                  >
+                    <option value="">All Prices</option>
+                    <option value="10">Under $10</option>
+                    <option value="25">Under $25</option>
+                    <option value="50">Under $50</option>
+                    <option value="100">Under $100</option>
+                    <option value="200">Under $200</option>
+                  </select>
+                </div>
+
+                {(filterDeviceId || filterCategory || filterBrand || filterColor || filterMaxPrice) && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ alignSelf: 'flex-end', height: 35, padding: '0 12px' }}
+                    onClick={() => {
+                      setFilterCategory('')
+                      setFilterBrand('')
+                      setFilterColor('')
+                      setFilterMaxPrice('')
+                      const newParams = new URLSearchParams(searchParams)
+                      newParams.delete('device')
+                      setSearchParams(newParams)
+                    }}
+                  >
+                    Clear Filters
+                  </button>
+                )}
+              </>
             )}
           </div>
           <div className="table-wrap">
@@ -2238,26 +2408,18 @@ export default function CatalogPage() {
                 <ShoppingBag size={40} />
                 <div>Please add devices to your portfolio to view compatible products</div>
               </div>
-            ) : products.length === 0 ? (
+            ) : filteredProducts.length === 0 ? (
               <div className="empty-state">
                 <ShoppingBag size={40} />
-                <div>No products yet</div>
+                <div>No products found matching filters</div>
               </div>
             ) : (
               <table>
                 <thead>
                   <tr>
-                    {isBuyer && (
-                      <th style={{ width: 40, textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={products.length > 0 && selectedIds.length === products.length}
-                          onChange={toggleSelectAll}
-                        />
-                      </th>
-                    )}
                     <th style={{ width: 60 }}>Image</th>
                     <th>Product Name</th>
+                    <th>SKU</th>
                     <th>Brand</th>
                     <th>Type</th>
                     <th>Category</th>
@@ -2268,7 +2430,7 @@ export default function CatalogPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map((p: any) => (
+                  {filteredProducts.map((p: any) => (
                     <tr
                       key={p.id}
                       onClick={() => {
@@ -2277,15 +2439,6 @@ export default function CatalogPage() {
                       }}
                       style={{ cursor: 'pointer' }}
                     >
-                      {isBuyer && (
-                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.includes(p.id)}
-                            onChange={() => toggleSelectProduct(p.id)}
-                          />
-                        </td>
-                      )}
                       <td>
                         {p.primary_image_url ? (
                           <img
@@ -2300,6 +2453,7 @@ export default function CatalogPage() {
                         )}
                       </td>
                       <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.name}</td>
+                      <td>{p.sku}</td>
                       <td>{p.brand}</td>
                       <td>{p.product_type}</td>
                       <td>{p.product_category || '—'}</td>
@@ -2408,6 +2562,7 @@ export default function CatalogPage() {
                           </th>
                           <th style={{ width: 60 }}>Image</th>
                           <th>Product Name</th>
+                          <th>SKU</th>
                           <th>Brand</th>
                           <th>Type</th>
                           <th>Category</th>
@@ -2454,6 +2609,7 @@ export default function CatalogPage() {
                               )}
                             </td>
                             <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.name}</td>
+                            <td>{p.sku}</td>
                             <td>{p.brand}</td>
                             <td>{p.product_type}</td>
                             <td>{p.product_category || '—'}</td>
@@ -3033,7 +3189,7 @@ export default function CatalogPage() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div className="card" style={{ width: 720, maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Edit Accessory Product</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>Edit Product</div>
               <button className="btn btn-ghost" style={{ padding: 4 }} onClick={handleCloseEditModal}>
                 <X size={16} />
               </button>
@@ -3559,151 +3715,287 @@ export default function CatalogPage() {
             </div>
 
             {/* Tab navigation */}
-            {!isBuyer && (
-              <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16, gap: 16 }}>
-                {[
-                  { id: 'details', label: 'Details' },
-                  { id: 'compatibility', label: 'Device Compatibility' },
-                  ...(!isCixciAdmin ? [{ id: 'bulk', label: 'Bulk Update' }] : []),
-                  { id: 'audit', label: 'Audit Trail' }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setManageTab(t.id as any)}
-                    style={{
-                      padding: '8px 4px',
-                      fontSize: 13,
-                      fontWeight: manageTab === t.id ? 600 : 500,
-                      color: manageTab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
-                      borderBottom: manageTab === t.id ? '2px solid var(--accent)' : 'none',
-                      background: 'none',
-                      borderLeft: 'none',
-                      borderRight: 'none',
-                      borderTop: 'none',
-                      cursor: 'pointer',
-                      outline: 'none',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16, gap: 16 }}>
+              {[
+                { id: 'details', label: 'Details' },
+                { id: 'compatibility', label: 'Device Compatibility' },
+                ...(!isBuyer && !isCixciAdmin ? [{ id: 'bulk', label: 'Bulk Update' }] : []),
+                ...(!isBuyer ? [{ id: 'audit', label: 'Audit Trail' }] : [])
+              ].map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setManageTab(t.id as any)}
+                  style={{
+                    padding: '8px 4px',
+                    fontSize: 13,
+                    fontWeight: manageTab === t.id ? 600 : 500,
+                    color: manageTab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
+                    borderBottom: manageTab === t.id ? '2px solid var(--accent)' : 'none',
+                    background: 'none',
+                    borderLeft: 'none',
+                    borderRight: 'none',
+                    borderTop: 'none',
+                    cursor: 'pointer',
+                    outline: 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
 
             {/* 1. Details Tab */}
-            {(manageTab === 'details' || isBuyer) && (
-              <>
-                {isCixciAdmin ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px', fontSize: 12, color: 'var(--text-secondary)' }}>
-                      <div><strong>Product Name:</strong> {selectedManageProduct.name || '—'}</div>
-                      <div><strong>Brand:</strong> {selectedManageProduct.brand || '—'}</div>
-                      <div><strong>Product Status:</strong> <span style={{ textTransform: 'capitalize' }}>{selectedManageProduct.status || '—'}</span></div>
-                      <div><strong>SKU:</strong> {selectedManageProduct.sku || '—'}</div>
-                      <div><strong>UPC:</strong> {selectedManageProduct.upc || '—'}</div>
-                      <div><strong>Launch Date:</strong> {selectedManageProduct.launch_date || '—'}</div>
-                      <div><strong>Release Date:</strong> {selectedManageProduct.release_date || '—'}</div>
-                      <div><strong>Color:</strong> {selectedManageProduct.color || '—'}</div>
-                      <div><strong>System Color:</strong> {selectedManageProduct.system_color || '—'}</div>
-                      <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>
-                      <div><strong>MAP Price:</strong> {formatCurrency(selectedManageProduct.map_price)}</div>
-                      <div><strong>Vendor Wholesale Price:</strong> {formatCurrency(selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)}</div>
-                      <div><strong>Sale Price:</strong> {formatCurrency(selectedManageProduct.sale_price)}</div>
-                      <div><strong>Product Category:</strong> {selectedManageProduct.product_category || '—'}</div>
-                      <div><strong>Brand Warranty:</strong> {selectedManageProduct.warranty || '—'}</div>
-                      <div><strong>Inventory Level:</strong> {selectedManageProduct.inventory_level !== null && selectedManageProduct.inventory_level !== undefined ? `${selectedManageProduct.inventory_level} units` : '—'}</div>
-                      <div><strong>Inventory Threshold:</strong> {selectedManageProduct.inventory_threshold !== null && selectedManageProduct.inventory_threshold !== undefined ? `${selectedManageProduct.inventory_threshold} units` : '—'}</div>
-                      <div><strong>Dimensions:</strong> {selectedManageProduct.length || 0}L × {selectedManageProduct.width || 0}W × {selectedManageProduct.height || 0}H in</div>
-                      <div><strong>Recommended:</strong> {selectedManageProduct.recommended_accessory ? 'Yes' : 'No'}</div>
+            {manageTab === 'details' && (
+              <div style={{ display: 'flex', gap: 24, flexDirection: 'row', flexWrap: 'wrap' }}>
+                {/* Left Column: Image gallery and Image URLS */}
+                <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* Image Gallery */}
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Images</label>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                      {/* Active Main Image */}
+                      <div style={{ width: '100%', height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-main)', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                        {activeDetailImageUrl ? (
+                          <img
+                            src={getImageUrl(activeDetailImageUrl)}
+                            alt={selectedManageProduct.name}
+                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                          />
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
+                            <ShoppingBag size={48} />
+                            <span style={{ fontSize: 13 }}>No Image Available</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Thumbnails Row */}
+                      {allImages.length > 1 && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%', justifyContent: 'center' }}>
+                          {allImages.map((imgUrl, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setActiveDetailImageUrl(imgUrl)}
+                              style={{
+                                width: 48,
+                                height: 48,
+                                padding: 0,
+                                border: activeDetailImageUrl === imgUrl ? '2px solid var(--accent)' : '1px solid var(--border)',
+                                borderRadius: 4,
+                                background: 'var(--bg-main)',
+                                overflow: 'hidden',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              <img
+                                src={getImageUrl(imgUrl)}
+                                alt={`Thumbnail ${i + 1}`}
+                                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'cover' }}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    
-                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 4 }}>
+                  </div>
+
+                  {/* Image URLS */}
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Image URLS</label>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {allImages.length === 0 ? (
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>
+                      ) : (
+                        allImages.map((url, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>{i + 1}:</span>
+                            <a
+                              href={getImageUrl(url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}
+                            >
+                              {getImageUrl(url)}
+                            </a>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Properties & Descriptions */}
+                <div style={{ flex: '2 2 400px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{selectedManageProduct.name || '—'}</h3>
+                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{selectedManageProduct.brand || '—'}</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px 16px', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Product Status</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, display: 'inline-flex' }}>
+                        <span className={`badge ${STATUS_BADGE[selectedManageProduct.status] ?? 'badge-muted'}`} style={{ fontSize: 11, padding: '2px 8px' }}>
+                          {selectedManageProduct.status || '—'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>SKU</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, fontFamily: 'monospace' }}>{selectedManageProduct.sku || '—'}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>UPC</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, fontFamily: 'monospace' }}>{selectedManageProduct.upc || '—'}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Launch Date</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.launch_date || '—'}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Color</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.color || '—'}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>System Color</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.system_color || '—'}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>MSRP</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, fontWeight: 500 }}>{formatCurrency(selectedManageProduct.msrp)}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Wholesale Price</div>
+                      <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600, color: 'var(--accent)' }}>
+                        {isBuyer
+                          ? formatCurrency(selectedManageProduct.buyer_wholesale_price, selectedManageProduct.vendor_wholesale_price_currency)
+                          : formatCurrency(selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)
+                        }
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Product Category</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.product_category || '—'}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Brand Warranty</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.warranty || '—'}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Inventory Level</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>
+                        {selectedManageProduct.inventory_level !== null && selectedManageProduct.inventory_level !== undefined ? `${selectedManageProduct.inventory_level} units` : '—'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Dimensions</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>
+                        {selectedManageProduct.length || selectedManageProduct.width || selectedManageProduct.height
+                          ? `${selectedManageProduct.length || 0}L × ${selectedManageProduct.width || 0}W × ${selectedManageProduct.height || 0}H in`
+                          : '—'
+                        }
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Recommended Accessory</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.recommended_accessory ? 'Yes' : 'No'}</div>
+                    </div>
+
+                    {/* Conditional Fields */}
+                    {selectedManageProduct.vendor_map_pricing_enforced && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>MAP Price</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{formatCurrency(selectedManageProduct.map_price)}</div>
+                      </div>
+                    )}
+
+                    {selectedManageProduct.sale_price && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Sale Price</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{formatCurrency(selectedManageProduct.sale_price)}</div>
+                      </div>
+                    )}
+
+                    {selectedManageProduct.inventory_threshold !== null && selectedManageProduct.inventory_threshold !== undefined && selectedManageProduct.inventory_threshold !== 0 && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Inventory Threshold</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.inventory_threshold} units</div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Product Description */}
+                    <div>
                       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Product Description</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4 }}>
+                      <div style={{ fontSize: 13, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 12, borderRadius: 6, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                         {selectedManageProduct.description || '—'}
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    {/* Conditional: Short Description */}
+                    {selectedManageProduct.short_description && (
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Short Description</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4, minHeight: 40 }}>
-                          {selectedManageProduct.short_description || '—'}
+                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 12, borderRadius: 6, lineHeight: 1.5 }}>
+                          {selectedManageProduct.short_description}
                         </div>
                       </div>
+                    )}
+
+                    {/* Conditional: Promo Description */}
+                    {selectedManageProduct.promo_information && (
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Promo Description</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4, minHeight: 40 }}>
-                          {selectedManageProduct.promo_information || '—'}
+                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 12, borderRadius: 6, lineHeight: 1.5 }}>
+                          {selectedManageProduct.promo_information}
                         </div>
                       </div>
-                    </div>
+                    )}
 
+                    {/* Meta Title & Description */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Meta Title</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
                           {selectedManageProduct.meta_title || '—'}
                         </div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Meta Description</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 8, borderRadius: 4 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
                           {selectedManageProduct.meta_description || '—'}
                         </div>
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4, background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
-                        {selectedManageProduct.description || 'No description provided.'}
-                      </div>
-                    </div>
-
-                    {/* Specifications & Metadata */}
-                    <div style={{ marginBottom: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Specifications & Metadata</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {isBuyer ? (
-                          <>
-                            {selectedManageProduct.msrp && <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>}
-                            {selectedManageProduct.color && <div><strong>Color:</strong> {selectedManageProduct.color}</div>}
-                            {selectedManageProduct.warranty && <div><strong>Warranty:</strong> {selectedManageProduct.warranty}</div>}
-                          </>
-                        ) : (
-                          <>
-                            {selectedManageProduct.upc && <div><strong>UPC:</strong> {selectedManageProduct.upc}</div>}
-                            {selectedManageProduct.msrp && <div><strong>MSRP:</strong> {formatCurrency(selectedManageProduct.msrp)}</div>}
-                            {selectedManageProduct.map_price && <div><strong>MAP Price:</strong> {formatCurrency(selectedManageProduct.map_price)}</div>}
-                            {selectedManageProduct.sale_price && <div><strong>Sale Price:</strong> {formatCurrency(selectedManageProduct.sale_price)}</div>}
-                            {selectedManageProduct.color && <div><strong>Color:</strong> {selectedManageProduct.color}</div>}
-                            {selectedManageProduct.system_color && <div><strong>System Color:</strong> {selectedManageProduct.system_color}</div>}
-                            {selectedManageProduct.inventory_level !== undefined && selectedManageProduct.inventory_level !== null && <div><strong>Inventory:</strong> {selectedManageProduct.inventory_level} units</div>}
-                            {selectedManageProduct.warranty && <div><strong>Warranty:</strong> {selectedManageProduct.warranty}</div>}
-                            {(selectedManageProduct.length || selectedManageProduct.width || selectedManageProduct.height) && (
-                              <div><strong>Dimensions:</strong> {selectedManageProduct.length || 0}L × {selectedManageProduct.width || 0}W × {selectedManageProduct.height || 0}H in</div>
-                            )}
-                            {selectedManageProduct.weight && <div><strong>Weight:</strong> {selectedManageProduct.weight} lbs</div>}
-                            {selectedManageProduct.recommended_accessory && <div><strong>Status:</strong> Recommended Accessory</div>}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </>
+                </div>
+              </div>
             )}
 
             {/* 2. Device Compatibility Tab */}
-            {manageTab === 'compatibility' && !isBuyer && (
+            {manageTab === 'compatibility' && (
               <div style={{ maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}>
-                {/* Recalculate button (admin only) */}
-                {isCixciAdmin && (
+                {/* Recalculate button (admin only) - Hiding from admin as well since no action items for admin */}
+                {false && isCixciAdmin && (
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
                     <button
                       type="button"
@@ -3718,8 +4010,8 @@ export default function CatalogPage() {
                   </div>
                 )}
 
-                {/* Add single device quick-form */}
-                {!isCixciAdmin && (
+                {/* Add single device quick-form (Vendor only) */}
+                {!isCixciAdmin && !isBuyer && (
                   <div style={{ display: 'flex', gap: 10, marginBottom: 16, background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
                     <select
                       id="quick-add-device-select"
@@ -3770,7 +4062,7 @@ export default function CatalogPage() {
                                 <span className="badge badge-green" style={{ fontSize: 10, padding: '2px 6px' }}>Active</span>
                               )}
                             </div>
-                            {!isCixciAdmin && (
+                            {!isCixciAdmin && !isBuyer && (
                               <div style={{ display: 'flex', gap: 6 }}>
                                 {/* Action: Restore */}
                                 {c.is_excluded && (
@@ -3970,7 +4262,12 @@ export default function CatalogPage() {
                     <button
                       type="button"
                       className="btn btn-danger"
-                      style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
+                      style={{
+                        background: 'var(--red-dim)',
+                        color: 'var(--red)',
+                        opacity: (selectedManageProduct?.status === 'active' && selectedManageProduct?.is_tied_to_activity) ? 0.5 : 1,
+                        cursor: (selectedManageProduct?.status === 'active' && selectedManageProduct?.is_tied_to_activity) ? 'not-allowed' : 'pointer'
+                      }}
                       onClick={() => handleDeleteProduct(selectedManageProduct.id)}
                     >
                       <Trash2 size={14} /> Delete
@@ -4154,8 +4451,24 @@ export default function CatalogPage() {
                             const text = evt.target?.result as string
                             const parsed = parseCSV(text)
                             if (parsed.length > 0) {
-                              setCsvHeaders(parsed[0])
-                              setCsvPreviewRows(parsed.slice(1))
+                              const headers = parsed[0]
+                              const dateColIdxs = headers.map((h, i) => {
+                                const nh = String(h).toLowerCase().replace(/[^a-z0-9]/g, '')
+                                return ['launchdate', 'releasedate', 'eoldate'].includes(nh) ? i : -1
+                              }).filter(i => i !== -1)
+
+                              const previewRows = parsed.slice(1).map(row => {
+                                return Array.from({ length: headers.length }, (_, i) => {
+                                  const val = row[i]
+                                  if (val === undefined || val === null) return ''
+                                  if (dateColIdxs.includes(i)) {
+                                    return formatExcelDate(val)
+                                  }
+                                  return String(val)
+                                })
+                              })
+                              setCsvHeaders(headers)
+                              setCsvPreviewRows(previewRows)
                             }
                           }
                           reader.readAsText(file)
@@ -4164,16 +4477,32 @@ export default function CatalogPage() {
                           reader.onload = (evt) => {
                             try {
                               const data = evt.target?.result
-                              const workbook = XLSX.read(data, { type: 'array' })
+                              const workbook = XLSX.read(data, { type: 'array', cellDates: true })
                               const sheetName = workbook.SheetNames[0]
                               const sheet = workbook.Sheets[sheetName]
                               const parsed = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 })
                               if (parsed.length > 0) {
                                 const filtered = parsed.filter(row => Array.isArray(row) && row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== ''))
-                                const stringified = filtered.map(row => row.map(cell => cell !== null && cell !== undefined ? String(cell) : ''))
-                                if (stringified.length > 0) {
-                                  setCsvHeaders(stringified[0])
-                                  setCsvPreviewRows(stringified.slice(1))
+                                if (filtered.length > 0) {
+                                  // Convert header row to string cells
+                                  const headers = Array.from(filtered[0]).map(cell => cell !== null && cell !== undefined ? String(cell) : '')
+                                  const dateColIdxs = headers.map((h, i) => {
+                                    const nh = String(h).toLowerCase().replace(/[^a-z0-9]/g, '')
+                                    return ['launchdate', 'releasedate', 'eoldate'].includes(nh) ? i : -1
+                                  }).filter(i => i !== -1)
+
+                                  const previewRows = filtered.slice(1).map(row => {
+                                    return Array.from({ length: headers.length }, (_, i) => {
+                                      const val = row[i]
+                                      if (val === undefined || val === null) return ''
+                                      if (dateColIdxs.includes(i)) {
+                                        return formatExcelDate(val)
+                                      }
+                                      return String(val)
+                                    })
+                                  })
+                                  setCsvHeaders(headers)
+                                  setCsvPreviewRows(previewRows)
                                 }
                               }
                             } catch (err) {

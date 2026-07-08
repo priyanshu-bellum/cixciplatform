@@ -373,3 +373,8 @@ tr:hover td { background: var(--bg-hover); color: var(--text-primary); }
   .card-grid-3 { grid-template-columns: repeat(2, 1fr); }
   .sidebar { display: none; }
 }
+
+select option {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}

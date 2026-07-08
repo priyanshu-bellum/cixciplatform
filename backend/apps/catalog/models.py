@@ -422,8 +422,9 @@ class Product(models.Model):
                 raise ValidationError({"sale_price": "Sale Price must be greater than zero if provided."})
             if self.msrp is not None and self.sale_price >= self.msrp:
                 raise ValidationError({"sale_price": "Sale Price must be less than MSRP."})
-            if self.vendor_wholesale_price_amount is not None and self.sale_price < self.vendor_wholesale_price_amount:
-                raise ValidationError({"sale_price": "Sale Price must be greater than or equal to Vendor Wholesale Price."})
+            buyer_wholes = self.buyer_wholesale_price
+            if buyer_wholes is not None and self.sale_price < buyer_wholes:
+                raise ValidationError({"sale_price": "Sale Price must not be lower than buyer Wholesale Price."})
             
             # Sale Price must not be lower than MAP Price unless an approved MAP exception exists.
             from apps.pricing.services import get_effective_map_price

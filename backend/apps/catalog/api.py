@@ -22,6 +22,16 @@ from .services import recalculate_buyer_compatibility_projection
 # ─── Serializers ──────────────────────────────────────────────────────────────
 
 class ProductSerializerBase(serializers.ModelSerializer):
+    vendor_map_pricing_enforced = serializers.SerializerMethodField()
+
+    def get_vendor_map_pricing_enforced(self, obj):
+        try:
+            from apps.tenant.models import Company
+            vendor = Company.objects.filter(id=obj.vendor_company_reference).first()
+            return vendor.map_pricing_enforced if vendor else False
+        except Exception:
+            return False
+
     def create(self, validated_data):
         request = self.context.get("request")
         actor_id = request.user.id if request and request.user and request.user.is_authenticated else None
@@ -41,6 +51,7 @@ class ProductSerializerBase(serializers.ModelSerializer):
 class ProductListSerializer(ProductSerializerBase):
     primary_image_url = serializers.SerializerMethodField()
     buyer_wholesale_price = serializers.ReadOnlyField()
+    is_tied_to_activity = serializers.ReadOnlyField()
 
     class Meta:
         model = Product
@@ -50,7 +61,7 @@ class ProductListSerializer(ProductSerializerBase):
             "vendor_company_reference", "created_at",
             "description", "vendor_wholesale_price_amount",
             "vendor_wholesale_price_currency", "primary_image_url",
-            "buyer_wholesale_price",
+            "buyer_wholesale_price", "is_tied_to_activity",
             "upc", "launch_date", "release_date", "eol_date", "color", "system_color",
             "msrp", "map_price", "sale_price", "recommended_accessory",
             "inventory_level", "inventory_threshold", "length", "width", "height", "weight",
@@ -60,6 +71,7 @@ class ProductListSerializer(ProductSerializerBase):
             "compatible_charging_interface", "wireless_charging_compatibility",
             "storage_expansion_compatibility", "memory_capacity",
             "compatible_watch_case_size", "compatibility_status",
+            "vendor_map_pricing_enforced",
         ]
         read_only_fields = ["id", "created_at"]
 
@@ -83,6 +95,7 @@ class ProductListSerializer(ProductSerializerBase):
 class ProductDetailSerializer(ProductSerializerBase):
     primary_image_url = serializers.SerializerMethodField()
     buyer_wholesale_price = serializers.ReadOnlyField()
+    is_tied_to_activity = serializers.ReadOnlyField()
 
     headphone_jack_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     bluetooth_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -96,6 +109,21 @@ class ProductDetailSerializer(ProductSerializerBase):
         model = Product
         fields = "__all__"
         read_only_fields = ["id", "created_at", "updated_at", "company_scope_reference"]
+
+    def validate_upc(self, value):
+        if not value:
+            raise serializers.ValidationError("UPC is required.")
+        val_str = str(value).strip()
+        if len(val_str) != 12 or not val_str.isdigit():
+            raise serializers.ValidationError("UPC must follow valid UPC-A format (12 numeric characters).")
+        
+        # Check uniqueness per product, excluding self
+        qs = Product.objects.filter(upc=val_str)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("UPC must be unique per product.")
+        return val_str
 
     def validate(self, attrs):
         category = attrs.get('product_category') or (self.instance.product_category if self.instance else None)
@@ -333,7 +361,16 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["product_type", "status", "selling_status", "vendor_company_reference"]
-    search_fields = ["name", "sku", "brand"]
+    search_fields = [
+        "name",
+        "sku",
+        "brand",
+        "product_category",
+        "vendor_wholesale_price_amount",
+        "color",
+        "status",
+        "msrp",
+    ]
     ordering_fields = ["name", "created_at"]
     ordering = ["-created_at"]
 
@@ -465,6 +502,19 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             qs = qs.exclude(id__in=excluded_product_ids)
 
         return qs
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        user = request.user
+        if user and not getattr(user, "is_cixci_admin", False):
+            company = getattr(user, "company", None)
+            if company and company.company_type == "vendor":
+                if instance.status == "active" and instance.is_tied_to_activity:
+                    return Response(
+                        {"detail": "Active products that are live and being sold by buyers cannot be deleted."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+        return super().destroy(request, *args, **kwargs)
 
     def get_required_capability(self):
         action = getattr(self, "action", None)
@@ -921,6 +971,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         staged_count = 0
         
         seen_skus = set()
+        seen_upcs = set()
         
         vendor_company_id = request.user.entity.company_id if (request.user.entity and request.user.entity.company) else None
         if not vendor_company_id:
@@ -1189,19 +1240,41 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "validation_error": "UPC must be exactly 12 numeric digits.",
                     "recommended_correction": "Enter exactly 12 digits (e.g. 012345678901)."
                 })
+            elif upc_val in seen_upcs:
+                row_errors.append({
+                    "row_number": row_num,
+                    "column_name": "UPC",
+                    "submitted_value": upc_val,
+                    "validation_error": "Duplicate UPC within the same import file.",
+                    "recommended_correction": "Ensure each UPC in the file is unique."
+                })
             else:
-                # UPC secondary validation
-                if product and product.upc and upc_val != product.upc:
-                    if update_mode == "update_only":
-                        row_errors.append({
-                            "row_number": row_num,
-                            "column_name": "UPC",
-                            "submitted_value": upc_val,
-                            "validation_error": f"UPC mismatch detected for existing SKU '{sku}'. Submitted UPC '{upc_val}' does not match registered UPC '{product.upc}'.",
-                            "recommended_correction": "Confirm and correct the UPC value."
-                        })
-                    else:
-                        should_stage = True
+                seen_upcs.add(upc_val)
+                # Check global uniqueness in database
+                qs = Product.objects.filter(upc=upc_val)
+                if product:
+                    qs = qs.exclude(id=product.id)
+                if qs.exists():
+                    row_errors.append({
+                        "row_number": row_num,
+                        "column_name": "UPC",
+                        "submitted_value": upc_val,
+                        "validation_error": "UPC must be unique per product. This UPC is already registered to another product.",
+                        "recommended_correction": "Provide a unique 12-digit numeric UPC."
+                    })
+                else:
+                    # UPC secondary validation
+                    if product and product.upc and upc_val != product.upc:
+                        if update_mode == "update_only":
+                            row_errors.append({
+                                "row_number": row_num,
+                                "column_name": "UPC",
+                                "submitted_value": upc_val,
+                                "validation_error": f"UPC mismatch detected for existing SKU '{sku}'. Submitted UPC '{upc_val}' does not match registered UPC '{product.upc}'.",
+                                "recommended_correction": "Confirm and correct the UPC value."
+                            })
+                        else:
+                            should_stage = True
 
             # --- Color / System Color ---
             color = str(row.get("color") or "").strip()
@@ -1344,13 +1417,17 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         "validation_error": "Sale Price must be less than MSRP.",
                         "recommended_correction": "Ensure Sale Price < MSRP."
                     })
-                if wholesale_price is not None and sale_price < wholesale_price:
+                buyer_wholes_temp = wholesale_price
+                if wholesale_price is not None and msrp is not None:
+                    buyer_wholes_temp = wholesale_price + msrp * Decimal("0.14")
+
+                if buyer_wholes_temp is not None and sale_price < buyer_wholes_temp:
                     row_errors.append({
                         "row_number": row_num,
                         "column_name": "Sale Price",
-                        "submitted_value": f"Sale: {sale_price}, Wholesale: {wholesale_price}",
-                        "validation_error": "Sale Price must be greater than or equal to Vendor Wholesale Price.",
-                        "recommended_correction": "Ensure Sale Price >= Wholesale Price."
+                        "submitted_value": f"Sale: {sale_price}, Buyer Wholesale: {buyer_wholes_temp}",
+                        "validation_error": "Sale Price must not be lower than buyer Wholesale Price.",
+                        "recommended_correction": "Ensure Sale Price >= Buyer Wholesale Price."
                     })
                 
                 # Sale Price must not be lower than MAP Price unless an approved MAP exception exists.
