@@ -106,6 +106,11 @@ class TestProductEndpoints:
         assert resp.status_code == 200
         assert any(p["id"] == str(product.id) for p in resp.data["results"])
 
+        # Test comma-separated list of UUIDs
+        resp_multi = buyer_client.get(f"/api/v1/catalog/products/?device_id={device_id},{uuid.uuid4()}")
+        assert resp_multi.status_code == 200
+        assert any(p["id"] == str(product.id) for p in resp_multi.data["results"])
+
         resp2 = buyer_client.get(f"/api/v1/catalog/products/?device_id={uuid.uuid4()}")
         assert resp2.status_code == 200
         assert len(resp2.data["results"]) == 0

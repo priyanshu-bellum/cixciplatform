@@ -95,6 +95,136 @@ function CellInput({
   )
 }
 
+function MultiSelect({
+  selected,
+  options,
+  onChange,
+  label,
+  placeholder = 'Select...'
+}: {
+  selected: string[]
+  options: { value: string; label: string }[] | string[]
+  onChange: (val: string[]) => void
+  label: string
+  placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const normOptions = useMemo(() => {
+    return options.map(o => typeof o === 'string' ? { value: o, label: o } : o)
+  }, [options])
+
+  const selectedObjects = useMemo(() => {
+    return normOptions.filter(o => selected.includes(o.value))
+  }, [selected, normOptions])
+
+  const toggleOption = (val: string) => {
+    if (selected.includes(val)) {
+      onChange(selected.filter(x => x !== val))
+    } else {
+      onChange([...selected, val])
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, position: 'relative' }}>
+      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{label}</label>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          border: '1px solid var(--border)',
+          borderRadius: 6,
+          padding: '6px 12px',
+          background: 'var(--bg)',
+          color: 'var(--text-primary)',
+          fontSize: 13,
+          cursor: 'pointer',
+          minWidth: 150,
+          minHeight: 38,
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 4,
+          alignItems: 'center',
+          marginTop: 4,
+        }}
+      >
+        {selectedObjects.length === 0 ? (
+          <span style={{ color: 'var(--text-muted)' }}>{placeholder}</span>
+        ) : (
+          selectedObjects.map(o => (
+            <span
+              key={o.value}
+              style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-primary)',
+                padding: '1px 6px',
+                borderRadius: 4,
+                fontSize: 12,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleOption(o.value)
+              }}
+            >
+              {o.label}
+              <X size={11} style={{ color: 'var(--red)', cursor: 'pointer' }} />
+            </span>
+          ))
+        )}
+      </div>
+
+      {open && (
+        <>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} onClick={() => setOpen(false)} />
+          <div
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              zIndex: 1000,
+              marginTop: 4,
+              padding: 4,
+              maxHeight: 200,
+              overflowY: 'auto',
+            }}
+          >
+            {normOptions.map(opt => {
+              const isSelected = selected.includes(opt.value)
+              return (
+                <div
+                  key={opt.value}
+                  onClick={() => toggleOption(opt.value)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '6px 8px',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    background: isSelected ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
+                    transition: 'background 0.15s ease',
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>{opt.label}</span>
+                  {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function MultiSelectColor({
   selected,
   options,
@@ -348,10 +478,10 @@ export default function CatalogPage() {
 
   // Compatibility Management States
   const [manageTab, setManageTab] = useState<'details' | 'compatibility' | 'bulk' | 'audit'>('details')
-  const [filterCategory, setFilterCategory] = useState('')
-  const [filterBrand, setFilterBrand] = useState('')
-  const [filterColor, setFilterColor] = useState('')
-  const [filterMaxPrice, setFilterMaxPrice] = useState('')
+  const [filterCategories, setFilterCategories] = useState<string[]>([])
+  const [filterBrands, setFilterBrands] = useState<string[]>([])
+  const [filterColors, setFilterColors] = useState<string[]>([])
+  const [filterMsrps, setFilterMsrps] = useState<string[]>([])
   const [showExcludeModal, setShowExcludeModal] = useState(false)
   const [excludeDevice, setExcludeDevice] = useState<any>(null)
   const [excludeReason, setExcludeReason] = useState('physical_mismatch')
@@ -1184,7 +1314,6 @@ export default function CatalogPage() {
   const { data: devicesData } = useQuery({
     queryKey: ['devices'],
     queryFn: () => api.get('/devices/devices/').then(r => r.data),
-    enabled: isVendor || isCixciAdmin,
   })
 
   const { data: activeCompatibilities, refetch: refetchCompatibilities } = useQuery({
@@ -1246,18 +1375,25 @@ export default function CatalogPage() {
     if (!products) return []
     return products.filter((p: any) => {
       if (isBuyer) {
-        if (filterCategory && p.product_category !== filterCategory) return false
-        if (filterBrand && p.brand !== filterBrand) return false
-        if (filterColor && p.color !== filterColor && p.system_color !== filterColor) return false
-        if (filterMaxPrice) {
-          const priceVal = p.buyer_wholesale_price !== undefined ? parseFloat(p.buyer_wholesale_price) : parseFloat(p.vendor_wholesale_price_amount || '0')
-          const maxVal = parseFloat(filterMaxPrice)
-          if (!isNaN(priceVal) && !isNaN(maxVal) && priceVal > maxVal) return false
+        if (filterCategories.length > 0 && !filterCategories.includes(p.product_category)) return false
+        if (filterBrands.length > 0 && !filterBrands.includes(p.brand)) return false
+        if (filterColors.length > 0 && !filterColors.includes(p.color) && !filterColors.includes(p.system_color)) return false
+        if (filterMsrps.length > 0) {
+          const msrpVal = p.msrp ? parseFloat(p.msrp) : (p.buyer_wholesale_price ? parseFloat(p.buyer_wholesale_price) : 0)
+          const matchesAny = filterMsrps.some(range => {
+            if (range === '0-25') return msrpVal < 25
+            if (range === '25-50') return msrpVal >= 25 && msrpVal <= 50
+            if (range === '50-100') return msrpVal >= 50 && msrpVal <= 100
+            if (range === '100-200') return msrpVal >= 100 && msrpVal <= 200
+            if (range === '200+') return msrpVal > 200
+            return false
+          })
+          if (!matchesAny) return false
         }
       }
       return true
     })
-  }, [products, isBuyer, filterCategory, filterBrand, filterColor, filterMaxPrice])
+  }, [products, isBuyer, filterCategories, filterBrands, filterColors, filterMsrps])
 
   const brandsList = useMemo(() => {
     const unique = new Set<string>()
@@ -1316,8 +1452,8 @@ export default function CatalogPage() {
 
   const extractUuid = (str: string): string | null => {
     if (!str) return null
-    const match = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
-    return match ? match[0] : null
+    const matches = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)
+    return matches && matches.length > 0 ? matches[matches.length - 1] : null
   }
 
   // Handle local file uploads
@@ -1446,7 +1582,7 @@ export default function CatalogPage() {
       if (!prodHeight) { setFormError('Height is required.'); return; }
       if (!prodWeight) { setFormError('Weight is required.'); return; }
       if (!prodDescription) { setFormError('Product Description is required.'); return; }
-      if (['Cases', 'Screen Protection', 'Phone Attachments'].includes(prodCategory)) {
+      if (prodType === 'accessory') {
         if (selectedDeviceIds.length === 0) { setFormError('Device Compatibility is required. Select at least one device.'); return; }
       } else if (['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory)) {
         if (prodCategory === 'Headphones') {
@@ -1591,7 +1727,7 @@ export default function CatalogPage() {
       if (!prodHeight) { setFormError('Height is required.'); return; }
       if (!prodWeight) { setFormError('Weight is required.'); return; }
       if (!prodDescription) { setFormError('Product Description is required.'); return; }
-      if (['Cases', 'Screen Protection', 'Phone Attachments'].includes(prodCategory)) {
+      if (prodType === 'accessory') {
         if (selectedDeviceIds.length === 0) { setFormError('Device Compatibility is required. Select at least one device.'); return; }
       } else if (['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory)) {
         if (prodCategory === 'Headphones') {
@@ -1683,7 +1819,7 @@ export default function CatalogPage() {
         compatible_watch_case_size: compWatchCaseSize || null,
       })
 
-      if (['Cases', 'Screen Protection', 'Phone Attachments'].includes(prodCategory) && selectedDeviceIds.length > 0) {
+      if (prodType === 'accessory' && selectedDeviceIds.length > 0) {
         await api.post(`/catalog/products/${editingProduct.id}/compatibility/`, {
           assertions: selectedDeviceIds.map(devId => ({
             device_id: devId,
@@ -1756,7 +1892,7 @@ export default function CatalogPage() {
   }
 
   const handleDeleteProduct = async (id: string) => {
-    if (selectedManageProduct && selectedManageProduct.status === 'active' && selectedManageProduct.is_tied_to_activity) {
+    if (selectedManageProduct && selectedManageProduct.status === 'active') {
       alert("Active products that are live and being sold by buyers cannot be deleted.")
       return
     }
@@ -2297,98 +2433,70 @@ export default function CatalogPage() {
 
             {isBuyer && (
               <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Filter by Device</label>
-                  <select
-                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 180 }}
-                    value={filterDeviceId}
-                    onChange={(e) => {
-                      const newParams = new URLSearchParams(searchParams)
-                      if (e.target.value) {
-                        newParams.set('device', e.target.value)
-                      } else {
-                        newParams.delete('device')
-                      }
-                      setSearchParams(newParams)
-                    }}
-                  >
-                    <option value="">All Devices (My Portfolio)</option>
-                    {portfolio?.filter((d: any) => d.active_flag).map((d: any) => (
-                      <option key={d.device} value={d.device}>
-                        {d.device_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <MultiSelect
+                  label="Filter by Device"
+                  placeholder="All Devices (My Portfolio)"
+                  selected={filterDeviceId ? filterDeviceId.split(',').filter(Boolean) : []}
+                  options={portfolio?.filter((d: any) => d.active_flag).map((d: any) => ({ value: d.device, label: d.device_name })) ?? []}
+                  onChange={(vals) => {
+                    const newParams = new URLSearchParams(searchParams)
+                    if (vals.length > 0) {
+                      newParams.set('device', vals.join(','))
+                    } else {
+                      newParams.delete('device')
+                    }
+                    setSearchParams(newParams)
+                  }}
+                />
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Category</label>
-                  <select
-                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 150 }}
-                    value={filterCategory}
-                    onChange={e => setFilterCategory(e.target.value)}
-                  >
-                    <option value="">All Categories</option>
-                    {allowedCategories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
+                <MultiSelect
+                  label="Category"
+                  placeholder="All Categories"
+                  selected={filterCategories}
+                  options={allowedCategories}
+                  onChange={setFilterCategories}
+                />
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Brand</label>
-                  <select
-                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 140 }}
-                    value={filterBrand}
-                    onChange={e => setFilterBrand(e.target.value)}
-                  >
-                    <option value="">All Brands</option>
-                    {brandsList.map(b => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
-                </div>
+                <MultiSelect
+                  label="Brand"
+                  placeholder="All Brands"
+                  selected={filterBrands}
+                  options={brandsList}
+                  onChange={setFilterBrands}
+                />
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Color</label>
-                  <select
-                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 120 }}
-                    value={filterColor}
-                    onChange={e => setFilterColor(e.target.value)}
-                  >
-                    <option value="">All Colors</option>
-                    {allowedColors.map(col => (
-                      <option key={col} value={col}>{col}</option>
-                    ))}
-                  </select>
-                </div>
+                <MultiSelect
+                  label="Color"
+                  placeholder="All Colors"
+                  selected={filterColors}
+                  options={allowedColors}
+                  onChange={setFilterColors}
+                />
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Max Price (Wholesale)</label>
-                  <select
-                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, minWidth: 120 }}
-                    value={filterMaxPrice}
-                    onChange={e => setFilterMaxPrice(e.target.value)}
-                  >
-                    <option value="">All Prices</option>
-                    <option value="10">Under $10</option>
-                    <option value="25">Under $25</option>
-                    <option value="50">Under $50</option>
-                    <option value="100">Under $100</option>
-                    <option value="200">Under $200</option>
-                  </select>
-                </div>
+                <MultiSelect
+                  label="MSRP (Wholesale)"
+                  placeholder="All Prices"
+                  selected={filterMsrps}
+                  options={[
+                    { value: '0-25', label: 'Under $25' },
+                    { value: '25-50', label: '$25 to $50' },
+                    { value: '50-100', label: '$50 to $100' },
+                    { value: '100-200', label: '$100 to $200' },
+                    { value: '200+', label: 'Over $200' }
+                  ]}
+                  onChange={setFilterMsrps}
+                />
 
-                {(filterDeviceId || filterCategory || filterBrand || filterColor || filterMaxPrice) && (
+                {(filterDeviceId || filterCategories.length > 0 || filterBrands.length > 0 || filterColors.length > 0 || filterMsrps.length > 0) && (
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    style={{ alignSelf: 'flex-end', height: 35, padding: '0 12px' }}
+                    style={{ alignSelf: 'flex-end', height: 38, padding: '0 12px' }}
                     onClick={() => {
-                      setFilterCategory('')
-                      setFilterBrand('')
-                      setFilterColor('')
-                      setFilterMaxPrice('')
+                      setFilterCategories([])
+                      setFilterBrands([])
+                      setFilterColors([])
+                      setFilterMsrps([])
                       const newParams = new URLSearchParams(searchParams)
                       newParams.delete('device')
                       setSearchParams(newParams)
@@ -2671,9 +2779,16 @@ export default function CatalogPage() {
                       </td>
                       <td>
                         {job.status === 'completed' ? (
-                          <button className="btn btn-ghost btn-sm" onClick={() => alert(`Downloading export catalog file ${job.id}`)}>
-                            <Download size={13} /> Download
-                          </button>
+                          isBuyer ? (
+                            <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+                              <span className="badge badge-blue" style={{ width: 'fit-content' }}>API Only</span>
+                              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>/api/v1/catalog/export-jobs/{job.id}/</span>
+                            </span>
+                          ) : (
+                            <button className="btn btn-ghost btn-sm" onClick={() => alert(`Downloading export catalog file ${job.id}`)}>
+                              <Download size={13} /> Download
+                            </button>
+                          )
                         ) : job.status === 'pending' || job.status === 'running' ? (
                           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Processing…</span>
                         ) : (
@@ -3037,7 +3152,7 @@ export default function CatalogPage() {
               </div>
 
               {/* 8. Device Compatibility or Category-Specific Compatibility */}
-              {['Cases', 'Screen Protection', 'Phone Attachments'].includes(prodCategory) && (
+              {prodType === 'accessory' && (
                 <div className="form-group" style={{ marginBottom: 20, position: 'relative' }}>
                   <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
                     8. Device Compatibility *
@@ -3532,7 +3647,7 @@ export default function CatalogPage() {
               </div>
 
               {/* 8. Device Compatibility or Category-Specific Compatibility */}
-              {['Cases', 'Screen Protection', 'Phone Attachments'].includes(prodCategory) && (
+              {prodType === 'accessory' && (
                 <div className="form-group" style={{ marginBottom: 20, position: 'relative' }}>
                   <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
                     8. Device Compatibility *
@@ -3805,9 +3920,9 @@ export default function CatalogPage() {
                     </div>
                   </div>
 
-                  {/* Image URLS */}
+                  {/* Image URLs */}
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Image URLS</label>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Image URLs</label>
                     <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {allImages.length === 0 ? (
                         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>
@@ -3838,6 +3953,16 @@ export default function CatalogPage() {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px 16px', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Product Name</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.name || '—'}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Brand</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.brand || '—'}</div>
+                    </div>
+
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Product Status</div>
                       <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, display: 'inline-flex' }}>
@@ -3878,7 +4003,7 @@ export default function CatalogPage() {
                     </div>
 
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Wholesale Price</div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Vendor Wholesale Price</div>
                       <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600, color: 'var(--accent)' }}>
                         {isBuyer
                           ? formatCurrency(selectedManageProduct.buyer_wholesale_price, selectedManageProduct.vendor_wholesale_price_currency)
@@ -3905,6 +4030,13 @@ export default function CatalogPage() {
                     </div>
 
                     <div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Inventory Threshold</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>
+                        {selectedManageProduct.inventory_threshold !== null && selectedManageProduct.inventory_threshold !== undefined ? `${selectedManageProduct.inventory_threshold} units` : '—'}
+                      </div>
+                    </div>
+
+                    <div>
                       <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Dimensions</div>
                       <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>
                         {selectedManageProduct.length || selectedManageProduct.width || selectedManageProduct.height
@@ -3915,11 +4047,11 @@ export default function CatalogPage() {
                     </div>
 
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Recommended Accessory</div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Recommended</div>
                       <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.recommended_accessory ? 'Yes' : 'No'}</div>
                     </div>
 
-                    {/* Conditional Fields */}
+                    {/* Conditional Fields in grid */}
                     {selectedManageProduct.vendor_map_pricing_enforced && (
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>MAP Price</div>
@@ -3934,10 +4066,10 @@ export default function CatalogPage() {
                       </div>
                     )}
 
-                    {selectedManageProduct.inventory_threshold !== null && selectedManageProduct.inventory_threshold !== undefined && selectedManageProduct.inventory_threshold !== 0 && (
+                    {selectedManageProduct.release_date && (
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Inventory Threshold</div>
-                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.inventory_threshold} units</div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Release Date</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.release_date}</div>
                       </div>
                     )}
                   </div>
@@ -3948,6 +4080,22 @@ export default function CatalogPage() {
                       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Product Description</div>
                       <div style={{ fontSize: 13, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 12, borderRadius: 6, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                         {selectedManageProduct.description || '—'}
+                      </div>
+                    </div>
+
+                    {/* Meta Title & Description */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Meta Title</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
+                          {selectedManageProduct.meta_title || '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Meta Description</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
+                          {selectedManageProduct.meta_description || '—'}
+                        </div>
                       </div>
                     </div>
 
@@ -3970,22 +4118,6 @@ export default function CatalogPage() {
                         </div>
                       </div>
                     )}
-
-                    {/* Meta Title & Description */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Meta Title</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
-                          {selectedManageProduct.meta_title || '—'}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Meta Description</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: 10, borderRadius: 6 }}>
-                          {selectedManageProduct.meta_description || '—'}
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -4265,8 +4397,8 @@ export default function CatalogPage() {
                       style={{
                         background: 'var(--red-dim)',
                         color: 'var(--red)',
-                        opacity: (selectedManageProduct?.status === 'active' && selectedManageProduct?.is_tied_to_activity) ? 0.5 : 1,
-                        cursor: (selectedManageProduct?.status === 'active' && selectedManageProduct?.is_tied_to_activity) ? 'not-allowed' : 'pointer'
+                        opacity: (selectedManageProduct?.status === 'active') ? 0.5 : 1,
+                        cursor: (selectedManageProduct?.status === 'active') ? 'not-allowed' : 'pointer'
                       }}
                       onClick={() => handleDeleteProduct(selectedManageProduct.id)}
                     >

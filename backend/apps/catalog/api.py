@@ -420,10 +420,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if device_id_param:
                 from uuid import UUID
                 try:
-                    dev_uuid = UUID(device_id_param)
-                    if dev_uuid in portfolio_device_ids:
-                        target_device_ids = [dev_uuid]
-                    else:
+                    dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
+                    target_device_ids = [d for d in dev_uuids if d in portfolio_device_ids]
+                    if not target_device_ids:
                         return Product.objects.none()
                 except ValueError:
                     return Product.objects.none()
@@ -509,7 +508,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if user and not getattr(user, "is_cixci_admin", False):
             company = getattr(user, "company", None)
             if company and company.company_type == "vendor":
-                if instance.status == "active" and instance.is_tied_to_activity:
+                if instance.status == "active":
                     return Response(
                         {"detail": "Active products that are live and being sold by buyers cannot be deleted."},
                         status=status.HTTP_400_BAD_REQUEST

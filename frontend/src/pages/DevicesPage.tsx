@@ -12,6 +12,16 @@ const LC_COLORS: Record<string, string> = {
   launching: 'badge-amber',
 }
 
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '—'
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return dateStr
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const year = date.getFullYear()
+  return `${month}-${day}-${year}`
+}
+
 const modalStyles = `
 .modal-overlay {
   position: fixed;
@@ -246,6 +256,10 @@ export default function DevicesPage() {
     setAddError('')
   }
 
+  const [portfolioSearch, setPortfolioSearch] = useState('')
+  const [portfolioMfg, setPortfolioMfg] = useState('')
+  const [portfolioType, setPortfolioType] = useState('')
+
   // TanStack queries
   const { data, isLoading, refetch: refreshDevices } = useQuery({
     queryKey: ['devices', search, filterManufacturer, filterType, filterStatus],
@@ -277,6 +291,26 @@ export default function DevicesPage() {
 
   const devices = data?.results ?? data ?? []
   const myDevices = portfolio ?? []
+
+  const filteredMyDevices = useMemo(() => {
+    let list = portfolio ?? []
+    if (portfolioSearch.trim()) {
+      const q = portfolioSearch.toLowerCase().trim()
+      list = list.filter((ref: any) => 
+        (ref.device_name && ref.device_name.toLowerCase().includes(q)) ||
+        (ref.device_sku && ref.device_sku.toLowerCase().includes(q)) ||
+        (ref.device_model_number && ref.device_model_number.toLowerCase().includes(q)) ||
+        (ref.device_manufacturer && ref.device_manufacturer.toLowerCase().includes(q))
+      )
+    }
+    if (portfolioMfg) {
+      list = list.filter((ref: any) => ref.device_manufacturer_id === portfolioMfg)
+    }
+    if (portfolioType) {
+      list = list.filter((ref: any) => ref.device_type_id === portfolioType)
+    }
+    return list
+  }, [portfolio, portfolioSearch, portfolioMfg, portfolioType])
   const manufacturers = manufacturersData?.results ?? manufacturersData ?? []
   const deviceTypes = typesData?.results ?? typesData ?? []
 
@@ -1122,55 +1156,126 @@ export default function DevicesPage() {
       )}
 
       {tab === 'portfolio' && isBuyer && (
-        <div className="table-wrap">
-          {myDevices.length === 0 ? (
-            <div className="empty-state">
-              <Smartphone size={40} />
-              <div>Your portfolio is empty</div>
-              <div style={{ fontSize: 12 }}>Add devices from the All Devices tab</div>
+        <>
+          <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="search-bar" style={{ width: 280, margin: 0 }}>
+              <Search size={14} />
+              <input
+                placeholder="Search by name, SKU, model…"
+                value={portfolioSearch}
+                onChange={e => setPortfolioSearch(e.target.value)}
+              />
             </div>
-          ) : (
-            <table>
-              <thead>
-                <tr><th>Device</th><th>Manufacturer</th><th>Status</th><th>Added</th><th>Action</th></tr>
-              </thead>
-              <tbody>
-                {myDevices.map((ref: any) => (
-                  <tr key={ref.id}>
-                    <td 
-                      style={{ 
-                        color: 'var(--accent)', 
-                        fontWeight: 500, 
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                        textDecorationColor: 'var(--accent)',
-                        textUnderlineOffset: '2px'
-                      }}
-                      onClick={() => handlePortfolioDeviceClick(ref)}
-                      title="View device details"
-                    >
-                      {ref.device_name}
-                    </td>
-                    <td>{ref.device_manufacturer}</td>
-                    <td><span className={`badge ${ref.active_flag ? 'badge-green' : 'badge-muted'}`}>{ref.active_flag ? 'Active' : 'Removed'}</span></td>
-                    <td style={{ fontSize: 12 }}>{new Date(ref.created_at).toLocaleDateString()}</td>
-                    <td>
-                      {ref.active_flag ? (
-                        <button className="btn btn-danger btn-sm" onClick={() => handleRemoveClick(ref.device, ref.device_name)}>
-                          <Trash2 size={12} /> Remove
-                        </button>
-                      ) : (
-                        <button className="btn btn-secondary btn-sm" onClick={() => handleAdd(ref.device)}>
-                          Add back
-                        </button>
-                      )}
-                    </td>
+
+            <select
+              className="input"
+              style={{ width: 180, height: 36, padding: '0 10px', fontSize: 13 }}
+              value={portfolioMfg}
+              onChange={e => setPortfolioMfg(e.target.value)}
+            >
+              <option value="">All Manufacturers</option>
+              {manufacturers.map((m: any) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+
+            <select
+              className="input"
+              style={{ width: 180, height: 36, padding: '0 10px', fontSize: 13 }}
+              value={portfolioType}
+              onChange={e => setPortfolioType(e.target.value)}
+            >
+              <option value="">All Device Types</option>
+              {deviceTypes.map((t: any) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="table-wrap">
+            {(portfolio ?? []).length === 0 ? (
+              <div className="empty-state">
+                <Smartphone size={40} />
+                <div>Your portfolio is empty</div>
+                <div style={{ fontSize: 12 }}>Add devices from the All Devices tab</div>
+              </div>
+            ) : filteredMyDevices.length === 0 ? (
+              <div className="empty-state">
+                <Smartphone size={40} />
+                <div>No matching devices found</div>
+                <div style={{ fontSize: 12 }}>Try clearing or adjusting your search filters</div>
+              </div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>Manufacturer</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Added</th>
+                    <th>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {filteredMyDevices.map((ref: any) => (
+                    <tr key={ref.id}>
+                      <td 
+                        style={{ 
+                          color: 'var(--accent)', 
+                          fontWeight: 500, 
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          textDecorationColor: 'var(--accent)',
+                          textUnderlineOffset: '2px'
+                        }}
+                        onClick={() => handlePortfolioDeviceClick(ref)}
+                        title="View device details"
+                      >
+                        {ref.device_name}
+                      </td>
+                      <td>{ref.device_manufacturer}</td>
+                      <td>{ref.device_type ?? '—'}</td>
+                      <td>
+                        {(() => {
+                          const isLaunching = ref.device_status === 'inactive' && ref.device_launch_date && new Date(ref.device_launch_date) > new Date();
+                          const displayStatus = isLaunching ? 'launching' : ref.device_status;
+                          return (
+                            <span className={`badge ${LC_COLORS[displayStatus] ?? 'badge-muted'}`}>
+                              {displayStatus || 'available'}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td style={{ fontSize: 12 }}>{formatDate(ref.created_at)}</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          {ref.active_flag ? (
+                            <button className="btn btn-danger btn-sm" onClick={() => handleRemoveClick(ref.device, ref.device_name)}>
+                              <Trash2 size={12} /> Remove
+                            </button>
+                          ) : (
+                            <button className="btn btn-secondary btn-sm" onClick={() => handleAdd(ref.device)}>
+                              Add back
+                            </button>
+                          )}
+                          {ref.active_flag && ref.has_accessories && (
+                            <button 
+                              className="btn btn-primary btn-sm" 
+                              onClick={() => navigate(`/product-catalog?device=${ref.device}`)}
+                            >
+                              View Accessories
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
 
       {/* Remove Confirmation Modal */}

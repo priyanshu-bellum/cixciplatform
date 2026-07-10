@@ -173,6 +173,18 @@ class TestPortfolioEndpoints:
         assert resp.status_code == 200
         assert any(str(d["device"]) == str(device.id) for d in resp.data)
 
+        # Verify our new serialized fields
+        item = [d for d in resp.data if str(d["device"]) == str(device.id)][0]
+        assert "device_manufacturer_id" in item
+        assert "device_type" in item
+        assert "device_type_id" in item
+        assert "device_sku" in item
+        assert "device_model_number" in item
+        assert "device_status" in item
+        assert "device_launch_date" in item
+        assert "has_accessories" in item
+        assert item["has_accessories"] is False
+
     def test_add_already_active_device_returns_already_active(self, buyer_user, device):
         add_device_to_portfolio(buyer_user, device.id)
         result = add_device_to_portfolio(buyer_user, device.id)

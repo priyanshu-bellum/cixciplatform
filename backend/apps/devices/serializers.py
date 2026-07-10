@@ -480,11 +480,30 @@ class DataQualityExceptionSerializer(serializers.ModelSerializer):
 class BuyerPortfolioReferenceSerializer(serializers.ModelSerializer):
     device_name = serializers.CharField(source="device.name", read_only=True)
     device_manufacturer = serializers.CharField(source="device.manufacturer.name", read_only=True)
+    device_manufacturer_id = serializers.UUIDField(source="device.manufacturer.id", read_only=True)
+    device_type = serializers.CharField(source="device.device_type.name", read_only=True)
+    device_type_id = serializers.UUIDField(source="device.device_type.id", read_only=True)
+    device_sku = serializers.CharField(source="device.sku", read_only=True)
+    device_model_number = serializers.CharField(source="device.model_number", read_only=True)
+    device_status = serializers.CharField(source="device.lifecycle_status", read_only=True)
+    device_launch_date = serializers.DateField(source="device.launch_date", read_only=True)
+    has_accessories = serializers.SerializerMethodField()
+
+    def get_has_accessories(self, obj):
+        from apps.catalog.models import ProductCompatibilityAssertion
+        return ProductCompatibilityAssertion.objects.filter(
+            device_reference=obj.device.id,
+            is_compatible=True,
+            is_excluded=False
+        ).exists()
 
     class Meta:
         model = BuyerDevicePortfolioReference
         fields = [
             "id", "device", "device_name", "device_manufacturer",
+            "device_manufacturer_id", "device_type", "device_type_id",
+            "device_sku", "device_model_number", "device_status", "device_launch_date",
+            "has_accessories",
             "active_flag", "change_source", "last_change_timestamp",
             "current_portfolio_snapshot_reference", "created_at",
         ]
