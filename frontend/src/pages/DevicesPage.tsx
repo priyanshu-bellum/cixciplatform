@@ -1262,7 +1262,7 @@ export default function DevicesPage() {
                           {ref.active_flag && ref.has_accessories && (
                             <button 
                               className="btn btn-primary btn-sm" 
-                              onClick={() => navigate(`/product-catalog?device=${ref.device}`)}
+                              onClick={() => navigate(`/catalog?device=${ref.device}`)}
                             >
                               View Accessories
                             </button>
