@@ -16,7 +16,12 @@ export default function LoginPage() {
     setError('')
     try {
       await login(email, password)
-      navigate('/')
+      const user = useAuthStore.getState().user
+      if (user?.email === 'sklein@telcocellular.com') {
+        navigate('/telco-cellular')
+      } else {
+        navigate('/')
+      }
     } catch {
       setError('Invalid email or password.')
     }
