@@ -200,6 +200,10 @@ export default function TelcoCellularPage() {
           color: #f1f5f9;
           font-family: 'Inter', sans-serif;
           position: relative;
+          min-height: 100vh;
+          background-color: #0b0f19;
+          padding: 24px;
+          box-sizing: border-box;
         }
 
         /* ── Header Styling ── */

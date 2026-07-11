@@ -35,12 +35,6 @@ const NAV = [
       { to: '/launch', icon: Rocket, label: 'Launch' },
     ],
   },
-  {
-    label: 'Buyer Integrations',
-    items: [
-      { to: '/telco-cellular', icon: ShoppingBag, label: 'Telco Storefront' },
-    ],
-  },
 ]
 
 export default function Sidebar() {
@@ -57,7 +51,7 @@ export default function Sidebar() {
         return ['/', '/devices', '/catalog', '/integration', '/analytics', '/notifications'].includes(item.to)
       }
       if (isBuyer) {
-        return ['/', '/devices', '/catalog', '/pricing', '/orders', '/invoicing', '/procurement', '/notifications', '/telco-cellular'].includes(item.to)
+        return ['/', '/devices', '/catalog', '/pricing', '/orders', '/invoicing', '/procurement', '/notifications'].includes(item.to)
       }
       if (isVendor) {
         return ['/', '/catalog', '/orders', '/fulfillment', '/invoicing', '/notifications'].includes(item.to)
