@@ -39,3 +39,32 @@ class TestCompanyAPIKeysApi:
         assert res.status_code == 200
         results = res.data.get("results", res.data)
         assert len(results) == 0
+
+    def test_api_key_authentication_flow(self, buyer_user, client):
+        # 1. Create an API Key for the buyer
+        from apps.integration.models import CompanyAPIKey
+        import secrets
+        token = f"cixci_key_{secrets.token_hex(24)}"
+        api_key = CompanyAPIKey.objects.create(
+            company_scope_reference=buyer_user.entity.company_id,
+            label="Storefront Key",
+            token=token
+        )
+
+        # 2. Make an unauthenticated request to /api/v1/devices/portfolio/my_devices/
+        res = client.get("/api/v1/devices/portfolio/my_devices/")
+        assert res.status_code == 401
+
+        # 3. Make request with valid API key via X-API-Key header
+        res = client.get("/api/v1/devices/portfolio/my_devices/", HTTP_X_API_KEY=token)
+        assert res.status_code == 200
+
+        # 4. Make request with valid API key via Authorization header
+        res = client.get("/api/v1/devices/portfolio/my_devices/", HTTP_AUTHORIZATION=f"Api-Key {token}")
+        assert res.status_code == 200
+
+        # 5. Make request with invalid/inactive API key
+        api_key.is_active = False
+        api_key.save()
+        res = client.get("/api/v1/devices/portfolio/my_devices/", HTTP_X_API_KEY=token)
+        assert res.status_code == 401

@@ -58,7 +58,7 @@ export default function App() {
             <Route path="launch" element={<LaunchPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
-          <Route path="/telco-cellular" element={<RequireAuth><TelcoCellularPage /></RequireAuth>} />
+          <Route path="/telco-cellular" element={<TelcoCellularPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

@@ -19,6 +19,14 @@ import {
 } from 'lucide-react'
 import api from '../lib/apiClient'
 import toast from 'react-hot-toast'
+import axios from 'axios'
+
+const telcoApi = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+  headers: {
+    'X-API-Key': 'cixci_key_240da5440d234266b1277737a8920f83d1edb9e78388e3b5',
+  },
+})
 
 interface CartItem {
   id: string
@@ -50,7 +58,7 @@ export default function TelcoCellularPage() {
   // Fetch active portfolio devices for the compatibility filter
   const { data: portfolio, isLoading: isPortfolioLoading } = useQuery({
     queryKey: ['my-devices'],
-    queryFn: () => api.get('/devices/portfolio/my_devices/').then(r => r.data).catch(() => []),
+    queryFn: () => telcoApi.get('/devices/portfolio/my_devices/').then(r => r.data).catch(() => []),
   })
 
   // Filter devices to only active ones
@@ -62,7 +70,7 @@ export default function TelcoCellularPage() {
   const { data: accessoriesData, isLoading: isAccessoriesLoading, refetch: refetchAccessories } = useQuery({
     queryKey: ['telco-accessories', search, selectedDevice],
     queryFn: () =>
-      api.get('/catalog/products/', {
+      telcoApi.get('/catalog/products/', {
         params: {
           product_type: 'accessory',
           search: search || undefined,
@@ -155,7 +163,7 @@ export default function TelcoCellularPage() {
 
   // Mutation to place test order
   const checkoutMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/procurement/purchase-orders/', payload).then(r => r.data),
+    mutationFn: (payload: any) => telcoApi.post('/procurement/purchase-orders/', payload).then(r => r.data),
     onSuccess: (data) => {
       setCheckoutResult(data)
       setCart([])
