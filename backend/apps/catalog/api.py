@@ -125,6 +125,18 @@ class ProductDetailSerializer(ProductSerializerBase):
             raise serializers.ValidationError("UPC must be unique per product.")
         return val_str
 
+    def validate_status(self, value):
+        from apps.catalog.models import ProductStatus
+        valid_statuses = [choice[0] for choice in ProductStatus.choices]
+        if value not in valid_statuses:
+            raise serializers.ValidationError(f"Invalid Product Status value. Allowed values: {', '.join(valid_statuses)}.")
+        return value
+
+    def validate_inventory_level(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Inventory Level must be a non-negative integer.")
+        return value
+
     def validate(self, attrs):
         category = attrs.get('product_category') or (self.instance.product_category if self.instance else None)
         if category:
@@ -1108,15 +1120,15 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "column_name": "Product Status",
                     "submitted_value": "",
                     "validation_error": "Product Status must not be blank.",
-                    "recommended_correction": "Provide one of: Active, Inactive, EOL."
+                    "recommended_correction": "Provide one of: Active, Inactive, EOL, Out of Stock."
                 })
-            elif status_str not in ["active", "inactive", "eol"]:
+            elif status_str not in ["active", "inactive", "eol", "out_of_stock"]:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Product Status",
                     "submitted_value": status_str,
                     "validation_error": "Invalid Product Status value.",
-                    "recommended_correction": "Provide one of: Active, Inactive, EOL."
+                    "recommended_correction": "Provide one of: Active, Inactive, EOL, Out of Stock."
                 })
 
             # --- Launch Date ---
@@ -1133,7 +1145,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             else:
                 # If Launch Date is in the future, Product Status must be Inactive
                 if launch_date > today_est:
-                    if launch_date.year != 9999 and status_str in ["active", "eol"]:
+                    if launch_date.year != 9999 and status_str in ["active", "eol", "out_of_stock"]:
                         row_errors.append({
                             "row_number": row_num,
                             "column_name": "Product Status",
@@ -1274,6 +1286,36 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             })
                         else:
                             should_stage = True
+
+            # --- Inventory Level ---
+            if "inventorylevel" in row:
+                inv_val = row.get("inventorylevel")
+                if inv_val is None or str(inv_val).strip() == "":
+                    row_errors.append({
+                        "row_number": row_num,
+                        "column_name": "Inventory Level",
+                        "submitted_value": "",
+                        "validation_error": "Inventory Level must not be blank.",
+                        "recommended_correction": "Provide a non-negative integer."
+                    })
+                else:
+                    parsed_inv = parse_int_value(inv_val)
+                    if parsed_inv is None:
+                        row_errors.append({
+                            "row_number": row_num,
+                            "column_name": "Inventory Level",
+                            "submitted_value": str(inv_val),
+                            "validation_error": "Inventory Level must be a valid number.",
+                            "recommended_correction": "Provide a non-negative integer."
+                        })
+                    elif parsed_inv < 0:
+                        row_errors.append({
+                            "row_number": row_num,
+                            "column_name": "Inventory Level",
+                            "submitted_value": str(inv_val),
+                            "validation_error": "Inventory Level must be a non-negative number.",
+                            "recommended_correction": "Provide a non-negative integer."
+                        })
 
             # --- Color / System Color ---
             color = str(row.get("color") or "").strip()
@@ -1795,7 +1837,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             # --- Non-critical enrichment defaults ---
             recommended = parse_bool_value(row.get("recommendedaccessory") or row.get("recommendedacccessory"))
-            inventory = parse_int_value(row.get("inventorylevel")) or 0
+            inventory = parse_int_value(row.get("inventorylevel")) if row.get("inventorylevel") is not None and str(row.get("inventorylevel")).strip() != "" else 0
             inventory_threshold = parse_int_value(row.get("inventorythreshold")) or 0
             warranty = row.get("brandwarranty") or row.get("warranty") or ""
             meta_t = row.get("metatitle") or ""

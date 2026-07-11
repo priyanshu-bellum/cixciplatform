@@ -19,6 +19,7 @@ import MediaPage from './pages/MediaPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import IntegrationPage from './pages/IntegrationPage'
 import LaunchPage from './pages/LaunchPage'
+import TelcoCellularPage from './pages/TelcoCellularPage'
 import { SettingsPage } from './pages/StubPages'
 import ConfirmEmailPage from './pages/ConfirmEmailPage'
 
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="integration" element={<IntegrationPage />} />
             <Route path="launch" element={<LaunchPage />} />
+            <Route path="telco-cellular" element={<TelcoCellularPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

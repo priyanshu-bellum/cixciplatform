@@ -355,6 +355,15 @@ class ExternalActionRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
 # ── Procurement ────────────────────────────────────────────────────────────────
 from apps.procurement.models import PurchaseOrder, PurchaseOrderLine
 
+class PurchaseOrderLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PurchaseOrderLine
+        fields = [
+            "id", "purchase_order", "product_reference",
+            "quantity", "unit_price_snapshot", "line_total", "created_at"
+        ]
+        read_only_fields = ["id", "created_at"]
+
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = PurchaseOrder
@@ -364,7 +373,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             "pricing_snapshot_reference", "po_number",
             "currency", "total_amount", "approved_at", "created_at",
         ]
-        read_only_fields = ["id", "created_at", "approved_at"]
+        read_only_fields = ["id", "company_scope_reference", "buyer_reference", "created_at", "approved_at"]
 
 class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = PurchaseOrder.objects.all()
@@ -374,15 +383,85 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "create": "procurement.po.create", "update": "procurement.po.update",
         "partial_update": "procurement.po.update", "destroy": "procurement.po.manage",
         "approve": "procurement.po.approve",
+        "lines": "procurement.po.read",
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["status", "vendor_company_reference"]
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        lines_data = data.pop('lines', None)
+
+        company_id = None
+        if request.user.entity:
+            company_id = request.user.entity.company_id
+        else:
+            from apps.tenant.models import Company
+            company = Company.objects.filter(company_type="cixci_internal").first() or Company.objects.first()
+            if company:
+                company_id = company.id
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+
+        from django.db import transaction
+        from rest_framework.exceptions import ValidationError
+        from apps.catalog.models import Product
+
+        try:
+            with transaction.atomic():
+                po = serializer.save(
+                    buyer_reference=request.user.id,
+                    company_scope_reference=company_id,
+                )
+
+                total_amount = 0
+                if lines_data:
+                    for line_item in lines_data:
+                        prod_ref = line_item.get('product_reference')
+                        qty = int(line_item.get('quantity', 1))
+
+                        try:
+                            product = Product.objects.get(id=prod_ref)
+                        except Product.DoesNotExist:
+                            raise ValidationError(f"Product with ID '{prod_ref}' does not exist.")
+
+                        # Determine price: first try sale price, then map/srp/wholesale
+                        price = product.sale_price or product.vendor_wholesale_price_amount or product.msrp or 0.0
+                        line_total = price * qty
+                        total_amount += line_total
+
+                        po_line = PurchaseOrderLine(
+                            purchase_order=po,
+                            product_reference=product.id,
+                            quantity=qty,
+                            unit_price_snapshot=price,
+                            line_total=line_total
+                        )
+                        # Save triggers PurchaseOrderLine.clean() validation!
+                        po_line.save()
+
+                po.total_amount = total_amount
+                po.save(update_fields=["total_amount"])
+
+        except ValidationError as ve:
+            raise ve
+        except Exception as e:
+            raise ValidationError(str(e))
+
+        return Response(self.get_serializer(po).data, status=201)
 
     def perform_create(self, serializer):
         serializer.save(
             buyer_reference=self.request.user.id,
             company_scope_reference=self.request.user.entity.company_id,
         )
+
+    @action(detail=True, methods=["get"])
+    def lines(self, request, pk=None):
+        po = self.get_object()
+        lines = po.lines.all()
+        return Response(PurchaseOrderLineSerializer(lines, many=True).data)
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):

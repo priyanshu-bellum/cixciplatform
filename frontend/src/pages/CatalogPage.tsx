@@ -993,6 +993,8 @@ export default function CatalogPage() {
     const weightColIdx = normalizedHeaders.findIndex(h => h === 'weight')
     const descColIdx = normalizedHeaders.findIndex(h => h === 'productdescription' || h === 'description')
     const compatColIdx = normalizedHeaders.findIndex(h => h === 'devicecompatibility' || h === 'compatibility')
+    const statusColIdx = normalizedHeaders.findIndex(h => h === 'productstatus' || h === 'status')
+    const inventoryLevelColIdx = normalizedHeaders.findIndex(h => h === 'inventorylevel')
 
     const dateColIdxs = normalizedHeaders.map((h, i) => ['launchdate', 'releasedate'].includes(h) ? i : -1).filter(i => i !== -1)
     const boolColIdxs = normalizedHeaders.map((h, i) => ['recommendedacccessory', 'recommendedaccessory'].includes(h) ? i : -1).filter(i => i !== -1)
@@ -1235,6 +1237,37 @@ export default function CatalogPage() {
         if (!val) {
           errors.push("Device Compatibility is required.")
           cellErrors[`${rowIdx}-${compatColIdx}`] = true
+        }
+      }
+
+      // 18. Product Status Check
+      if (statusColIdx === -1) {
+        errors.push("Missing 'Product Status' column.")
+      } else {
+        const val = row[statusColIdx]?.trim()
+        if (!val) {
+          errors.push("Product Status is required.")
+          cellErrors[`${rowIdx}-${statusColIdx}`] = true
+        } else {
+          const validStatuses = ['active', 'inactive', 'eol', 'out_of_stock']
+          if (!validStatuses.includes(val.toLowerCase())) {
+            errors.push(`Product Status must be one of: Active, Inactive, EOL, Out of Stock. Got '${val}'.`)
+            cellErrors[`${rowIdx}-${statusColIdx}`] = true
+          }
+        }
+      }
+
+      // 19. Inventory Level Check
+      if (inventoryLevelColIdx === -1) {
+        errors.push("Missing 'Inventory Level' column.")
+      } else {
+        const val = row[inventoryLevelColIdx]?.trim()
+        if (!val) {
+          errors.push("Inventory Level is required.")
+          cellErrors[`${rowIdx}-${inventoryLevelColIdx}`] = true
+        } else if (isNaN(Number(val)) || Number(val) < 0) {
+          errors.push(`Inventory Level must be a non-negative number. Got '${val}'.`)
+          cellErrors[`${rowIdx}-${inventoryLevelColIdx}`] = true
         }
       }
 
@@ -2917,6 +2950,144 @@ export default function CatalogPage() {
                 )}
               </div>
 
+              {/* Device Compatibility (shown when product type is Accessory) */}
+              {prodType === 'accessory' && (
+                <div className="form-group" style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16, position: 'relative' }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+                    Device Compatibility *
+                  </h4>
+                  
+                  {/* Trigger Area showing tags */}
+                  <div
+                    onClick={() => setShowDeviceDropdown(!showDeviceDropdown)}
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      padding: '8px 12px',
+                      background: 'var(--bg-main)',
+                      cursor: 'pointer',
+                      minHeight: 40,
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 6,
+                      alignItems: 'center',
+                      marginTop: 4,
+                    }}
+                  >
+                    {selectedDeviceIds.length === 0 ? (
+                      <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Select device compatibility...</span>
+                    ) : (
+                      selectedDeviceIds.map(id => {
+                        const dev = devices.find((d: any) => d.id === id)
+                        return (
+                          <span
+                            key={id}
+                            style={{
+                              background: 'var(--bg-elevated)',
+                              border: '1px solid var(--border)',
+                              color: 'var(--text-primary)',
+                              padding: '2px 8px',
+                              borderRadius: 4,
+                              fontSize: 12,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleDeviceSelection(id);
+                            }}
+                          >
+                            {dev ? `${dev.manufacturer_name} ${dev.name}` : id.slice(0, 8)}
+                            <X size={12} style={{ color: 'var(--red)', cursor: 'pointer' }} />
+                          </span>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  {/* Dropdown Floating Panel */}
+                  {showDeviceDropdown && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        left: 0,
+                        right: 0,
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
+                        zIndex: 10,
+                        marginBottom: 4,
+                        padding: 10,
+                      }}
+                    >
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="Search devices..."
+                          value={deviceSearch}
+                          onChange={e => setDeviceSearch(e.target.value)}
+                          style={{ height: 32, fontSize: 13, padding: '4px 8px', flex: 1 }}
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => { setShowDeviceDropdown(false); setDeviceSearch(''); }}
+                          style={{ padding: '4px 8px', height: 32 }}
+                        >
+                          Done
+                        </button>
+                      </div>
+
+                      <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {devices
+                          .filter((dev: any) => {
+                            const query = deviceSearch.toLowerCase()
+                            const nameMatch = dev.name?.toLowerCase().includes(query)
+                            const mfgMatch = dev.manufacturer_name?.toLowerCase().includes(query)
+                            const skuMatch = dev.sku?.toLowerCase().includes(query)
+                            return nameMatch || mfgMatch || skuMatch
+                          })
+                          .map((dev: any) => {
+                            const isSelected = selectedDeviceIds.includes(dev.id)
+                            return (
+                              <div
+                                key={dev.id}
+                                onClick={() => toggleDeviceSelection(dev.id)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '6px 8px',
+                                  borderRadius: 4,
+                                  cursor: 'pointer',
+                                  background: isSelected ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
+                                  transition: 'background 0.15s ease',
+                                }}
+                              >
+                                <div style={{ flex: 1, fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                                  {dev.manufacturer_name} {dev.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({dev.sku})</span>
+                                </div>
+                                {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
+                              </div>
+                            )
+                          })}
+                        {devices.filter((dev: any) => {
+                          const query = deviceSearch.toLowerCase()
+                          return dev.name?.toLowerCase().includes(query) || dev.manufacturer_name?.toLowerCase().includes(query) || dev.sku?.toLowerCase().includes(query)
+                        }).length === 0 && (
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 8px' }}>No matching devices found.</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* 2. Timeline & Attributes */}
               <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16 }}>
                 <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>2. Timeline & Attributes</h4>
@@ -3151,11 +3322,134 @@ export default function CatalogPage() {
                 </div>
               </div>
 
-              {/* 8. Device Compatibility or Category-Specific Compatibility */}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <button type="button" className="btn btn-secondary" onClick={handleCloseAddModal}>Cancel</button>
+                <button type="submit" className="btn btn-primary">List Product</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── EDIT PRODUCT MODAL ─────────────────────────────────────────────────── */}
+      {showEditModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="card" style={{ width: 720, maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>Edit Product</div>
+              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={handleCloseEditModal}>
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleEditProduct}>
+              {formError && (
+                <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <AlertCircle size={14} />
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              {/* 1. Basic & Identity Information */}
+              <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16 }}>
+                <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>1. Basic & Identity Information</h4>
+                <div className="form-group">
+                  <label className="label">Product Name *</label>
+                  <input className="input" placeholder="e.g. Ultra Fast USB-C Charger" value={prodName} onChange={e => setProdName(e.target.value)} required />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-group">
+                    <label className="label">SKU *</label>
+                    <input className="input" placeholder="e.g. ACC-USBC-01" value={prodSku} onChange={e => setProdSku(e.target.value)} required />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">UPC *</label>
+                    <input className="input" placeholder="e.g. 190123456789" value={prodUpc} onChange={e => setProdUpc(e.target.value)} required={isVendor} />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-group">
+                    <label className="label">Brand *</label>
+                    {isVendor ? (
+                      <input
+                        className="input"
+                        placeholder="e.g. ChargeCore"
+                        value={user?.company_name || ''}
+                        disabled
+                        required
+                      />
+                    ) : (
+                      <select
+                        className="input"
+                        value={prodBrand}
+                        onChange={e => setProdBrand(e.target.value)}
+                        required
+                      >
+                        <option value="">Select Brand</option>
+                        {allowedBrands.map((b: string) => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Product Type *</label>
+                    <select className="input" value={prodType} onChange={e => setProdType(e.target.value)} required>
+                      <option value="">Select Product Type</option>
+                      <option value="accessory">Accessory</option>
+                      <option value="branded_merchandise">Branded Merchandise</option>
+                    </select>
+                  </div>
+                </div>
+                {prodType === 'accessory' ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div className="form-group">
+                      <label className="label">Product Category *</label>
+                      <select className="input" value={prodCategory} onChange={e => setProdCategory(e.target.value)} required={isVendor && prodType === 'accessory'}>
+                        <option value="">Select Category</option>
+                        {allowedCategories.map((cat: string) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Product Status *</label>
+                      <select className="input" value={prodStatus} onChange={e => setProdStatus(e.target.value)} required>
+                        <option value="">Select Product Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="out_of_stock">Out of Stock</option>
+                        <option value="eol">EOL</option>
+                      </select>
+                    </div>
+                    {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
+                      <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
+                          Category-Specific Compatibility *
+                        </span>
+                        {renderCategorySpecificCompatibility()}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label className="label">Product Status *</label>
+                    <select className="input" value={prodStatus} onChange={e => setProdStatus(e.target.value)} required>
+                      <option value="">Select Product Status</option>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="out_of_stock">Out of Stock</option>
+                      <option value="eol">EOL</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Device Compatibility (shown when product type is Accessory) */}
               {prodType === 'accessory' && (
-                <div className="form-group" style={{ marginBottom: 20, position: 'relative' }}>
+                <div className="form-group" style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16, position: 'relative' }}>
                   <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
-                    8. Device Compatibility *
+                    Device Compatibility *
                   </h4>
                   
                   {/* Trigger Area showing tags */}
@@ -3288,129 +3582,6 @@ export default function CatalogPage() {
                   )}
                 </div>
               )}
-
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-                <button type="button" className="btn btn-secondary" onClick={handleCloseAddModal}>Cancel</button>
-                <button type="submit" className="btn btn-primary">List Product</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─── EDIT PRODUCT MODAL ─────────────────────────────────────────────────── */}
-      {showEditModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 720, maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Edit Product</div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={handleCloseEditModal}>
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={handleEditProduct}>
-              {formError && (
-                <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <AlertCircle size={14} />
-                  <span>{formError}</span>
-                </div>
-              )}
-
-              {/* 1. Basic & Identity Information */}
-              <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16 }}>
-                <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>1. Basic & Identity Information</h4>
-                <div className="form-group">
-                  <label className="label">Product Name *</label>
-                  <input className="input" placeholder="e.g. Ultra Fast USB-C Charger" value={prodName} onChange={e => setProdName(e.target.value)} required />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div className="form-group">
-                    <label className="label">SKU *</label>
-                    <input className="input" placeholder="e.g. ACC-USBC-01" value={prodSku} onChange={e => setProdSku(e.target.value)} required />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">UPC *</label>
-                    <input className="input" placeholder="e.g. 190123456789" value={prodUpc} onChange={e => setProdUpc(e.target.value)} required={isVendor} />
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div className="form-group">
-                    <label className="label">Brand *</label>
-                    {isVendor ? (
-                      <input
-                        className="input"
-                        placeholder="e.g. ChargeCore"
-                        value={user?.company_name || ''}
-                        disabled
-                        required
-                      />
-                    ) : (
-                      <select
-                        className="input"
-                        value={prodBrand}
-                        onChange={e => setProdBrand(e.target.value)}
-                        required
-                      >
-                        <option value="">Select Brand</option>
-                        {allowedBrands.map((b: string) => (
-                          <option key={b} value={b}>{b}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Product Type *</label>
-                    <select className="input" value={prodType} onChange={e => setProdType(e.target.value)} required>
-                      <option value="">Select Product Type</option>
-                      <option value="accessory">Accessory</option>
-                      <option value="branded_merchandise">Branded Merchandise</option>
-                    </select>
-                  </div>
-                </div>
-                {prodType === 'accessory' ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <div className="form-group">
-                      <label className="label">Product Category *</label>
-                      <select className="input" value={prodCategory} onChange={e => setProdCategory(e.target.value)} required={isVendor && prodType === 'accessory'}>
-                        <option value="">Select Category</option>
-                        {allowedCategories.map((cat: string) => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Product Status *</label>
-                      <select className="input" value={prodStatus} onChange={e => setProdStatus(e.target.value)} required>
-                        <option value="">Select Product Status</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="out_of_stock">Out of Stock</option>
-                        <option value="eol">EOL</option>
-                      </select>
-                    </div>
-                    {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
-                      <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
-                          Category-Specific Compatibility *
-                        </span>
-                        {renderCategorySpecificCompatibility()}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="form-group">
-                    <label className="label">Product Status *</label>
-                    <select className="input" value={prodStatus} onChange={e => setProdStatus(e.target.value)} required>
-                      <option value="">Select Product Status</option>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="out_of_stock">Out of Stock</option>
-                      <option value="eol">EOL</option>
-                    </select>
-                  </div>
-                )}
-              </div>
 
               {/* 2. Timeline & Attributes */}
               <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16 }}>
@@ -3646,144 +3817,7 @@ export default function CatalogPage() {
                 </div>
               </div>
 
-              {/* 8. Device Compatibility or Category-Specific Compatibility */}
-              {prodType === 'accessory' && (
-                <div className="form-group" style={{ marginBottom: 20, position: 'relative' }}>
-                  <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
-                    8. Device Compatibility *
-                  </h4>
-                  
-                  {/* Trigger Area showing tags */}
-                  <div
-                    onClick={() => setShowDeviceDropdown(!showDeviceDropdown)}
-                    style={{
-                      border: '1px solid var(--border)',
-                      borderRadius: 6,
-                      padding: '8px 12px',
-                      background: 'var(--bg-main)',
-                      cursor: 'pointer',
-                      minHeight: 40,
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: 6,
-                      alignItems: 'center',
-                      marginTop: 4,
-                    }}
-                  >
-                    {selectedDeviceIds.length === 0 ? (
-                      <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Select device compatibility...</span>
-                    ) : (
-                      selectedDeviceIds.map(id => {
-                        const dev = devices.find((d: any) => d.id === id)
-                        return (
-                          <span
-                            key={id}
-                            style={{
-                              background: 'var(--bg-elevated)',
-                              border: '1px solid var(--border)',
-                              color: 'var(--text-primary)',
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              fontSize: 12,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 4,
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleDeviceSelection(id);
-                            }}
-                          >
-                            {dev ? `${dev.manufacturer_name} ${dev.name}` : id.slice(0, 8)}
-                            <X size={12} style={{ color: 'var(--red)', cursor: 'pointer' }} />
-                          </span>
-                        )
-                      })
-                    )}
-                  </div>
-
-                  {/* Dropdown Floating Panel */}
-                  {showDeviceDropdown && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        bottom: '100%',
-                        left: 0,
-                        right: 0,
-                        background: 'var(--bg-elevated)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 6,
-                        boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
-                        zIndex: 10,
-                        marginBottom: 4,
-                        padding: 10,
-                      }}
-                    >
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                        <input
-                          type="text"
-                          className="input"
-                          placeholder="Search devices..."
-                          value={deviceSearch}
-                          onChange={e => setDeviceSearch(e.target.value)}
-                          style={{ height: 32, fontSize: 13, padding: '4px 8px', flex: 1 }}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => { setShowDeviceDropdown(false); setDeviceSearch(''); }}
-                          style={{ padding: '4px 8px', height: 32 }}
-                        >
-                          Done
-                        </button>
-                      </div>
-
-                      <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {devices
-                          .filter((dev: any) => {
-                            const query = deviceSearch.toLowerCase()
-                            const nameMatch = dev.name?.toLowerCase().includes(query)
-                            const mfgMatch = dev.manufacturer_name?.toLowerCase().includes(query)
-                            const skuMatch = dev.sku?.toLowerCase().includes(query)
-                            return nameMatch || mfgMatch || skuMatch
-                          })
-                          .map((dev: any) => {
-                            const isSelected = selectedDeviceIds.includes(dev.id)
-                            return (
-                              <div
-                                key={dev.id}
-                                onClick={() => toggleDeviceSelection(dev.id)}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  padding: '6px 8px',
-                                  borderRadius: 4,
-                                  cursor: 'pointer',
-                                  background: isSelected ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
-                                  transition: 'background 0.15s ease',
-                                }}
-                              >
-                                <div style={{ flex: 1, fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>
-                                  {dev.manufacturer_name} {dev.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({dev.sku})</span>
-                                </div>
-                                {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
-                              </div>
-                            )
-                          })}
-                        {devices.filter((dev: any) => {
-                          const query = deviceSearch.toLowerCase()
-                          return dev.name?.toLowerCase().includes(query) || dev.manufacturer_name?.toLowerCase().includes(query) || dev.sku?.toLowerCase().includes(query)
-                        }).length === 0 && (
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 8px' }}>No matching devices found.</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
+              
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
                 <button type="button" className="btn btn-secondary" onClick={handleCloseEditModal}>Cancel</button>
