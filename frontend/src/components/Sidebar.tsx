@@ -51,7 +51,7 @@ export default function Sidebar() {
         return ['/', '/devices', '/catalog', '/integration', '/analytics', '/notifications'].includes(item.to)
       }
       if (isBuyer) {
-        return ['/', '/devices', '/catalog', '/pricing', '/orders', '/invoicing', '/procurement', '/notifications'].includes(item.to)
+        return ['/', '/devices', '/catalog', '/pricing', '/orders', '/invoicing', '/procurement', '/notifications', '/integration'].includes(item.to)
       }
       if (isVendor) {
         return ['/', '/catalog', '/orders', '/fulfillment', '/invoicing', '/notifications'].includes(item.to)
