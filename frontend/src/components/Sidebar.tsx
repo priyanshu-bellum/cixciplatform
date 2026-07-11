@@ -54,7 +54,7 @@ export default function Sidebar() {
   const filteredNav = NAV.map(section => {
     const items = section.items.filter(item => {
       if (isCixciAdmin) {
-        return ['/', '/devices', '/catalog', '/integration', '/analytics', '/notifications', '/telco-cellular'].includes(item.to)
+        return ['/', '/devices', '/catalog', '/integration', '/analytics', '/notifications'].includes(item.to)
       }
       if (isBuyer) {
         return ['/', '/devices', '/catalog', '/pricing', '/orders', '/invoicing', '/procurement', '/notifications', '/telco-cellular'].includes(item.to)

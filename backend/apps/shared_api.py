@@ -314,7 +314,7 @@ class ActivitySummaryWindowViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
         return Response(ActivitySummaryAggregationSerializer(aggs, many=True).data)
 
 # ── Integration ────────────────────────────────────────────────────────────────
-from apps.integration.models import ExternalConnection, ExternalActionRequest, ExternalActionOutcome
+from apps.integration.models import ExternalConnection, ExternalActionRequest, ExternalActionOutcome, CompanyAPIKey
 
 class ExternalConnectionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -351,6 +351,43 @@ class ExternalActionRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
     action_capability_map = {"list": "integration.action.list", "retrieve": "integration.action.read"}
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["source_module", "action_type"]
+
+class CompanyAPIKeySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompanyAPIKey
+        fields = [
+            "id", "company_scope_reference", "label", "token",
+            "is_active", "created_at", "last_used_at",
+        ]
+        read_only_fields = ["id", "company_scope_reference", "token", "created_at", "last_used_at"]
+
+class CompanyAPIKeyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
+    queryset = CompanyAPIKey.objects.all()
+    serializer_class = CompanyAPIKeySerializer
+    action_capability_map = {
+        "list": "integration.connection.list", "retrieve": "integration.connection.read",
+        "create": "integration.connection.manage", "destroy": "integration.connection.manage",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["is_active"]
+
+    def get_queryset(self):
+        user = self.request.user
+        if getattr(user, "is_cixci_admin", False):
+            return CompanyAPIKey.objects.all()
+        if not getattr(user, "entity", None):
+            return CompanyAPIKey.objects.none()
+        return CompanyAPIKey.objects.filter(company_scope_reference=user.entity.company_id)
+
+    def perform_create(self, serializer):
+        import secrets
+        token = f"cixci_key_{secrets.token_hex(24)}"
+        user = self.request.user
+        company_id = user.entity.company_id if getattr(user, "entity", None) else None
+        serializer.save(
+            company_scope_reference=company_id,
+            token=token
+        )
 
 # ── Procurement ────────────────────────────────────────────────────────────────
 from apps.procurement.models import PurchaseOrder, PurchaseOrderLine
@@ -517,6 +554,7 @@ analytics_router.register("summary-windows", ActivitySummaryWindowViewSet, basen
 integration_router = DefaultRouter()
 integration_router.register("connections", ExternalConnectionViewSet, basename="ext-connection")
 integration_router.register("action-requests", ExternalActionRequestViewSet, basename="action-request")
+integration_router.register("api-keys", CompanyAPIKeyViewSet, basename="company-api-key")
 
 procurement_router = DefaultRouter()
 procurement_router.register("purchase-orders", PurchaseOrderViewSet, basename="purchase-order")
