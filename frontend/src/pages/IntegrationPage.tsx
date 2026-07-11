@@ -57,7 +57,7 @@ export default function IntegrationPage() {
 
   const connections = connData?.results ?? (Array.isArray(connData) ? connData : [])
   const webhooks = whData?.results ?? (Array.isArray(whData) ? whData : [])
-  const inbound = inbData?.results ?? (Array.isArray(inbData) ? inbound : [])
+  const inbound = inbData?.results ?? (Array.isArray(inbData) ? inbData : [])
   const apiKeys = keysData?.results ?? (Array.isArray(keysData) ? keysData : [])
 
   const handleGenerateKey = async (e: React.FormEvent) => {
