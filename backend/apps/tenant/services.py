@@ -95,6 +95,10 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 "integration.connection.list",
                 "integration.connection.read",
                 "integration.connection.manage",
+                "procurement.po.create",
+                "procurement.po.list",
+                "procurement.po.read",
+                "procurement.po.update",
             }
             if company.company_type == "buyer" and capability_code in buyer_safe_caps:
                 if company_id and str(user.entity.company_id) != str(company_id):
@@ -293,6 +297,10 @@ def is_capability_allowed_for_company(capability_code: str, company_type: str, b
             "integration.connection.list",
             "integration.connection.read",
             "integration.connection.manage",
+            "procurement.po.create",
+            "procurement.po.list",
+            "procurement.po.read",
+            "procurement.po.update",
         }
         if capability_code in buyer_safe_caps:
             return True

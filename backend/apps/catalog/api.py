@@ -418,6 +418,21 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         )
 
         if getattr(self, "action", None) == "list" and company.company_type == "buyer":
+            from apps.integration.models import CompanyAPIKey
+            is_api_key_auth = isinstance(self.request.auth, CompanyAPIKey)
+            if is_api_key_auth:
+                from apps.catalog.models import BuyerProductExportSelectionSnapshot
+                exported_product_ids = BuyerProductExportSelectionSnapshot.objects.filter(
+                    export_job__company_scope_reference=company.id
+                ).values_list("product_ids", flat=True)
+                
+                flat_exported_ids = []
+                for pid_list in exported_product_ids:
+                    if isinstance(pid_list, list):
+                        flat_exported_ids.extend(pid_list)
+                
+                qs = qs.filter(id__in=flat_exported_ids)
+
             device_id_param = self.request.query_params.get("device_id")
             from apps.devices.models import BuyerDevicePortfolioReference
             portfolio_device_ids = BuyerDevicePortfolioReference.objects.filter(
@@ -2427,14 +2442,38 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
                     )
                 raise ValidationError({"product_ids": [msg for prod, msg in violations]})
 
+        # Get portfolio snapshot reference
+        from apps.devices.models import BuyerDevicePortfolioReference
+        latest_ref = BuyerDevicePortfolioReference.objects.filter(
+            buyer_reference=request.user.id,
+            company_scope_reference=request.user.entity.company_id,
+            buyer_entity_reference=request.user.entity_id,
+        ).order_by("-last_change_timestamp").first()
+
+        portfolio_snapshot_ref = None
+        if latest_ref:
+            portfolio_snapshot_ref = latest_ref.current_portfolio_snapshot_reference
+        if not portfolio_snapshot_ref:
+            import uuid
+            portfolio_snapshot_ref = uuid.uuid4()
+
         job = BuyerProductExportJob.objects.create(
             buyer_reference=request.user.id,
             company_scope_reference=request.user.entity.company_id,
             buyer_entity_reference=request.user.entity_id,
             requested_by=request.user.id,
+            portfolio_snapshot_reference=portfolio_snapshot_ref,
             format=request.data.get("format", "csv"),
             include_incompatible=request.data.get("include_incompatible", False),
         )
+
+        from apps.catalog.models import BuyerProductExportSelectionSnapshot
+        BuyerProductExportSelectionSnapshot.objects.create(
+            export_job=job,
+            product_ids=product_ids if product_ids else [],
+            portfolio_snapshot_reference=portfolio_snapshot_ref
+        )
+
         # TODO: dispatch Celery task for export in Phase 4
         return Response(BuyerExportJobSerializer(job).data, status=status.HTTP_201_CREATED)
 

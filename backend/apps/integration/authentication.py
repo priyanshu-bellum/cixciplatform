@@ -30,9 +30,9 @@ class CompanyAPIKeyAuthentication(BaseAuthentication):
         api_key.last_used_at = timezone.now()
         api_key.save(update_fields=["last_used_at"])
 
-        # Find active user controlling the data
-        # Prioritize 'sklein@telcocellular.com' if it belongs to this company, otherwise first active user
         user = User.objects.filter(entity__company_id=api_key.company_scope_reference, email="sklein@telcocellular.com", is_active=True).first()
+        if not user:
+            user = User.objects.filter(entity__company_id=api_key.company_scope_reference, email="buyer@cixci.com", is_active=True).first()
         if not user:
             user = User.objects.filter(entity__company_id=api_key.company_scope_reference, is_active=True).first()
 

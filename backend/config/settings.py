@@ -166,6 +166,11 @@ FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:5173")
 CORS_ALLOWED_ORIGINS = [FRONTEND_URL]
 CORS_ALLOW_CREDENTIALS = True
 
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "x-api-key",
+]
+
 # ─── OpenAPI / Spectacular ────────────────────────────────────────────────────
 SPECTACULAR_SETTINGS = {
     "TITLE": "CIXCI Platform API",

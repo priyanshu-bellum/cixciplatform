@@ -162,16 +162,19 @@ export default function TelcoCellularPage() {
   const cartTotal = cartSubtotal + cartTax
 
   // Mutation to place test order
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const checkoutMutation = useMutation({
     mutationFn: (payload: any) => telcoApi.post('/procurement/purchase-orders/', payload).then(r => r.data),
     onSuccess: (data) => {
       setCheckoutResult(data)
+      setCheckoutError(null)
       setCart([])
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
       toast.success('Test Purchase Order submitted successfully!')
     },
     onError: (err: any) => {
-      const errMsg = err.response?.data?.detail || err.response?.data?.message || 'Failed to place purchase order.'
+      const errMsg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to place purchase order.'
+      setCheckoutError(errMsg)
       toast.error(errMsg, { duration: 5000 })
     }
   })
@@ -1102,6 +1105,7 @@ export default function TelcoCellularPage() {
               disabled={checkoutMutation.isPending}
               onClick={() => {
                 setIsCartOpen(false)
+                setCheckoutError(null)
                 setIsCheckoutOpen(true)
               }}
             >
@@ -1168,6 +1172,13 @@ export default function TelcoCellularPage() {
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                     You are placing a simulated procurement Purchase Order for testing purposes.
                   </div>
+
+                  {checkoutError && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8 }}>
+                      <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: '#fca5a5' }}>{checkoutError}</span>
+                    </div>
+                  )}
                   
                   <div className="table-wrap" style={{ maxHeight: '200px', overflowY: 'auto' }}>
                     <table>
@@ -1210,7 +1221,10 @@ export default function TelcoCellularPage() {
                   <button
                     className="telco-checkout-btn"
                     disabled={checkoutMutation.isPending}
-                    onClick={handlePlaceOrder}
+                    onClick={() => {
+                      setCheckoutError(null)
+                      handlePlaceOrder()
+                    }}
                     style={{ marginTop: 10 }}
                   >
                     {checkoutMutation.isPending ? (

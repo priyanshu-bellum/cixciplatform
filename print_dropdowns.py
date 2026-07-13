@@ -4,7 +4,7 @@ import django
 
 # Set up django
 sys.path.insert(0, os.path.abspath('backend'))
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings_local')
 django.setup()
 
 from apps.catalog.models import DynamicDropdownConfig

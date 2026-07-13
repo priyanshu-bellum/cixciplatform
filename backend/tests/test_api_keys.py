@@ -68,3 +68,91 @@ class TestCompanyAPIKeysApi:
         api_key.save()
         res = client.get("/api/v1/devices/portfolio/my_devices/", HTTP_X_API_KEY=token)
         assert res.status_code == 401
+
+    def test_storefront_only_shows_exported_products_via_api_key(self, buyer_client, buyer_user, client):
+        import uuid
+        from apps.catalog.models import Product, ProductCompatibilityAssertion
+        from apps.devices.models import Device, DeviceType, Manufacturer
+        from apps.devices.services import add_device_to_portfolio
+        from apps.integration.models import CompanyAPIKey
+        import secrets
+
+        # 1. Setup portfolio device
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        mfr, _ = Manufacturer.objects.get_or_create(name="TestMfr")
+        device, _ = Device.objects.get_or_create(name="TestDevice", device_type=dt, manufacturer=mfr)
+        add_device_to_portfolio(buyer_user, device.id)
+
+        # 2. Create two compatible accessories
+        p1 = Product.objects.create(
+            name="Accessory One",
+            sku="ACC-101",
+            brand="TestBrand",
+            product_type="accessory",
+            status="active",
+            selling_status="for_sale",
+            launch_date="2026-06-18",
+            compatibility_status="complete",
+            company_scope_reference=buyer_user.entity.company_id,
+            vendor_company_reference=uuid.uuid4(),
+        )
+        ProductCompatibilityAssertion.objects.create(
+            product=p1,
+            device_reference=device.id,
+            is_compatible=True,
+            is_excluded=False
+        )
+
+        p2 = Product.objects.create(
+            name="Accessory Two",
+            sku="ACC-102",
+            brand="TestBrand",
+            product_type="accessory",
+            status="active",
+            selling_status="for_sale",
+            launch_date="2026-06-18",
+            compatibility_status="complete",
+            company_scope_reference=buyer_user.entity.company_id,
+            vendor_company_reference=uuid.uuid4(),
+        )
+        ProductCompatibilityAssertion.objects.create(
+            product=p2,
+            device_reference=device.id,
+            is_compatible=True,
+            is_excluded=False
+        )
+
+        # 3. Requesting products as logged-in buyer admin returns BOTH accessories
+        res = buyer_client.get("/api/v1/catalog/products/")
+        assert res.status_code == 200
+        results = res.data.get("results", res.data)
+        assert len(results) == 2
+
+        # 4. Create an API key
+        token = f"cixci_key_{secrets.token_hex(24)}"
+        api_key = CompanyAPIKey.objects.create(
+            company_scope_reference=buyer_user.entity.company_id,
+            label="Telco Store Key",
+            token=token
+        )
+
+        # 5. Accessing products using the API Key (storefront) returns NOTHING because none are exported yet
+        res = client.get("/api/v1/catalog/products/", HTTP_X_API_KEY=token)
+        assert res.status_code == 200
+        results = res.data.get("results", res.data)
+        assert len(results) == 0
+
+        # 6. Export Accessory One
+        res = buyer_client.post("/api/v1/catalog/export-jobs/create_job/", {
+            "product_ids": [str(p1.id)],
+            "format": "csv"
+        }, format="json")
+        assert res.status_code == 201
+
+        # 7. Accessing products using the API Key now returns ONLY Accessory One
+        res = client.get("/api/v1/catalog/products/", HTTP_X_API_KEY=token)
+        assert res.status_code == 200
+        results = res.data.get("results", res.data)
+        assert len(results) == 1
+        assert results[0]["id"] == str(p1.id)
+
