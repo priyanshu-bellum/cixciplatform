@@ -350,7 +350,13 @@ function MultiSelectColor({
 
 const formatCurrency = (amount: number | string | null | undefined, currency: string = 'USD') => {
   if (amount === null || amount === undefined || amount === '') return '—';
-  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+  let numericAmount: number;
+  if (typeof amount === 'string') {
+    const cleaned = amount.replace(/[^0-9.-]/g, '');
+    numericAmount = parseFloat(cleaned);
+  } else {
+    numericAmount = amount;
+  }
   if (isNaN(numericAmount)) return '—';
   try {
     return new Intl.NumberFormat('en-US', {
@@ -855,7 +861,7 @@ export default function CatalogPage() {
   }
 
   const isBulkFormDirty = () => {
-    return bulkFile !== null || csvHeaders.length > 0 || bulkResult !== null
+    return (bulkFile !== null || csvHeaders.length > 0) && bulkResult === null
   }
 
   const handleCloseAddModal = () => {
@@ -993,8 +999,8 @@ export default function CatalogPage() {
     const weightColIdx = normalizedHeaders.findIndex(h => h === 'weight')
     const descColIdx = normalizedHeaders.findIndex(h => h === 'productdescription' || h === 'description')
     const compatColIdx = normalizedHeaders.findIndex(h => h === 'devicecompatibility' || h === 'compatibility')
-    const statusColIdx = normalizedHeaders.findIndex(h => h === 'productstatus' || h === 'status')
-    const inventoryLevelColIdx = normalizedHeaders.findIndex(h => h === 'inventorylevel')
+    const statusColIdx = normalizedHeaders.findIndex(h => h === 'productstatus' || h === 'status' || h === 'prodstatus')
+    const inventoryLevelColIdx = normalizedHeaders.findIndex(h => h === 'inventorylevel' || h === 'inventory' || h === 'qty' || h === 'quantity' || h === 'stock')
 
     const dateColIdxs = normalizedHeaders.map((h, i) => ['launchdate', 'releasedate'].includes(h) ? i : -1).filter(i => i !== -1)
     const boolColIdxs = normalizedHeaders.map((h, i) => ['recommendedacccessory', 'recommendedaccessory'].includes(h) ? i : -1).filter(i => i !== -1)
@@ -1407,26 +1413,24 @@ export default function CatalogPage() {
   const filteredProducts = useMemo(() => {
     if (!products) return []
     return products.filter((p: any) => {
-      if (isBuyer) {
-        if (filterCategories.length > 0 && !filterCategories.includes(p.product_category)) return false
-        if (filterBrands.length > 0 && !filterBrands.includes(p.brand)) return false
-        if (filterColors.length > 0 && !filterColors.includes(p.color) && !filterColors.includes(p.system_color)) return false
-        if (filterMsrps.length > 0) {
-          const msrpVal = p.msrp ? parseFloat(p.msrp) : (p.buyer_wholesale_price ? parseFloat(p.buyer_wholesale_price) : 0)
-          const matchesAny = filterMsrps.some(range => {
-            if (range === '0-25') return msrpVal < 25
-            if (range === '25-50') return msrpVal >= 25 && msrpVal <= 50
-            if (range === '50-100') return msrpVal >= 50 && msrpVal <= 100
-            if (range === '100-200') return msrpVal >= 100 && msrpVal <= 200
-            if (range === '200+') return msrpVal > 200
-            return false
-          })
-          if (!matchesAny) return false
-        }
+      if (filterCategories.length > 0 && !filterCategories.includes(p.product_category)) return false
+      if (filterBrands.length > 0 && !filterBrands.includes(p.brand)) return false
+      if (filterColors.length > 0 && !filterColors.includes(p.color) && !filterColors.includes(p.system_color)) return false
+      if (filterMsrps.length > 0) {
+        const msrpVal = p.msrp ? parseFloat(p.msrp) : (p.buyer_wholesale_price ? parseFloat(p.buyer_wholesale_price) : 0)
+        const matchesAny = filterMsrps.some(range => {
+          if (range === '0-25') return msrpVal < 25
+          if (range === '25-50') return msrpVal >= 25 && msrpVal <= 50
+          if (range === '50-100') return msrpVal >= 50 && msrpVal <= 100
+          if (range === '100-200') return msrpVal >= 100 && msrpVal <= 200
+          if (range === '200+') return msrpVal > 200
+          return false
+        })
+        if (!matchesAny) return false
       }
       return true
     })
-  }, [products, isBuyer, filterCategories, filterBrands, filterColors, filterMsrps])
+  }, [products, filterCategories, filterBrands, filterColors, filterMsrps])
 
   const brandsList = useMemo(() => {
     const unique = new Set<string>()
@@ -2465,80 +2469,78 @@ export default function CatalogPage() {
             </div>
 
             {isBuyer && (
-              <>
-                <MultiSelect
-                  label="Filter by Device"
-                  placeholder="All Devices (My Portfolio)"
-                  selected={filterDeviceId ? filterDeviceId.split(',').filter(Boolean) : []}
-                  options={portfolio?.filter((d: any) => d.active_flag).map((d: any) => ({ value: d.device, label: d.device_name })) ?? []}
-                  onChange={(vals) => {
-                    const newParams = new URLSearchParams(searchParams)
-                    if (vals.length > 0) {
-                      newParams.set('device', vals.join(','))
-                    } else {
-                      newParams.delete('device')
-                    }
-                    setSearchParams(newParams)
-                  }}
-                />
+              <MultiSelect
+                label="Filter by Device"
+                placeholder="All Devices (My Portfolio)"
+                selected={filterDeviceId ? filterDeviceId.split(',').filter(Boolean) : []}
+                options={portfolio?.filter((d: any) => d.active_flag).map((d: any) => ({ value: d.device, label: d.device_name })) ?? []}
+                onChange={(vals) => {
+                  const newParams = new URLSearchParams(searchParams)
+                  if (vals.length > 0) {
+                    newParams.set('device', vals.join(','))
+                  } else {
+                    newParams.delete('device')
+                  }
+                  setSearchParams(newParams)
+                }}
+              />
+            )}
 
-                <MultiSelect
-                  label="Category"
-                  placeholder="All Categories"
-                  selected={filterCategories}
-                  options={allowedCategories}
-                  onChange={setFilterCategories}
-                />
+            <MultiSelect
+              label="Category"
+              placeholder="All Categories"
+              selected={filterCategories}
+              options={allowedCategories}
+              onChange={setFilterCategories}
+            />
 
-                <MultiSelect
-                  label="Brand"
-                  placeholder="All Brands"
-                  selected={filterBrands}
-                  options={brandsList}
-                  onChange={setFilterBrands}
-                />
+            <MultiSelect
+              label="Brand"
+              placeholder="All Brands"
+              selected={filterBrands}
+              options={brandsList}
+              onChange={setFilterBrands}
+            />
 
-                <MultiSelect
-                  label="Color"
-                  placeholder="All Colors"
-                  selected={filterColors}
-                  options={allowedColors}
-                  onChange={setFilterColors}
-                />
+            <MultiSelect
+              label="Color"
+              placeholder="All Colors"
+              selected={filterColors}
+              options={allowedColors}
+              onChange={setFilterColors}
+            />
 
-                <MultiSelect
-                  label="MSRP (Wholesale)"
-                  placeholder="All Prices"
-                  selected={filterMsrps}
-                  options={[
-                    { value: '0-25', label: 'Under $25' },
-                    { value: '25-50', label: '$25 to $50' },
-                    { value: '50-100', label: '$50 to $100' },
-                    { value: '100-200', label: '$100 to $200' },
-                    { value: '200+', label: 'Over $200' }
-                  ]}
-                  onChange={setFilterMsrps}
-                />
+            <MultiSelect
+              label="MSRP (Wholesale)"
+              placeholder="All Prices"
+              selected={filterMsrps}
+              options={[
+                { value: '0-25', label: 'Under $25' },
+                { value: '25-50', label: '$25 to $50' },
+                { value: '50-100', label: '$50 to $100' },
+                { value: '100-200', label: '$100 to $200' },
+                { value: '200+', label: 'Over $200' }
+              ]}
+              onChange={setFilterMsrps}
+            />
 
-                {(filterDeviceId || filterCategories.length > 0 || filterBrands.length > 0 || filterColors.length > 0 || filterMsrps.length > 0) && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ alignSelf: 'flex-end', height: 38, padding: '0 12px' }}
-                    onClick={() => {
-                      setFilterCategories([])
-                      setFilterBrands([])
-                      setFilterColors([])
-                      setFilterMsrps([])
-                      const newParams = new URLSearchParams(searchParams)
-                      newParams.delete('device')
-                      setSearchParams(newParams)
-                    }}
-                  >
-                    Clear Filters
-                  </button>
-                )}
-              </>
+            {(filterDeviceId || filterCategories.length > 0 || filterBrands.length > 0 || filterColors.length > 0 || filterMsrps.length > 0) && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ alignSelf: 'flex-end', height: 38, padding: '0 12px' }}
+                onClick={() => {
+                  setFilterCategories([])
+                  setFilterBrands([])
+                  setFilterColors([])
+                  setFilterMsrps([])
+                  const newParams = new URLSearchParams(searchParams)
+                  newParams.delete('device')
+                  setSearchParams(newParams)
+                }}
+              >
+                Clear Filters
+              </button>
             )}
           </div>
           <div className="table-wrap">
@@ -2862,14 +2864,22 @@ export default function CatalogPage() {
                   <label className="label">Product Name *</label>
                   <input className="input" placeholder="e.g. Ultra Fast USB-C Charger" value={prodName} onChange={e => setProdName(e.target.value)} required />
                 </div>
+                <div className="form-group">
+                  <label className="label">SKU *</label>
+                  <input className="input" placeholder="e.g. ACC-USBC-01" value={prodSku} onChange={e => setProdSku(e.target.value)} required />
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div className="form-group">
-                    <label className="label">SKU *</label>
-                    <input className="input" placeholder="e.g. ACC-USBC-01" value={prodSku} onChange={e => setProdSku(e.target.value)} required />
-                  </div>
                   <div className="form-group">
                     <label className="label">UPC *</label>
                     <input className="input" placeholder="e.g. 190123456789" value={prodUpc} onChange={e => setProdUpc(e.target.value)} required={isVendor} />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Product Type *</label>
+                    <select className="input" value={prodType} onChange={e => setProdType(e.target.value)} required>
+                      <option value="">Select Product Type</option>
+                      <option value="accessory">Accessory</option>
+                      <option value="branded_merchandise">Branded Merchandise</option>
+                    </select>
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -2896,14 +2906,6 @@ export default function CatalogPage() {
                         ))}
                       </select>
                     )}
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Product Type *</label>
-                    <select className="input" value={prodType} onChange={e => setProdType(e.target.value)} required>
-                      <option value="">Select Product Type</option>
-                      <option value="accessory">Accessory</option>
-                      <option value="branded_merchandise">Branded Merchandise</option>
-                    </select>
                   </div>
                 </div>
                 {prodType === 'accessory' ? (
@@ -2952,7 +2954,7 @@ export default function CatalogPage() {
 
               {/* Device Compatibility (shown when product type is Accessory) */}
               {prodType === 'accessory' && (
-                <div className="form-group" style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16, position: 'relative' }}>
+                <div className="form-group" style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16, position: 'relative', zIndex: showDeviceDropdown ? 50 : 1 }}>
                   <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
                     Device Compatibility *
                   </h4>
@@ -3011,15 +3013,15 @@ export default function CatalogPage() {
                     <div
                       style={{
                         position: 'absolute',
-                        bottom: '100%',
+                        top: '100%',
                         left: 0,
                         right: 0,
                         background: 'var(--bg-elevated)',
                         border: '1px solid var(--border)',
                         borderRadius: 6,
-                        boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                         zIndex: 10,
-                        marginBottom: 4,
+                        marginTop: 4,
                         padding: 10,
                       }}
                     >
@@ -3357,14 +3359,22 @@ export default function CatalogPage() {
                   <label className="label">Product Name *</label>
                   <input className="input" placeholder="e.g. Ultra Fast USB-C Charger" value={prodName} onChange={e => setProdName(e.target.value)} required />
                 </div>
+                <div className="form-group">
+                  <label className="label">SKU *</label>
+                  <input className="input" placeholder="e.g. ACC-USBC-01" value={prodSku} onChange={e => setProdSku(e.target.value)} required />
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div className="form-group">
-                    <label className="label">SKU *</label>
-                    <input className="input" placeholder="e.g. ACC-USBC-01" value={prodSku} onChange={e => setProdSku(e.target.value)} required />
-                  </div>
                   <div className="form-group">
                     <label className="label">UPC *</label>
                     <input className="input" placeholder="e.g. 190123456789" value={prodUpc} onChange={e => setProdUpc(e.target.value)} required={isVendor} />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Product Type *</label>
+                    <select className="input" value={prodType} onChange={e => setProdType(e.target.value)} required>
+                      <option value="">Select Product Type</option>
+                      <option value="accessory">Accessory</option>
+                      <option value="branded_merchandise">Branded Merchandise</option>
+                    </select>
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -3391,14 +3401,6 @@ export default function CatalogPage() {
                         ))}
                       </select>
                     )}
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Product Type *</label>
-                    <select className="input" value={prodType} onChange={e => setProdType(e.target.value)} required>
-                      <option value="">Select Product Type</option>
-                      <option value="accessory">Accessory</option>
-                      <option value="branded_merchandise">Branded Merchandise</option>
-                    </select>
                   </div>
                 </div>
                 {prodType === 'accessory' ? (
@@ -3447,7 +3449,7 @@ export default function CatalogPage() {
 
               {/* Device Compatibility (shown when product type is Accessory) */}
               {prodType === 'accessory' && (
-                <div className="form-group" style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16, position: 'relative' }}>
+                <div className="form-group" style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16, position: 'relative', zIndex: showDeviceDropdown ? 50 : 1 }}>
                   <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
                     Device Compatibility *
                   </h4>
@@ -3506,15 +3508,15 @@ export default function CatalogPage() {
                     <div
                       style={{
                         position: 'absolute',
-                        bottom: '100%',
+                        top: '100%',
                         left: 0,
                         right: 0,
                         background: 'var(--bg-elevated)',
                         border: '1px solid var(--border)',
                         borderRadius: 6,
-                        boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                         zIndex: 10,
-                        marginBottom: 4,
+                        marginTop: 4,
                         padding: 10,
                       }}
                     >
@@ -4618,6 +4620,10 @@ export default function CatalogPage() {
                             const parsed = parseCSV(text)
                             if (parsed.length > 0) {
                               const headers = parsed[0]
+                              const normalizedHeaders = headers.map(h => String(h).toLowerCase().replace(/[^a-z0-9]/g, ''))
+                              const statusColIdx = normalizedHeaders.findIndex(h => h === 'productstatus' || h === 'status' || h === 'prodstatus')
+                              const inventoryLevelColIdx = normalizedHeaders.findIndex(h => h === 'inventorylevel' || h === 'inventory' || h === 'qty' || h === 'quantity' || h === 'stock')
+
                               const dateColIdxs = headers.map((h, i) => {
                                 const nh = String(h).toLowerCase().replace(/[^a-z0-9]/g, '')
                                 return ['launchdate', 'releasedate', 'eoldate'].includes(nh) ? i : -1
@@ -4626,7 +4632,11 @@ export default function CatalogPage() {
                               const previewRows = parsed.slice(1).map(row => {
                                 return Array.from({ length: headers.length }, (_, i) => {
                                   const val = row[i]
-                                  if (val === undefined || val === null) return ''
+                                  if (val === undefined || val === null || String(val).trim() === '') {
+                                    if (i === statusColIdx) return 'active'
+                                    if (i === inventoryLevelColIdx) return '0'
+                                    return ''
+                                  }
                                   if (dateColIdxs.includes(i)) {
                                     return formatExcelDate(val)
                                   }
@@ -4650,8 +4660,11 @@ export default function CatalogPage() {
                               if (parsed.length > 0) {
                                 const filtered = parsed.filter(row => Array.isArray(row) && row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== ''))
                                 if (filtered.length > 0) {
-                                  // Convert header row to string cells
                                   const headers = Array.from(filtered[0]).map(cell => cell !== null && cell !== undefined ? String(cell) : '')
+                                  const normalizedHeaders = headers.map(h => String(h).toLowerCase().replace(/[^a-z0-9]/g, ''))
+                                  const statusColIdx = normalizedHeaders.findIndex(h => h === 'productstatus' || h === 'status' || h === 'prodstatus')
+                                  const inventoryLevelColIdx = normalizedHeaders.findIndex(h => h === 'inventorylevel' || h === 'inventory' || h === 'qty' || h === 'quantity' || h === 'stock')
+
                                   const dateColIdxs = headers.map((h, i) => {
                                     const nh = String(h).toLowerCase().replace(/[^a-z0-9]/g, '')
                                     return ['launchdate', 'releasedate', 'eoldate'].includes(nh) ? i : -1
@@ -4660,7 +4673,11 @@ export default function CatalogPage() {
                                   const previewRows = filtered.slice(1).map(row => {
                                     return Array.from({ length: headers.length }, (_, i) => {
                                       const val = row[i]
-                                      if (val === undefined || val === null) return ''
+                                      if (val === undefined || val === null || String(val).trim() === '') {
+                                        if (i === statusColIdx) return 'active'
+                                        if (i === inventoryLevelColIdx) return '0'
+                                        return ''
+                                      }
                                       if (dateColIdxs.includes(i)) {
                                         return formatExcelDate(val)
                                       }

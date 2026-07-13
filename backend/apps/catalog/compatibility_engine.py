@@ -265,7 +265,7 @@ def run_compatibility_automapping(product, actor_id=None, change_source="Auto-Ma
         # Assertions to delete: devices that do not match and are not locked/excluded
         for dev_ref, assertion in list(existing_assertions.items()):
             if dev_ref not in matched_device_ids:
-                if not assertion.is_locked and not assertion.is_excluded:
+                if not assertion.is_locked and not assertion.is_excluded and assertion.compatibility_basis not in ["manual_assertion", "imported"]:
                     prev_status = assertion.match_status
                     assertion.match_status = "Archived"
                     assertion.is_compatible = False
@@ -391,7 +391,7 @@ def run_device_remapping(device, actor_id=None, change_source="System Remap"):
             else:
                 # Not compatible or device is retired/not active
                 if assertion:
-                    if not assertion.is_locked and not assertion.is_excluded:
+                    if not assertion.is_locked and not assertion.is_excluded and assertion.compatibility_basis not in ["manual_assertion", "imported"]:
                         prev_status = assertion.match_status
                         assertion.match_status = "Archived"
                         assertion.is_compatible = False

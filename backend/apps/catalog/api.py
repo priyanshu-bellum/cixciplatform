@@ -32,6 +32,33 @@ class ProductSerializerBase(serializers.ModelSerializer):
         except Exception:
             return False
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        try:
+            from apps.media.models import MediaAsset
+            from django.conf import settings
+            media_url = getattr(settings, "MEDIA_URL", "/media/")
+            
+            assets = MediaAsset.objects.filter(owner_record_id=instance.id, status="ready").order_by("created_at")
+            asset_urls = [f"{media_url}{asset.storage_key}" for asset in assets]
+            
+            existing = ret.get("media_references")
+            if not isinstance(existing, list):
+                existing = []
+            
+            combined = []
+            for url in asset_urls:
+                if url not in combined:
+                    combined.append(url)
+            for url in existing:
+                if url not in combined:
+                    combined.append(url)
+            
+            ret["media_references"] = combined
+        except Exception:
+            pass
+        return ret
+
     def create(self, validated_data):
         request = self.context.get("request")
         actor_id = request.user.id if request and request.user and request.user.is_authenticated else None
@@ -998,7 +1025,74 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         
         seen_skus = set()
         seen_upcs = set()
-        
+
+        def lookup_device(dev_name):
+            if not dev_name:
+                return None
+            from apps.devices.models import Device, Manufacturer
+            # 1. Exact match
+            device = Device.objects.filter(name__iexact=dev_name).first()
+            if device:
+                return device
+            
+            # 2. Match with manufacturer name prepended (e.g. user submitted "iPhone 15", db has "Apple iPhone 15")
+            dev_name_lower = dev_name.lower()
+            possible_mfgs = []
+            if "iphone" in dev_name_lower or "ipad" in dev_name_lower or "apple" in dev_name_lower:
+                possible_mfgs.append("Apple")
+            if "galaxy" in dev_name_lower or "samsung" in dev_name_lower:
+                possible_mfgs.append("Samsung")
+            if "pixel" in dev_name_lower or "google" in dev_name_lower:
+                possible_mfgs.append("Google")
+            
+            # Also get all existing manufacturers from database
+            for mfg in Manufacturer.objects.all():
+                if mfg.name not in possible_mfgs:
+                    possible_mfgs.append(mfg.name)
+            
+            for mfg_name in possible_mfgs:
+                if not dev_name_lower.startswith(mfg_name.lower()):
+                    device = Device.objects.filter(name__iexact=f"{mfg_name} {dev_name}").first()
+                    if device:
+                        return device
+            
+            # 3. Match by stripping manufacturer from the beginning (e.g. user submitted "Apple iPhone 15", db has "iPhone 15")
+            words = dev_name.split()
+            if len(words) > 1:
+                first_word = words[0]
+                rest_name = " ".join(words[1:])
+                if Manufacturer.objects.filter(name__iexact=first_word).exists():
+                    device = Device.objects.filter(name__iexact=rest_name).first()
+                    if device:
+                        return device
+            
+            return None
+
+        def is_valid_device_name(p):
+            if not p:
+                return False
+            # If we can lookup the device in DB, it is valid!
+            if lookup_device(p) is not None:
+                return True
+            # Otherwise check keywords for auto-creation
+            words = p.split()
+            if len(words) > 1:
+                first_word = words[0]
+                rest_name = " ".join(words[1:])
+                from apps.devices.models import Device, Manufacturer
+                if Manufacturer.objects.filter(name__iexact=first_word).exists():
+                    return True
+                p_lower = p.lower()
+                for keyword in ["apple", "samsung", "google", "lg", "motorola", "oneplus", "iphone", "ipad", "galaxy", "pixel"]:
+                    if keyword in p_lower:
+                        return True
+            else:
+                p_lower = p.lower()
+                for keyword in ["iphone", "ipad", "galaxy", "pixel"]:
+                    if keyword in p_lower:
+                        return True
+            return False
+
         vendor_company_id = request.user.entity.company_id if (request.user.entity and request.user.entity.company) else None
         if not vendor_company_id:
             # Fallback for admin users without a specific vendor company context
@@ -1130,14 +1224,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             # --- Product Status ---
             status_str = str(row.get("productstatus") or row.get("status") or "").strip().lower()
             if not status_str:
-                row_errors.append({
-                    "row_number": row_num,
-                    "column_name": "Product Status",
-                    "submitted_value": "",
-                    "validation_error": "Product Status must not be blank.",
-                    "recommended_correction": "Provide one of: Active, Inactive, EOL, Out of Stock."
-                })
-            elif status_str not in ["active", "inactive", "eol", "out_of_stock"]:
+                status_str = "active"
+            
+            if status_str not in ["active", "inactive", "eol", "out_of_stock"]:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Product Status",
@@ -1306,31 +1395,25 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if "inventorylevel" in row:
                 inv_val = row.get("inventorylevel")
                 if inv_val is None or str(inv_val).strip() == "":
+                    inv_val = "0"
+                
+                parsed_inv = parse_int_value(inv_val)
+                if parsed_inv is None:
                     row_errors.append({
                         "row_number": row_num,
                         "column_name": "Inventory Level",
-                        "submitted_value": "",
-                        "validation_error": "Inventory Level must not be blank.",
+                        "submitted_value": str(inv_val),
+                        "validation_error": "Inventory Level must be a valid number.",
                         "recommended_correction": "Provide a non-negative integer."
                     })
-                else:
-                    parsed_inv = parse_int_value(inv_val)
-                    if parsed_inv is None:
-                        row_errors.append({
-                            "row_number": row_num,
-                            "column_name": "Inventory Level",
-                            "submitted_value": str(inv_val),
-                            "validation_error": "Inventory Level must be a valid number.",
-                            "recommended_correction": "Provide a non-negative integer."
-                        })
-                    elif parsed_inv < 0:
-                        row_errors.append({
-                            "row_number": row_num,
-                            "column_name": "Inventory Level",
-                            "submitted_value": str(inv_val),
-                            "validation_error": "Inventory Level must be a non-negative number.",
-                            "recommended_correction": "Provide a non-negative integer."
-                        })
+                elif parsed_inv < 0:
+                    row_errors.append({
+                        "row_number": row_num,
+                        "column_name": "Inventory Level",
+                        "submitted_value": str(inv_val),
+                        "validation_error": "Inventory Level must be a non-negative number.",
+                        "recommended_correction": "Provide a non-negative integer."
+                    })
 
             # --- Color / System Color ---
             color = str(row.get("color") or "").strip()
@@ -1631,101 +1714,151 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             parts = [p.strip() for p in g.split("+") if p.strip()]
                             parts_lower = [p.lower() for p in parts]
                             
+                            # If there's a device name in the parts of this group, auto-populate features if blank
+                            if any(is_valid_device_name(pt) for pt in parts):
+                                if product_category == "Headphones":
+                                    if not row_bluetooth: row_bluetooth = "Yes"
+                                    if not row_jack: row_jack = "Not Compatible"
+                                elif product_category == "Speakers":
+                                    if not row_bluetooth: row_bluetooth = "Yes"
+                                    if not row_charging: row_charging = "Not Compatible"
+                                elif product_category == "Chargers and Cables":
+                                    if not row_charging: row_charging = "Not Compatible"
+                                    if not row_wireless: row_wireless = "Not Compatible"
+                                elif product_category == "Memory":
+                                    if not row_storage: row_storage = "Not Compatible"
+                                    if not row_memory: row_memory = "Not Compatible"
+                                elif product_category == "Wearable Tech":
+                                    if not row_charging: row_charging = "Not Compatible"
+                                    if not row_wireless: row_wireless = "Not Compatible"
+                                elif product_category == "Watch Accessories":
+                                    if not row_watch_size: row_watch_size = "Not Compatible"
+                                    if not row_wireless: row_wireless = "Not Compatible"
+
                             if product_category == "Headphones":
-                                row_bluetooth = "Yes" if "bluetooth" in parts_lower else "No"
-                                row_jack = "Not Compatible"
+                                if "bluetooth" in parts_lower:
+                                    row_bluetooth = "Yes"
                                 if "lightning" in parts_lower:
                                     row_jack = "Lightning"
                                 elif "type-c" in parts_lower:
                                     row_jack = "Type-C"
+                                elif "not compatible" in parts_lower:
+                                    row_jack = "Not Compatible"
+                                
                                 if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1:
+                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
                                         comp_errors.append("Not Compatible cannot be combined with other values.")
                                 for p in parts:
-                                    if p.lower() not in ["lightning", "type-c", "bluetooth", "not compatible"]:
+                                    pl = p.lower()
+                                    if pl not in ["lightning", "type-c", "bluetooth", "not compatible"] and not is_valid_device_name(p):
                                         comp_errors.append(f"Invalid attribute '{p}' for Headphones.")
 
                             elif product_category == "Speakers":
-                                row_bluetooth = "Yes" if "bluetooth" in parts_lower else "No"
-                                row_charging = "Not Compatible"
+                                if "bluetooth" in parts_lower:
+                                    row_bluetooth = "Yes"
                                 if "lightning" in parts_lower:
                                     row_charging = "Lightning"
                                 elif "type-c" in parts_lower:
                                     row_charging = "Type-C"
+                                elif "not compatible" in parts_lower:
+                                    row_charging = "Not Compatible"
+                                
                                 if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1:
+                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
                                         comp_errors.append("Not Compatible cannot be combined with other values.")
                                 for p in parts:
-                                    if p.lower() not in ["type-c", "lightning", "bluetooth", "not compatible"]:
+                                    pl = p.lower()
+                                    if pl not in ["type-c", "lightning", "bluetooth", "not compatible"] and not is_valid_device_name(p):
                                         comp_errors.append(f"Invalid attribute '{p}' for Speakers.")
 
                             elif product_category == "Chargers and Cables":
-                                row_charging = "Not Compatible"
                                 if "lightning" in parts_lower:
                                     row_charging = "Lightning"
                                 elif "type-c" in parts_lower:
                                     row_charging = "Type-C"
+                                elif "not compatible" in parts_lower:
+                                    row_charging = "Not Compatible"
+                                
                                 w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts_lower]
-                                case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
-                                row_wireless = "+".join(case_map[w] for w in w_list) if w_list else "Not Compatible"
+                                if w_list:
+                                    case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
+                                    row_wireless = "+".join(case_map[w] for w in w_list)
+                                elif "not compatible" in parts_lower:
+                                    row_wireless = "Not Compatible"
+                                
                                 if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1:
+                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
                                         comp_errors.append("Not Compatible cannot be combined with other values.")
                                 for p in parts:
-                                    if p.lower() not in ["iphone", "android", "lightning", "type-c", "magsafe", "qi", "qi2", "not compatible"]:
+                                    pl = p.lower()
+                                    if pl not in ["iphone", "android", "lightning", "type-c", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
                                         comp_errors.append(f"Invalid attribute '{p}' for Chargers and Cables.")
 
                             elif product_category == "Memory":
-                                row_storage = "Not Compatible"
                                 if "microsdxc" in parts_lower:
                                     row_storage = "microSDXC"
                                 elif "microsdhc" in parts_lower:
                                     row_storage = "microSDHC"
-                                row_memory = "Not Compatible"
+                                elif "not compatible" in parts_lower:
+                                    row_storage = "Not Compatible"
+                                
                                 valid_sizes = ["16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb"]
                                 for p in parts_lower:
                                     if p in valid_sizes:
                                         row_memory = p.upper()
                                         break
+                                
                                 if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1:
+                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
                                         comp_errors.append("Not Compatible cannot be combined with other values.")
                                 for p in parts:
                                     pl = p.lower()
-                                    if pl not in valid_sizes and pl not in ["microsdxc", "microsdhc", "not compatible", "mircosdxc", "mircosdhc", "512bg"]:
+                                    if pl not in valid_sizes and pl not in ["microsdxc", "microsdhc", "not compatible", "mircosdxc", "mircosdhc", "512bg"] and not is_valid_device_name(p):
                                         comp_errors.append(f"Invalid attribute '{p}' for Memory.")
 
                             elif product_category == "Wearable Tech":
-                                row_charging = "Not Compatible"
                                 if "lightning" in parts_lower:
                                     row_charging = "Lightning"
                                 elif "type-c" in parts_lower:
                                     row_charging = "Type-C"
+                                elif "not compatible" in parts_lower:
+                                    row_charging = "Not Compatible"
+                                
                                 w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts_lower]
-                                case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
-                                row_wireless = "+".join(case_map[w] for w in w_list) if w_list else "Not Compatible"
+                                if w_list:
+                                    case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
+                                    row_wireless = "+".join(case_map[w] for w in w_list)
+                                elif "not compatible" in parts_lower:
+                                    row_wireless = "Not Compatible"
+                                
                                 if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1:
+                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
                                         comp_errors.append("Not Compatible cannot be combined with other values.")
                                 for p in parts:
-                                    if p.lower() not in ["type-c", "lightning", "magsafe", "qi", "qi2", "not compatible"]:
+                                    pl = p.lower()
+                                    if pl not in ["type-c", "lightning", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
                                         comp_errors.append(f"Invalid attribute '{p}' for Wearable Tech.")
 
                             elif product_category == "Watch Accessories":
-                                row_watch_size = "Not Compatible"
                                 valid_sizes = ["40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
                                 for p in parts_lower:
                                     if p in valid_sizes:
                                         row_watch_size = p
                                         break
+                                
                                 w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts_lower]
-                                case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
-                                row_wireless = "+".join(case_map[w] for w in w_list) if w_list else "Not Compatible"
+                                if w_list:
+                                    case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
+                                    row_wireless = "+".join(case_map[w] for w in w_list)
+                                elif "not compatible" in parts_lower:
+                                    row_wireless = "Not Compatible"
+                                
                                 if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1:
+                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
                                         comp_errors.append("Not Compatible cannot be combined with other values.")
                                 for p in parts:
-                                    if p.lower() not in ["magsafe", "qi", "qi2", "not compatible"] and p.lower() not in valid_sizes:
+                                    pl = p.lower()
+                                    if pl not in ["magsafe", "qi", "qi2", "not compatible"] and pl not in valid_sizes and not is_valid_device_name(p):
                                         comp_errors.append(f"Invalid attribute '{p}' for Watch Accessories.")
                         
                         normalized_comp = ";".join(unique_groups)
@@ -2165,8 +2298,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 # Convert original image URLs to CIXCI MediaAsset records and link primary image reference
                 if media_refs:
                     from apps.media.models import MediaAsset, AssetType, AssetStatus
+                    from django.conf import settings
                     import uuid
+                    media_url = getattr(settings, "MEDIA_URL", "/media/")
                     first_asset_id = None
+                    cixci_media_refs = []
                     for idx, url in enumerate(media_refs):
                         filename = url.split("/")[-1] or f"image_{idx}.png"
                         if "?" in filename:
@@ -2196,10 +2332,12 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         )
                         if idx == 0:
                             first_asset_id = asset_id
+                        cixci_media_refs.append(f"{media_url}{storage_key}")
                     
+                    product.media_references = cixci_media_refs
                     if first_asset_id:
                         product.primary_image_reference = first_asset_id
-                        super(Product, product).save()
+                    super(Product, product).save()
 
                 # Parse and Save Device Compatibility
                 if normalized_comp:
@@ -2209,12 +2347,12 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     dev_names = [d.strip() for d in normalized_comp.split(';') if d.strip()]
                     if compatibility_update_type == "remove":
                         for dev_name in dev_names:
-                            device = Device.objects.filter(name__iexact=dev_name).first()
+                            device = lookup_device(dev_name)
                             if device:
                                 ProductCompatibilityAssertion.objects.filter(product=product, device_reference=device.id).delete()
                     else: # add or replace
                         for dev_name in dev_names:
-                            device = Device.objects.filter(name__iexact=dev_name).first()
+                            device = lookup_device(dev_name)
                             if not device:
                                 dev_name_lower = dev_name.lower()
                                 if "iphone" in dev_name_lower or "ipad" in dev_name_lower:
