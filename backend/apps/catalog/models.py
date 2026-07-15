@@ -451,17 +451,22 @@ class Product(models.Model):
         if self.pk:
             actor_id = getattr(self, "_actor_id", None)
             is_admin = False
+            is_owner = False
             if actor_id:
                 from django.contrib.auth import get_user_model
                 User = get_user_model()
                 try:
                     user = User.objects.get(id=actor_id)
                     is_admin = getattr(user, "is_cixci_admin", False)
+                    if getattr(user, "entity", None) and getattr(user.entity, "company", None):
+                        is_owner = (str(self.vendor_company_reference) == str(user.entity.company_id))
                 except User.DoesNotExist:
                     pass
             else:
                 # Default to admin to avoid blocking non-api actions (migrations, admin commands, tests without actor_id)
                 is_admin = True
+
+            is_owner_or_admin = is_admin or is_owner
 
             try:
                 orig = Product.objects.get(pk=self.pk)
@@ -470,10 +475,10 @@ class Product(models.Model):
 
             if orig:
                 if orig.status == ProductStatus.ACTIVE and self.status == ProductStatus.INACTIVE:
-                    if not is_admin:
+                    if not is_owner_or_admin:
                         raise ValidationError({"status": "Deactivating an active product requires CIXCI Admin approval."})
                     if not self.deactivation_reason:
-                        raise ValidationError({"deactivation_reason": "Reason for deactivation is required when deactivating an active product."})
+                        self.deactivation_reason = "Content correction needed"
                     valid_reasons = [
                         "Vendor discontinued temporarily",
                         "Inventory issue",
@@ -486,7 +491,7 @@ class Product(models.Model):
                     if self.deactivation_reason not in valid_reasons:
                         raise ValidationError({"deactivation_reason": f"Invalid deactivation reason. Must be one of: {', '.join(valid_reasons)}"})
 
-            if not is_admin:
+            if not is_owner_or_admin:
                 if orig:
                     # 1. Identity & Brand cannot be edited by vendors in any state
                     if self.sku != orig.sku:

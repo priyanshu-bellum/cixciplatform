@@ -1,10 +1,8 @@
-import os
+import re
 
-for root, dirs, files in os.walk('frontend/src'):
-    for file in files:
-        if file.endswith('.tsx') or file.endswith('.ts'):
-            path = os.path.join(root, file)
-            with open(path, encoding='utf-8') as f:
-                for i, line in enumerate(f):
-                    if 'confirm' in line.lower():
-                        print(f"{path}:{i+1}: {line.strip()}")
+log_path = r'C:\Users\dell\.gemini\antigravity\brain\22e9de43-0287-4819-a424-17c30a10c77c\.system_generated\logs\overview.txt'
+
+with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+    for line in f:
+        if 'instance-' in line and ('cixci' in line or 'cd ' in line or 'git ' in line or 'ls' in line):
+            print(line[:300])

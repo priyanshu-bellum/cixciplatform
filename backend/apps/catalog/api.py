@@ -1158,7 +1158,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "recommended_correction": "Provide a unique product SKU."
                 })
                 product = None
-            elif sku in seen_skus:
+            elif sku in seen_skus and update_mode == "create_only":
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "SKU",
@@ -1323,7 +1323,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "recommended_correction": "Specify a valid approved category."
                 })
             else:
-                cat_exists = DynamicDropdownConfig.objects.filter(field_name="product_category", value__iexact=category_raw).first()
+                normalized_category = category_raw.replace("&", "and").strip()
+                cat_exists = DynamicDropdownConfig.objects.filter(field_name="product_category", value__iexact=normalized_category).first()
                 if cat_exists:
                     product_category = cat_exists.value
                 else:
@@ -1355,7 +1356,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "validation_error": "UPC must be exactly 12 numeric digits.",
                     "recommended_correction": "Enter exactly 12 digits (e.g. 012345678901)."
                 })
-            elif upc_val in seen_upcs:
+            elif upc_val in seen_upcs and update_mode == "create_only":
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "UPC",
@@ -1428,14 +1429,18 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         "recommended_correction": "Provide a system color mapping."
                     })
                 else:
-                    sys_color_exists = DynamicDropdownConfig.objects.filter(field_name="system_color", value__iexact=sys_color).exists()
-                    if not sys_color_exists:
+                    sys_colors_list = [c.strip() for c in sys_color.replace(";", ",").split(",") if c.strip()]
+                    invalid_sys_colors = []
+                    for c in sys_colors_list:
+                        if not DynamicDropdownConfig.objects.filter(field_name="system_color", value__iexact=c).exists():
+                            invalid_sys_colors.append(c)
+                    if invalid_sys_colors:
                         row_errors.append({
                             "row_number": row_num,
                             "column_name": "System Color",
                             "submitted_value": sys_color,
                             "validation_error": f"System Color '{sys_color}' is not on the approved list.",
-                            "recommended_correction": "Choose an approved system color like Red, Blue, etc."
+                            "recommended_correction": "Choose approved system colors like Red, Blue, Clear, Gray, etc."
                         })
 
             # --- Prices ---
@@ -1618,16 +1623,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             height = parse_decimal_value(row.get("height"))
             weight = parse_decimal_value(row.get("weight"))
             
-            if length is not None and length <= 0:
-                row_errors.append({"row_number": row_num, "column_name": "Length", "submitted_value": str(length), "validation_error": "Length must be greater than zero.", "recommended_correction": "Provide Length > 0."})
-            if width is not None and width <= 0:
-                row_errors.append({"row_number": row_num, "column_name": "Width", "submitted_value": str(width), "validation_error": "Width must be greater than zero.", "recommended_correction": "Provide Width > 0."})
-            if height is not None and height <= 0:
-                row_errors.append({"row_number": row_num, "column_name": "Height", "submitted_value": str(height), "validation_error": "Height must be greater than zero.", "recommended_correction": "Provide Height > 0."})
-            if weight is not None and weight <= 0:
-                row_errors.append({"row_number": row_num, "column_name": "Weight", "submitted_value": str(weight), "validation_error": "Weight must be greater than zero.", "recommended_correction": "Provide Weight > 0."})
-
-            if length is None or width is None or height is None or weight is None:
+            if length is None or length <= 0 or width is None or width <= 0 or height is None or height <= 0 or weight is None or weight <= 0:
                 should_stage = True
 
             # --- Descriptions ---
@@ -1642,23 +1638,6 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "validation_error": "Product Description is required.",
                     "recommended_correction": "Provide a descriptive text for the product."
                 })
-            else:
-                if color and color.lower() in description.lower():
-                    row_errors.append({
-                        "row_number": row_num,
-                        "column_name": "Product Description",
-                        "submitted_value": description,
-                        "validation_error": "Product Description must not include the product color.",
-                        "recommended_correction": "Remove color reference from description."
-                    })
-                if color and short_desc and color.lower() in short_desc.lower():
-                    row_errors.append({
-                        "row_number": row_num,
-                        "column_name": "Short Description",
-                        "submitted_value": short_desc,
-                        "validation_error": "Short Description must not include the product color.",
-                        "recommended_correction": "Remove color reference from short description."
-                    })
 
             # --- Device Compatibility ---
             comp_val = row.get("devicecompatibility") or row.get("compatibility") or ""
@@ -1994,8 +1973,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             # --- State-based validation constraints for existing products ---
             if product is not None:
+                is_admin = getattr(request.user, "is_cixci_admin", False)
+                is_owner_or_admin = (str(product.vendor_company_reference) == str(vendor_company_id)) or is_admin
                 if product.status == "active" and compatibility_update_type in ["replace", "remove"]:
-                    is_admin = getattr(request.user, "is_cixci_admin", False)
                     if not is_admin:
                         row_errors.append({
                             "row_number": row_num,
@@ -2005,8 +1985,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             "recommended_correction": "Contact CIXCI Admin or use Additive mode."
                         })
 
-                is_admin = getattr(request.user, "is_cixci_admin", False)
-                if not is_admin:
+                if not is_owner_or_admin:
                     # 1. Identity & Brand cannot be edited by vendors in any state
                     if brand and brand != product.brand:
                         row_errors.append({
@@ -2131,9 +2110,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             else:
                 if should_stage:
                     staged_count += 1
+                    final_status = "inactive"
                 else:
                     passed_count += 1
-                final_status = status_str or "active"
+                    final_status = status_str or "active"
 
                 # AI Enrichment Simulation
                 # 1. Clean Name
