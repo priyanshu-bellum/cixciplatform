@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings } from 'lucide-react'
+import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings, ChevronLeft, ChevronRight } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import api from '../lib/apiClient'
@@ -872,6 +872,7 @@ export default function CatalogPage() {
       }
     }
     setShowAddModal(false)
+    resetProductForm()
   }
 
   const resetProductForm = () => {
@@ -931,6 +932,8 @@ export default function CatalogPage() {
       }
     }
     setShowEditModal(false)
+    resetProductForm()
+    setEditingProduct(null)
   }
 
   const handleCloseBulkModal = () => {
@@ -1561,6 +1564,12 @@ export default function CatalogPage() {
           setUploadedZipImages(uploadedList)
           setImagePreviewUrl(uploadedList[0].url)
           setProdPrimaryImageUrl(uploadedList[0].url)
+          
+          setProdImageUrl1(uploadedList[0]?.url || '')
+          setProdImageUrl2(uploadedList[1]?.url || '')
+          setProdImageUrl3(uploadedList[2]?.url || '')
+          setProdImageUrl4(uploadedList[3]?.url || '')
+          setProdImageUrl5(uploadedList[4]?.url || '')
           setFormError(null)
         } catch (err: any) {
           setFormError('Failed to extract images from ZIP file: ' + err.message)
@@ -1572,25 +1581,25 @@ export default function CatalogPage() {
         const files = Array.from(e.target.files)
         setFormError(null)
         try {
-          if (files.length === 1) {
-            const file = files[0]
-            setSelectedImageFile(file)
-            setImagePreviewUrl(URL.createObjectURL(file))
-            setUploadedZipImages([])
-          } else {
-            setFormError('Uploading selected images... Please wait.')
-            const uploadedList: { name: string; url: string }[] = []
-            for (const f of files) {
-              const uploadRes = await handleUploadImage(f)
-              const absoluteUrl = getImageUrl('/media/' + uploadRes.storage_key)
-              uploadedList.push({ name: f.name, url: absoluteUrl })
-            }
-            setUploadedZipImages(uploadedList)
-            setImagePreviewUrl(uploadedList[0].url)
-            setProdPrimaryImageUrl(uploadedList[0].url)
-            setSelectedImageFile(files[0])
-            setFormError(null)
+          setFormError('Uploading selected images... Please wait.')
+          const uploadedList: { name: string; url: string }[] = []
+          for (const f of files) {
+            const uploadRes = await handleUploadImage(f)
+            const absoluteUrl = getImageUrl('/media/' + uploadRes.storage_key)
+            uploadedList.push({ name: f.name, url: absoluteUrl })
           }
+          setUploadedZipImages(uploadedList)
+          setImagePreviewUrl(uploadedList[0].url)
+          setProdPrimaryImageUrl(uploadedList[0].url)
+          
+          setProdImageUrl1(uploadedList[0]?.url || '')
+          setProdImageUrl2(uploadedList[1]?.url || '')
+          setProdImageUrl3(uploadedList[2]?.url || '')
+          setProdImageUrl4(uploadedList[3]?.url || '')
+          setProdImageUrl5(uploadedList[4]?.url || '')
+          
+          setSelectedImageFile(files[0])
+          setFormError(null)
         } catch (err: any) {
           setFormError('Failed to upload one or more images: ' + err.message)
           setSelectedImageFile(null)
@@ -2293,6 +2302,7 @@ export default function CatalogPage() {
       await api.post('/catalog/export-jobs/create_job/', {
         format: exportFormat,
         include_incompatible: includeIncompatible,
+        product_ids: selectedIds,
       })
       setSelectedIds([])
       setShowExportModal(false)
@@ -2316,6 +2326,7 @@ export default function CatalogPage() {
   }
 
   const openEditModal = (p: any) => {
+    resetProductForm()
     setEditingProduct(p)
     setProdName(p.name || '')
     setProdSku(p.sku || '')
@@ -3903,14 +3914,98 @@ export default function CatalogPage() {
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Images</label>
                     <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-                      {/* Active Main Image */}
-                      <div style={{ width: '100%', height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-main)', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                      {/* Active Main Image Carousel */}
+                      <div style={{ width: '100%', height: 240, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-main)', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
                         {activeDetailImageUrl ? (
-                          <img
-                            src={getImageUrl(activeDetailImageUrl)}
-                            alt={selectedManageProduct.name}
-                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                          />
+                          <>
+                            <img
+                              src={getImageUrl(activeDetailImageUrl)}
+                              alt={selectedManageProduct.name}
+                              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                            />
+                            {allImages.length > 1 && (
+                              <>
+                                {/* Left Arrow */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    const idx = allImages.indexOf(activeDetailImageUrl)
+                                    const prevIdx = (idx - 1 + allImages.length) % allImages.length
+                                    setActiveDetailImageUrl(allImages[prevIdx])
+                                  }}
+                                  style={{
+                                    position: 'absolute',
+                                    left: 8,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'rgba(0,0,0,0.5)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    width: 32,
+                                    height: 32,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    transition: 'background 0.2s',
+                                    zIndex: 2,
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.7)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.5)'}
+                                >
+                                  <ChevronLeft size={20} />
+                                </button>
+                                {/* Right Arrow */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    const idx = allImages.indexOf(activeDetailImageUrl)
+                                    const nextIdx = (idx + 1) % allImages.length
+                                    setActiveDetailImageUrl(allImages[nextIdx])
+                                  }}
+                                  style={{
+                                    position: 'absolute',
+                                    right: 8,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'rgba(0,0,0,0.5)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    width: 32,
+                                    height: 32,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    transition: 'background 0.2s',
+                                    zIndex: 2,
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.7)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.5)'}
+                                >
+                                  <ChevronRight size={20} />
+                                </button>
+                                {/* Pagination Badge */}
+                                <div style={{
+                                  position: 'absolute',
+                                  bottom: 8,
+                                  background: 'rgba(0,0,0,0.6)',
+                                  color: '#fff',
+                                  padding: '2px 8px',
+                                  borderRadius: 12,
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  zIndex: 2,
+                                }}>
+                                  {allImages.indexOf(activeDetailImageUrl) + 1} / {allImages.length}
+                                </div>
+                              </>
+                            )}
+                          </>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
                             <ShoppingBag size={48} />

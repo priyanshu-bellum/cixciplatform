@@ -202,6 +202,141 @@ class TestExportJobs:
         assert resp.status_code == 200
         assert len(resp.data) >= 2
 
+    def test_export_job_processing_and_api_key_scoping(self, buyer_client, api_client, buyer_user, vendor_company):
+        from apps.catalog.models import Product, BuyerProductExportJob, BuyerProductExportSelectionSnapshot
+        from apps.media.models import MediaAsset
+        from apps.catalog.tasks import process_buyer_export_job
+        from apps.integration.models import CompanyAPIKey
+        from django.conf import settings
+        import os
+        import uuid
+
+        # Create a device and category config
+        from apps.devices.models import Device, DeviceType, Manufacturer
+        from apps.catalog.models import ProductCompatibilityAssertion, DynamicDropdownConfig
+
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        dt.status = "active"
+        dt.save()
+
+        mfr, _ = Manufacturer.objects.get_or_create(name="TestMfr")
+        device, _ = Device.objects.get_or_create(name="TestDevice", device_type=dt, manufacturer=mfr)
+        device.lifecycle_status = "available"
+        device.save()
+
+        cfg, _ = DynamicDropdownConfig.objects.get_or_create(
+            field_name="product_category",
+            value="Chargers and Cables"
+        )
+        cfg.status = "active"
+        cfg.compatibility_mode = "explicit"
+        cfg.save()
+
+        # 1. Create a product
+        product = Product.objects.create(
+            name="Exportable Charger",
+            sku="EXP-CHG-001",
+            brand="ChargeBrand",
+            product_type="accessory",
+            product_category="Chargers and Cables",
+            launch_date="2026-06-18",
+            status="active",
+            vendor_company_reference=vendor_company.id,
+            company_scope_reference=buyer_user.entity.company_id,
+        )
+        ProductCompatibilityAssertion.objects.create(
+            product=product,
+            device_reference=device.id,
+            is_compatible=True,
+            is_excluded=False
+        )
+        product.compatibility_status = "complete"
+        product.save()
+
+        # 2. Create another product (not exported)
+        non_exported_product = Product.objects.create(
+            name="Unexported Cable",
+            sku="UNEXP-CBL-002",
+            brand="CableBrand",
+            product_type="accessory",
+            product_category="Chargers and Cables",
+            launch_date="2026-06-18",
+            status="active",
+            vendor_company_reference=vendor_company.id,
+            company_scope_reference=buyer_user.entity.company_id,
+        )
+        ProductCompatibilityAssertion.objects.create(
+            product=non_exported_product,
+            device_reference=device.id,
+            is_compatible=True,
+            is_excluded=False
+        )
+        non_exported_product.compatibility_status = "complete"
+        non_exported_product.save()
+
+        # 3. Create the export job
+        job = BuyerProductExportJob.objects.create(
+            buyer_reference=buyer_user.id,
+            company_scope_reference=buyer_user.entity.company_id,
+            buyer_entity_reference=buyer_user.entity_id,
+            requested_by=buyer_user.id,
+            format="csv"
+        )
+        snapshot = BuyerProductExportSelectionSnapshot.objects.create(
+            export_job=job,
+            product_ids=[str(product.id)],
+            portfolio_snapshot_reference=uuid.uuid4()
+        )
+
+        # 4. Process the export job
+        process_buyer_export_job(job.id)
+
+        # Refresh from DB
+        job.refresh_from_db()
+        assert job.status == "completed"
+        assert job.product_count == 1
+        assert job.output_file_reference is not None
+
+        # Verify MediaAsset and file on disk
+        asset = MediaAsset.objects.get(id=job.output_file_reference)
+        assert asset.status == "ready"
+        full_path = os.path.join(settings.MEDIA_ROOT, asset.storage_key)
+        assert os.path.exists(full_path)
+
+        # Clean up file after check
+        try:
+            os.remove(full_path)
+        except OSError:
+            pass
+
+        # 5. Verify API Key Scoping
+        # Create an API Key for the buyer's company
+        api_key = CompanyAPIKey.objects.create(
+            label="Test Buyer Key",
+            token="cixci_key_test_buyer_token_12345",
+            company_scope_reference=buyer_user.entity.company_id,
+            is_active=True
+        )
+
+        # Call product list with API Key auth
+        headers = {"HTTP_AUTHORIZATION": f"Api-Key {api_key.token}"}
+        resp = api_client.get("/api/v1/catalog/products/", **headers)
+        assert resp.status_code == 200, resp.data
+        
+        # Verify that ONLY the exported product is returned
+        results = resp.data["results"] if isinstance(resp.data, dict) and "results" in resp.data else resp.data
+        product_ids = [p["id"] for p in results]
+        assert str(product.id) in product_ids, f"Expected {product.id} in {product_ids}"
+        assert str(non_exported_product.id) not in product_ids
+
+        # Call retrieve with API Key auth for the exported product (should succeed)
+        resp_retrieve_exp = api_client.get(f"/api/v1/catalog/products/{product.id}/", **headers)
+        assert resp_retrieve_exp.status_code == 200, resp_retrieve_exp.data
+
+        # Call retrieve with API Key auth for the unexported product (should fail/404)
+        resp_retrieve_unexp = api_client.get(f"/api/v1/catalog/products/{non_exported_product.id}/", **headers)
+        assert resp_retrieve_unexp.status_code == 404
+
 
 @pytest.mark.django_db
 class TestOutOfStockStatus:
@@ -872,6 +1007,118 @@ class TestGovernanceAndCompatibilityImport:
         assert resp.status_code == 200
         assert len(resp.data["results"]) == 1
         assert resp.data["results"][0]["sku"] == "SEARCH-SKU-123"
+
+    @pytest.mark.django_db
+    def test_bulk_upload_comma_separated_device_compatibility(self, buyer_client, buyer_user):
+        """Verify that comma-separated compatibility fields split and associate correct devices."""
+        import io
+        from apps.devices.models import Device, Manufacturer, DeviceType
+        from apps.catalog.models import Product, ProductCompatibilityAssertion, DynamicDropdownConfig
+        
+        # Setup dropdown config for Cases category
+        DynamicDropdownConfig.objects.get_or_create(field_name="brand", value="TestBrand", display_name="TestBrand")
+        DynamicDropdownConfig.objects.get_or_create(field_name="product_category", value="Cases", display_name="Cases")
+
+        # Setup manufacturer and devices
+        mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        dev1, _ = Device.objects.get_or_create(name="Apple iPhone 17", manufacturer=mfg, device_type=dt, lifecycle_status="available")
+        dev2, _ = Device.objects.get_or_create(name="Apple iPhone 16 Pro", manufacturer=mfg, device_type=dt, lifecycle_status="available")
+
+        csv_data = (
+            "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,Device Compatibility\n"
+            'CASE-SKU-777,TestBrand,Cases,123456789099,06/18/2026,12.00,24.00,Test Cases,Premium case,Active,"iPhone 17, iPhone 16 Pro"\n'
+        )
+        file_obj = io.BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "catalog_import.csv"
+        
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "create_only"},
+            format="multipart"
+        )
+        assert resp.status_code == 200
+        assert resp.data["rows_failed"] == 0
+        
+        # Verify both compatibility assertions were created
+        prod = Product.objects.get(sku="CASE-SKU-777")
+        assertions = ProductCompatibilityAssertion.objects.filter(product=prod)
+        assert assertions.count() == 2
+        
+        device_names = {Device.objects.get(id=a.device_reference).name for a in assertions}
+        assert device_names == {"Apple iPhone 17", "Apple iPhone 16 Pro"}
+
+    @pytest.mark.django_db
+    def test_manual_media_asset_linking(self, buyer_client, buyer_user):
+        """Verify that when a product is created or updated manually, referenced MediaAssets get linked."""
+        from apps.media.models import MediaAsset
+        from apps.catalog.models import Product, DynamicDropdownConfig
+        import uuid
+
+        # Create DynamicDropdownConfig to pass validation
+        DynamicDropdownConfig.objects.get_or_create(field_name="brand", value="TestBrand", display_name="TestBrand")
+        DynamicDropdownConfig.objects.get_or_create(field_name="product_category", value="Cases", display_name="Cases")
+
+        # Create some media assets with owner_record_id = None
+        asset_primary = MediaAsset.objects.create(
+            id=uuid.uuid4(),
+            asset_type="product_image",
+            status="ready",
+            owner_module="catalog",
+            owner_record_id=None,
+            company_scope_reference=uuid.uuid4(),
+            original_filename="primary.png",
+            file_extension="png",
+            mime_type="image/png"
+        )
+        asset_ref1_id = uuid.uuid4()
+        asset_ref1 = MediaAsset.objects.create(
+            id=asset_ref1_id,
+            asset_type="product_image",
+            status="ready",
+            owner_module="catalog",
+            owner_record_id=None,
+            company_scope_reference=uuid.uuid4(),
+            original_filename="ref1.png",
+            file_extension="png",
+            mime_type="image/png",
+            storage_key=f"test-company/product_image/{asset_ref1_id}/ref1.png"
+        )
+
+        payload = {
+            "name": "Test Product Link",
+            "sku": "LINK-SKU-123",
+            "brand": "TestBrand",
+            "product_type": "accessory",
+            "product_category": "Cases",
+            "vendor_wholesale_price_amount": 10.00,
+            "vendor_wholesale_price_currency": "USD",
+            "status": "active",
+            "upc": "123456789012",
+            "vendor_company_reference": str(uuid.uuid4()),
+            "launch_date": "2026-06-18",
+            "primary_image_reference": str(asset_primary.id),
+            "media_references": [
+                f"http://localhost:8000/media/{asset_ref1.storage_key}"
+            ]
+        }
+
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/",
+            payload,
+            format="json"
+        )
+        assert resp.status_code == 201, f"Create failed: {resp.content.decode()}"
+        
+        prod_id = resp.data["id"]
+        
+        # Check that owner_record_id of both media assets was updated
+        asset_primary.refresh_from_db()
+        asset_ref1.refresh_from_db()
+        
+        assert str(asset_primary.owner_record_id) == str(prod_id)
+        assert str(asset_ref1.owner_record_id) == str(prod_id)
+
 
 
 

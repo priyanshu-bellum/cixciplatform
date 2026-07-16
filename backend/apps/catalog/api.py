@@ -59,11 +59,39 @@ class ProductSerializerBase(serializers.ModelSerializer):
             pass
         return ret
 
+    def _link_media_assets(self, instance):
+        try:
+            import re
+            from apps.media.models import MediaAsset
+            
+            asset_ids = set()
+            
+            # 1. Primary image reference UUID
+            if instance.primary_image_reference:
+                asset_ids.add(str(instance.primary_image_reference))
+                
+            # 2. Extract UUIDs from media_references list
+            if isinstance(instance.media_references, list):
+                for ref in instance.media_references:
+                    if isinstance(ref, str):
+                        match = re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", ref, re.IGNORECASE)
+                        if match:
+                            asset_ids.add(match.group(0).lower())
+                            
+            if asset_ids:
+                MediaAsset.objects.filter(id__in=list(asset_ids)).update(
+                    owner_record_id=instance.id,
+                    owner_module="catalog"
+                )
+        except Exception:
+            pass
+
     def create(self, validated_data):
         request = self.context.get("request")
         actor_id = request.user.id if request and request.user and request.user.is_authenticated else None
         instance = self.Meta.model(**validated_data)
         instance.save(actor_id=actor_id)
+        self._link_media_assets(instance)
         return instance
 
     def update(self, instance, validated_data):
@@ -72,6 +100,7 @@ class ProductSerializerBase(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save(actor_id=actor_id)
+        self._link_media_assets(instance)
         return instance
 
 
@@ -353,13 +382,27 @@ class BuyerCompatibilityProjectionSerializer(serializers.ModelSerializer):
 
 
 class BuyerExportJobSerializer(serializers.ModelSerializer):
+    download_url = serializers.SerializerMethodField()
+
     class Meta:
         model = BuyerProductExportJob
         fields = [
             "id", "status", "format", "include_incompatible",
             "portfolio_snapshot_reference", "product_count",
-            "output_file_reference", "created_at", "completed_at",
+            "output_file_reference", "download_url", "created_at", "completed_at",
         ]
+
+    def get_download_url(self, obj):
+        if obj.status == "completed" and obj.output_file_reference:
+            from apps.media.models import MediaAsset
+            asset = MediaAsset.objects.filter(id=obj.output_file_reference).first()
+            if asset and asset.storage_key:
+                from django.conf import settings
+                media_url = settings.MEDIA_URL
+                if not media_url.endswith("/"):
+                    media_url += "/"
+                return f"{media_url}{asset.storage_key}"
+        return None
 
 
 class DynamicDropdownConfigSerializer(serializers.ModelSerializer):
@@ -444,13 +487,14 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             Q(release_date__isnull=True) | Q(release_date__lte=today_est)
         )
 
-        if getattr(self, "action", None) == "list" and company.company_type == "buyer":
+        if getattr(self, "action", None) in ["list", "retrieve"] and company.company_type == "buyer":
             from apps.integration.models import CompanyAPIKey
             is_api_key_auth = isinstance(self.request.auth, CompanyAPIKey)
             if is_api_key_auth:
                 from apps.catalog.models import BuyerProductExportSelectionSnapshot
                 exported_product_ids = BuyerProductExportSelectionSnapshot.objects.filter(
-                    export_job__company_scope_reference=company.id
+                    export_job__company_scope_reference=company.id,
+                    export_job__status="completed"
                 ).values_list("product_ids", flat=True)
                 
                 flat_exported_ids = []
@@ -459,37 +503,37 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         flat_exported_ids.extend(pid_list)
                 
                 qs = qs.filter(id__in=flat_exported_ids)
+            elif getattr(self, "action", None) == "list":
+                device_id_param = self.request.query_params.get("device_id")
+                from apps.devices.models import BuyerDevicePortfolioReference
+                portfolio_device_ids = BuyerDevicePortfolioReference.objects.filter(
+                    buyer_reference=user.id,
+                    company_scope_reference=company.id,
+                    active_flag=True
+                ).values_list("device_id", flat=True)
 
-            device_id_param = self.request.query_params.get("device_id")
-            from apps.devices.models import BuyerDevicePortfolioReference
-            portfolio_device_ids = BuyerDevicePortfolioReference.objects.filter(
-                buyer_reference=user.id,
-                company_scope_reference=company.id,
-                active_flag=True
-            ).values_list("device_id", flat=True)
-
-            if not portfolio_device_ids:
-                return Product.objects.none()
-
-            if device_id_param:
-                from uuid import UUID
-                try:
-                    dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
-                    target_device_ids = [d for d in dev_uuids if d in portfolio_device_ids]
-                    if not target_device_ids:
-                        return Product.objects.none()
-                except ValueError:
+                if not portfolio_device_ids:
                     return Product.objects.none()
-            else:
-                target_device_ids = portfolio_device_ids
 
-            compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
-                device_reference__in=target_device_ids,
-                is_compatible=True,
-                is_excluded=False
-            ).values_list("product_id", flat=True)
+                if device_id_param:
+                    from uuid import UUID
+                    try:
+                        dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
+                        target_device_ids = [d for d in dev_uuids if d in portfolio_device_ids]
+                        if not target_device_ids:
+                            return Product.objects.none()
+                    except ValueError:
+                        return Product.objects.none()
+                else:
+                    target_device_ids = portfolio_device_ids
 
-            qs = qs.filter(id__in=compatible_product_ids)
+                compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
+                    device_reference__in=target_device_ids,
+                    is_compatible=True,
+                    is_excluded=False
+                ).values_list("product_id", flat=True)
+
+                qs = qs.filter(id__in=compatible_product_ids)
 
         buyer_regions = company.approved_regions or []
         if not isinstance(buyer_regions, list):
@@ -1672,11 +1716,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             if comp_val or has_separate_cols:
                 comp_str = str(comp_val).strip()
-                # Category-specific structural validation
                 comp_errors = []
                 
-                # Parse from compatibility column if separate columns not present
-                if not has_separate_cols and comp_str:
+                # Parse from compatibility column if present
+                if comp_str:
                     # Support both comma and semicolon separation
                     unified_comp_str = comp_str.replace(",", ";")
                     groups = [g.strip() for g in unified_comp_str.split(";") if g.strip()]
@@ -1687,34 +1730,38 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         if gl not in seen_g:
                             seen_g.add(gl)
                             unique_groups.append(g)
-                        
-                        # Set default variables based on parts for category-specific check below
-                        for g in unique_groups:
-                            parts = [p.strip() for p in g.split("+") if p.strip()]
-                            parts_lower = [p.lower() for p in parts]
-                            
-                            # If there's a device name in the parts of this group, auto-populate features if blank
-                            if any(is_valid_device_name(pt) for pt in parts):
-                                if product_category == "Headphones":
-                                    if not row_bluetooth: row_bluetooth = "Yes"
-                                    if not row_jack: row_jack = "Not Compatible"
-                                elif product_category == "Speakers":
-                                    if not row_bluetooth: row_bluetooth = "Yes"
-                                    if not row_charging: row_charging = "Not Compatible"
-                                elif product_category == "Chargers and Cables":
-                                    if not row_charging: row_charging = "Not Compatible"
-                                    if not row_wireless: row_wireless = "Not Compatible"
-                                elif product_category == "Memory":
-                                    if not row_storage: row_storage = "Not Compatible"
-                                    if not row_memory: row_memory = "Not Compatible"
-                                elif product_category == "Wearable Tech":
-                                    if not row_charging: row_charging = "Not Compatible"
-                                    if not row_wireless: row_wireless = "Not Compatible"
-                                elif product_category == "Watch Accessories":
-                                    if not row_watch_size: row_watch_size = "Not Compatible"
-                                    if not row_wireless: row_wireless = "Not Compatible"
+                else:
+                    unique_groups = []
 
+                if unique_groups:
+                    # Set default variables based on parts for category-specific check below
+                    for g_item in unique_groups:
+                        parts = [p.strip() for p in g_item.split("+") if p.strip()]
+                        parts_lower = [p.lower() for p in parts]
+                        
+                        # If there's a device name in the parts of this group, auto-populate features if blank
+                        if not has_separate_cols and any(is_valid_device_name(pt) for pt in parts):
                             if product_category == "Headphones":
+                                if not row_bluetooth: row_bluetooth = "Yes"
+                                if not row_jack: row_jack = "Not Compatible"
+                            elif product_category == "Speakers":
+                                if not row_bluetooth: row_bluetooth = "Yes"
+                                if not row_charging: row_charging = "Not Compatible"
+                            elif product_category == "Chargers and Cables":
+                                if not row_charging: row_charging = "Not Compatible"
+                                if not row_wireless: row_wireless = "Not Compatible"
+                            elif product_category == "Memory":
+                                if not row_storage: row_storage = "Not Compatible"
+                                if not row_memory: row_memory = "Not Compatible"
+                            elif product_category == "Wearable Tech":
+                                if not row_charging: row_charging = "Not Compatible"
+                                if not row_wireless: row_wireless = "Not Compatible"
+                            elif product_category == "Watch Accessories":
+                                if not row_watch_size: row_watch_size = "Not Compatible"
+                                if not row_wireless: row_wireless = "Not Compatible"
+
+                        if product_category == "Headphones":
+                            if not has_separate_cols:
                                 if "bluetooth" in parts_lower:
                                     row_bluetooth = "Yes"
                                 if "lightning" in parts_lower:
@@ -1723,16 +1770,17 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     row_jack = "Type-C"
                                 elif "not compatible" in parts_lower:
                                     row_jack = "Not Compatible"
-                                
-                                if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                        comp_errors.append("Not Compatible cannot be combined with other values.")
-                                for p in parts:
-                                    pl = p.lower()
-                                    if pl not in ["lightning", "type-c", "bluetooth", "not compatible"] and not is_valid_device_name(p):
-                                        comp_errors.append(f"Invalid attribute '{p}' for Headphones.")
+                            
+                            if "not compatible" in parts_lower:
+                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
+                                    comp_errors.append("Not Compatible cannot be combined with other values.")
+                            for p in parts:
+                                pl = p.lower()
+                                if pl not in ["lightning", "type-c", "bluetooth", "not compatible"] and not is_valid_device_name(p):
+                                    comp_errors.append(f"Invalid attribute '{p}' for Headphones.")
 
-                            elif product_category == "Speakers":
+                        elif product_category == "Speakers":
+                            if not has_separate_cols:
                                 if "bluetooth" in parts_lower:
                                     row_bluetooth = "Yes"
                                 if "lightning" in parts_lower:
@@ -1741,16 +1789,17 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     row_charging = "Type-C"
                                 elif "not compatible" in parts_lower:
                                     row_charging = "Not Compatible"
-                                
-                                if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                        comp_errors.append("Not Compatible cannot be combined with other values.")
-                                for p in parts:
-                                    pl = p.lower()
-                                    if pl not in ["type-c", "lightning", "bluetooth", "not compatible"] and not is_valid_device_name(p):
-                                        comp_errors.append(f"Invalid attribute '{p}' for Speakers.")
+                            
+                            if "not compatible" in parts_lower:
+                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
+                                    comp_errors.append("Not Compatible cannot be combined with other values.")
+                            for p in parts:
+                                pl = p.lower()
+                                if pl not in ["type-c", "lightning", "bluetooth", "not compatible"] and not is_valid_device_name(p):
+                                    comp_errors.append(f"Invalid attribute '{p}' for Speakers.")
 
-                            elif product_category == "Chargers and Cables":
+                        elif product_category == "Chargers and Cables":
+                            if not has_separate_cols:
                                 if "lightning" in parts_lower:
                                     row_charging = "Lightning"
                                 elif "type-c" in parts_lower:
@@ -1764,16 +1813,18 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     row_wireless = "+".join(case_map[w] for w in w_list)
                                 elif "not compatible" in parts_lower:
                                     row_wireless = "Not Compatible"
-                                
-                                if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                        comp_errors.append("Not Compatible cannot be combined with other values.")
-                                for p in parts:
-                                    pl = p.lower()
-                                    if pl not in ["iphone", "android", "lightning", "type-c", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
-                                        comp_errors.append(f"Invalid attribute '{p}' for Chargers and Cables.")
+                            
+                            if "not compatible" in parts_lower:
+                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
+                                    comp_errors.append("Not Compatible cannot be combined with other values.")
+                            for p in parts:
+                                pl = p.lower()
+                                if pl not in ["iphone", "android", "lightning", "type-c", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
+                                    comp_errors.append(f"Invalid attribute '{p}' for Chargers and Cables.")
 
-                            elif product_category == "Memory":
+                        elif product_category == "Memory":
+                            valid_sizes = ["16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb"]
+                            if not has_separate_cols:
                                 if "microsdxc" in parts_lower:
                                     row_storage = "microSDXC"
                                 elif "microsdhc" in parts_lower:
@@ -1781,21 +1832,21 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                 elif "not compatible" in parts_lower:
                                     row_storage = "Not Compatible"
                                 
-                                valid_sizes = ["16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb"]
                                 for p in parts_lower:
                                     if p in valid_sizes:
                                         row_memory = p.upper()
                                         break
-                                
-                                if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                        comp_errors.append("Not Compatible cannot be combined with other values.")
-                                for p in parts:
-                                    pl = p.lower()
-                                    if pl not in valid_sizes and pl not in ["microsdxc", "microsdhc", "not compatible", "mircosdxc", "mircosdhc", "512bg"] and not is_valid_device_name(p):
-                                        comp_errors.append(f"Invalid attribute '{p}' for Memory.")
+                            
+                            if "not compatible" in parts_lower:
+                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
+                                    comp_errors.append("Not Compatible cannot be combined with other values.")
+                            for p in parts:
+                                pl = p.lower()
+                                if pl not in valid_sizes and pl not in ["microsdxc", "microsdhc", "not compatible", "mircosdxc", "mircosdhc", "512bg"] and not is_valid_device_name(p):
+                                    comp_errors.append(f"Invalid attribute '{p}' for Memory.")
 
-                            elif product_category == "Wearable Tech":
+                        elif product_category == "Wearable Tech":
+                            if not has_separate_cols:
                                 if "lightning" in parts_lower:
                                     row_charging = "Lightning"
                                 elif "type-c" in parts_lower:
@@ -1809,17 +1860,18 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     row_wireless = "+".join(case_map[w] for w in w_list)
                                 elif "not compatible" in parts_lower:
                                     row_wireless = "Not Compatible"
-                                
-                                if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                        comp_errors.append("Not Compatible cannot be combined with other values.")
-                                for p in parts:
-                                    pl = p.lower()
-                                    if pl not in ["type-c", "lightning", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
-                                        comp_errors.append(f"Invalid attribute '{p}' for Wearable Tech.")
+                            
+                            if "not compatible" in parts_lower:
+                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
+                                    comp_errors.append("Not Compatible cannot be combined with other values.")
+                            for p in parts:
+                                pl = p.lower()
+                                if pl not in ["type-c", "lightning", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
+                                    comp_errors.append(f"Invalid attribute '{p}' for Wearable Tech.")
 
-                            elif product_category == "Watch Accessories":
-                                valid_sizes = ["40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
+                        elif product_category == "Watch Accessories":
+                            valid_sizes = ["40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
+                            if not has_separate_cols:
                                 for p in parts_lower:
                                     if p in valid_sizes:
                                         row_watch_size = p
@@ -1831,18 +1883,24 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     row_wireless = "+".join(case_map[w] for w in w_list)
                                 elif "not compatible" in parts_lower:
                                     row_wireless = "Not Compatible"
-                                
-                                if "not compatible" in parts_lower:
-                                    if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                        comp_errors.append("Not Compatible cannot be combined with other values.")
-                                for p in parts:
-                                    pl = p.lower()
-                                    if pl not in ["magsafe", "qi", "qi2", "not compatible"] and pl not in valid_sizes and not is_valid_device_name(p):
-                                        comp_errors.append(f"Invalid attribute '{p}' for Watch Accessories.")
+                            
+                            if "not compatible" in parts_lower:
+                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
+                                    comp_errors.append("Not Compatible cannot be combined with other values.")
+                            for p in parts:
+                                pl = p.lower()
+                                if pl not in ["magsafe", "qi", "qi2", "not compatible"] and pl not in valid_sizes and not is_valid_device_name(p):
+                                    comp_errors.append(f"Invalid attribute '{p}' for Watch Accessories.")
                         
-                        normalized_comp = ";".join(unique_groups)
-                    else:
-                        normalized_comp = comp_str
+                        elif product_category not in ["Headphones", "Speakers", "Chargers and Cables", "Memory", "Wearable Tech", "Watch Accessories"]:
+                            # For standard categories, validate the device name itself
+                            for p in parts:
+                                if not is_valid_device_name(p):
+                                    comp_errors.append(f"Invalid device '{p}'.")
+                    
+                    normalized_comp = ";".join(unique_groups)
+                else:
+                    normalized_comp = ""
 
                 # Now perform precise validation on the values of the fields
                 if product_category == "Headphones":
@@ -2324,7 +2382,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     if compatibility_update_type == "replace":
                         ProductCompatibilityAssertion.objects.filter(product=product).delete()
                     
-                    dev_names = [d.strip() for d in normalized_comp.split(';') if d.strip()]
+                    # Split by both semicolon and comma to ensure discrete device assertions
+                    unified_normalized = normalized_comp.replace(",", ";")
+                    dev_names = [d.strip() for d in unified_normalized.split(';') if d.strip()]
                     if compatibility_update_type == "remove":
                         for dev_name in dev_names:
                             device = lookup_device(dev_name)
@@ -2475,7 +2535,35 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
         return BuyerProductExportJob.objects.filter(
             buyer_reference=self.request.user.id,
             company_scope_reference=self.request.user.entity.company_id,
+            buyer_entity_reference=self.request.user.entity_id,
         ).order_by("-created_at")
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"])
+    def download(self, request, pk=None):
+        instance = self.get_object()
+        if instance.status != "completed" or not instance.output_file_reference:
+            return Response({"error": "Export job is not completed or has no output file."}, status=400)
+        from apps.media.models import MediaAsset
+        asset = MediaAsset.objects.filter(id=instance.output_file_reference).first()
+        if not asset:
+            return Response({"error": "Media asset not found."}, status=404)
+        
+        import os
+        from django.conf import settings
+        from django.http import FileResponse
+        
+        full_path = os.path.join(settings.MEDIA_ROOT, asset.storage_key)
+        if not os.path.exists(full_path):
+            return Response({"error": "File not found on disk."}, status=404)
+            
+        response = FileResponse(open(full_path, "rb"), content_type=asset.mime_type)
+        response["Content-Disposition"] = f'attachment; filename="{asset.original_filename}"'
+        return response
 
     @action(detail=False, methods=["get"])
     def list_jobs(self, request):
@@ -2592,7 +2680,10 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
             portfolio_snapshot_reference=portfolio_snapshot_ref
         )
 
-        # TODO: dispatch Celery task for export in Phase 4
+        # Dispatch Celery task for export
+        from apps.catalog.tasks import process_buyer_export_job
+        process_buyer_export_job.delay(job.id)
+
         return Response(BuyerExportJobSerializer(job).data, status=status.HTTP_201_CREATED)
 
 
