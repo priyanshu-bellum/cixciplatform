@@ -1394,13 +1394,16 @@ export default function CatalogPage() {
     if (!selectedManageProduct) return []
     const list: string[] = []
     if (selectedManageProduct.primary_image_url) {
-      list.push(selectedManageProduct.primary_image_url)
+      list.push(getImageUrl(selectedManageProduct.primary_image_url))
     }
     if (Array.isArray(selectedManageProduct.media_references)) {
       selectedManageProduct.media_references.forEach((ref: any) => {
-        const url = typeof ref === 'string' ? ref : (ref?.url || ref?.storage_key)
-        if (url && !list.includes(url)) {
-          list.push(url)
+        const rawUrl = typeof ref === 'string' ? ref : (ref?.url || ref?.storage_key)
+        if (rawUrl) {
+          const url = getImageUrl(rawUrl)
+          if (!list.includes(url)) {
+            list.push(url)
+          }
         }
       })
     }
@@ -1565,11 +1568,11 @@ export default function CatalogPage() {
           setImagePreviewUrl(uploadedList[0].url)
           setProdPrimaryImageUrl(uploadedList[0].url)
           
-          setProdImageUrl1(uploadedList[0]?.url || '')
-          setProdImageUrl2(uploadedList[1]?.url || '')
-          setProdImageUrl3(uploadedList[2]?.url || '')
-          setProdImageUrl4(uploadedList[3]?.url || '')
-          setProdImageUrl5(uploadedList[4]?.url || '')
+          setProdImageUrl1(uploadedList[1]?.url || '')
+          setProdImageUrl2(uploadedList[2]?.url || '')
+          setProdImageUrl3(uploadedList[3]?.url || '')
+          setProdImageUrl4(uploadedList[4]?.url || '')
+          setProdImageUrl5(uploadedList[5]?.url || '')
           setFormError(null)
         } catch (err: any) {
           setFormError('Failed to extract images from ZIP file: ' + err.message)
@@ -1592,11 +1595,11 @@ export default function CatalogPage() {
           setImagePreviewUrl(uploadedList[0].url)
           setProdPrimaryImageUrl(uploadedList[0].url)
           
-          setProdImageUrl1(uploadedList[0]?.url || '')
-          setProdImageUrl2(uploadedList[1]?.url || '')
-          setProdImageUrl3(uploadedList[2]?.url || '')
-          setProdImageUrl4(uploadedList[3]?.url || '')
-          setProdImageUrl5(uploadedList[4]?.url || '')
+          setProdImageUrl1(uploadedList[1]?.url || '')
+          setProdImageUrl2(uploadedList[2]?.url || '')
+          setProdImageUrl3(uploadedList[3]?.url || '')
+          setProdImageUrl4(uploadedList[4]?.url || '')
+          setProdImageUrl5(uploadedList[5]?.url || '')
           
           setSelectedImageFile(files[0])
           setFormError(null)
@@ -2362,11 +2365,22 @@ export default function CatalogPage() {
     setProdWarranty(p.warranty || '')
     setProdShortDescription(p.short_description || '')
     setProdPromoInformation(p.promo_information || '')
-    setProdImageUrl1(p.media_references?.[0] || '')
-    setProdImageUrl2(p.media_references?.[1] || '')
-    setProdImageUrl3(p.media_references?.[2] || '')
-    setProdImageUrl4(p.media_references?.[3] || '')
-    setProdImageUrl5(p.media_references?.[4] || '')
+    // Filter out primary image from media references for additional fields
+    const primaryUrl = p.primary_image_url || ''
+    const cleanPrimary = primaryUrl.replace(/^(https?:\/\/[^\/]+)/, '')
+    const additionalImages = (p.media_references || []).map((ref: any) => {
+      return typeof ref === 'string' ? ref : (ref?.url || ref?.storage_key || '')
+    }).filter((url: string) => {
+      if (!url) return false
+      const cleanRef = url.replace(/^(https?:\/\/[^\/]+)/, '')
+      return cleanRef !== cleanPrimary
+    })
+
+    setProdImageUrl1(additionalImages[0] || '')
+    setProdImageUrl2(additionalImages[1] || '')
+    setProdImageUrl3(additionalImages[2] || '')
+    setProdImageUrl4(additionalImages[3] || '')
+    setProdImageUrl5(additionalImages[4] || '')
     setProdMetaTitle(p.meta_title || '')
     setProdMetaDescription(p.meta_description || '')
 
