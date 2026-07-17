@@ -1120,27 +1120,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         def is_valid_device_name(p):
             if not p:
                 return False
-            # If we can lookup the device in DB, it is valid!
-            if lookup_device(p) is not None:
-                return True
-            # Otherwise check keywords for auto-creation
-            words = p.split()
-            if len(words) > 1:
-                first_word = words[0]
-                rest_name = " ".join(words[1:])
-                from apps.devices.models import Device, Manufacturer
-                if Manufacturer.objects.filter(name__iexact=first_word).exists():
-                    return True
-                p_lower = p.lower()
-                for keyword in ["apple", "samsung", "google", "lg", "motorola", "oneplus", "iphone", "ipad", "galaxy", "pixel"]:
-                    if keyword in p_lower:
-                        return True
-            else:
-                p_lower = p.lower()
-                for keyword in ["iphone", "ipad", "galaxy", "pixel"]:
-                    if keyword in p_lower:
-                        return True
-            return False
+            # Strictly lookup the device in DB to ensure it exists
+            return lookup_device(p) is not None
 
         vendor_company_id = request.user.entity.company_id if (request.user.entity and request.user.entity.company) else None
         if not vendor_company_id:
@@ -2173,9 +2154,13 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             else:
                 if should_stage:
                     staged_count += 1
-                    final_status = "inactive"
                 else:
                     passed_count += 1
+
+                # Only products with a future launch date are set to "Inactive"
+                if launch_date and launch_date > today_est and launch_date.year != 9999:
+                    final_status = "inactive"
+                else:
                     final_status = status_str or "active"
 
                 # AI Enrichment Simulation

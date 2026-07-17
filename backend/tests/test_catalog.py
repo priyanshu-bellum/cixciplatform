@@ -735,6 +735,12 @@ class TestGovernanceAndCompatibilityImport:
         from apps.catalog.models import Product, ProductStatus
         import datetime
         
+        # Setup manufacturer and devices
+        from apps.devices.models import Device, Manufacturer, DeviceType
+        mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        Device.objects.get_or_create(name="Apple iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available")
+
         # Create an active product
         product = Product.objects.create(
             sku="ACTIVE-SKU-1",
@@ -1120,7 +1126,69 @@ class TestGovernanceAndCompatibilityImport:
         assert str(asset_ref1.owner_record_id) == str(prod_id)
 
 
+    @pytest.mark.django_db
+    def test_bulk_upload_strict_compatibility_and_status_assignment(self, buyer_client, buyer_user):
+        """Verify that bulk upload fails on invalid/non-existent device names, and correctly sets active/inactive status."""
+        import io
+        from apps.catalog.models import Product, ProductStatus
+        from apps.devices.models import Device, Manufacturer, DeviceType
 
+        # Setup dropdown config for Cases category
+        from apps.catalog.models import DynamicDropdownConfig
+        DynamicDropdownConfig.objects.get_or_create(field_name="brand", value="TestBrand", display_name="TestBrand")
+        DynamicDropdownConfig.objects.get_or_create(field_name="product_category", value="Cases", display_name="Cases")
 
+        # 1. Test upload with non-existent device: Should FAIL validation
+        csv_data_fail = (
+            "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,Device Compatibility\n"
+            'CASE-SKU-999,TestBrand,Cases,123456789099,06/18/2026,12.00,24.00,Test Cases,Premium case,Active,"NonExistentDevice"\n'
+        )
+        file_obj = io.BytesIO(csv_data_fail.encode("utf-8"))
+        file_obj.name = "catalog_import.csv"
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "create_only"},
+            format="multipart"
+        )
+        assert resp.status_code == 207
+        assert resp.data["rows_failed"] == 1
+        assert "Invalid device 'NonExistentDevice'" in resp.data["errors"][0]["validation_error"]
 
+        # 2. Test upload with past launch date: should default to ACTIVE
+        # Setup actual device in database first
+        mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        Device.objects.get_or_create(name="Apple iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available")
 
+        csv_data_active = (
+            "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,Device Compatibility,Inventory Level\n"
+            'CASE-SKU-ACTIVE,TestBrand,Cases,123456789091,06/18/2026,12.00,24.00,Test Active,Premium case,,iPhone 16,100\n'
+        )
+        file_obj = io.BytesIO(csv_data_active.encode("utf-8"))
+        file_obj.name = "catalog_import.csv"
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "create_only"},
+            format="multipart"
+        )
+        assert resp.status_code == 200, f"Upload failed: {resp.data}"
+        assert resp.data["rows_failed"] == 0
+        prod_active = Product.objects.get(sku="CASE-SKU-ACTIVE")
+        assert prod_active.status == ProductStatus.ACTIVE
+
+        # 3. Test upload with future launch date: should default to INACTIVE
+        csv_data_inactive = (
+            "SKU,Brand,Product Category,UPC,Launch Date,Release Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,Device Compatibility,Inventory Level\n"
+            'CASE-SKU-INACTIVE,TestBrand,Cases,123456789092,12/31/2028,12/31/2028,12.00,24.00,Test Inactive,Premium case,Inactive,iPhone 16,100\n'
+        )
+        file_obj = io.BytesIO(csv_data_inactive.encode("utf-8"))
+        file_obj.name = "catalog_import.csv"
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "create_only"},
+            format="multipart"
+        )
+        assert resp.status_code == 200, f"Upload failed: {resp.data}"
+        assert resp.data["rows_failed"] == 0
+        prod_inactive = Product.objects.get(sku="CASE-SKU-INACTIVE")
+        assert prod_inactive.status == ProductStatus.INACTIVE
