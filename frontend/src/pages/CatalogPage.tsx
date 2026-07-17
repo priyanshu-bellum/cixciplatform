@@ -1389,15 +1389,6 @@ export default function CatalogPage() {
 
   const [activeDetailImageUrl, setActiveDetailImageUrl] = useState<string | null>(null)
 
-  // Sync activeDetailImageUrl on product select
-  useEffect(() => {
-    if (selectedManageProduct) {
-      setActiveDetailImageUrl(selectedManageProduct.primary_image_url || null)
-    } else {
-      setActiveDetailImageUrl(null)
-    }
-  }, [selectedManageProduct])
-
   // Extract all images
   const allImages = useMemo(() => {
     if (!selectedManageProduct) return []
@@ -1415,6 +1406,15 @@ export default function CatalogPage() {
     }
     return list
   }, [selectedManageProduct])
+
+  // Sync activeDetailImageUrl on product select
+  useEffect(() => {
+    if (selectedManageProduct) {
+      setActiveDetailImageUrl(allImages[0] || null)
+    } else {
+      setActiveDetailImageUrl(null)
+    }
+  }, [selectedManageProduct, allImages])
 
   const filteredProducts = useMemo(() => {
     if (!products) return []
@@ -1633,19 +1633,20 @@ export default function CatalogPage() {
       if (!prodDescription) { setFormError('Product Description is required.'); return; }
       if (prodType === 'accessory') {
         if (selectedDeviceIds.length === 0) { setFormError('Device Compatibility is required. Select at least one device.'); return; }
-      } else if (['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory)) {
-        if (prodCategory === 'Headphones') {
-          if (!compHeadphoneJack || !compBluetooth) { setFormError('Headphone Jack Compatibility and Bluetooth Compatibility are required.'); return; }
-        } else if (prodCategory === 'Speakers') {
-          if (!compChargingInterface || !compBluetooth) { setFormError('Compatible Charging Interface and Bluetooth Compatibility are required.'); return; }
-        } else if (prodCategory === 'Chargers and Cables') {
-          if (!compChargingInterface || compWirelessCharging.length === 0) { setFormError('Compatible Charging Interface and Wireless Charging Compatibility are required.'); return; }
-        } else if (prodCategory === 'Memory') {
-          if (!compStorageExpansion || !compMemoryCapacity) { setFormError('Storage Expansion Compatibility and Memory Capacity are required.'); return; }
-        } else if (prodCategory === 'Wearable Tech') {
-          if (!compChargingInterface || compWirelessCharging.length === 0) { setFormError('Compatible Charging Interface and Wireless Charging Compatibility are required.'); return; }
-        } else if (prodCategory === 'Watch Accessories') {
-          if (!compWatchCaseSize || compWirelessCharging.length === 0) { setFormError('Compatible Watch Case Size and Wireless Charging Compatibility are required.'); return; }
+        if (['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory)) {
+          if (prodCategory === 'Headphones') {
+            if (!compHeadphoneJack || !compBluetooth) { setFormError('Headphone Jack Compatibility and Bluetooth Compatibility are required.'); return; }
+          } else if (prodCategory === 'Speakers') {
+            if (!compChargingInterface || !compBluetooth) { setFormError('Compatible Charging Interface and Bluetooth Compatibility are required.'); return; }
+          } else if (prodCategory === 'Chargers and Cables') {
+            if (!compChargingInterface || compWirelessCharging.length === 0) { setFormError('Compatible Charging Interface and Wireless Charging Compatibility are required.'); return; }
+          } else if (prodCategory === 'Memory') {
+            if (!compStorageExpansion || !compMemoryCapacity) { setFormError('Storage Expansion Compatibility and Memory Capacity are required.'); return; }
+          } else if (prodCategory === 'Wearable Tech') {
+            if (!compChargingInterface || compWirelessCharging.length === 0) { setFormError('Compatible Charging Interface and Wireless Charging Compatibility are required.'); return; }
+          } else if (prodCategory === 'Watch Accessories') {
+            if (!compWatchCaseSize || compWirelessCharging.length === 0) { setFormError('Compatible Watch Case Size and Wireless Charging Compatibility are required.'); return; }
+          }
         }
       }
     } else {
@@ -1778,19 +1779,20 @@ export default function CatalogPage() {
       if (!prodDescription) { setFormError('Product Description is required.'); return; }
       if (prodType === 'accessory') {
         if (selectedDeviceIds.length === 0) { setFormError('Device Compatibility is required. Select at least one device.'); return; }
-      } else if (['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory)) {
-        if (prodCategory === 'Headphones') {
-          if (!compHeadphoneJack || !compBluetooth) { setFormError('Headphone Jack Compatibility and Bluetooth Compatibility are required.'); return; }
-        } else if (prodCategory === 'Speakers') {
-          if (!compChargingInterface || !compBluetooth) { setFormError('Compatible Charging Interface and Bluetooth Compatibility are required.'); return; }
-        } else if (prodCategory === 'Chargers and Cables') {
-          if (!compChargingInterface || compWirelessCharging.length === 0) { setFormError('Compatible Charging Interface and Wireless Charging Compatibility are required.'); return; }
-        } else if (prodCategory === 'Memory') {
-          if (!compStorageExpansion || !compMemoryCapacity) { setFormError('Storage Expansion Compatibility and Memory Capacity are required.'); return; }
-        } else if (prodCategory === 'Wearable Tech') {
-          if (!compChargingInterface || compWirelessCharging.length === 0) { setFormError('Compatible Charging Interface and Wireless Charging Compatibility are required.'); return; }
-        } else if (prodCategory === 'Watch Accessories') {
-          if (!compWatchCaseSize || compWirelessCharging.length === 0) { setFormError('Compatible Watch Case Size and Wireless Charging Compatibility are required.'); return; }
+        if (['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory)) {
+          if (prodCategory === 'Headphones') {
+            if (!compHeadphoneJack || !compBluetooth) { setFormError('Headphone Jack Compatibility and Bluetooth Compatibility are required.'); return; }
+          } else if (prodCategory === 'Speakers') {
+            if (!compChargingInterface || !compBluetooth) { setFormError('Compatible Charging Interface and Bluetooth Compatibility are required.'); return; }
+          } else if (prodCategory === 'Chargers and Cables') {
+            if (!compChargingInterface || compWirelessCharging.length === 0) { setFormError('Compatible Charging Interface and Wireless Charging Compatibility are required.'); return; }
+          } else if (prodCategory === 'Memory') {
+            if (!compStorageExpansion || !compMemoryCapacity) { setFormError('Storage Expansion Compatibility and Memory Capacity are required.'); return; }
+          } else if (prodCategory === 'Wearable Tech') {
+            if (!compChargingInterface || compWirelessCharging.length === 0) { setFormError('Compatible Charging Interface and Wireless Charging Compatibility are required.'); return; }
+          } else if (prodCategory === 'Watch Accessories') {
+            if (!compWatchCaseSize || compWirelessCharging.length === 0) { setFormError('Compatible Watch Case Size and Wireless Charging Compatibility are required.'); return; }
+          }
         }
       }
     } else {
@@ -2943,149 +2945,6 @@ export default function CatalogPage() {
                         <option value="eol">EOL</option>
                       </select>
                     </div>
-                    {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
-                      <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
-                          Category-Specific Compatibility *
-                        </span>
-                        {renderCategorySpecificCompatibility()}
-                      </div>
-                    )}
-
-                    <div style={{ gridColumn: '1 / -1', marginTop: 12, position: 'relative', zIndex: showDeviceDropdown ? 50 : 1 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
-                        Device Compatibility *
-                      </span>
-                      
-                      {/* Trigger Area showing tags */}
-                      <div
-                        onClick={() => setShowDeviceDropdown(!showDeviceDropdown)}
-                        style={{
-                          border: '1px solid var(--border)',
-                          borderRadius: 6,
-                          padding: '8px 12px',
-                          background: 'var(--bg-main)',
-                          cursor: 'pointer',
-                          minHeight: 40,
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 6,
-                          alignItems: 'center',
-                          marginTop: 4,
-                        }}
-                      >
-                        {selectedDeviceIds.length === 0 ? (
-                          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Select device compatibility...</span>
-                        ) : (
-                          selectedDeviceIds.map(id => {
-                            const dev = devices.find((d: any) => d.id === id)
-                            return (
-                              <span
-                                key={id}
-                                style={{
-                                  background: 'var(--bg-elevated)',
-                                  border: '1px solid var(--border)',
-                                  color: 'var(--text-primary)',
-                                  padding: '2px 8px',
-                                  borderRadius: 4,
-                                  fontSize: 12,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleDeviceSelection(id);
-                                }}
-                              >
-                                {dev ? `${dev.manufacturer_name} ${dev.name}` : id.slice(0, 8)}
-                                <X size={12} style={{ color: 'var(--red)', cursor: 'pointer' }} />
-                              </span>
-                            )
-                          })
-                        )}
-                      </div>
-
-                      {/* Dropdown Floating Panel */}
-                      {showDeviceDropdown && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: 0,
-                            right: 0,
-                            background: 'var(--bg-elevated)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 6,
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                            zIndex: 100,
-                            marginTop: 4,
-                            padding: 10,
-                          }}
-                        >
-                          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                            <input
-                              type="text"
-                              className="input"
-                              placeholder="Search devices..."
-                              value={deviceSearch}
-                              onChange={e => setDeviceSearch(e.target.value)}
-                              style={{ height: 32, fontSize: 13, padding: '4px 8px', flex: 1 }}
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => { setShowDeviceDropdown(false); setDeviceSearch(''); }}
-                              style={{ padding: '4px 8px', height: 32 }}
-                            >
-                              Done
-                            </button>
-                          </div>
-
-                          <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {devices
-                              .filter((dev: any) => {
-                                const query = deviceSearch.toLowerCase()
-                                const nameMatch = dev.name?.toLowerCase().includes(query)
-                                const mfgMatch = dev.manufacturer_name?.toLowerCase().includes(query)
-                                const skuMatch = dev.sku?.toLowerCase().includes(query)
-                                return nameMatch || mfgMatch || skuMatch
-                              })
-                              .map((dev: any) => {
-                                const isSelected = selectedDeviceIds.includes(dev.id)
-                                return (
-                                  <div
-                                    key={dev.id}
-                                    onClick={() => toggleDeviceSelection(dev.id)}
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                      padding: '6px 8px',
-                                      borderRadius: 4,
-                                      cursor: 'pointer',
-                                      background: isSelected ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
-                                      transition: 'background 0.15s ease',
-                                    }}
-                                  >
-                                    <div style={{ flex: 1, fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>
-                                      {dev.manufacturer_name} {dev.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({dev.sku})</span>
-                                    </div>
-                                    {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
-                                  </div>
-                                )
-                              })}
-                            {devices.filter((dev: any) => {
-                              const query = deviceSearch.toLowerCase()
-                              return dev.name?.toLowerCase().includes(query) || dev.manufacturer_name?.toLowerCase().includes(query) || dev.sku?.toLowerCase().includes(query)
-                            }).length === 0 && (
-                              <span style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 8px' }}>No matching devices found.</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 ) : (
                   <div className="form-group">
@@ -3335,6 +3194,157 @@ export default function CatalogPage() {
                 </div>
               </div>
 
+              {/* 8. Compatibility */}
+              {prodType === 'accessory' && (
+                <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16 }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>8. Compatibility</h4>
+                  
+                  {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
+                    <div style={{ gridColumn: '1 / -1', marginTop: 4, marginBottom: 16 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
+                        Category-Specific Compatibility *
+                      </span>
+                      {renderCategorySpecificCompatibility()}
+                    </div>
+                  )}
+
+                  <div style={{ gridColumn: '1 / -1', marginTop: 12, position: 'relative', zIndex: showDeviceDropdown ? 50 : 1 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
+                      Device Compatibility *
+                    </span>
+                    
+                    {/* Trigger Area showing tags */}
+                    <div
+                      onClick={() => setShowDeviceDropdown(!showDeviceDropdown)}
+                      style={{
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        padding: '8px 12px',
+                        background: 'var(--bg-main)',
+                        cursor: 'pointer',
+                        minHeight: 40,
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                        alignItems: 'center',
+                        marginTop: 4,
+                      }}
+                    >
+                      {selectedDeviceIds.length === 0 ? (
+                        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Select device compatibility...</span>
+                      ) : (
+                        selectedDeviceIds.map(id => {
+                          const dev = devices.find((d: any) => d.id === id)
+                          return (
+                            <span
+                              key={id}
+                              style={{
+                                background: 'var(--bg-elevated)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text-primary)',
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleDeviceSelection(id);
+                              }}
+                            >
+                              {dev ? `${dev.manufacturer_name} ${dev.name}` : id.slice(0, 8)}
+                              <X size={12} style={{ color: 'var(--red)', cursor: 'pointer' }} />
+                            </span>
+                          )
+                        })
+                      )}
+                    </div>
+
+                    {/* Dropdown Floating Panel */}
+                    {showDeviceDropdown && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          background: 'var(--bg-elevated)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          zIndex: 100,
+                          marginTop: 4,
+                          padding: 10,
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                          <input
+                            type="text"
+                            className="input"
+                            placeholder="Search devices..."
+                            value={deviceSearch}
+                            onChange={e => setDeviceSearch(e.target.value)}
+                            style={{ height: 32, fontSize: 13, padding: '4px 8px', flex: 1 }}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => { setShowDeviceDropdown(false); setDeviceSearch(''); }}
+                            style={{ padding: '4px 8px', height: 32 }}
+                          >
+                            Done
+                          </button>
+                        </div>
+
+                        <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {devices
+                            .filter((dev: any) => {
+                              const query = deviceSearch.toLowerCase()
+                              const nameMatch = dev.name?.toLowerCase().includes(query)
+                              const mfgMatch = dev.manufacturer_name?.toLowerCase().includes(query)
+                              const skuMatch = dev.sku?.toLowerCase().includes(query)
+                              return nameMatch || mfgMatch || skuMatch
+                            })
+                            .map((dev: any) => {
+                              const isSelected = selectedDeviceIds.includes(dev.id)
+                              return (
+                                <div
+                                  key={dev.id}
+                                  onClick={() => toggleDeviceSelection(dev.id)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '6px 8px',
+                                    borderRadius: 4,
+                                    cursor: 'pointer',
+                                    background: isSelected ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
+                                    transition: 'background 0.15s ease',
+                                  }}
+                                >
+                                  <div style={{ flex: 1, fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                                    {dev.manufacturer_name} {dev.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({dev.sku})</span>
+                                  </div>
+                                  {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
+                                </div>
+                              )
+                            })}
+                          {devices.filter((dev: any) => {
+                            const query = deviceSearch.toLowerCase()
+                            return dev.name?.toLowerCase().includes(query) || dev.manufacturer_name?.toLowerCase().includes(query) || dev.sku?.toLowerCase().includes(query)
+                          }).length === 0 && (
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 8px' }}>No matching devices found.</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
                 <button type="button" className="btn btn-secondary" onClick={handleCloseAddModal}>Cancel</button>
@@ -3434,149 +3444,6 @@ export default function CatalogPage() {
                         <option value="out_of_stock">Out of Stock</option>
                         <option value="eol">EOL</option>
                       </select>
-                    </div>
-                    {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
-                      <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
-                          Category-Specific Compatibility *
-                        </span>
-                        {renderCategorySpecificCompatibility()}
-                      </div>
-                    )}
-
-                    <div style={{ gridColumn: '1 / -1', marginTop: 12, position: 'relative', zIndex: showDeviceDropdown ? 50 : 1 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
-                        Device Compatibility *
-                      </span>
-                      
-                      {/* Trigger Area showing tags */}
-                      <div
-                        onClick={() => setShowDeviceDropdown(!showDeviceDropdown)}
-                        style={{
-                          border: '1px solid var(--border)',
-                          borderRadius: 6,
-                          padding: '8px 12px',
-                          background: 'var(--bg-main)',
-                          cursor: 'pointer',
-                          minHeight: 40,
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 6,
-                          alignItems: 'center',
-                          marginTop: 4,
-                        }}
-                      >
-                        {selectedDeviceIds.length === 0 ? (
-                          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Select device compatibility...</span>
-                        ) : (
-                          selectedDeviceIds.map(id => {
-                            const dev = devices.find((d: any) => d.id === id)
-                            return (
-                              <span
-                                key={id}
-                                style={{
-                                  background: 'var(--bg-elevated)',
-                                  border: '1px solid var(--border)',
-                                  color: 'var(--text-primary)',
-                                  padding: '2px 8px',
-                                  borderRadius: 4,
-                                  fontSize: 12,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleDeviceSelection(id);
-                                }}
-                              >
-                                {dev ? `${dev.manufacturer_name} ${dev.name}` : id.slice(0, 8)}
-                                <X size={12} style={{ color: 'var(--red)', cursor: 'pointer' }} />
-                              </span>
-                            )
-                          })
-                        )}
-                      </div>
-
-                      {/* Dropdown Floating Panel */}
-                      {showDeviceDropdown && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: 0,
-                            right: 0,
-                            background: 'var(--bg-elevated)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 6,
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                            zIndex: 100,
-                            marginTop: 4,
-                            padding: 10,
-                          }}
-                        >
-                          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                            <input
-                              type="text"
-                              className="input"
-                              placeholder="Search devices..."
-                              value={deviceSearch}
-                              onChange={e => setDeviceSearch(e.target.value)}
-                              style={{ height: 32, fontSize: 13, padding: '4px 8px', flex: 1 }}
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => { setShowDeviceDropdown(false); setDeviceSearch(''); }}
-                              style={{ padding: '4px 8px', height: 32 }}
-                            >
-                              Done
-                            </button>
-                          </div>
-
-                          <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {devices
-                              .filter((dev: any) => {
-                                const query = deviceSearch.toLowerCase()
-                                const nameMatch = dev.name?.toLowerCase().includes(query)
-                                const mfgMatch = dev.manufacturer_name?.toLowerCase().includes(query)
-                                const skuMatch = dev.sku?.toLowerCase().includes(query)
-                                return nameMatch || mfgMatch || skuMatch
-                              })
-                              .map((dev: any) => {
-                                const isSelected = selectedDeviceIds.includes(dev.id)
-                                return (
-                                  <div
-                                    key={dev.id}
-                                    onClick={() => toggleDeviceSelection(dev.id)}
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                      padding: '6px 8px',
-                                      borderRadius: 4,
-                                      cursor: 'pointer',
-                                      background: isSelected ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
-                                      transition: 'background 0.15s ease',
-                                    }}
-                                  >
-                                    <div style={{ flex: 1, fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>
-                                      {dev.manufacturer_name} {dev.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({dev.sku})</span>
-                                    </div>
-                                    {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
-                                  </div>
-                                )
-                              })}
-                            {devices.filter((dev: any) => {
-                              const query = deviceSearch.toLowerCase()
-                              return dev.name?.toLowerCase().includes(query) || dev.manufacturer_name?.toLowerCase().includes(query) || dev.sku?.toLowerCase().includes(query)
-                            }).length === 0 && (
-                              <span style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 8px' }}>No matching devices found.</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 ) : (
@@ -3826,6 +3693,157 @@ export default function CatalogPage() {
                   </div>
                 </div>
               </div>
+
+              {/* 8. Compatibility */}
+              {prodType === 'accessory' && (
+                <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: 16, marginBottom: 16 }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>8. Compatibility</h4>
+                  
+                  {['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory) && (
+                    <div style={{ gridColumn: '1 / -1', marginTop: 4, marginBottom: 16 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
+                        Category-Specific Compatibility *
+                      </span>
+                      {renderCategorySpecificCompatibility()}
+                    </div>
+                  )}
+
+                  <div style={{ gridColumn: '1 / -1', marginTop: 12, position: 'relative', zIndex: showDeviceDropdown ? 50 : 1 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
+                      Device Compatibility *
+                    </span>
+                    
+                    {/* Trigger Area showing tags */}
+                    <div
+                      onClick={() => setShowDeviceDropdown(!showDeviceDropdown)}
+                      style={{
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        padding: '8px 12px',
+                        background: 'var(--bg-main)',
+                        cursor: 'pointer',
+                        minHeight: 40,
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                        alignItems: 'center',
+                        marginTop: 4,
+                      }}
+                    >
+                      {selectedDeviceIds.length === 0 ? (
+                        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Select device compatibility...</span>
+                      ) : (
+                        selectedDeviceIds.map(id => {
+                          const dev = devices.find((d: any) => d.id === id)
+                          return (
+                            <span
+                              key={id}
+                              style={{
+                                background: 'var(--bg-elevated)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text-primary)',
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleDeviceSelection(id);
+                              }}
+                            >
+                              {dev ? `${dev.manufacturer_name} ${dev.name}` : id.slice(0, 8)}
+                              <X size={12} style={{ color: 'var(--red)', cursor: 'pointer' }} />
+                            </span>
+                          )
+                        })
+                      )}
+                    </div>
+
+                    {/* Dropdown Floating Panel */}
+                    {showDeviceDropdown && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          background: 'var(--bg-elevated)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          zIndex: 100,
+                          marginTop: 4,
+                          padding: 10,
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                          <input
+                            type="text"
+                            className="input"
+                            placeholder="Search devices..."
+                            value={deviceSearch}
+                            onChange={e => setDeviceSearch(e.target.value)}
+                            style={{ height: 32, fontSize: 13, padding: '4px 8px', flex: 1 }}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => { setShowDeviceDropdown(false); setDeviceSearch(''); }}
+                            style={{ padding: '4px 8px', height: 32 }}
+                          >
+                            Done
+                          </button>
+                        </div>
+
+                        <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {devices
+                            .filter((dev: any) => {
+                              const query = deviceSearch.toLowerCase()
+                              const nameMatch = dev.name?.toLowerCase().includes(query)
+                              const mfgMatch = dev.manufacturer_name?.toLowerCase().includes(query)
+                              const skuMatch = dev.sku?.toLowerCase().includes(query)
+                              return nameMatch || mfgMatch || skuMatch
+                            })
+                            .map((dev: any) => {
+                              const isSelected = selectedDeviceIds.includes(dev.id)
+                              return (
+                                <div
+                                  key={dev.id}
+                                  onClick={() => toggleDeviceSelection(dev.id)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '6px 8px',
+                                    borderRadius: 4,
+                                    cursor: 'pointer',
+                                    background: isSelected ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
+                                    transition: 'background 0.15s ease',
+                                  }}
+                                >
+                                  <div style={{ flex: 1, fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                                    {dev.manufacturer_name} {dev.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({dev.sku})</span>
+                                  </div>
+                                  {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
+                                </div>
+                              )
+                            })}
+                          {devices.filter((dev: any) => {
+                            const query = deviceSearch.toLowerCase()
+                            return dev.name?.toLowerCase().includes(query) || dev.manufacturer_name?.toLowerCase().includes(query) || dev.sku?.toLowerCase().includes(query)
+                          }).length === 0 && (
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 8px' }}>No matching devices found.</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               
 

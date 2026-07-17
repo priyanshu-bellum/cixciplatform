@@ -51,6 +51,11 @@ class ProductSerializerBase(serializers.ModelSerializer):
                 if url not in combined:
                     combined.append(url)
             for url in existing:
+                if isinstance(url, str):
+                    if (url.startswith("http://") or url.startswith("https://")) and media_url in url:
+                        idx = url.find(media_url)
+                        if idx != -1:
+                            url = url[idx:]
                 if url not in combined:
                     combined.append(url)
             
@@ -74,9 +79,9 @@ class ProductSerializerBase(serializers.ModelSerializer):
             if isinstance(instance.media_references, list):
                 for ref in instance.media_references:
                     if isinstance(ref, str):
-                        match = re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", ref, re.IGNORECASE)
-                        if match:
-                            asset_ids.add(match.group(0).lower())
+                        matches = re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", ref, re.IGNORECASE)
+                        if matches:
+                            asset_ids.add(matches[-1].lower())
                             
             if asset_ids:
                 MediaAsset.objects.filter(id__in=list(asset_ids)).update(
@@ -2393,49 +2398,16 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     else: # add or replace
                         for dev_name in dev_names:
                             device = lookup_device(dev_name)
-                            if not device:
-                                dev_name_lower = dev_name.lower()
-                                if "iphone" in dev_name_lower or "ipad" in dev_name_lower:
-                                    mfg_name = "Apple"
-                                elif "galaxy" in dev_name_lower or "samsung" in dev_name_lower:
-                                    mfg_name = "Samsung"
-                                elif "pixel" in dev_name_lower or "google" in dev_name_lower:
-                                    mfg_name = "Google"
-                                else:
-                                    words = dev_name.split()
-                                    mfg_name = words[0] if words else "Other"
-                                    
-                                mfg = Manufacturer.objects.filter(name__iexact=mfg_name).first()
-                                if not mfg:
-                                    mfg = Manufacturer.objects.create(name=mfg_name)
-                                    
-                                if "ipad" in dev_name_lower or "tablet" in dev_name_lower:
-                                    dt_name = "Tablet"
-                                    dt_code = "tablet"
-                                else:
-                                    dt_name = "Smartphone"
-                                    dt_code = "smartphone"
-                                    
-                                dt = DeviceType.objects.filter(name__iexact=dt_name).first()
-                                if not dt:
-                                    dt = DeviceType.objects.create(name=dt_name, code=dt_code)
-                                    
-                                device = Device.objects.create(
-                                    name=dev_name,
-                                    manufacturer=mfg,
-                                    device_type=dt,
-                                    lifecycle_status="available"
+                            if device:
+                                ProductCompatibilityAssertion.objects.update_or_create(
+                                    product=product,
+                                    device_reference=device.id,
+                                    defaults={
+                                        "is_compatible": True,
+                                        "compatibility_basis": "imported",
+                                        "notes": f"Auto-imported compatibility with {dev_name}"
+                                    }
                                 )
-                                
-                            ProductCompatibilityAssertion.objects.update_or_create(
-                                product=product,
-                                device_reference=device.id,
-                                defaults={
-                                    "is_compatible": True,
-                                    "compatibility_basis": "imported",
-                                    "notes": f"Auto-imported compatibility with {dev_name}"
-                                }
-                            )
                     # Recalculate compatibility status based on imported assertions
                     try:
                         from apps.catalog.compatibility_engine import run_compatibility_automapping
