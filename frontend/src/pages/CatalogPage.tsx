@@ -1506,24 +1506,50 @@ export default function CatalogPage() {
   const handleUploadImage = async (file: File): Promise<{ id: string; storage_key: string }> => {
     const reqRes = await api.post('/media/assets/request_upload/', {
       filename: file.name,
-      mime_type: file.type,
+      mime_type: file.type || 'image/jpeg',
       asset_type: 'product_image',
       owner_module: 'catalog',
     })
-    const assetId = reqRes.data.id
+    const { presigned_url, id: assetId, storage_key } = reqRes.data
 
-    const formData = new FormData()
-    formData.append('file', file)
-    const uploadRes = await api.post(`/media/assets/${assetId}/upload_file/`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
-    return {
-      id: assetId,
-      storage_key: uploadRes.data.storage_key
+    const isPlaceholder = !presigned_url || 
+      presigned_url.includes('placeholder-upload.cixci.com') || 
+      presigned_url.includes('placeholder')
+
+    if (isPlaceholder) {
+      const formData = new FormData()
+      formData.append('file', file)
+      const uploadRes = await api.post(`/media/assets/${assetId}/upload_file/`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+      return {
+        id: assetId,
+        storage_key: uploadRes.data.storage_key
+      }
+    } else {
+      const uploadRes = await fetch(presigned_url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+        },
+        body: file,
+      })
+      if (!uploadRes.ok) {
+        throw new Error(`Direct upload failed with status ${uploadRes.status}`)
+      }
+      await api.patch(`/media/assets/${assetId}/`, {
+        status: 'ready',
+        file_size_bytes: file.size,
+      })
+      return {
+        id: assetId,
+        storage_key: storage_key
+      }
     }
   }
+
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -1831,7 +1857,7 @@ export default function CatalogPage() {
         imageRef = uploadRes.id
       }
 
-      await api.patch(`/catalog/products/${editingProduct.id}/`, {
+      const editRes = await api.patch(`/catalog/products/${editingProduct.id}/`, {
         name: prodName,
         sku: prodSku,
         brand: isVendor ? (user?.company_name || prodBrand) : prodBrand,
@@ -1872,6 +1898,7 @@ export default function CatalogPage() {
         memory_capacity: compMemoryCapacity || null,
         compatible_watch_case_size: compWatchCaseSize || null,
       })
+      setSelectedManageProduct(editRes.data)
 
       if (prodType === 'accessory' && selectedDeviceIds.length > 0) {
         await api.post(`/catalog/products/${editingProduct.id}/compatibility/`, {

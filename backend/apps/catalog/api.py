@@ -52,10 +52,21 @@ class ProductSerializerBase(serializers.ModelSerializer):
                     combined.append(url)
             for url in existing:
                 if isinstance(url, str):
-                    if (url.startswith("http://") or url.startswith("https://")) and media_url in url:
-                        idx = url.find(media_url)
-                        if idx != -1:
-                            url = url[idx:]
+                    cleaned = url
+                    # Look for known media path patterns to extract storage key
+                    for base in [media_url, "/media/"]:
+                        if base in cleaned:
+                            idx = cleaned.find(base)
+                            if idx != -1:
+                                cleaned = cleaned[idx + len(base):]
+                                cleaned = f"{media_url}{cleaned}"
+                                break
+                    else:
+                        if not (cleaned.startswith("http://") or cleaned.startswith("https://")):
+                            if cleaned.startswith("/"):
+                                cleaned = cleaned.lstrip("/")
+                            cleaned = f"{media_url}{cleaned}"
+                    url = cleaned
                 if url not in combined:
                     combined.append(url)
             
@@ -63,6 +74,7 @@ class ProductSerializerBase(serializers.ModelSerializer):
         except Exception:
             pass
         return ret
+
 
     def _link_media_assets(self, instance):
         try:
