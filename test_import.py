@@ -12,21 +12,21 @@ django.setup()
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.catalog.api import ProductViewSet
-from apps.users.models import User
+from apps.tenant.models import User
 
-# Find a user to authenticate
-user = User.objects.filter(is_superuser=True).first()
+# Find the vendor user to authenticate
+user = User.objects.filter(email="vendor@cixci.com").first()
 if not user:
     user = User.objects.first()
 
 print("Using user:", user.email if user else "None")
 
 # Load file
-with open("Rebuild_Accessory_File_Test_File.xlsx", "rb") as f:
+with open("Compatibility Test v4.xlsx", "rb") as f:
     file_content = f.read()
 
 uploaded_file = SimpleUploadedFile(
-    "Rebuild_Accessory_File_Test_File.xlsx",
+    "Compatibility Test v4.xlsx",
     file_content,
     content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
@@ -45,4 +45,6 @@ view = ProductViewSet.as_view({"post": "bulk_upload"})
 response = view(request)
 
 print("Response status:", response.status_code)
-print("Response data:", response.data)
+import json
+print("Response data:")
+print(json.dumps(response.data, indent=2))
