@@ -1093,6 +1093,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             "bluetooth", "microsd", "microsdhc", "microsdxc", "not compatible",
             "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm",
             "16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb",
+            "galaxy", "pixel", "samsung", "google", "apple", "universal",
         }
 
         def lookup_device(dev_name):
@@ -1147,6 +1148,81 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         return device
             
             return None
+
+        def match_devices_by_feature_string(comp_str):
+            if not comp_str:
+                return []
+            
+            import re
+            g_item_clean = re.sub(r'\s*\bplus\b\s*', ' + ', comp_str, flags=re.IGNORECASE)
+            parts = [p.strip() for p in g_item_clean.split("+") if p.strip()]
+            if not parts:
+                return []
+
+            if len(parts) == 1:
+                dev_name = parts[0]
+                if dev_name.lower() not in FEATURE_KEYWORDS:
+                    dev = lookup_device(dev_name)
+                    if dev:
+                        return [dev]
+
+            from apps.devices.models import Device
+            from django.utils import timezone
+            now_date = timezone.now().date()
+            all_devices = Device.objects.filter(
+                device_type__status='active'
+            ).exclude(
+                lifecycle_status='retired'
+            )
+            all_devices = [d for d in all_devices if not (d.launch_date and d.launch_date > now_date)]
+
+            matched_devices = []
+            for dev in all_devices:
+                match_all = True
+                for part in parts:
+                    p_lower = part.lower()
+                    if p_lower == "magsafe":
+                        wireless_val = (dev.wireless_charging_compatibility or "").lower()
+                        if "magsafe" not in wireless_val:
+                            match_all = False
+                            break
+                    elif p_lower == "qi":
+                        wireless_val = (dev.wireless_charging_compatibility or "").lower()
+                        if "qi" not in wireless_val:
+                            match_all = False
+                            break
+                    elif p_lower == "qi2":
+                        wireless_val = (dev.wireless_charging_compatibility or "").lower()
+                        if "qi2" not in wireless_val:
+                            match_all = False
+                            break
+                    elif p_lower == "lightning":
+                        charging_val = (dev.compatible_charging_interface or "").lower()
+                        jack_val = (dev.headphone_jack_compatibility or "").lower()
+                        if "lightning" not in charging_val and "lightning" not in jack_val:
+                            match_all = False
+                            break
+                    elif p_lower in ["type-c", "usb-c", "usb c"]:
+                        charging_val = (dev.compatible_charging_interface or "").lower()
+                        jack_val = (dev.headphone_jack_compatibility or "").lower()
+                        if "type-c" not in charging_val and "usb-c" not in charging_val and "type-c" not in jack_val:
+                            match_all = False
+                            break
+                    elif p_lower == "bluetooth":
+                        bt_val = (dev.bluetooth_compatibility or "").lower()
+                        if bt_val != "yes":
+                            match_all = False
+                            break
+                    else:
+                        dev_name_lower = dev.name.lower()
+                        mfg_name_lower = dev.manufacturer.name.lower() if dev.manufacturer else ""
+                        if p_lower not in dev_name_lower and p_lower not in mfg_name_lower:
+                            match_all = False
+                            break
+                if match_all:
+                    matched_devices.append(dev)
+
+            return matched_devices
 
         def is_valid_device_name(p):
             if not p:
@@ -1743,10 +1819,13 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     seen_g = set()
                     unique_groups = []
                     for g in groups:
-                        gl = g.lower()
+                        import re
+                        g_clean = re.sub(r'\s*\bplus\b\s*', ' + ', g, flags=re.IGNORECASE)
+                        g_clean = " + ".join(p.strip() for p in g_clean.split("+") if p.strip())
+                        gl = g_clean.lower()
                         if gl not in seen_g:
                             seen_g.add(gl)
-                            unique_groups.append(g)
+                            unique_groups.append(g_clean)
                 else:
                     unique_groups = []
 
@@ -1923,11 +2002,19 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         
                         elif product_category not in ["Headphones", "Speakers", "Chargers and Cables", "Memory", "Wearable Tech", "Watch Accessories"]:
                             # For standard categories, validate the device name itself
-                            for p in parts:
-                                if p.strip().lower() in FEATURE_KEYWORDS:
-                                    continue
-                                if not is_valid_device_name(p):
-                                    comp_errors.append(f"Invalid device '{p}'.")
+                            if len(parts) == 1:
+                                p = parts[0]
+                                if p.strip().lower() not in FEATURE_KEYWORDS:
+                                    if not is_valid_device_name(p):
+                                        comp_errors.append(f"Invalid device '{p}'.")
+                            else:
+                                for p in parts:
+                                    pl = p.strip().lower()
+                                    if pl in FEATURE_KEYWORDS:
+                                        continue
+                                    from apps.devices.models import Device
+                                    if not Device.objects.filter(name__icontains=pl).exists() and not Device.objects.filter(manufacturer__name__icontains=pl).exists():
+                                        comp_errors.append(f"Invalid device/feature part '{p}'.")
                     
                     normalized_comp = ";".join(unique_groups)
                 else:
@@ -2424,13 +2511,13 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     dev_names = [d for d in dev_names if d.strip().lower() not in FEATURE_KEYWORDS]
                     if compatibility_update_type == "remove":
                         for dev_name in dev_names:
-                            device = lookup_device(dev_name)
-                            if device:
+                            matching_devices = match_devices_by_feature_string(dev_name)
+                            for device in matching_devices:
                                 ProductCompatibilityAssertion.objects.filter(product=product, device_reference=device.id).delete()
                     else: # add or replace
                         for dev_name in dev_names:
-                            device = lookup_device(dev_name)
-                            if device:
+                            matching_devices = match_devices_by_feature_string(dev_name)
+                            for device in matching_devices:
                                 ProductCompatibilityAssertion.objects.update_or_create(
                                     product=product,
                                     device_reference=device.id,
