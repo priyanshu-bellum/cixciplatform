@@ -1087,17 +1087,36 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         seen_skus = set()
         seen_upcs = set()
 
+        # Feature keywords that should never be treated as device names
+        FEATURE_KEYWORDS = {
+            "iphone", "android", "lightning", "magsafe", "qi", "qi2", "type-c",
+            "bluetooth", "microsd", "microsdhc", "microsdxc", "not compatible",
+            "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm",
+            "16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb",
+        }
+
         def lookup_device(dev_name):
             if not dev_name:
                 return None
+            # Reject strings containing list delimiters (comma/semicolon)
+            if any(char in dev_name for char in [",", ";"]):
+                return None
+            # Reject feature keywords — these are NOT device names
+            if dev_name.strip().lower() in FEATURE_KEYWORDS:
+                return None
+            # Canonical alias / shorthand mapping (e.g. "Galaxy S24+" -> "Galaxy S24")
+            target_name = dev_name.strip()
+            if target_name.endswith("+"):
+                target_name = target_name[:-1].strip()
+
             from apps.devices.models import Device, Manufacturer
             # 1. Exact match
-            device = Device.objects.filter(name__iexact=dev_name).first()
+            device = Device.objects.filter(name__iexact=target_name).first()
             if device:
                 return device
             
             # 2. Match with manufacturer name prepended (e.g. user submitted "iPhone 15", db has "Apple iPhone 15")
-            dev_name_lower = dev_name.lower()
+            dev_name_lower = target_name.lower()
             possible_mfgs = []
             if "iphone" in dev_name_lower or "ipad" in dev_name_lower or "apple" in dev_name_lower:
                 possible_mfgs.append("Apple")
@@ -1113,12 +1132,12 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             
             for mfg_name in possible_mfgs:
                 if not dev_name_lower.startswith(mfg_name.lower()):
-                    device = Device.objects.filter(name__iexact=f"{mfg_name} {dev_name}").first()
+                    device = Device.objects.filter(name__iexact=f"{mfg_name} {target_name}").first()
                     if device:
                         return device
             
             # 3. Match by stripping manufacturer from the beginning (e.g. user submitted "Apple iPhone 15", db has "iPhone 15")
-            words = dev_name.split()
+            words = target_name.split()
             if len(words) > 1:
                 first_word = words[0]
                 rest_name = " ".join(words[1:])
@@ -1774,6 +1793,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     comp_errors.append("Not Compatible cannot be combined with other values.")
                             for p in parts:
                                 pl = p.lower()
+                                if pl in FEATURE_KEYWORDS:
+                                    continue
                                 if pl not in ["lightning", "type-c", "bluetooth", "not compatible"] and not is_valid_device_name(p):
                                     comp_errors.append(f"Invalid attribute '{p}' for Headphones.")
 
@@ -1793,6 +1814,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     comp_errors.append("Not Compatible cannot be combined with other values.")
                             for p in parts:
                                 pl = p.lower()
+                                if pl in FEATURE_KEYWORDS:
+                                    continue
                                 if pl not in ["type-c", "lightning", "bluetooth", "not compatible"] and not is_valid_device_name(p):
                                     comp_errors.append(f"Invalid attribute '{p}' for Speakers.")
 
@@ -1817,6 +1840,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     comp_errors.append("Not Compatible cannot be combined with other values.")
                             for p in parts:
                                 pl = p.lower()
+                                if pl in FEATURE_KEYWORDS:
+                                    continue
                                 if pl not in ["iphone", "android", "lightning", "type-c", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
                                     comp_errors.append(f"Invalid attribute '{p}' for Chargers and Cables.")
 
@@ -1840,6 +1865,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     comp_errors.append("Not Compatible cannot be combined with other values.")
                             for p in parts:
                                 pl = p.lower()
+                                if pl in FEATURE_KEYWORDS:
+                                    continue
                                 if pl not in valid_sizes and pl not in ["microsdxc", "microsdhc", "not compatible", "mircosdxc", "mircosdhc", "512bg"] and not is_valid_device_name(p):
                                     comp_errors.append(f"Invalid attribute '{p}' for Memory.")
 
@@ -1864,6 +1891,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     comp_errors.append("Not Compatible cannot be combined with other values.")
                             for p in parts:
                                 pl = p.lower()
+                                if pl in FEATURE_KEYWORDS:
+                                    continue
                                 if pl not in ["type-c", "lightning", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
                                     comp_errors.append(f"Invalid attribute '{p}' for Wearable Tech.")
 
@@ -1887,12 +1916,16 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     comp_errors.append("Not Compatible cannot be combined with other values.")
                             for p in parts:
                                 pl = p.lower()
+                                if pl in FEATURE_KEYWORDS:
+                                    continue
                                 if pl not in ["magsafe", "qi", "qi2", "not compatible"] and pl not in valid_sizes and not is_valid_device_name(p):
                                     comp_errors.append(f"Invalid attribute '{p}' for Watch Accessories.")
                         
                         elif product_category not in ["Headphones", "Speakers", "Chargers and Cables", "Memory", "Wearable Tech", "Watch Accessories"]:
                             # For standard categories, validate the device name itself
                             for p in parts:
+                                if p.strip().lower() in FEATURE_KEYWORDS:
+                                    continue
                                 if not is_valid_device_name(p):
                                     comp_errors.append(f"Invalid device '{p}'.")
                     
@@ -2387,6 +2420,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     # Split by both semicolon and comma to ensure discrete device assertions
                     unified_normalized = normalized_comp.replace(",", ";")
                     dev_names = [d.strip() for d in unified_normalized.split(';') if d.strip()]
+                    # Filter out feature keywords — only keep actual device names
+                    dev_names = [d for d in dev_names if d.strip().lower() not in FEATURE_KEYWORDS]
                     if compatibility_update_type == "remove":
                         for dev_name in dev_names:
                             device = lookup_device(dev_name)

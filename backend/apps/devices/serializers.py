@@ -173,6 +173,16 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
         if not d_name or d_name == "":
             raise serializers.ValidationError({"name": "Device Name is required."})
             
+        d_name_lower = d_name.lower().strip()
+        if any(char in d_name for char in [",", "+", ";"]):
+            raise serializers.ValidationError({"name": "Device Name cannot contain special characters/delimiters like ',', '+', or ';'."})
+        if d_name_lower in [
+            "lightning", "magsafe", "qi", "qi2", "type-c", "microsd",
+            "microsdhc", "microsdxc", "40mm", "41mm", "42mm", "44mm",
+            "45mm", "46mm", "49mm"
+        ]:
+            raise serializers.ValidationError({"name": "Device Name cannot be a generic compatibility feature name."})
+
         attrs['name'] = d_name
         name = d_name
 

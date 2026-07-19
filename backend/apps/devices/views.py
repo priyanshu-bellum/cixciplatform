@@ -120,6 +120,13 @@ class ManufacturerViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = Device.objects.select_related("manufacturer", "device_type")
 
+    @property
+    def pagination_class(self):
+        if hasattr(self, "request") and self.request and hasattr(self.request, "query_params") and self.request.query_params.get("paginate") == "false":
+            return None
+        from config.pagination import CixciCursorPagination
+        return CixciCursorPagination
+
     def get_queryset(self):
         user = self.request.user
         qs = Device.objects.select_related("manufacturer", "device_type")
@@ -392,6 +399,17 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 if d_name.lower().startswith(m_name):
                     cleaned_name = d_name[len(m_name):].strip().lstrip(" -/\\")
                     
+            if cleaned_name and not row_errors.get("Device Name"):
+                cleaned_name_stripped = cleaned_name.strip()
+                if any(char in cleaned_name_stripped for char in [",", "+", ";"]):
+                    row_errors["Device Name"] = "Device Name cannot contain special characters/delimiters like ',', '+', or ';'."
+                elif cleaned_name_stripped.lower() in [
+                    "lightning", "magsafe", "qi", "qi2", "type-c", "microsd",
+                    "microsdhc", "microsdxc", "40mm", "41mm", "42mm", "44mm",
+                    "45mm", "46mm", "49mm"
+                ]:
+                    row_errors["Device Name"] = "Device Name cannot be a generic compatibility feature name."
+
             existing_device = None
             if m_obj and cleaned_name and not row_errors.get("Device Name") and not row_errors.get("Device Manufacturer"):
                 existing_device = Device.objects.filter(manufacturer=m_obj, name__iexact=cleaned_name).first()

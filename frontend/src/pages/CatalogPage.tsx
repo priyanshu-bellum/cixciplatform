@@ -1358,7 +1358,7 @@ export default function CatalogPage() {
 
   const { data: devicesData } = useQuery({
     queryKey: ['devices'],
-    queryFn: () => api.get('/devices/devices/').then(r => r.data),
+    queryFn: () => api.get('/devices/devices/?paginate=false').then(r => r.data),
   })
 
   const { data: activeCompatibilities, refetch: refetchCompatibilities } = useQuery({
@@ -2633,9 +2633,14 @@ export default function CatalogPage() {
                   {filteredProducts.map((p: any) => (
                     <tr
                       key={p.id}
-                      onClick={() => {
+                      onClick={async () => {
                         setSelectedManageProduct(p)
                         setShowManageModal(true)
+                        // Fetch full product detail to get enriched media_references (all uploaded images)
+                        try {
+                          const detailRes = await api.get(`/catalog/products/${p.id}/`)
+                          setSelectedManageProduct(detailRes.data)
+                        } catch {}
                       }}
                       style={{ cursor: 'pointer' }}
                     >
@@ -2776,9 +2781,14 @@ export default function CatalogPage() {
                         {compatibleProducts.map((p: any) => (
                           <tr
                             key={p.id}
-                            onClick={() => {
+                            onClick={async () => {
                               setSelectedManageProduct(p)
                               setShowManageModal(true)
+                              // Fetch full product detail to get enriched media_references (all uploaded images)
+                              try {
+                                const detailRes = await api.get(`/catalog/products/${p.id}/`)
+                                setSelectedManageProduct(detailRes.data)
+                              } catch {}
                             }}
                             style={{ cursor: 'pointer' }}
                           >
