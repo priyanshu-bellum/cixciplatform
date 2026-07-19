@@ -404,6 +404,7 @@ export default function CatalogPage() {
   const { data: deviceTypesData } = useQuery({
     queryKey: ['deviceTypes'],
     queryFn: () => api.get('/devices/types/', { params: { limit: 100 } }).then(r => r.data),
+    enabled: !!isCixciAdmin,
   })
   const deviceTypes = useMemo(() => {
     return Array.isArray(deviceTypesData) ? deviceTypesData : (deviceTypesData?.results ?? [])
@@ -1488,7 +1489,7 @@ export default function CatalogPage() {
   }
 
   // Helper to build media URLs
-  const getImageUrl = (path: string) => {
+  function getImageUrl(path: string) {
     if (!path) return ''
     if (path.startsWith('http://') || path.startsWith('https://')) return path
     const apiBase = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1'

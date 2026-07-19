@@ -115,6 +115,31 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                     return AccessResult(granted=False, reason="entity_scope_mismatch", actor_id=user.id, capability_code=capability_code)
                 return AccessResult(granted=True, reason="buyer_default_capability", actor_id=user.id, capability_code=capability_code)
 
+            # Fallback for standard vendor capabilities if company type is vendor
+            vendor_safe_caps = {
+                "devices.device.list",
+                "devices.device.read",
+                "devices.type.list",
+                "devices.type.read",
+                "devices.manufacturer.list",
+                "devices.manufacturer.read",
+            }
+            if company.company_type == "vendor" and capability_code in vendor_safe_caps:
+                if company_id and str(user.entity.company_id) != str(company_id):
+                    logger.debug(
+                        "check_access DENIED (vendor fallback): user %s company %s != requested %s",
+                        user.id, user.entity.company_id, company_id
+                    )
+                    return AccessResult(granted=False, reason="company_scope_mismatch", actor_id=user.id, capability_code=capability_code)
+                if entity_id and str(user.entity_id) != str(entity_id):
+                    logger.debug(
+                        "check_access DENIED (vendor fallback): user %s entity %s != requested %s",
+                        user.id, user.entity_id, entity_id
+                    )
+                    return AccessResult(granted=False, reason="entity_scope_mismatch", actor_id=user.id, capability_code=capability_code)
+                return AccessResult(granted=True, reason="vendor_default_capability", actor_id=user.id, capability_code=capability_code)
+
+
             # Check user capability first
             has_user_cap = user.capabilities.filter(code=capability_code, is_active=True).exists()
             if not has_user_cap:
@@ -268,7 +293,13 @@ def is_capability_allowed_for_company(capability_code: str, company_type: str, b
             "analytics.metrics.",
             "analytics.summary.",
             "tenant.relationship.read",
-            "tenant.relationship.list"
+            "tenant.relationship.list",
+            "devices.device.list",
+            "devices.device.read",
+            "devices.type.list",
+            "devices.type.read",
+            "devices.manufacturer.list",
+            "devices.manufacturer.read",
         )
         return capability_code.startswith(allowed_prefixes)
 
