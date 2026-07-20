@@ -74,10 +74,14 @@ class DeviceTypeSerializer(serializers.ModelSerializer):
 
         # Set status to active if rules are present
         if compatibility_rules and (not self.instance or self.instance.status == "setup_required"):
-            # Only set to active if supported categories are present as well
             cats = data.get("supported_accessory_categories", self.instance.supported_accessory_categories if self.instance else [])
-            if cats:
-                data["status"] = "active"
+            if not cats:
+                from apps.catalog.models import DynamicDropdownConfig
+                cats = list(DynamicDropdownConfig.objects.filter(field_name="product_category", status="active").values_list("value", flat=True))
+                if not cats:
+                    cats = ["Phone Cases", "Chargers & Cables", "Screen Protectors", "Watch Bands", "Audio Accessories", "Mounts & Stands", "Power Banks"]
+                data["supported_accessory_categories"] = cats
+            data["status"] = "active"
 
         status = data.get("status", self.instance.status if self.instance else "setup_required")
         if status == "active":
@@ -87,7 +91,11 @@ class DeviceTypeSerializer(serializers.ModelSerializer):
             # Active Device Type must define eligible Product Categories
             cats = data.get("supported_accessory_categories", self.instance.supported_accessory_categories if self.instance else [])
             if not cats:
-                raise serializers.ValidationError({"supported_accessory_categories": "Active Device Type must define eligible Product Categories."})
+                from apps.catalog.models import DynamicDropdownConfig
+                cats = list(DynamicDropdownConfig.objects.filter(field_name="product_category", status="active").values_list("value", flat=True))
+                if not cats:
+                    cats = ["Phone Cases", "Chargers & Cables", "Screen Protectors", "Watch Bands", "Audio Accessories", "Mounts & Stands", "Power Banks"]
+                data["supported_accessory_categories"] = cats
 
             valid_fields = [
                 "compatible_charging_interface", "charging_interface",

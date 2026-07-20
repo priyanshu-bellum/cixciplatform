@@ -70,6 +70,21 @@ class TestDeviceTypeEndpoints:
         assert resp.status_code == 200
         assert any(t["code"] == "smartphone" for t in resp.data["results"])
 
+    def test_transition_device_type_status_setup_required_to_active(self, admin_client):
+        dt = DeviceType.objects.create(
+            name="Phone",
+            code="phone_test",
+            status="setup_required",
+            supported_accessory_categories=[],
+            compatibility_rules={}
+        )
+        resp = admin_client.patch(f"/api/v1/devices/types/{dt.id}/", {
+            "status": "active"
+        })
+        assert resp.status_code == 200, resp.data
+        assert resp.data["status"] == "active"
+        assert len(resp.data["supported_accessory_categories"]) > 0
+
 
 # ── Manufacturer ──────────────────────────────────────────────────────────────
 
