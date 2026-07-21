@@ -1192,3 +1192,36 @@ class TestGovernanceAndCompatibilityImport:
         assert resp.data["rows_failed"] == 0
         prod_inactive = Product.objects.get(sku="CASE-SKU-INACTIVE")
         assert prod_inactive.status == ProductStatus.INACTIVE
+
+    def test_bulk_upload_chargers_multiple_devices_compatibility(self, buyer_client, buyer_user):
+        """Test bulk upload of Chargers & Cables with comma-separated list of devices in Device Compatibility."""
+        import io
+        from apps.catalog.models import DynamicDropdownConfig, Product
+        from apps.devices.models import Device, DeviceType, Manufacturer
+
+        mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        Device.objects.get_or_create(name="iPhone 14", manufacturer=mfg, device_type=dt, lifecycle_status="available", compatible_charging_interface="Lightning")
+        Device.objects.get_or_create(name="iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available", compatible_charging_interface="Type-C")
+
+        DynamicDropdownConfig.objects.get_or_create(field_name="brand", value="testcomm", display_name="testcomm")
+        DynamicDropdownConfig.objects.get_or_create(field_name="product_category", value="Chargers and Cables", display_name="Chargers and Cables")
+        DynamicDropdownConfig.objects.get_or_create(field_name="system_color", value="Clear", display_name="Clear")
+
+        csv_data = (
+            "Brand,Accessory Name,Product Description,Product Status,Product Category,SKU,UPC,Launch Date,Color,System Color,Vendor Wholesale Price,MSRP,MAP Price,Inventory Level,Device Compatibility\n"
+            'testcomm,30W PD Wall Plug + 3 Round Type C to C Cable,High speed charger cable,Active,Chargers & Cables,PK-200,197000082065,09/20/2023,Clear,Clear,4.65,24.99,24.99,100,"iPhone 14, iPhone 16"\n'
+        )
+        file_obj = io.BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "Compatibility_Test_v6.csv"
+        resp = buyer_client.post(
+            "/api/v1/catalog/products/bulk_upload/",
+            {"file": file_obj, "update_mode": "create_only"},
+            format="multipart"
+        )
+        assert resp.status_code == 200, f"Errors: {resp.data.get('errors')}"
+        assert resp.data["rows_failed"] == 0
+        prod = Product.objects.get(sku="PK-200")
+        assert prod.compatible_charging_interface == "Type-C"
+        assert prod.wireless_charging_compatibility == "Not Compatible"
+

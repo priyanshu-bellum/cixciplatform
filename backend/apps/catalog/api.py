@@ -1832,6 +1832,58 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 else:
                     unique_groups = []
 
+                acc_name_str = str(row.get("accessoryname") or row.get("name") or row.get("productname") or "").strip()
+                acc_name_lower = acc_name_str.lower()
+                comp_str_lower = comp_str.lower()
+
+                # Pre-infer category features if separate columns are not provided
+                if not has_separate_cols:
+                    if product_category in ["Chargers and Cables", "Chargers & Cables"]:
+                        if not row_charging or row_charging == "Not Compatible":
+                            if any(x in acc_name_lower or x in comp_str_lower for x in ["type-c", "type c", "c to c", "usb-c", "usb c", "typec"]):
+                                row_charging = "Type-C"
+                            elif "lightning" in acc_name_lower or "lightning" in comp_str_lower:
+                                row_charging = "Lightning"
+                            else:
+                                from apps.devices.models import Device
+                                matched_devs = Device.objects.filter(name__in=[g for g in unique_groups if is_valid_device_name(g)])
+                                c_ifs = set(matched_devs.values_list("compatible_charging_interface", flat=True))
+                                if "Type-C" in c_ifs:
+                                    row_charging = "Type-C"
+                                elif "Lightning" in c_ifs:
+                                    row_charging = "Lightning"
+                                else:
+                                    row_charging = "Type-C"
+                        if not row_wireless:
+                            w_found = []
+                            if "magsafe" in acc_name_lower or "magsafe" in comp_str_lower:
+                                w_found.append("MagSafe")
+                            if "qi2" in acc_name_lower or "qi2" in comp_str_lower:
+                                w_found.append("Qi2")
+                            elif "qi" in acc_name_lower or "qi" in comp_str_lower:
+                                w_found.append("Qi")
+                            row_wireless = "+".join(w_found) if w_found else "Not Compatible"
+
+                    elif product_category in ["Headphones", "Headphones & Earbuds"]:
+                        if not row_bluetooth:
+                            row_bluetooth = "Yes"
+                        if not row_jack or row_jack == "Not Compatible":
+                            if "lightning" in acc_name_lower or "lightning" in comp_str_lower:
+                                row_jack = "Lightning"
+                            elif any(x in acc_name_lower or x in comp_str_lower for x in ["type-c", "type c"]):
+                                row_jack = "Type-C"
+                            else:
+                                row_jack = "Not Compatible"
+
+                    elif product_category in ["Speakers", "Speakers & Audio"]:
+                        if not row_bluetooth:
+                            row_bluetooth = "Yes"
+                        if not row_charging or row_charging == "Not Compatible":
+                            if "lightning" in acc_name_lower or "lightning" in comp_str_lower:
+                                row_charging = "Lightning"
+                            else:
+                                row_charging = "Type-C"
+
                 if unique_groups:
                     # Set default variables based on parts for category-specific check below
                     for g_item in unique_groups:
@@ -1845,15 +1897,15 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                 if not row_jack: row_jack = "Not Compatible"
                             elif product_category == "Speakers":
                                 if not row_bluetooth: row_bluetooth = "Yes"
-                                if not row_charging: row_charging = "Not Compatible"
-                            elif product_category == "Chargers and Cables":
-                                if not row_charging: row_charging = "Not Compatible"
+                                if not row_charging: row_charging = "Type-C"
+                            elif product_category in ["Chargers and Cables", "Chargers & Cables"]:
+                                if not row_charging or row_charging == "Not Compatible": row_charging = "Type-C"
                                 if not row_wireless: row_wireless = "Not Compatible"
                             elif product_category == "Memory":
                                 if not row_storage: row_storage = "Not Compatible"
                                 if not row_memory: row_memory = "Not Compatible"
                             elif product_category == "Wearable Tech":
-                                if not row_charging: row_charging = "Not Compatible"
+                                if not row_charging: row_charging = "Type-C"
                                 if not row_wireless: row_wireless = "Not Compatible"
                             elif product_category == "Watch Accessories":
                                 if not row_watch_size: row_watch_size = "Not Compatible"
