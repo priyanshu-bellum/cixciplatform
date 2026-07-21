@@ -513,44 +513,47 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     export_job__company_scope_reference=company.id,
                     export_job__status="completed"
                 ).values_list("product_ids", flat=True)
-                
+
                 flat_exported_ids = []
                 for pid_list in exported_product_ids:
                     if isinstance(pid_list, list):
                         flat_exported_ids.extend(pid_list)
-                
+
                 qs = qs.filter(id__in=flat_exported_ids)
-            elif getattr(self, "action", None) == "list":
+
+            if getattr(self, "action", None) == "list":
                 device_id_param = self.request.query_params.get("device_id")
                 from apps.devices.models import BuyerDevicePortfolioReference
-                portfolio_device_ids = BuyerDevicePortfolioReference.objects.filter(
-                    buyer_reference=user.id,
+                portfolio_device_ids = list(BuyerDevicePortfolioReference.objects.filter(
                     company_scope_reference=company.id,
                     active_flag=True
-                ).values_list("device_id", flat=True)
+                ).values_list("device_id", flat=True))
 
-                if not portfolio_device_ids:
+                if not is_api_key_auth and not portfolio_device_ids:
                     return Product.objects.none()
 
                 if device_id_param:
                     from uuid import UUID
                     try:
                         dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
-                        target_device_ids = [d for d in dev_uuids if d in portfolio_device_ids]
+                        target_device_ids = [d for d in dev_uuids if d in portfolio_device_ids] if portfolio_device_ids else dev_uuids
                         if not target_device_ids:
                             return Product.objects.none()
                     except ValueError:
                         return Product.objects.none()
-                else:
+                elif not is_api_key_auth:
                     target_device_ids = portfolio_device_ids
+                else:
+                    target_device_ids = None
 
-                compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
-                    device_reference__in=target_device_ids,
-                    is_compatible=True,
-                    is_excluded=False
-                ).values_list("product_id", flat=True)
+                if target_device_ids is not None:
+                    compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
+                        device_reference__in=target_device_ids,
+                        is_compatible=True,
+                        is_excluded=False
+                    ).values_list("product_id", flat=True)
 
-                qs = qs.filter(id__in=compatible_product_ids)
+                    qs = qs.filter(id__in=compatible_product_ids)
 
         buyer_regions = company.approved_regions or []
         if not isinstance(buyer_regions, list):

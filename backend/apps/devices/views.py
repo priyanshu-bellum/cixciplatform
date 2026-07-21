@@ -665,10 +665,12 @@ class BuyerPortfolioViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        user = self.request.user
+        if not user or not hasattr(user, "entity") or user.entity is None:
+            return BuyerDevicePortfolioReference.objects.none()
+
         return BuyerDevicePortfolioReference.objects.filter(
-            buyer_reference=self.request.user.id,
-            company_scope_reference=self.request.user.entity.company_id,
-            buyer_entity_reference=self.request.user.entity_id,
+            company_scope_reference=user.entity.company_id,
         ).select_related("device__manufacturer", "device__device_type")
 
     @action(detail=False, methods=["get"])

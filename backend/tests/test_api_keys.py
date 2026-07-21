@@ -59,9 +59,25 @@ class TestCompanyAPIKeysApi:
         res = client.get("/api/v1/devices/portfolio/my_devices/", HTTP_X_API_KEY=token)
         assert res.status_code == 200
 
+        # Add a device to portfolio and verify it returns via API key
+        from apps.devices.models import Device, DeviceType, Manufacturer
+        from apps.devices.services import add_device_to_portfolio
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        mfr, _ = Manufacturer.objects.get_or_create(name="TestMfr")
+        device, _ = Device.objects.get_or_create(name="TestDeviceAPIKey", device_type=dt, manufacturer=mfr)
+        add_device_to_portfolio(buyer_user, device.id)
+
+        res = client.get("/api/v1/devices/portfolio/my_devices/", HTTP_X_API_KEY=token)
+        assert res.status_code == 200
+        data = res.data if isinstance(res.data, list) else res.data.get("results", res.data)
+        assert len(data) == 1
+        assert str(data[0]["device"]) == str(device.id)
+
         # 4. Make request with valid API key via Authorization header
         res = client.get("/api/v1/devices/portfolio/my_devices/", HTTP_AUTHORIZATION=f"Api-Key {token}")
         assert res.status_code == 200
+        data = res.data if isinstance(res.data, list) else res.data.get("results", res.data)
+        assert len(data) == 1
 
         # 5. Make request with invalid/inactive API key
         api_key.is_active = False
