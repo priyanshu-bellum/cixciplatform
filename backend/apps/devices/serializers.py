@@ -37,11 +37,12 @@ class DeviceTypeSerializer(serializers.ModelSerializer):
                 data["code"] = slugify(name_stripped)
 
         # Enforce compatibility rules
-        compatibility_rules = data.get("compatibility_rules", self.instance.compatibility_rules if self.instance else {})
+        name = data.get("name") or (self.instance.name if self.instance else "")
+        compatibility_rules = data.get("compatibility_rules") or (self.instance.compatibility_rules if self.instance else {})
         if name and not compatibility_rules:
             # Auto-configure default compatibility rules using backend keys
             name_lower = name.strip().lower()
-            if name_lower == "phone":
+            if name_lower in ["phone", "smart phone", "smartphone"]:
                 compatibility_rules = {
                     "charging_interface": {"mode": "required"},
                     "storage_expansion_type": {"mode": "required"},
@@ -58,7 +59,7 @@ class DeviceTypeSerializer(serializers.ModelSerializer):
                     "headphone_jack_type": {"mode": "required"},
                     "bluetooth_supported": {"mode": "required", "default_value": "Yes"}
                 }
-            elif name_lower == "smartwatch":
+            elif name_lower in ["smartwatch", "watch"]:
                 compatibility_rules = {
                     "bluetooth_supported": {"mode": "required", "default_value": "Yes"},
                     "wireless_charging_type": {"mode": "required"},
@@ -69,6 +70,10 @@ class DeviceTypeSerializer(serializers.ModelSerializer):
                     "charging_interface": {"mode": "required"},
                     "headphone_jack_type": {"mode": "required"},
                     "bluetooth_supported": {"mode": "required", "default_value": "Yes"}
+                }
+            else:
+                compatibility_rules = {
+                    "bluetooth_supported": {"mode": "optional"}
                 }
             data["compatibility_rules"] = compatibility_rules
 
@@ -86,7 +91,8 @@ class DeviceTypeSerializer(serializers.ModelSerializer):
         status = data.get("status", self.instance.status if self.instance else "setup_required")
         if status == "active":
             if not compatibility_rules:
-                raise serializers.ValidationError({"compatibility_rules": "Compatibility rules must be configured before a Device Type can be active."})
+                compatibility_rules = {"bluetooth_supported": {"mode": "optional"}}
+                data["compatibility_rules"] = compatibility_rules
             
             # Active Device Type must define eligible Product Categories
             cats = data.get("supported_accessory_categories", self.instance.supported_accessory_categories if self.instance else [])

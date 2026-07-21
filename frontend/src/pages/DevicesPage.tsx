@@ -146,7 +146,7 @@ function parseApiError(err: any, fallback: string = 'An error occurred'): string
   if (typeof target === 'object' && target !== null) {
     const messages: string[] = []
     Object.entries(target).forEach(([field, val]) => {
-      if (field === 'error' || field === 'status_code') return
+      if (field === 'status_code') return
       const fieldLabel = field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')
       const valStr = Array.isArray(val)
         ? val.join(' ')

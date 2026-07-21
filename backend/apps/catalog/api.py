@@ -484,6 +484,20 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if not user or user.is_anonymous:
             return Product.objects.none()
         if user.is_cixci_admin:
+            device_id_param = self.request.query_params.get("device_id")
+            if device_id_param:
+                from uuid import UUID
+                try:
+                    dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
+                    if dev_uuids:
+                        compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
+                            device_reference__in=dev_uuids,
+                            is_compatible=True,
+                            is_excluded=False
+                        ).values_list("product_id", flat=True)
+                        qs = qs.filter(id__in=compatible_product_ids)
+                except ValueError:
+                    return Product.objects.none()
             return qs
 
         company = user.company
@@ -491,7 +505,22 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             return Product.objects.none()
 
         if company.company_type == "vendor":
-            return qs.filter(vendor_company_reference=company.id)
+            qs = qs.filter(vendor_company_reference=company.id)
+            device_id_param = self.request.query_params.get("device_id")
+            if device_id_param:
+                from uuid import UUID
+                try:
+                    dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
+                    if dev_uuids:
+                        compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
+                            device_reference__in=dev_uuids,
+                            is_compatible=True,
+                            is_excluded=False
+                        ).values_list("product_id", flat=True)
+                        qs = qs.filter(id__in=compatible_product_ids)
+                except ValueError:
+                    return Product.objects.none()
+            return qs
 
         from apps.tenant.models import Company, CompanyStatus, CompanyType
         from django.db.models import Q
@@ -848,6 +877,17 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         )
                         created.append(assertion)
                         
+            # Recalculate product compatibility status based on active non-excluded assertions
+            cnt = ProductCompatibilityAssertion.objects.filter(
+                product=product,
+                is_compatible=True,
+                is_excluded=False
+            ).count()
+            new_status = "complete" if cnt >= 1 else "incomplete"
+            if product.compatibility_status != new_status:
+                product.compatibility_status = new_status
+                Product.objects.filter(id=product.id).update(compatibility_status=new_status)
+
             try:
                 from apps.catalog.services import trigger_catalog_recalculation_for_product
                 trigger_catalog_recalculation_for_product(product.id)
@@ -1156,9 +1196,14 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if not comp_str:
                 return []
             
+            # Check direct exact or lookup device match first (e.g. "Samsung Galaxy S26+")
+            direct_dev = lookup_device(comp_str.strip())
+            if direct_dev:
+                return [direct_dev]
+            
             import re
             g_item_clean = re.sub(r'\s*\bplus\b\s*', ' + ', comp_str, flags=re.IGNORECASE)
-            parts = [p.strip() for p in g_item_clean.split("+") if p.strip()]
+            parts = [p.strip() for p in re.split(r'\s*;\s*|\s*,\s*|\s+\+\s+', g_item_clean) if p.strip()]
             if not parts:
                 return []
 
@@ -1824,7 +1869,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     for g in groups:
                         import re
                         g_clean = re.sub(r'\s*\bplus\b\s*', ' + ', g, flags=re.IGNORECASE)
-                        g_clean = " + ".join(p.strip() for p in g_clean.split("+") if p.strip())
+                        g_clean = " + ".join(p.strip() for p in re.split(r'\s+\+\s+', g_clean) if p.strip())
                         gl = g_clean.lower()
                         if gl not in seen_g:
                             seen_g.add(gl)
@@ -1887,7 +1932,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 if unique_groups:
                     # Set default variables based on parts for category-specific check below
                     for g_item in unique_groups:
-                        parts = [p.strip() for p in g_item.split("+") if p.strip()]
+                        parts = [p.strip() for p in re.split(r'\s+\+\s+', g_item) if p.strip()]
                         parts_lower = [p.lower() for p in parts]
                         
                         # If there's a device name in the parts of this group, auto-populate features if blank

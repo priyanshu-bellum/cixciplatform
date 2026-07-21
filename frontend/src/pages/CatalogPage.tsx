@@ -2669,7 +2669,7 @@ export default function CatalogPage() {
                           : formatCurrency(p.vendor_wholesale_price_amount, p.vendor_wholesale_price_currency)
                         }
                       </td>
-                      <td className="mono">{formatCurrency(p.msrp)}</td>
+                      <td className="mono">{formatCurrency(p.msrp, p.vendor_wholesale_price_currency)}</td>
                       <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
                       <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
                     </tr>
@@ -2719,13 +2719,102 @@ export default function CatalogPage() {
               </div>
 
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 16, flexWrap: 'wrap' }}>
-                  <div className="search-bar" style={{ width: 280, margin: 0 }}>
-                    <Search size={14} />
-                    <input placeholder="Search compatible products…" value={search} onChange={e => setSearch(e.target.value)} />
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                  padding: 16,
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  marginBottom: 16,
+                  alignItems: 'center'
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Search</label>
+                    <div className="search-bar" style={{ width: 240, margin: 0 }}>
+                      <Search size={14} />
+                      <input placeholder="Search compatible products…" value={search} onChange={e => setSearch(e.target.value)} />
+                    </div>
                   </div>
+
+                  {isBuyer && (
+                    <MultiSelect
+                      label="Filter by Device"
+                      placeholder="All Devices (My Portfolio)"
+                      selected={filterDeviceId ? filterDeviceId.split(',').filter(Boolean) : []}
+                      options={portfolio?.filter((d: any) => d.active_flag).map((d: any) => ({ value: d.device, label: d.device_name })) ?? []}
+                      onChange={(vals) => {
+                        const newParams = new URLSearchParams(searchParams)
+                        if (vals.length > 0) {
+                          newParams.set('device', vals.join(','))
+                        } else {
+                          newParams.delete('device')
+                        }
+                        setSearchParams(newParams)
+                      }}
+                    />
+                  )}
+
+                  <MultiSelect
+                    label="Category"
+                    placeholder="All Categories"
+                    selected={filterCategories}
+                    options={allowedCategories}
+                    onChange={setFilterCategories}
+                  />
+
+                  <MultiSelect
+                    label="Brand"
+                    placeholder="All Brands"
+                    selected={filterBrands}
+                    options={brandsList}
+                    onChange={setFilterBrands}
+                  />
+
+                  <MultiSelect
+                    label="Color"
+                    placeholder="All Colors"
+                    selected={filterColors}
+                    options={allowedColors}
+                    onChange={setFilterColors}
+                  />
+
+                  <MultiSelect
+                    label="MSRP (Wholesale)"
+                    placeholder="All Prices"
+                    selected={filterMsrps}
+                    options={[
+                      { value: '0-25', label: 'Under $25' },
+                      { value: '25-50', label: '$25 to $50' },
+                      { value: '50-100', label: '$50 to $100' },
+                      { value: '100-200', label: '$100 to $200' },
+                      { value: '200+', label: 'Over $200' }
+                    ]}
+                    onChange={setFilterMsrps}
+                  />
+
+                  {(filterDeviceId || filterCategories.length > 0 || filterBrands.length > 0 || filterColors.length > 0 || filterMsrps.length > 0) && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ alignSelf: 'flex-end', height: 38, padding: '0 12px' }}
+                      onClick={() => {
+                        setFilterCategories([])
+                        setFilterBrands([])
+                        setFilterColors([])
+                        setFilterMsrps([])
+                        const newParams = new URLSearchParams(searchParams)
+                        newParams.delete('device')
+                        setSearchParams(newParams)
+                      }}
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+
                   {selectedIds.length > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
                       <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                         {selectedIds.length} selected
                       </span>
@@ -2830,7 +2919,7 @@ export default function CatalogPage() {
                                 : formatCurrency(p.vendor_wholesale_price_amount, p.vendor_wholesale_price_currency)
                               }
                             </td>
-                            <td className="mono">{formatCurrency(p.msrp)}</td>
+                            <td className="mono">{formatCurrency(p.msrp, p.vendor_wholesale_price_currency)}</td>
                             <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
                             <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
                           </tr>
@@ -4197,7 +4286,7 @@ export default function CatalogPage() {
 
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>MSRP</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, fontWeight: 500 }}>{formatCurrency(selectedManageProduct.msrp)}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, fontWeight: 500 }}>{formatCurrency(selectedManageProduct.msrp, selectedManageProduct.vendor_wholesale_price_currency)}</div>
                     </div>
 
                     <div>
@@ -4253,14 +4342,14 @@ export default function CatalogPage() {
                     {selectedManageProduct.vendor_map_pricing_enforced && (
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>MAP Price</div>
-                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{formatCurrency(selectedManageProduct.map_price)}</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{formatCurrency(selectedManageProduct.map_price, selectedManageProduct.vendor_wholesale_price_currency)}</div>
                       </div>
                     )}
 
                     {selectedManageProduct.sale_price && (
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Sale Price</div>
-                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{formatCurrency(selectedManageProduct.sale_price)}</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{formatCurrency(selectedManageProduct.sale_price, selectedManageProduct.vendor_wholesale_price_currency)}</div>
                       </div>
                     )}
 
