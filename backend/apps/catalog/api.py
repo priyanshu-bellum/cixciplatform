@@ -1855,10 +1855,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             row_memory = get_row_value(row, "memory_capacity", "memorycapacity")
             row_watch_size = get_row_value(row, "compatible_watch_case_size", "watchcasesize", "compatiblewatchcasesize")
 
+            comp_str = str(comp_val or "").strip()
+            comp_str_lower = comp_str.lower()
+            comp_errors = []
+
             if comp_val or has_separate_cols:
-                comp_str = str(comp_val).strip()
-                comp_errors = []
-                
                 # Parse from compatibility column if present
                 if comp_str:
                     # Support both comma and semicolon separation
@@ -1879,7 +1880,6 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
                 acc_name_str = str(row.get("accessoryname") or row.get("name") or row.get("productname") or "").strip()
                 acc_name_lower = acc_name_str.lower()
-                comp_str_lower = comp_str.lower()
 
                 # Pre-infer category features if separate columns are not provided
                 if not has_separate_cols:
@@ -2471,49 +2471,100 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 product.status = final_status
                 product.selling_status = "for_sale" if final_status == "active" else "not_for_sale"
                 
-                # Parse and set category-specific compatibility attributes
-                if product_category in ["Headphones", "Speakers", "Chargers and Cables", "Memory", "Wearable Tech", "Watch Accessories"]:
-                    if product_category == "Headphones":
-                        product.bluetooth_compatibility = row_bluetooth if row_bluetooth else "No"
-                        product.headphone_jack_compatibility = row_jack if row_jack else "Not Compatible"
-                        
-                    elif product_category == "Speakers":
-                        product.bluetooth_compatibility = row_bluetooth if row_bluetooth else "No"
-                        product.compatible_charging_interface = row_charging if row_charging else "Not Compatible"
-                        
-                    elif product_category == "Chargers and Cables":
-                        product.compatible_charging_interface = row_charging if row_charging else "Not Compatible"
-                        if row_wireless:
-                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                            case_map_exact = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
-                            product.wireless_charging_compatibility = "+".join(case_map_exact[w.lower()] for w in w_vals if w.lower() in case_map_exact)
+                # Fetch dynamic category config to respect required/optional modes during bulk upload
+                from apps.catalog.models import DynamicDropdownConfig
+                cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=product_category).first()
+                cat_rules = cat_cfg.compatibility_rules if (cat_cfg and cat_cfg.compatibility_rules) else {}
+
+                # 1. Wireless Charging Compatibility
+                if row_wireless:
+                    w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
+                    case_map_exact = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
+                    parsed_w = "+".join(case_map_exact[w.lower()] for w in w_vals if w.lower() in case_map_exact)
+                    product.wireless_charging_compatibility = parsed_w if parsed_w else "Not Compatible"
+                else:
+                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
+                    w_found = []
+                    if "magsafe" in name_comp_lower:
+                        w_found.append("MagSafe")
+                    if "qi2" in name_comp_lower:
+                        w_found.append("Qi2")
+                    elif "qi" in name_comp_lower:
+                        w_found.append("Qi")
+                    
+                    if w_found:
+                        product.wireless_charging_compatibility = "+".join(w_found)
+                    else:
+                        rule = cat_rules.get("wireless_charging_compatibility", {})
+                        if rule.get("mode") == "required":
+                            product.wireless_charging_compatibility = "MagSafe"
                         else:
                             product.wireless_charging_compatibility = "Not Compatible"
-                        
-                    elif product_category == "Memory":
-                        product.storage_expansion_compatibility = row_storage if row_storage else "Not Compatible"
-                        if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
-                            product.memory_capacity = row_memory.upper()
+
+                # 2. Bluetooth Compatibility
+                if row_bluetooth:
+                    product.bluetooth_compatibility = "Yes" if row_bluetooth.lower() in ["yes", "true", "1"] else "No"
+                else:
+                    rule = cat_rules.get("bluetooth_compatibility", {})
+                    if rule.get("mode") == "required":
+                        product.bluetooth_compatibility = "Yes"
+                    else:
+                        product.bluetooth_compatibility = "No"
+
+                # 3. Headphone Jack Compatibility
+                if row_jack:
+                    product.headphone_jack_compatibility = row_jack
+                else:
+                    rule = cat_rules.get("headphone_jack_compatibility", {})
+                    if rule.get("mode") == "required":
+                        if "lightning" in f"{cleaned_name.lower()} {comp_str_lower}":
+                            product.headphone_jack_compatibility = "Lightning"
                         else:
-                            product.memory_capacity = "Not Compatible"
-                        
-                    elif product_category == "Wearable Tech":
-                        product.compatible_charging_interface = row_charging if row_charging else "Not Compatible"
-                        if row_wireless:
-                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                            case_map_exact = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
-                            product.wireless_charging_compatibility = "+".join(case_map_exact[w.lower()] for w in w_vals if w.lower() in case_map_exact)
+                            product.headphone_jack_compatibility = "Type-C"
+                    else:
+                        product.headphone_jack_compatibility = "Not Compatible"
+
+                # 4. Compatible Charging Interface
+                if row_charging:
+                    product.compatible_charging_interface = row_charging
+                else:
+                    rule = cat_rules.get("compatible_charging_interface", {})
+                    if rule.get("mode") == "required":
+                        if "lightning" in f"{cleaned_name.lower()} {comp_str_lower}":
+                            product.compatible_charging_interface = "Lightning"
                         else:
-                            product.wireless_charging_compatibility = "Not Compatible"
-                        
-                    elif product_category == "Watch Accessories":
-                        product.compatible_watch_case_size = row_watch_size if row_watch_size else "Not Compatible"
-                        if row_wireless:
-                            w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                            case_map_exact = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
-                            product.wireless_charging_compatibility = "+".join(case_map_exact[w.lower()] for w in w_vals if w.lower() in case_map_exact)
-                        else:
-                            product.wireless_charging_compatibility = "Not Compatible"
+                            product.compatible_charging_interface = "Type-C"
+                    else:
+                        product.compatible_charging_interface = "Not Compatible"
+
+                # 5. Storage Expansion Compatibility & Memory Capacity
+                if row_storage:
+                    product.storage_expansion_compatibility = row_storage
+                else:
+                    rule = cat_rules.get("storage_expansion_compatibility", {})
+                    if rule.get("mode") == "required":
+                        product.storage_expansion_compatibility = "microSDXC"
+                    else:
+                        product.storage_expansion_compatibility = "Not Compatible"
+
+                if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
+                    product.memory_capacity = row_memory.upper()
+                else:
+                    rule = cat_rules.get("memory_capacity", {})
+                    if rule.get("mode") == "required":
+                        product.memory_capacity = "128GB"
+                    else:
+                        product.memory_capacity = "Not Compatible"
+
+                # 6. Compatible Watch Case Size
+                if row_watch_size:
+                    product.compatible_watch_case_size = row_watch_size
+                else:
+                    rule = cat_rules.get("compatible_watch_case_size", {})
+                    if rule.get("mode") == "required":
+                        product.compatible_watch_case_size = "45mm"
+                    else:
+                        product.compatible_watch_case_size = "Not Compatible"
                 
                 try:
                     product.save(actor_id=request.user.id)
