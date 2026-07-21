@@ -2120,9 +2120,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 else:
                     normalized_comp = ""
 
-                # Now perform precise validation on the values of the fields
+                # Now perform precise validation on the values of the fields when explicitly provided
                 if product_category == "Headphones":
-                    if not row_jack or not row_bluetooth:
+                    if has_separate_cols and (not row_jack or not row_bluetooth):
                         comp_errors.append("Headphone Jack Compatibility and Bluetooth Compatibility are required.")
                     if row_jack and row_jack not in ["Not Compatible", "Lightning", "Type-C"]:
                         comp_errors.append(f"Invalid Headphone Jack Compatibility '{row_jack}'.")
@@ -2132,7 +2132,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         comp_errors.append("Headphones must support either Bluetooth or a compatible jack (cannot both be Not Compatible/No).")
 
                 elif product_category == "Speakers":
-                    if not row_charging or not row_bluetooth:
+                    if has_separate_cols and (not row_charging or not row_bluetooth):
                         comp_errors.append("Compatible Charging Interface and Bluetooth Compatibility are required.")
                     if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
                         comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
@@ -2140,7 +2140,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         comp_errors.append(f"Invalid Bluetooth Compatibility '{row_bluetooth}'.")
 
                 elif product_category == "Chargers and Cables":
-                    if not row_charging or not row_wireless:
+                    if has_separate_cols and (not row_charging or not row_wireless):
                         comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
                     if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
                         comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
@@ -2155,7 +2155,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
 
                 elif product_category == "Memory":
-                    if not row_storage:
+                    if has_separate_cols and not row_storage:
                         comp_errors.append("Storage Expansion Compatibility is required.")
                     if row_storage and row_storage not in ["Not Compatible", "microSDXC", "microSDHC"]:
                         # Attempt loose spellings
@@ -2167,9 +2167,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             comp_errors.append(f"Invalid Storage Expansion Compatibility '{row_storage}'.")
                     
                     if row_storage in ["microSDXC", "microSDHC"]:
-                        if not row_memory or row_memory == "Not Compatible":
+                        if has_separate_cols and (not row_memory or row_memory == "Not Compatible"):
                             comp_errors.append("Memory Capacity is required when storage expansion is enabled.")
-                        else:
+                        elif row_memory and row_memory != "Not Compatible":
                             if row_storage == "microSDXC":
                                 allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
                             else:
@@ -2181,7 +2181,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             comp_errors.append("Memory Capacity must be Not Compatible when Storage Expansion is Not Compatible.")
 
                 elif product_category == "Wearable Tech":
-                    if not row_charging or not row_wireless:
+                    if has_separate_cols and (not row_charging or not row_wireless):
                         comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
                     if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
                         comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
@@ -2196,7 +2196,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
 
                 elif product_category == "Watch Accessories":
-                    if not row_watch_size or not row_wireless:
+                    if has_separate_cols and (not row_watch_size or not row_wireless):
                         comp_errors.append("Compatible Watch Case Size and Wireless Charging Compatibility are required.")
                     if row_watch_size and row_watch_size not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
                         comp_errors.append(f"Invalid Compatible Watch Case Size '{row_watch_size}'.")
@@ -2474,6 +2474,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 # Fetch dynamic category config to respect required/optional modes during bulk upload
                 from apps.catalog.models import DynamicDropdownConfig
                 cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=product_category).first()
+                if not cat_cfg:
+                    cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value__iexact=product_category).first()
                 cat_rules = cat_cfg.compatibility_rules if (cat_cfg and cat_cfg.compatibility_rules) else {}
 
                 # 1. Wireless Charging Compatibility
