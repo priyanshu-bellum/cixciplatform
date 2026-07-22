@@ -2479,11 +2479,14 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 cat_rules = cat_cfg.compatibility_rules if (cat_cfg and cat_cfg.compatibility_rules) else {}
 
                 # 1. Wireless Charging Compatibility
+                rule = cat_rules.get("wireless_charging_compatibility", {})
+                mode = rule.get("mode", "hidden")
+                w_val = None
                 if row_wireless:
                     w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
                     case_map_exact = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
                     parsed_w = "+".join(case_map_exact[w.lower()] for w in w_vals if w.lower() in case_map_exact)
-                    product.wireless_charging_compatibility = parsed_w if parsed_w else "Not Compatible"
+                    w_val = parsed_w if parsed_w else "Not Compatible"
                 else:
                     name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
                     w_found = []
@@ -2493,80 +2496,165 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         w_found.append("Qi2")
                     elif "qi" in name_comp_lower:
                         w_found.append("Qi")
-                    
-                    if w_found:
-                        product.wireless_charging_compatibility = "+".join(w_found)
+                    w_val = "+".join(w_found) if w_found else "Not Compatible"
+                
+                if mode == "required":
+                    if not w_val or w_val == "Not Compatible":
+                        product.wireless_charging_compatibility = "MagSafe"
                     else:
-                        rule = cat_rules.get("wireless_charging_compatibility", {})
-                        if rule.get("mode") == "required":
-                            product.wireless_charging_compatibility = "MagSafe"
-                        else:
-                            product.wireless_charging_compatibility = "Not Compatible"
+                        product.wireless_charging_compatibility = w_val
+                elif mode == "hidden":
+                    product.wireless_charging_compatibility = "Not Compatible"
+                else:
+                    product.wireless_charging_compatibility = w_val or "Not Compatible"
 
                 # 2. Bluetooth Compatibility
+                rule = cat_rules.get("bluetooth_compatibility", {})
+                mode = rule.get("mode", "hidden")
+                bt_val = None
                 if row_bluetooth:
-                    product.bluetooth_compatibility = "Yes" if row_bluetooth.lower() in ["yes", "true", "1"] else "No"
+                    bt_val = "Yes" if row_bluetooth.lower() in ["yes", "true", "1"] else "No"
                 else:
-                    rule = cat_rules.get("bluetooth_compatibility", {})
-                    if rule.get("mode") == "required":
+                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
+                    if "bluetooth" in name_comp_lower:
+                        bt_val = "Yes"
+                    else:
+                        bt_val = "No"
+
+                if mode == "required":
+                    if not bt_val or bt_val == "No":
                         product.bluetooth_compatibility = "Yes"
                     else:
-                        product.bluetooth_compatibility = "No"
+                        product.bluetooth_compatibility = bt_val
+                elif mode == "hidden":
+                    product.bluetooth_compatibility = "No"
+                else:
+                    product.bluetooth_compatibility = bt_val or "No"
 
                 # 3. Headphone Jack Compatibility
+                rule = cat_rules.get("headphone_jack_compatibility", {})
+                mode = rule.get("mode", "hidden")
+                jack_val = None
                 if row_jack:
-                    product.headphone_jack_compatibility = row_jack
+                    jack_val = row_jack
                 else:
-                    rule = cat_rules.get("headphone_jack_compatibility", {})
-                    if rule.get("mode") == "required":
-                        if "lightning" in f"{cleaned_name.lower()} {comp_str_lower}":
-                            product.headphone_jack_compatibility = "Lightning"
-                        else:
-                            product.headphone_jack_compatibility = "Type-C"
+                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
+                    if "lightning" in name_comp_lower:
+                        jack_val = "Lightning"
+                    elif "type-c" in name_comp_lower or "type c" in name_comp_lower:
+                        jack_val = "Type-C"
                     else:
-                        product.headphone_jack_compatibility = "Not Compatible"
+                        jack_val = "Not Compatible"
+
+                if mode == "required":
+                    if not jack_val or jack_val == "Not Compatible":
+                        product.headphone_jack_compatibility = "Type-C"
+                    else:
+                        product.headphone_jack_compatibility = jack_val
+                elif mode == "hidden":
+                    product.headphone_jack_compatibility = "Not Compatible"
+                else:
+                    product.headphone_jack_compatibility = jack_val or "Not Compatible"
 
                 # 4. Compatible Charging Interface
+                rule = cat_rules.get("compatible_charging_interface", {})
+                mode = rule.get("mode", "hidden")
+                charging_val = None
                 if row_charging:
-                    product.compatible_charging_interface = row_charging
+                    charging_val = row_charging
                 else:
-                    rule = cat_rules.get("compatible_charging_interface", {})
-                    if rule.get("mode") == "required":
-                        if "lightning" in f"{cleaned_name.lower()} {comp_str_lower}":
-                            product.compatible_charging_interface = "Lightning"
-                        else:
-                            product.compatible_charging_interface = "Type-C"
+                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
+                    if "lightning" in name_comp_lower:
+                        charging_val = "Lightning"
+                    elif "type-c" in name_comp_lower or "type c" in name_comp_lower:
+                        charging_val = "Type-C"
                     else:
-                        product.compatible_charging_interface = "Not Compatible"
+                        charging_val = "Not Compatible"
 
-                # 5. Storage Expansion Compatibility & Memory Capacity
-                if row_storage:
-                    product.storage_expansion_compatibility = row_storage
+                if mode == "required":
+                    if not charging_val or charging_val == "Not Compatible":
+                        product.compatible_charging_interface = "Type-C"
+                    else:
+                        product.compatible_charging_interface = charging_val
+                elif mode == "hidden":
+                    product.compatible_charging_interface = "Not Compatible"
                 else:
-                    rule = cat_rules.get("storage_expansion_compatibility", {})
-                    if rule.get("mode") == "required":
+                    product.compatible_charging_interface = charging_val or "Not Compatible"
+
+                # 5. Storage Expansion Compatibility
+                rule = cat_rules.get("storage_expansion_compatibility", {})
+                mode = rule.get("mode", "hidden")
+                storage_val = None
+                if row_storage:
+                    storage_val = row_storage
+                else:
+                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
+                    if "microsdxc" in name_comp_lower:
+                        storage_val = "microSDXC"
+                    elif "microsdhc" in name_comp_lower:
+                        storage_val = "microSDHC"
+                    else:
+                        storage_val = "Not Compatible"
+
+                if mode == "required":
+                    if not storage_val or storage_val == "Not Compatible":
                         product.storage_expansion_compatibility = "microSDXC"
                     else:
-                        product.storage_expansion_compatibility = "Not Compatible"
-
-                if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
-                    product.memory_capacity = row_memory.upper()
+                        product.storage_expansion_compatibility = storage_val
+                elif mode == "hidden":
+                    product.storage_expansion_compatibility = "Not Compatible"
                 else:
-                    rule = cat_rules.get("memory_capacity", {})
-                    if rule.get("mode") == "required":
+                    product.storage_expansion_compatibility = storage_val or "Not Compatible"
+
+                # 6. Memory Capacity
+                rule = cat_rules.get("memory_capacity", {})
+                mode = rule.get("mode", "hidden")
+                mem_val = None
+                if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
+                    mem_val = row_memory.upper()
+                else:
+                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
+                    for sz in ["16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "2tb"]:
+                        if sz in name_comp_lower:
+                            mem_val = sz.upper()
+                            break
+                    if not mem_val:
+                        mem_val = "Not Compatible"
+
+                if mode == "required":
+                    if not mem_val or mem_val == "Not Compatible":
                         product.memory_capacity = "128GB"
                     else:
-                        product.memory_capacity = "Not Compatible"
-
-                # 6. Compatible Watch Case Size
-                if row_watch_size:
-                    product.compatible_watch_case_size = row_watch_size
+                        product.memory_capacity = mem_val
+                elif mode == "hidden":
+                    product.memory_capacity = "Not Compatible"
                 else:
-                    rule = cat_rules.get("compatible_watch_case_size", {})
-                    if rule.get("mode") == "required":
+                    product.memory_capacity = mem_val or "Not Compatible"
+
+                # 7. Compatible Watch Case Size
+                rule = cat_rules.get("compatible_watch_case_size", {})
+                mode = rule.get("mode", "hidden")
+                watch_val = None
+                if row_watch_size:
+                    watch_val = row_watch_size
+                else:
+                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
+                    for sz in ["40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
+                        if sz in name_comp_lower:
+                            watch_val = sz
+                            break
+                    if not watch_val:
+                        watch_val = "Not Compatible"
+
+                if mode == "required":
+                    if not watch_val or watch_val == "Not Compatible":
                         product.compatible_watch_case_size = "45mm"
                     else:
-                        product.compatible_watch_case_size = "Not Compatible"
+                        product.compatible_watch_case_size = watch_val
+                elif mode == "hidden":
+                    product.compatible_watch_case_size = "Not Compatible"
+                else:
+                    product.compatible_watch_case_size = watch_val or "Not Compatible"
                 
                 try:
                     product.save(actor_id=request.user.id)
