@@ -23,7 +23,10 @@ def product(buyer_user):
         vendor_company_reference=uuid.uuid4(),
     )
 
-    dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+    dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+    if dt.status != "active":
+        dt.status = "active"
+        dt.save()
     mfr, _ = Manufacturer.objects.get_or_create(name="TestMfr")
     device, _ = Device.objects.get_or_create(name="TestDevice", device_type=dt, manufacturer=mfr)
 

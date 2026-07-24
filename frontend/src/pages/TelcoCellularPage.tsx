@@ -24,7 +24,7 @@ import axios from 'axios'
 const telcoApi = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   headers: {
-    'X-API-Key': 'cixci_key_240da5440d234266b1277737a8920f83d1edb9e78388e3b5',
+    'X-API-Key': 'cixci_key_fab27b938452fc44e137592f38f7ada03de80374ecffca3f',
   },
 })
 

@@ -30,7 +30,10 @@ def product(buyer_user):
         vendor_company_reference=uuid.uuid4(),
     )
 
-    dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+    dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+    if dt.status != "active":
+        dt.status = "active"
+        dt.save()
     mfr, _ = Manufacturer.objects.get_or_create(name="TestMfr")
     device, _ = Device.objects.get_or_create(name="TestDevice", device_type=dt, manufacturer=mfr)
 
@@ -151,7 +154,7 @@ class TestSellingStatusTransition:
         from apps.devices.models import Device, DeviceType, Manufacturer
         from apps.devices.services import add_device_to_portfolio, remove_device_from_portfolio
 
-        dt = DeviceType.objects.create(name="Phone2", code="phone2")
+        dt = DeviceType.objects.create(name="Phone2", code="phone2", status="active")
         mfr = Manufacturer.objects.create(name="Mfr2")
         device = Device.objects.create(name="Dev2", device_type=dt, manufacturer=mfr)
 
@@ -738,7 +741,10 @@ class TestGovernanceAndCompatibilityImport:
         # Setup manufacturer and devices
         from apps.devices.models import Device, Manufacturer, DeviceType
         mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        if dt.status != "active":
+            dt.status = "active"
+            dt.save()
         Device.objects.get_or_create(name="Apple iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available")
 
         # Create an active product
@@ -1027,7 +1033,10 @@ class TestGovernanceAndCompatibilityImport:
 
         # Setup manufacturer and devices
         mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        if dt.status != "active":
+            dt.status = "active"
+            dt.save()
         dev1, _ = Device.objects.get_or_create(name="Apple iPhone 17", manufacturer=mfg, device_type=dt, lifecycle_status="available")
         dev2, _ = Device.objects.get_or_create(name="Apple iPhone 16 Pro", manufacturer=mfg, device_type=dt, lifecycle_status="available")
 
@@ -1157,7 +1166,10 @@ class TestGovernanceAndCompatibilityImport:
         # 2. Test upload with past launch date: should default to ACTIVE
         # Setup actual device in database first
         mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        if dt.status != "active":
+            dt.status = "active"
+            dt.save()
         Device.objects.get_or_create(name="Apple iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available")
 
         csv_data_active = (
@@ -1200,12 +1212,30 @@ class TestGovernanceAndCompatibilityImport:
         from apps.devices.models import Device, DeviceType, Manufacturer
 
         mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        if dt.status != "active":
+            dt.status = "active"
+            dt.save()
         Device.objects.get_or_create(name="iPhone 14", manufacturer=mfg, device_type=dt, lifecycle_status="available", compatible_charging_interface="Lightning")
         Device.objects.get_or_create(name="iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available", compatible_charging_interface="Type-C")
 
         DynamicDropdownConfig.objects.get_or_create(field_name="brand", value="testcomm", display_name="testcomm")
-        DynamicDropdownConfig.objects.get_or_create(field_name="product_category", value="Chargers and Cables", display_name="Chargers and Cables")
+        DynamicDropdownConfig.objects.update_or_create(
+            field_name="product_category",
+            value="Chargers and Cables",
+            defaults={
+                "display_name": "Chargers and Cables",
+                "status": "active",
+                "compatibility_mode": "feature_based",
+                "eligible_device_types": ["smartphone"],
+                "match_logic": "OR",
+                "accessory_fields": ["compatible_charging_interface", "wireless_charging_compatibility"],
+                "compatibility_rules": {
+                    "compatible_charging_interface": {"mode": "required"},
+                    "wireless_charging_compatibility": {"mode": "optional"}
+                }
+            }
+        )
         DynamicDropdownConfig.objects.get_or_create(field_name="system_color", value="Clear", display_name="Clear")
 
         csv_data = (

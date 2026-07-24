@@ -62,7 +62,10 @@ class TestCompanyAPIKeysApi:
         # Add a device to portfolio and verify it returns via API key
         from apps.devices.models import Device, DeviceType, Manufacturer
         from apps.devices.services import add_device_to_portfolio
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        if dt.status != "active":
+            dt.status = "active"
+            dt.save()
         mfr, _ = Manufacturer.objects.get_or_create(name="TestMfr")
         device, _ = Device.objects.get_or_create(name="TestDeviceAPIKey", device_type=dt, manufacturer=mfr)
         add_device_to_portfolio(buyer_user, device.id)
@@ -94,7 +97,10 @@ class TestCompanyAPIKeysApi:
         import secrets
 
         # 1. Setup portfolio device
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        if dt.status != "active":
+            dt.status = "active"
+            dt.save()
         mfr, _ = Manufacturer.objects.get_or_create(name="TestMfr")
         device, _ = Device.objects.get_or_create(name="TestDevice", device_type=dt, manufacturer=mfr)
         add_device_to_portfolio(buyer_user, device.id)
