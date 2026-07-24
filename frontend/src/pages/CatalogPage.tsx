@@ -348,7 +348,7 @@ function MultiSelectColor({
   )
 }
 
-const formatCurrency = (amount: number | string | null | undefined, currency: string = 'USD') => {
+export const formatCurrency = (amount: number | string | null | undefined, currency: string = 'USD') => {
   if (amount === null || amount === undefined || amount === '') return '—';
   let numericAmount: number;
   if (typeof amount === 'string') {
@@ -362,6 +362,8 @@ const formatCurrency = (amount: number | string | null | undefined, currency: st
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency || 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(numericAmount);
   } catch (e) {
     return `${currency} ${numericAmount.toFixed(2)}`;
@@ -2368,7 +2370,12 @@ export default function CatalogPage() {
     setProdType(p.product_type || 'accessory')
     setProdCategory(p.product_category || '')
     setProdDescription(p.description || '')
-    setProdPrice(String(p.vendor_wholesale_price_amount || '19.99'))
+    const cleanPriceInput = (val: any) => {
+      if (val === null || val === undefined || val === '') return '';
+      const parsed = parseFloat(val);
+      return isNaN(parsed) ? '' : parsed.toFixed(2);
+    };
+    setProdPrice(p.vendor_wholesale_price_amount ? cleanPriceInput(p.vendor_wholesale_price_amount) : '19.99')
     setProdCurrency(p.vendor_wholesale_price_currency || 'USD')
     setImagePreviewUrl(p.primary_image_url ? getImageUrl(p.primary_image_url) : '')
     setProdPrimaryImageUrl(p.primary_image_url ? getImageUrl(p.primary_image_url) : '')
@@ -2380,9 +2387,9 @@ export default function CatalogPage() {
     setProdEolDate(p.eol_date || '')
     setProdColor(p.color || '')
     setProdSystemColor(p.system_color || '')
-    setProdMsrp(p.msrp !== null && p.msrp !== undefined ? String(p.msrp) : '')
-    setProdMapPrice(p.map_price !== null && p.map_price !== undefined ? String(p.map_price) : '')
-    setProdSalePrice(p.sale_price !== null && p.sale_price !== undefined ? String(p.sale_price) : '')
+    setProdMsrp(cleanPriceInput(p.msrp))
+    setProdMapPrice(cleanPriceInput(p.map_price))
+    setProdSalePrice(cleanPriceInput(p.sale_price))
     setProdRecommendedAccessory(!!p.recommended_accessory)
     setProdInventoryLevel(p.inventory_level !== null && p.inventory_level !== undefined ? String(p.inventory_level) : '')
     setProdInventoryThreshold(p.inventory_threshold !== null && p.inventory_threshold !== undefined ? String(p.inventory_threshold) : '')

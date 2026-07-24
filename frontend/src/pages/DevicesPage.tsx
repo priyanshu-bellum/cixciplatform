@@ -164,6 +164,8 @@ export default function DevicesPage() {
   const { user } = useAuthStore()
   const isBuyer = user?.company_type === 'buyer'
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
+  const canImportDevices = isCixciAdmin || (user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.device.import'))
+  const canManageDropdowns = isCixciAdmin || (user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.type.manage' || c.code === 'devices.manufacturer.manage'))
 
   const [search, setSearch] = useState('')
   const [filterManufacturer, setFilterManufacturer] = useState('')
@@ -999,17 +1001,23 @@ export default function DevicesPage() {
           <div className="page-title">Device Catalog</div>
           <div className="page-sub">All devices, features, and buyer portfolios</div>
         </div>
-        {isCixciAdmin && (
+        {(canManageDropdowns || canImportDevices) && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary" onClick={() => setShowDropdownModal(true)}>
-              Manage Dropdown Values
-            </button>
-            <button className="btn btn-secondary" onClick={() => { resetImportState(); setShowImportModal(true); }}>
-              Import Devices
-            </button>
-            <button className="btn btn-primary" onClick={() => { resetAddState(); setShowAddModal(true); }}>
-              <Plus size={14} /> Add Device
-            </button>
+            {canManageDropdowns && (
+              <button className="btn btn-secondary" onClick={() => setShowDropdownModal(true)}>
+                Manage Dropdown Values
+              </button>
+            )}
+            {canImportDevices && (
+              <>
+                <button className="btn btn-secondary" onClick={() => { resetImportState(); setShowImportModal(true); }}>
+                  Import Devices
+                </button>
+                <button className="btn btn-primary" onClick={() => { resetAddState(); setShowAddModal(true); }}>
+                  <Plus size={14} /> Add Device
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -216,6 +216,18 @@ def _emit_portfolio_changed_event(user, change_record, snapshot):
         "EVENT: device-catalog.my-devices.portfolio-changed | buyer=%s | change_type=%s | snapshot=%s",
         user.id, change_record.change_type, snapshot.id,
     )
+    try:
+        from apps.catalog.services import recalculate_buyer_compatibility_projection
+        recalculate_buyer_compatibility_projection(
+            buyer_reference=user.id,
+            company_scope_reference=user.entity.company_id,
+            buyer_entity_reference=user.entity_id,
+            portfolio_snapshot_reference=snapshot.id,
+            trigger="portfolio_changed",
+        )
+    except Exception as e:
+        logger.error(f"Failed to recalculate projection on portfolio change: {e}")
+
 
 
 def log_device_audit(event_code: str, description: str, device_id, actor_id, status="success"):

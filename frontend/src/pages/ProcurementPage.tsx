@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ShoppingCart, Plus, List } from 'lucide-react'
 import api from '../lib/apiClient'
+import { formatCurrency } from './CatalogPage'
 
 const PO_STATUS: Record<string, string> = {
   draft: 'badge-muted', pending_approval: 'badge-amber', approved: 'badge-blue',
@@ -87,7 +88,7 @@ export default function ProcurementPage() {
                     </td>
                     <td>{o.currency ?? 'USD'}</td>
                     <td style={{ color: 'var(--text-primary)' }}>
-                      {o.total_amount != null ? Number(o.total_amount).toLocaleString() : '—'}
+                      {formatCurrency(o.total_amount, o.currency)}
                     </td>
                     <td>{o.created_at ? new Date(o.created_at).toLocaleDateString() : '—'}</td>
                     <td>
@@ -141,8 +142,8 @@ export default function ProcurementPage() {
                         {l.product_reference?.slice(0, 8)}…
                       </td>
                       <td>{l.quantity}</td>
-                      <td>{l.unit_price_snapshot}</td>
-                      <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{l.line_total}</td>
+                      <td>{formatCurrency(l.unit_price_snapshot, selectedPO?.currency)}</td>
+                      <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(l.line_total, selectedPO?.currency)}</td>
                     </tr>
                   ))}
                 </tbody>

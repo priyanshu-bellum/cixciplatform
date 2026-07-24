@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DollarSign, TrendingUp } from 'lucide-react'
 import api from '../lib/apiClient'
+import { formatCurrency } from './CatalogPage'
 
 const PROFILE_STATUS: Record<string, string> = {
   draft: 'badge-muted', active: 'badge-green',
@@ -126,7 +127,7 @@ export default function PricingPage() {
                       {s.product_reference?.slice(0, 8)}…
                     </td>
                     <td><span className="badge badge-muted">{CHANNEL_LABEL[s.channel] ?? s.channel}</span></td>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{s.buyer_facing_price}</td>
+                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(s.buyer_facing_price, s.currency)}</td>
                     <td>{s.currency ?? 'USD'}</td>
                     <td>
                       <span className={`badge ${BIND_STATUS[s.bindability_status] ?? 'badge-muted'}`}>

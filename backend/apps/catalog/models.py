@@ -847,9 +847,56 @@ class ProductCompatibilityAssertion(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.update_product_compatibility_status()
+
+    def delete(self, *args, **kwargs):
+        product_id = self.product_id
+        super().delete(*args, **kwargs)
+        try:
+            product = Product.objects.get(id=product_id)
+            self.update_product_status(product)
+        except Product.DoesNotExist:
+            pass
+
+    @classmethod
+    def update_product_status(cls, product):
+        from apps.devices.models import Device
+        from django.db.models import Q
+        from django.utils import timezone
+        now_date = timezone.now().date()
+        active_device_ids = Device.objects.filter(
+            device_type__status='active'
+        ).exclude(
+            lifecycle_status='retired'
+        ).filter(
+            Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
+        ).values_list('id', flat=True)
+        
+        cnt = cls.objects.filter(
+            product=product,
+            is_compatible=True,
+            is_excluded=False,
+            device_reference__in=active_device_ids
+        ).count()
+        new_status = "complete" if cnt >= 1 else "incomplete"
+        if product.compatibility_status != new_status:
+            product.compatibility_status = new_status
+            Product.objects.filter(id=product.id).update(compatibility_status=new_status)
+            try:
+                from apps.catalog.services import trigger_catalog_recalculation_for_product
+                trigger_catalog_recalculation_for_product(product.id)
+            except Exception:
+                pass
+
+    def update_product_compatibility_status(self):
+        self.update_product_status(self.product)
+
     class Meta:
         db_table = "catalog_product_compatibility"
         unique_together = [("product", "device_reference")]
+
 
 
 # ─── Buyer-Scoped Compatibility Projection (PR #104 surface) ─────────────────

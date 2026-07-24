@@ -401,8 +401,8 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     
             if cleaned_name and not row_errors.get("Device Name"):
                 cleaned_name_stripped = cleaned_name.strip()
-                if any(char in cleaned_name_stripped for char in [",", "+", ";"]):
-                    row_errors["Device Name"] = "Device Name cannot contain special characters/delimiters like ',', '+', or ';'."
+                if any(char in cleaned_name_stripped for char in [",", ";"]):
+                    row_errors["Device Name"] = "Device Name cannot contain special characters/delimiters like ',' or ';'."
                 elif cleaned_name_stripped.lower() in [
                     "lightning", "magsafe", "qi", "qi2", "type-c", "microsd",
                     "microsdhc", "microsdxc", "40mm", "41mm", "42mm", "44mm",

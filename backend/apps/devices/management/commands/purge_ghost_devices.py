@@ -20,8 +20,8 @@ class Command(BaseCommand):
         ghost_devices = []
         for device in Device.objects.all():
             name = device.name
-            # Comma, plus, or semicolon delimiters
-            if any(char in name for char in [",", "+", ";"]):
+            # Comma or semicolon delimiters
+            if any(char in name for char in [",", ";"]):
                 ghost_devices.append(device)
             # Exact matches to common feature/interface compatibility attributes
             elif name.strip().lower() in [

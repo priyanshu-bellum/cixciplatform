@@ -1148,13 +1148,21 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             # Reject feature keywords — these are NOT device names
             if dev_name.strip().lower() in FEATURE_KEYWORDS:
                 return None
-            # Canonical alias / shorthand mapping (e.g. "Galaxy S24+" -> "Galaxy S24")
-            target_name = dev_name.strip()
+
+            from apps.devices.models import Device, Manufacturer
+
+            # 1. Try exact match first (with any trailing '+' intact)
+            clean_name = dev_name.strip()
+            device = Device.objects.filter(name__iexact=clean_name).first()
+            if device:
+                return device
+
+            # Fallback: Canonical alias / shorthand mapping (e.g. "Galaxy S24+" -> "Galaxy S24")
+            target_name = clean_name
             if target_name.endswith("+"):
                 target_name = target_name[:-1].strip()
 
-            from apps.devices.models import Device, Manufacturer
-            # 1. Exact match
+            # 2. Exact match without trailing '+'
             device = Device.objects.filter(name__iexact=target_name).first()
             if device:
                 return device
@@ -1203,7 +1211,16 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             
             import re
             g_item_clean = re.sub(r'\s*\bplus\b\s*', ' + ', comp_str, flags=re.IGNORECASE)
-            parts = [p.strip() for p in re.split(r'\s*;\s*|\s*,\s*|\s+\+\s+', g_item_clean) if p.strip()]
+            # Split by both semicolon and comma first
+            initial_parts = [p.strip() for p in re.split(r'\s*;\s*|\s*,\s*', g_item_clean) if p.strip()]
+            parts = []
+            for ip in initial_parts:
+                for p in re.split(r'\s*\+\s*(?!\s*\+|$)', ip):
+                    p_str = p.strip()
+                    if p_str:
+                        if p_str.lower() == "andnroid":
+                            p_str = "Android"
+                        parts.append(p_str)
             if not parts:
                 return []
 
@@ -1870,7 +1887,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     for g in groups:
                         import re
                         g_clean = re.sub(r'\s*\bplus\b\s*', ' + ', g, flags=re.IGNORECASE)
-                        g_clean = " + ".join(p.strip() for p in re.split(r'\s+\+\s+', g_clean) if p.strip())
+                        g_clean = " + ".join(p.strip() for p in re.split(r'\s*\+\s*(?!\s*\+|$)', g_clean) if p.strip())
                         gl = g_clean.lower()
                         if gl not in seen_g:
                             seen_g.add(gl)
@@ -1932,7 +1949,15 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 if unique_groups:
                     # Set default variables based on parts for category-specific check below
                     for g_item in unique_groups:
-                        parts = [p.strip() for p in re.split(r'\s+\+\s+', g_item) if p.strip()]
+                        parts = [p.strip() for p in re.split(r'\s*\+\s*(?!\s*\+|$)', g_item) if p.strip()]
+                        # Clean up common typos like 'Andnroid'
+                        parts_cleaned = []
+                        for p in parts:
+                            if p.lower() == "andnroid":
+                                parts_cleaned.append("Android")
+                            else:
+                                parts_cleaned.append(p)
+                        parts = parts_cleaned
                         parts_lower = [p.lower() for p in parts]
                         
                         # If there's a device name in the parts of this group, auto-populate features if blank

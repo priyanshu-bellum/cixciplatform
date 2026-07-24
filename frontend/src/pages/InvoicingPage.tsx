@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ReceiptText, Plus } from 'lucide-react'
 import api from '../lib/apiClient'
+import { formatCurrency } from './CatalogPage'
 
 const STATUS: Record<string, string> = {
   draft: 'badge-muted', issued: 'badge-blue', paid: 'badge-green',
@@ -46,7 +47,7 @@ export default function InvoicingPage() {
                     <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 12 }}>{inv.id.slice(0, 8)}…</td>
                     <td><span className="badge badge-muted">{inv.invoice_type}</span></td>
                     <td><span className={`badge ${STATUS[inv.status] ?? 'badge-muted'}`}>{inv.status}</span></td>
-                    <td style={{ color: 'var(--text-primary)' }}>{inv.currency} {inv.grand_total}</td>
+                    <td style={{ color: 'var(--text-primary)' }}>{formatCurrency(inv.grand_total, inv.currency)}</td>
                     <td>{inv.issued_at ? new Date(inv.issued_at).toLocaleDateString() : '—'}</td>
                   </tr>
                 ))}
