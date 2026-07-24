@@ -85,10 +85,10 @@ companies_updated = Company.objects.all().update(status='active')
 print(f"Activated {companies_updated} companies in the system")
 
 # Assign capabilities to all users based on company type
-buyer_modules = ['devices', 'catalog', 'pricing', 'invoicing', 'procurement', 'tenant', 'media', 'analytics', 'integration', 'notifications', 'launch']
+buyer_modules = ['devices', 'catalog', 'pricing', 'invoicing', 'procurement', 'tenant', 'media', 'analytics', 'integration', 'notifications', 'launch', 'fulfillment', 'routing']
 buyer_caps = [c for c in capabilities if c.split('.')[0] in buyer_modules]
 
-vendor_modules = ['catalog', 'routing', 'fulfillment', 'invoicing', 'tenant', 'media', 'notifications']
+vendor_modules = ['catalog', 'routing', 'fulfillment', 'invoicing', 'tenant', 'media', 'notifications', 'pricing', 'procurement']
 vendor_caps = [c for c in capabilities if c.split('.')[0] in vendor_modules]
 # Explicitly add read-only device capabilities for mapping compatibility
 for c in capabilities:

@@ -107,6 +107,15 @@ def buyer_user(buyer_entity, cap_factory):
         "procurement.po.update", "procurement.po.approve", "procurement.po.manage",
         "launch.event.list", "launch.event.read", "launch.event.create",
         "launch.event.update", "launch.event.manage",
+        "pricing.profile.list", "pricing.profile.read", "pricing.profile.create",
+        "pricing.profile.update",
+        "pricing.snapshot.list", "pricing.snapshot.read",
+        "pricing.agreement.list", "pricing.agreement.read",
+        "pricing.exception.list", "pricing.exception.read",
+        "fulfillment.handoff.list", "fulfillment.handoff.read",
+        "fulfillment.sla.list", "fulfillment.sla.read",
+        "fulfillment.buyer_signal.list", "fulfillment.buyer_signal.read",
+        "routing.route.list", "routing.route.read",
     ]
     for code in caps:
         cap = cap_factory(code)
