@@ -452,7 +452,23 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     company_scope_reference=company_id,
                 )
 
+                from apps.pricing.services import create_effective_price_snapshot
+                from apps.tenant.models import Company
+                buyer_company = Company.objects.filter(id=company_id).first()
+
+                is_storefront = False
+                if po.po_number and po.po_number.startswith("PO-TELCO"):
+                    is_storefront = True
+                if request.META.get('HTTP_X_API_KEY') or 'HTTP_X_API_KEY' in request.META:
+                    is_storefront = True
+
+                if is_storefront:
+                    po.status = "approved"
+                    from django.utils import timezone
+                    po.approved_at = timezone.now()
+
                 total_amount = 0
+                first_snapshot_id = None
                 if lines_data:
                     for line_item in lines_data:
                         prod_ref = line_item.get('product_reference')
@@ -463,8 +479,12 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         except Product.DoesNotExist:
                             raise ValidationError(f"Product with ID '{prod_ref}' does not exist.")
 
-                        # Determine price: first try sale price, then map/srp/wholesale
-                        price = product.sale_price or product.vendor_wholesale_price_amount or product.msrp or 0.0
+                        # Generate pricing snapshot in Pricing module
+                        snapshot = create_effective_price_snapshot(product, buyer_company, "buyer_storefront")
+                        price = snapshot.buyer_facing_price
+                        if not first_snapshot_id:
+                            first_snapshot_id = snapshot.id
+
                         line_total = price * qty
                         total_amount += line_total
 
@@ -479,7 +499,17 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         po_line.save()
 
                 po.total_amount = total_amount
-                po.save(update_fields=["total_amount"])
+                if first_snapshot_id:
+                    po.pricing_snapshot_reference = first_snapshot_id
+                
+                update_fields = ["total_amount", "pricing_snapshot_reference"]
+                if is_storefront:
+                    update_fields.extend(["status", "approved_at"])
+                po.save(update_fields=update_fields)
+
+                if po.status == "approved":
+                    from apps.procurement.services import orchestrate_po_finalization
+                    orchestrate_po_finalization(po)
 
         except ValidationError as ve:
             raise ve
@@ -511,6 +541,11 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         po.status = "approved"
         po.approved_at = timezone.now()
         po.save(update_fields=["status", "approved_at", "updated_at"])
+        
+        # Trigger orchestration
+        from apps.procurement.services import orchestrate_po_finalization
+        orchestrate_po_finalization(po)
+        
         return Response({"status": "approved"})
 
 # ── Launch ─────────────────────────────────────────────────────────────────────

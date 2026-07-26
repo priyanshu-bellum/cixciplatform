@@ -107,11 +107,15 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = Order.objects.all()
-        if not user.is_cixci_admin:
-            qs = qs.filter(
-                buyer_reference=user.id,
-                company_scope_reference=user.entity.company_id,
-            )
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company and company.company_type == "vendor":
+                qs = qs.filter(routed_suborders__vendor_company_reference=company.id)
+            else:
+                qs = qs.filter(
+                    buyer_reference=user.id,
+                    company_scope_reference=company.id,
+                )
         return qs
 
     def get_serializer_class(self):

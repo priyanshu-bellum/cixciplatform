@@ -107,7 +107,6 @@ class BuyerUpdateSignalSerializer(serializers.ModelSerializer):
 # ─── ViewSets ─────────────────────────────────────────────────────────────────
 
 class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
-    queryset = FulfillmentHandoff.objects.all()
     serializer_class = FulfillmentHandoffSerializer
     action_capability_map = {
         "list": "fulfillment.handoff.list",
@@ -122,6 +121,17 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["vendor_company_reference", "status"]
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = FulfillmentHandoff.objects.all()
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company.company_type == "vendor":
+                qs = qs.filter(vendor_company_reference=company.id)
+            elif company.company_type == "buyer":
+                qs = qs.filter(company_scope_reference=company.id)
+        return qs
+
     @action(detail=True, methods=["get"])
     def sla_evaluations(self, request, pk=None):
         """SLA evaluation records for this handoff."""
@@ -135,6 +145,27 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         handoff = self.get_object()
         evidence = handoff.delivery_date_evidence.all()
         return Response(DeliveryDateEvidenceSerializer(evidence, many=True).data)
+
+
+class SLAEvaluationRecordViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    serializer_class = SLAEvaluationRecordSerializer
+    action_capability_map = {
+        "list": "fulfillment.sla.list",
+        "retrieve": "fulfillment.sla.read",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["handoff", "outcome"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = SLAEvaluationRecord.objects.all()
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company.company_type == "vendor":
+                qs = qs.filter(handoff__vendor_company_reference=company.id)
+            elif company.company_type == "buyer":
+                qs = qs.filter(handoff__company_scope_reference=company.id)
+        return qs
 
 
 class SLAPolicyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
@@ -183,6 +214,7 @@ class BuyerUpdateSignalViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
 
 router = DefaultRouter()
 router.register("handoffs", FulfillmentHandoffViewSet, basename="handoff")
+router.register("sla-evaluations", SLAEvaluationRecordViewSet, basename="sla-evaluation")
 router.register("sla-policies", SLAPolicyViewSet, basename="sla-policy")
 router.register("sla-overrides", SLAOverrideViewSet, basename="sla-override")
 router.register("buyer-signals", BuyerUpdateSignalViewSet, basename="buyer-signal")
