@@ -99,6 +99,7 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
         "partial_update": "routing.order.update",
         "destroy": "routing.order.cancel",
         "suborders": "routing.order.read",
+        "lines": "routing.order.read",
     }
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["status"]
@@ -127,6 +128,47 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
         order = self.get_object()
         subs = order.routed_suborders.all()
         return Response(RoutedSuborderSerializer(subs, many=True).data)
+
+    @action(detail=True, methods=["get"])
+    def lines(self, request, pk=None):
+        """List lines for the original PurchaseOrder corresponding to this Order."""
+        order = self.get_object()
+        from apps.procurement.models import PurchaseOrderLine
+        from apps.catalog.models import Product
+        
+        lines = PurchaseOrderLine.objects.filter(purchase_order_id=order.id)
+        
+        user = self.request.user
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company.company_type == "vendor":
+                lines = lines.filter(product_reference__in=
+                    Product.objects.filter(vendor_company_reference=company.id).values_list("id", flat=True)
+                )
+                
+        data = []
+        for line in lines:
+            prod_name = "Unknown Product"
+            sku = "N/A"
+            try:
+                prod = Product.objects.get(id=line.product_reference)
+                prod_name = prod.name
+                sku = prod.sku
+            except Product.DoesNotExist:
+                pass
+                
+            data.append({
+                "id": str(line.id),
+                "purchase_order": str(line.purchase_order_id),
+                "product_reference": str(line.product_reference),
+                "product_name": prod_name,
+                "sku": sku,
+                "quantity": line.quantity,
+                "unit_price_snapshot": float(line.unit_price_snapshot),
+                "line_total": float(line.line_total),
+            })
+            
+        return Response(data)
 
 
 class VendorExportScheduleViewSet(CheckAccessMixin, viewsets.ModelViewSet):
