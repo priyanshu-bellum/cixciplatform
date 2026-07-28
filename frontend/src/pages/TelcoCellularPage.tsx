@@ -54,6 +54,14 @@ export default function TelcoCellularPage() {
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
   const [checkoutResult, setCheckoutResult] = useState<any>(null)
+
+  const [firstName, setFirstName] = useState('Jane')
+  const [lastName, setLastName] = useState('Doe')
+  const [address1, setAddress1] = useState('100 Telco Way')
+  const [address2, setAddress2] = useState('Suite A')
+  const [city, setCity] = useState('San Jose')
+  const [state, setState] = useState('CA')
+  const [zipCode, setZipCode] = useState('95112')
   
   // Fetch active portfolio devices for the compatibility filter
   const { data: portfolio, isLoading: isPortfolioLoading } = useQuery({
@@ -194,7 +202,17 @@ export default function TelcoCellularPage() {
       lines: cart.map(item => ({
         product_reference: item.id,
         quantity: item.qty
-      }))
+      })),
+      customer_shipping: {
+        customer_first_name: firstName,
+        customer_last_name: lastName,
+        address_1: address1,
+        address_2: address2,
+        city: city,
+        state: state,
+        zip: zipCode,
+        country: 'US'
+      }
     }
 
     checkoutMutation.mutate(payload)
@@ -1171,6 +1189,88 @@ export default function TelcoCellularPage() {
                 <>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                     You are placing a simulated procurement Purchase Order for testing purposes.
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    background: 'var(--bg-elevated)',
+                    padding: 12,
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid var(--border)',
+                    marginTop: 10
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
+                      Shipping Address (Test Customer)
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>First Name</label>
+                        <input
+                          className="telco-select"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={firstName}
+                          onChange={e => setFirstName(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Last Name</label>
+                        <input
+                          className="telco-select"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={lastName}
+                          onChange={e => setLastName(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Address Line 1</label>
+                      <input
+                        className="telco-select"
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                        value={address1}
+                        onChange={e => setAddress1(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Address Line 2 (Opt)</label>
+                      <input
+                        className="telco-select"
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                        value={address2}
+                        onChange={e => setAddress2(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>City</label>
+                        <input
+                          className="telco-select"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={city}
+                          onChange={e => setCity(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>State</label>
+                        <input
+                          className="telco-select"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={state}
+                          onChange={e => setState(e.target.value.toUpperCase())}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Zip Code</label>
+                        <input
+                          className="telco-select"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={zipCode}
+                          onChange={e => setZipCode(e.target.value)}
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   {checkoutError && (

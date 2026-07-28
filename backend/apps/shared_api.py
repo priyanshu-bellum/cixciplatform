@@ -428,6 +428,7 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
         lines_data = data.pop('lines', None)
+        customer_shipping = data.pop('customer_shipping', None)
 
         company_id = None
         if request.user.entity:
@@ -509,7 +510,7 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
                 if po.status == "approved":
                     from apps.procurement.services import orchestrate_po_finalization
-                    orchestrate_po_finalization(po)
+                    orchestrate_po_finalization(po, customer_shipping=customer_shipping)
 
         except ValidationError as ve:
             raise ve

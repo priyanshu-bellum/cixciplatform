@@ -144,6 +144,7 @@ class NotificationRequest(models.Model):
         max_length=20, choices=PreferenceOutcome.choices, null=True, blank=True
     )
     preference_evaluation_detail = models.JSONField(default=dict)
+    attachments = models.JSONField(default=list, blank=True, help_text="List of dicts containing filename, content (base64), and mime_type")
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

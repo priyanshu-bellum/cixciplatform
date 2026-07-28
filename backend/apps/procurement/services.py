@@ -14,7 +14,7 @@ from apps.tenant.models import CompanyEntity
 
 logger = logging.getLogger(__name__)
 
-def orchestrate_po_finalization(po):
+def orchestrate_po_finalization(po, customer_shipping=None):
     """
     Automated orchestration chain that converts a finalized Purchase Order
     into an Order, RoutedSuborder, VendorExportWindow, Delivery Evidence,
@@ -56,26 +56,63 @@ def orchestrate_po_finalization(po):
         for line in po.lines.all():
             snapshot_refs[str(line.product_reference)] = str(po.pricing_snapshot_reference)
 
+    # Check if manual vendor
+    from apps.tenant.models import Company
+    import json
+    vendor = Company.objects.filter(id=po.vendor_company_reference).first()
+    integration_mode = "api"
+    if vendor and vendor.external_id:
+        try:
+            meta = json.loads(vendor.external_id)
+            integration_mode = meta.get("integration_mode", "api")
+        except Exception:
+            pass
+
+    is_manual = (integration_mode == "manual")
+    initial_status = RoutingStatus.PLACED if is_manual else RoutingStatus.ROUTED
+
     # 4. Create Order in Routing Module
     order = Order.objects.create(
         id=po.id,
         company_scope_reference=po.company_scope_reference,
         buyer_reference=po.buyer_reference,
         buyer_entity_reference=buyer_entity_id,
-        status=RoutingStatus.ROUTED,
+        status=initial_status,
         pricing_snapshot_references=snapshot_refs,
         placed_at=po.approved_at or timezone.now(),
     )
     logger.info("Created Routing Order ID: %s", order.id)
 
     # 5. Create RoutedSuborder in Routing Module
+    routing_snap = {
+        "po_number": po.po_number,
+        "po_id": str(po.id)
+    }
+    if customer_shipping:
+        routing_snap["customer_shipping"] = customer_shipping
+    else:
+        routing_snap["customer_shipping"] = {
+            "customer_first_name": "Jane",
+            "customer_last_name": "Doe",
+            "address_1": "100 Telco Way",
+            "address_2": "Suite A",
+            "city": "San Jose",
+            "state": "CA",
+            "zip": "95112",
+            "country": "US"
+        }
+
     suborder = RoutedSuborder.objects.create(
         order=order,
         vendor_company_reference=po.vendor_company_reference,
-        status=RoutingStatus.ROUTED,
-        routing_snapshot={"po_number": po.po_number, "po_id": str(po.id)},
+        status=initial_status,
+        routing_snapshot=routing_snap,
     )
     logger.info("Created RoutedSuborder ID: %s", suborder.id)
+
+    if is_manual:
+        logger.info("PO %s is for a manual vendor. Initial placement completed. Skipping automated API fulfillment orchestration.", po.id)
+        return
 
     # 6. Get or Create Vendor Export Schedule
     schedule = VendorExportSchedule.objects.filter(

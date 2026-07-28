@@ -106,6 +106,12 @@ def process_notification_request(request_id):
                 failed_at=timezone.now() if eval_result.outcome != PreferenceOutcome.SUPPRESS else None,
             )
         logger.info("NotificationRequest %s not sent due to outcome: %s", request_id, eval_result.outcome)
+        if req.event_type == "vendor.order_export":
+            try:
+                from apps.routing.services import handle_failed_export_delivery
+                handle_failed_export_delivery(req.source_record_id, None, error_message=f"Suppressed by preference ladder: {eval_result.reason}")
+            except Exception as cb_ex:
+                logger.exception("Failed running vendor export delivery failure callback: %s", cb_ex)
         return
 
     # 3. Process dispatch for resolved recipients
@@ -132,6 +138,12 @@ def process_notification_request(request_id):
                 failed_at=timezone.now(),
             )
         logger.error("No approved template found for event_type=%s, channel=%s", req.event_type, req.channel)
+        if req.event_type == "vendor.order_export":
+            try:
+                from apps.routing.services import handle_failed_export_delivery
+                handle_failed_export_delivery(req.source_record_id, None, error_message="No approved template found")
+            except Exception as cb_ex:
+                logger.exception("Failed running vendor export delivery failure callback: %s", cb_ex)
         return
 
     # Render template using minimal safe payload
@@ -153,7 +165,7 @@ def process_notification_request(request_id):
             sendgrid_key = getattr(settings, "SENDGRID_API_KEY", "")
             if sendgrid_key:
                 import sendgrid
-                from sendgrid.helpers.mail import Mail
+                from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
                 sg = sendgrid.SendGridAPIClient(api_key=sendgrid_key)
                 mail = Mail(
                     from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
@@ -161,6 +173,15 @@ def process_notification_request(request_id):
                     subject=subject,
                     plain_text_content=body
                 )
+                if hasattr(req, "attachments") and req.attachments:
+                    for att in req.attachments:
+                        attachment = Attachment(
+                            FileContent(att["content"]),
+                            FileName(att["filename"]),
+                            FileType(att.get("mime_type", "text/csv")),
+                            Disposition("attachment")
+                        )
+                        mail.add_attachment(attachment)
                 response = sg.send(mail)
                 attempt.status = DeliveryStatus.SENT
                 attempt.provider_name = "sendgrid"
@@ -172,13 +193,19 @@ def process_notification_request(request_id):
                 attempt.sent_at = timezone.now()
             else:
                 # Local dev / test fallback
-                send_mail(
+                from django.core.mail import EmailMessage
+                email = EmailMessage(
                     subject,
                     body,
                     getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
                     [recipient_user.email],
-                    fail_silently=False,
                 )
+                if hasattr(req, "attachments") and req.attachments:
+                    import base64
+                    for att in req.attachments:
+                        file_data = base64.b64decode(att["content"])
+                        email.attach(att["filename"], file_data, att.get("mime_type", "text/csv"))
+                email.send(fail_silently=False)
                 attempt.status = DeliveryStatus.SENT
                 attempt.provider_name = "django_mail"
                 attempt.sent_at = timezone.now()
@@ -188,9 +215,22 @@ def process_notification_request(request_id):
                 "provider_response_reference", "sent_at"
             ])
             logger.info("Successfully sent notification to %s for request %s", recipient_user.email, request_id)
+
+            if attempt.status == DeliveryStatus.SENT and req.event_type == "vendor.order_export":
+                try:
+                    from apps.routing.services import handle_successful_export_delivery
+                    handle_successful_export_delivery(req.source_record_id, attempt)
+                except Exception as cb_ex:
+                    logger.exception("Failed running vendor export delivery callback: %s", cb_ex)
         except Exception as ex:
             attempt.status = DeliveryStatus.FAILED
             attempt.provider_response_reference = {"error": str(ex)}
             attempt.failed_at = timezone.now()
             attempt.save(update_fields=["status", "provider_response_reference", "failed_at"])
             logger.exception("Failed to send notification to %s", recipient_user.email)
+            if req.event_type == "vendor.order_export":
+                try:
+                    from apps.routing.services import handle_failed_export_delivery
+                    handle_failed_export_delivery(req.source_record_id, attempt, error_message=str(ex))
+                except Exception as cb_ex:
+                    logger.exception("Failed running vendor export delivery failure callback: %s", cb_ex)

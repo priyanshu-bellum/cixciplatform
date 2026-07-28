@@ -113,3 +113,37 @@ class TestPOOrchestration:
         suborder = RoutedSuborder.objects.get(order_id=po_id)
         assert FulfillmentHandoff.objects.filter(routed_suborder_reference=suborder.id).exists()
         assert SLAEvaluationRecord.objects.filter(handoff__routed_suborder_reference=suborder.id).exists()
+
+    def test_storefront_custom_shipping_passed_to_suborder(self, buyer_client, buyer_user, vendor_company, product):
+        """Test storefront PO creation with custom shipping info passes it to suborder routing snapshot."""
+        shipping_payload = {
+            "customer_first_name": "Alice",
+            "customer_last_name": "Smith",
+            "address_1": "555 Pine Rd",
+            "address_2": "Apt 4",
+            "city": "Seattle",
+            "state": "WA",
+            "zip": "98101",
+            "country": "US"
+        }
+        po_payload = {
+            "vendor_company_reference": str(vendor_company.id),
+            "po_number": "PO-TELCO-777",
+            "currency": "USD",
+            "lines": [
+                {
+                    "product_reference": str(product.id),
+                    "quantity": 3
+                }
+            ],
+            "customer_shipping": shipping_payload
+        }
+
+        response = buyer_client.post("/api/v1/procurement/purchase-orders/", po_payload, format="json")
+        assert response.status_code == 201
+        
+        po_id = response.data["id"]
+        suborder = RoutedSuborder.objects.get(order_id=po_id)
+        
+        # Verify custom shipping info is written to routing_snapshot
+        assert suborder.routing_snapshot["customer_shipping"] == shipping_payload

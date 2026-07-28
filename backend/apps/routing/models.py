@@ -23,6 +23,11 @@ class RoutingStatus(models.TextChoices):
     PARTIALLY_ROUTED = "partially_routed", "Partially Routed"
     FAILED = "failed", "Failed"
     CANCELLED = "cancelled", "Cancelled"
+    PLACED = "placed", "Placed"
+    PROCESSING = "processing", "Processing"
+    SHIPMENT_PENDING = "shipment_pending", "Shipment Pending"
+    SHIPPED = "shipped", "Shipped"
+    DELIVERED = "delivered", "Delivered"
 
 
 class ExportScheduleStatus(models.TextChoices):
@@ -206,3 +211,53 @@ class VendorExportDeliveryEvidence(models.Model):
     class Meta:
         db_table = "routing_vendor_export_delivery_evidence"
         indexes = [models.Index(fields=["vendor_company_reference", "status"])]
+
+
+class VendorOrderExportLog(models.Model):
+    """
+    Export log / audit evidence of vendor order CSV email/export events.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company_reference = models.UUIDField(db_index=True)
+    buyer_company_reference = models.UUIDField(db_index=True)
+    window = models.ForeignKey(VendorExportWindow, on_delete=models.PROTECT, related_name="export_logs")
+    filename = models.CharField(max_length=500)
+    sent_at = models.DateTimeField(default=timezone.now)
+    order_count = models.PositiveIntegerField()
+    suborder_count = models.PositiveIntegerField()
+    sending_method = models.CharField(max_length=50, default="email")
+    recipients = models.JSONField(default=list)
+    trigger_type = models.CharField(max_length=20, help_text="system | user")
+    triggered_by = models.ForeignKey("tenant.User", null=True, blank=True, on_delete=models.SET_NULL)
+    status_before = models.CharField(max_length=30, default="placed")
+    status_after = models.CharField(max_length=30, default="processing")
+    csv_backup = models.TextField(help_text="Backup copy of the raw generated CSV content")
+    email_send_result = models.TextField(default="pending", help_text="Result of email delivery")
+    is_reexport = models.BooleanField(default=False)
+    original_log = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="reexports")
+    audit_reference = models.UUIDField(default=uuid.uuid4, editable=False)
+
+    class Meta:
+        db_table = "routing_vendor_order_export_log"
+        indexes = [
+            models.Index(fields=["vendor_company_reference", "buyer_company_reference"]),
+            models.Index(fields=["sent_at"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            # New record is fine
+            super().save(*args, **kwargs)
+        else:
+            # Enforce immutability on key fields
+            original = VendorOrderExportLog.objects.get(pk=self.pk)
+            if original.csv_backup != self.csv_backup:
+                raise ValueError("csv_backup is immutable")
+            if original.filename != self.filename:
+                raise ValueError("filename is immutable")
+            if original.vendor_company_reference != self.vendor_company_reference:
+                raise ValueError("vendor_company_reference is immutable")
+            if original.buyer_company_reference != self.buyer_company_reference:
+                raise ValueError("buyer_company_reference is immutable")
+            super().save(*args, **kwargs)
+

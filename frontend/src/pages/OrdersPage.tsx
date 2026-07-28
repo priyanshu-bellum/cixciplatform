@@ -6,6 +6,7 @@ import api from '../lib/apiClient'
 const STATUS: Record<string, string> = {
   pending: 'badge-amber', routed: 'badge-green', in_progress: 'badge-blue',
   failed: 'badge-red', cancelled: 'badge-muted', partially_routed: 'badge-amber',
+  placed: 'badge-amber', processing: 'badge-blue', shipment_pending: 'badge-amber',
 }
 
 export default function OrdersPage() {
@@ -279,6 +280,7 @@ export default function OrdersPage() {
                       <tr>
                         <th>Vendor Reference</th>
                         <th>Status</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -291,6 +293,27 @@ export default function OrdersPage() {
                             <span className={`badge ${STATUS[sub.status] ?? 'badge-muted'}`}>
                               {sub.status}
                             </span>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {sub.status === 'placed' && (
+                              <button
+                                className="btn btn-primary btn-sm"
+                                onClick={async (e) => {
+                                  e.stopPropagation()
+                                  if (confirm('Manually export this suborder to the vendor?')) {
+                                    try {
+                                      await api.post('/routing/orders/manual-export/', { suborder_ids: [sub.id] })
+                                      alert('Manual export initiated successfully!')
+                                      window.location.reload()
+                                    } catch (err: any) {
+                                      alert(err.response?.data?.detail || 'Failed to trigger manual export.')
+                                    }
+                                  }
+                                }}
+                              >
+                                Manual Export
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}

@@ -127,6 +127,17 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 CELERY_TASK_ALWAYS_EAGER = config("CELERY_TASK_ALWAYS_EAGER", default=True, cast=bool)
 
+CELERY_BEAT_SCHEDULE = {
+    "evaluate_vendor_slas_every_15_mins": {
+        "task": "apps.fulfillment.tasks.evaluate_vendor_slas",
+        "schedule": 900.0,
+    },
+    "run_manual_vendor_exports_every_15_mins": {
+        "task": "apps.routing.tasks.run_manual_vendor_exports",
+        "schedule": 900.0,
+    },
+}
+
 # ─── REST Framework ───────────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
