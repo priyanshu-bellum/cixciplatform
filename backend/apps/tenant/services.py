@@ -300,6 +300,9 @@ def is_capability_allowed_for_company(capability_code: str, company_type: str, b
             "devices.type.read",
             "devices.manufacturer.list",
             "devices.manufacturer.read",
+            "fulfillment.return.",
+            "fulfillment.handoff.",
+            "routing.order.",
         )
         return capability_code.startswith(allowed_prefixes)
 

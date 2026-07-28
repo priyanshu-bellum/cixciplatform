@@ -74,17 +74,45 @@ class FulfillmentHandoff(models.Model):
     vendor_company_reference = models.UUIDField(db_index=True)
     company_scope_reference = models.UUIDField(db_index=True)
     status = models.CharField(max_length=50, default="received",
-        help_text="received | processing | shipped | delivered | exception | closed")
+        help_text="received | processing | shipped | delivered | exception | closed | tracking_missing | tracking_invalid | review_required | delivery_exception")
     delivery_evidence_reference = models.UUIDField(
         null=True, blank=True,
         help_text="VendorExportDeliveryEvidence ID (read-only reference from Order Routing)"
     )
+    vendor_order_number = models.CharField(max_length=255, blank=True, null=True)
+    shipping_carrier = models.CharField(max_length=255, blank=True, null=True)
+    tracking_number = models.CharField(max_length=255, blank=True, null=True)
+    shipped_date = models.DateField(blank=True, null=True)
+    delivered_date = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "fulfillment_handoff"
         indexes = [models.Index(fields=["vendor_company_reference", "status"])]
+
+
+class VendorShippingImportLog(models.Model):
+    """
+    Audit log for vendor shipping CSV imports.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company_reference = models.UUIDField(db_index=True)
+    company_scope_reference = models.UUIDField(db_index=True)
+    uploaded_at = models.DateTimeField(default=timezone.now)
+    uploaded_by = models.ForeignKey("tenant.User", null=True, blank=True, on_delete=models.SET_NULL)
+    csv_filename = models.CharField(max_length=255, blank=True, null=True)
+    csv_content = models.TextField(help_text="Full text of the uploaded CSV file")
+    rows_applied = models.PositiveIntegerField(default=0)
+    rows_skipped = models.PositiveIntegerField(default=0)
+    rows_rejected = models.PositiveIntegerField(default=0)
+    rows_review_required = models.PositiveIntegerField(default=0)
+    results_payload = models.JSONField(default=dict, help_text="Detailed row-by-row outcomes and validation errors")
+    audit_reference = models.UUIDField(default=uuid.uuid4, editable=False)
+
+    class Meta:
+        db_table = "fulfillment_vendor_shipping_import_log"
+        ordering = ["-uploaded_at"]
 
 
 # ─── PR #92: Vendor SLA Policy ────────────────────────────────────────────────
@@ -315,3 +343,69 @@ class BuyerUpdateReadySignal(models.Model):
             models.Index(fields=["order_reference", "update_kind", "status"]),
             models.Index(fields=["buyer_reference", "status"]),
         ]
+
+
+# ─── Return Import & Outcome Evidence ─────────────────────────────────────────
+
+class ReturnStatus(models.TextChoices):
+    RETURN_SENT_TO_VENDOR = "return_sent_to_vendor", "Return Sent to Vendor"
+    RETURN_RECEIVED = "return_received", "Return Received"
+    RETURN_REFUNDED = "return_refunded", "Return Refunded"
+    RETURN_REJECTED = "return_rejected", "Return Rejected"
+    RETURN_CLOSED = "return_closed", "Return Closed"
+
+
+class ReturnRequest(models.Model):
+    """
+    Operational return request sent to vendor.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ran = models.CharField(max_length=255, unique=True, db_index=True)
+    suborder_reference = models.UUIDField(db_index=True)
+    buyer_reference = models.UUIDField(db_index=True)
+    reason = models.TextField(blank=True)
+    return_initiation_date = models.DateTimeField(default=timezone.now)
+    return_quantity = models.PositiveIntegerField(default=1)
+    vendor_wholesale_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
+    pricing_snapshot_reference = models.UUIDField(null=True, blank=True)
+    sku = models.CharField(max_length=100)
+    upc = models.CharField(max_length=100)
+    status = models.CharField(max_length=50, choices=ReturnStatus.choices, default=ReturnStatus.RETURN_SENT_TO_VENDOR)
+    return_received_date = models.DateTimeField(null=True, blank=True)
+    return_refunded_amount = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
+    rejected_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "fulfillment_return_request"
+        indexes = [
+            models.Index(fields=["suborder_reference"]),
+            models.Index(fields=["buyer_reference"]),
+            models.Index(fields=["status"]),
+        ]
+
+
+class VendorReturnImportLog(models.Model):
+    """
+    Audit log for vendor return CSV imports.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company_reference = models.UUIDField(db_index=True)
+    uploaded_at = models.DateTimeField(default=timezone.now)
+    uploaded_by = models.ForeignKey("tenant.User", null=True, blank=True, on_delete=models.SET_NULL)
+    csv_filename = models.CharField(max_length=255, blank=True, null=True)
+    csv_content = models.TextField(help_text="Full text of the uploaded CSV file")
+    rows_applied = models.PositiveIntegerField(default=0)
+    rows_skipped = models.PositiveIntegerField(default=0)
+    rows_rejected = models.PositiveIntegerField(default=0)
+    rows_review_required = models.PositiveIntegerField(default=0)
+    return_export_batch_reference = models.UUIDField(null=True, blank=True, help_text="Reference to original return export batch")
+    company_scope_reference = models.UUIDField(null=True, blank=True, db_index=True)
+    results_payload = models.JSONField(default=dict, help_text="Detailed row-by-row outcomes and validation errors")
+    audit_reference = models.UUIDField(default=uuid.uuid4, editable=False)
+
+    class Meta:
+        db_table = "fulfillment_vendor_return_import_log"
+        ordering = ["-uploaded_at"]
+
