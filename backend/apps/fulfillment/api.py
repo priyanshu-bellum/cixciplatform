@@ -223,6 +223,28 @@ class BuyerUpdateSignalViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     filterset_fields = ["order_reference", "update_kind", "status"]
 
 
+class VendorReturnImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    queryset = VendorReturnImportLog.objects.all()
+    serializer_class = VendorReturnImportLogSerializer
+    action_capability_map = {
+        "list": "fulfillment.return.list",
+        "retrieve": "fulfillment.return.read",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["vendor_company_reference", "company_scope_reference"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = VendorReturnImportLog.objects.all()
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company.company_type == "vendor":
+                qs = qs.filter(vendor_company_reference=company.id)
+            elif company.company_type == "buyer":
+                qs = qs.filter(company_scope_reference=company.id)
+        return qs
+
+
 class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = ReturnRequest.objects.all()
     serializer_class = ReturnRequestSerializer
@@ -705,5 +727,6 @@ router.register("sla-policies", SLAPolicyViewSet, basename="sla-policy")
 router.register("sla-overrides", SLAOverrideViewSet, basename="sla-override")
 router.register("buyer-signals", BuyerUpdateSignalViewSet, basename="buyer-signal")
 router.register("return-requests", ReturnRequestViewSet, basename="return-request")
+router.register("return-import-logs", VendorReturnImportLogViewSet, basename="return-import-log")
 
 urlpatterns = [path("", include(router.urls))]
