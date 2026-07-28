@@ -210,49 +210,63 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
             return Response({"detail": "No valid suborders found for the provided IDs"}, status=400)
             
         for sub in suborders_qs:
-            vendor = Company.objects.filter(id=sub.vendor_company_reference).first()
-            buyer_company = Company.objects.filter(id=sub.order.company_scope_reference).first()
-            
-            if not vendor or not buyer_company:
-                ineligible_suborders.append({
-                    "id": str(sub.id),
-                    "errors": ["Vendor or Buyer company not found"]
-                })
-                continue
+            try:
+                vendor = Company.objects.filter(id=sub.vendor_company_reference).first()
+                if not sub.order:
+                    ineligible_suborders.append({
+                        "id": str(sub.id),
+                        "errors": ["Suborder has no associated order"]
+                    })
+                    continue
+                buyer_company = Company.objects.filter(id=sub.order.company_scope_reference).first()
                 
-            lines = PurchaseOrderLine.objects.filter(purchase_order_id=sub.order.id)
-            lines = lines.filter(product_reference__in=
-                Product.objects.filter(vendor_company_reference=vendor.id).values_list("id", flat=True)
-            )
-            
-            if not lines.exists():
-                ineligible_suborders.append({
-                    "id": str(sub.id),
-                    "errors": [f"Suborder has no order lines for vendor {vendor.name}"]
-                })
-                continue
-                
-            suborder_eligible = True
-            errors = []
-            for line in lines:
-                try:
-                    product = Product.objects.get(id=line.product_reference)
-                except Product.DoesNotExist:
-                    suborder_eligible = False
-                    errors.append(f"Product {line.product_reference} not found in catalog")
+                if not vendor or not buyer_company:
+                    ineligible_suborders.append({
+                        "id": str(sub.id),
+                        "errors": ["Vendor or Buyer company not found"]
+                    })
                     continue
                     
-                is_eligible, reason = validate_line_eligibility(sub, line, product, vendor, buyer_company)
-                if not is_eligible:
-                    suborder_eligible = False
-                    errors.append(reason)
+                lines = PurchaseOrderLine.objects.filter(purchase_order_id=sub.order.id)
+                lines = lines.filter(product_reference__in=
+                    Product.objects.filter(vendor_company_reference=vendor.id).values_list("id", flat=True)
+                )
+                
+                if not lines.exists():
+                    ineligible_suborders.append({
+                        "id": str(sub.id),
+                        "errors": [f"Suborder has no order lines for vendor {vendor.name}"]
+                    })
+                    continue
                     
-            if suborder_eligible:
-                eligible_suborders.append(sub)
-            else:
+                suborder_eligible = True
+                errors = []
+                for line in lines:
+                    try:
+                        product = Product.objects.get(id=line.product_reference)
+                    except Product.DoesNotExist:
+                        suborder_eligible = False
+                        errors.append(f"Product {line.product_reference} not found in catalog")
+                        continue
+                        
+                    is_eligible, reason = validate_line_eligibility(sub, line, product, vendor, buyer_company)
+                    if not is_eligible:
+                        suborder_eligible = False
+                        errors.append(reason)
+                        
+                if suborder_eligible:
+                    eligible_suborders.append(sub)
+                else:
+                    ineligible_suborders.append({
+                        "id": str(sub.id),
+                        "errors": errors
+                    })
+            except Exception as e:
+                import traceback
+                logger.error("Error evaluating suborder eligibility: %s\n%s", e, traceback.format_exc())
                 ineligible_suborders.append({
                     "id": str(sub.id),
-                    "errors": errors
+                    "errors": [f"Unexpected error: {str(e)}"]
                 })
                 
         preview_data = {
