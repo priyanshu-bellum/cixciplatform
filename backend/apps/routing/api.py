@@ -908,6 +908,7 @@ class VendorExportWindowViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet)
 class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     queryset = VendorOrderExportLog.objects.all()
     serializer_class = VendorOrderExportLogSerializer
+    ordering = ["-sent_at"]
     action_capability_map = {
         "list": "routing.export.list",
         "retrieve": "routing.export.read",

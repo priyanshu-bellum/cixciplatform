@@ -363,6 +363,7 @@ export default function FulfillmentPage() {
                   <th>Order Count</th>
                   <th>Suborder Count</th>
                   <th>Trigger</th>
+                  <th>Delivery Status</th>
                   <th>Re-export Status</th>
                   <th>Action</th>
                 </tr>
@@ -387,6 +388,17 @@ export default function FulfillmentPage() {
                     <td>{log.suborder_count}</td>
                     <td>
                       <span className={`badge ${log.trigger_type === 'user' ? 'badge-blue' : 'badge-muted'}`}>{log.trigger_type}</span>
+                    </td>
+                    <td>
+                      <span className={`badge ${
+                        log.email_send_result === 'success' ? 'badge-green' :
+                        log.email_send_result === 'no_recipients_configured' ? 'badge-blue' :
+                        log.email_send_result === 'failed' ? 'badge-red' : 'badge-muted'
+                      }`} title={log.email_send_result}>
+                        {log.email_send_result === 'success' ? 'Sent' :
+                         log.email_send_result === 'no_recipients_configured' ? 'Download Only' :
+                         log.email_send_result || 'Pending'}
+                      </span>
                     </td>
                     <td>
                       {log.is_reexport ? (
