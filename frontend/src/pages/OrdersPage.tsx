@@ -302,7 +302,7 @@ export default function OrdersPage() {
                                   e.stopPropagation()
                                   if (confirm('Manually export this suborder to the vendor?')) {
                                     try {
-                                      await api.post('/routing/orders/manual-export/', { suborder_ids: [sub.id] })
+                                      await api.post('/routing/orders/manual-export/', { suborder_ids: [sub.id], confirm: true })
                                       alert('Manual export initiated successfully! You can download the generated CSV from the "Export Logs" tab in the Fulfillment page.')
                                       refetchOrders()
                                       refetchSuborders()
