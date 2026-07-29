@@ -30,7 +30,7 @@ class TestManualVendorExport:
             vendor_company_reference=vendor_company.id,
             company_scope_reference=vendor_company.id,
             msrp=50.0,
-            launch_date=timezone.now().date(),
+            launch_date=timezone.now().date() - timedelta(days=1),
             status=ProductStatus.ACTIVE,
             compatibility_status="complete",
         )
@@ -487,4 +487,66 @@ class TestManualVendorExport:
         assert response.status_code == 200
         assert response.data["preview"]["ineligible_count"] == 1
         assert "Vendor or Buyer company not found" in response.data["preview"]["ineligible_suborders"][0]["errors"]
+
+    def test_manual_export_no_recipients(self, admin_client, buyer_company, buyer_user, vendor_company, product):
+        from apps.routing.models import VendorOrderExportLog, RoutedSuborder, Order
+        from apps.fulfillment.models import FulfillmentHandoff
+        
+        # Set vendor integration mode to manual and make sure NO emails/recipients exist
+        vendor_company.external_id = json.dumps({"integration_mode": "manual"})
+        vendor_company.order_digest_emails = []
+        vendor_company.primary_contact_email = ""
+        vendor_company.save()
+        
+        # Ensure no active users exist for this vendor company to guarantee zero recipients
+        from apps.tenant.models import User as TenantUser
+        TenantUser.objects.filter(entity__company=vendor_company).update(is_active=False)
+
+        # Create PO
+        po = PurchaseOrder.objects.create(
+            company_scope_reference=buyer_company.id,
+            buyer_reference=buyer_user.id,
+            vendor_company_reference=vendor_company.id,
+            status=POStatus.APPROVED,
+            po_number="PO-NO-RECIPIENTS",
+        )
+        PurchaseOrderLine.objects.create(
+            purchase_order=po,
+            product_reference=product.id,
+            quantity=5,
+            unit_price_snapshot=10.0,
+            line_total=50.0,
+        )
+        orchestrate_po_finalization(po)
+
+        order = Order.objects.get(id=po.id)
+        suborder = RoutedSuborder.objects.get(order=order)
+        assert suborder.status == RoutingStatus.PLACED
+
+        # Now confirm the manual export via API endpoint
+        response = admin_client.post("/api/v1/routing/orders/manual-export/", {
+            "suborder_ids": [str(suborder.id)],
+            "confirm": True
+        }, format="json")
+        assert response.status_code == 200
+
+        # Verify a log entry was created even with zero recipients
+        log = VendorOrderExportLog.objects.get(vendor_company_reference=vendor_company.id)
+        assert log.trigger_type == "user"
+        assert log.is_reexport is False
+        assert log.email_send_result == "no_recipients_configured"
+        assert log.recipients == []
+        assert "MAN-SKU-123" in log.csv_backup
+
+        # Verify downstream transitions occurred successfully
+        suborder.refresh_from_db()
+        assert suborder.status == RoutingStatus.PROCESSING
+
+        order.refresh_from_db()
+        assert order.status == RoutingStatus.PROCESSING
+
+        # Verify FulfillmentHandoff exists
+        handoff = FulfillmentHandoff.objects.get(routed_suborder_reference=suborder.id)
+        assert handoff.status == "shipment_pending"
+
 

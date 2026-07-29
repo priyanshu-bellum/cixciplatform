@@ -376,12 +376,6 @@ def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, subo
             if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", r.strip()):
                 valid_recipients.append(r.strip())
 
-        if not valid_recipients:
-            logger.error("No valid recipients found to send order CSV for vendor %s", vendor.name)
-            window.status = "cancelled"
-            window.save()
-            continue
-
         # Resolve authorized user IDs for recipients
         recipient_users = User.objects.filter(email__in=valid_recipients)
         authorized_recipient_ids = []
@@ -400,7 +394,7 @@ def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, subo
                     authorized_recipient_ids = [str(system_admin.id)]
 
         # Create VendorExportDeliveryAttempt
-        VendorExportDeliveryAttempt.objects.create(
+        attempt = VendorExportDeliveryAttempt.objects.create(
             window=window,
             attempt_number=1,
             delivery_method="email",
@@ -420,7 +414,7 @@ def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, subo
         filename = f"CIXCI_VENDOR_ORDERS_{vendor_clean}_{buyer_clean}_{date_str}_{window.id}.csv"
 
         # Create VendorOrderExportLog entry
-        VendorOrderExportLog.objects.create(
+        log_entry = VendorOrderExportLog.objects.create(
             vendor_company_reference=vendor.id,
             buyer_company_reference=buyer_id,
             window=window,
@@ -437,6 +431,19 @@ def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, subo
             csv_backup=csv_content,
             is_reexport=False
         )
+
+        if not valid_recipients:
+            logger.warning("No valid recipients found to send order CSV for vendor %s. Progressing order directly.", vendor.name)
+            
+            class FakeNotificationAttempt:
+                id = window.id
+
+            from apps.routing.services import handle_successful_export_delivery
+            handle_successful_export_delivery(window.id, FakeNotificationAttempt())
+            
+            log_entry.email_send_result = "no_recipients_configured"
+            log_entry.save(update_fields=["email_send_result"])
+            continue
 
         attachments = [{
             "filename": filename,

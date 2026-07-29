@@ -856,6 +856,20 @@ class VendorExportScheduleViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["vendor_company_reference", "status"]
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = VendorExportSchedule.objects.all()
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company:
+                if company.company_type == "vendor":
+                    qs = qs.filter(vendor_company_reference=company.id)
+                else:
+                    qs = qs.none()
+            else:
+                qs = qs.none()
+        return qs
+
 
 class VendorExportWindowViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     queryset = VendorExportWindow.objects.select_related("schedule")
@@ -866,6 +880,20 @@ class VendorExportWindowViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet)
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["vendor_company_reference", "status"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = VendorExportWindow.objects.select_related("schedule")
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company:
+                if company.company_type == "vendor":
+                    qs = qs.filter(vendor_company_reference=company.id)
+                else:
+                    qs = qs.none()
+            else:
+                qs = qs.none()
+        return qs
 
     @action(detail=True, methods=["get"])
     def delivery_evidence(self, request, pk=None):
@@ -885,6 +913,22 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
         "retrieve": "routing.export.read",
         "reexport": "routing.export.manage",
     }
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = VendorOrderExportLog.objects.all()
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company:
+                if company.company_type == "vendor":
+                    qs = qs.filter(vendor_company_reference=company.id)
+                elif company.company_type == "buyer":
+                    qs = qs.filter(buyer_company_reference=company.id)
+                else:
+                    qs = qs.none()
+            else:
+                qs = qs.none()
+        return qs
 
     @action(detail=True, methods=["post"])
     def reexport(self, request, pk=None):
