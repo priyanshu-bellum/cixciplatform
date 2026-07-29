@@ -13,7 +13,7 @@ export default function OrdersPage() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
 
   // Fetch orders list
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['orders'],
     queryFn: () => api.get('/routing/orders/').then(r => r.data),
   })
@@ -34,7 +34,7 @@ export default function OrdersPage() {
   })
 
   // Fetch suborders for selected order
-  const { data: suborders, isLoading: isLoadingSubs } = useQuery({
+  const { data: suborders, isLoading: isLoadingSubs, refetch: refetchSuborders } = useQuery({
     queryKey: ['order-suborders', selectedOrderId],
     queryFn: () => api.get(`/routing/orders/${selectedOrderId}/suborders/`).then(r => r.data),
     enabled: !!selectedOrderId,
@@ -303,8 +303,9 @@ export default function OrdersPage() {
                                   if (confirm('Manually export this suborder to the vendor?')) {
                                     try {
                                       await api.post('/routing/orders/manual-export/', { suborder_ids: [sub.id] })
-                                      alert('Manual export initiated successfully!')
-                                      window.location.reload()
+                                      alert('Manual export initiated successfully! You can download the generated CSV from the "Export Logs" tab in the Fulfillment page.')
+                                      refetchOrders()
+                                      refetchSuborders()
                                     } catch (err: any) {
                                       alert(err.response?.data?.detail || 'Failed to trigger manual export.')
                                     }

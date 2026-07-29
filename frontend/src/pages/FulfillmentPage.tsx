@@ -94,6 +94,22 @@ export default function FulfillmentPage() {
     }
   }
 
+  const handleDownloadCSV = (log: any) => {
+    if (!log.csv_backup) {
+      alert('No CSV content available for this log.')
+      return
+    }
+    const blob = new Blob([log.csv_backup], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', log.filename || 'export.csv')
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setImportFile(e.target.files[0])
@@ -380,13 +396,21 @@ export default function FulfillmentPage() {
                       )}
                     </td>
                     <td>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        disabled={reexportingId === log.id}
-                        onClick={() => handleReexport(log.id)}
-                      >
-                        {reexportingId === log.id ? 'Sending...' : 'Re-export'}
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          disabled={reexportingId === log.id}
+                          onClick={() => handleReexport(log.id)}
+                        >
+                          {reexportingId === log.id ? 'Sending...' : 'Re-export'}
+                        </button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleDownloadCSV(log)}
+                        >
+                          Download CSV
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
