@@ -236,6 +236,10 @@ class VendorOrderExportLog(models.Model):
     is_reexport = models.BooleanField(default=False)
     original_log = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="reexports")
     audit_reference = models.UUIDField(default=uuid.uuid4, editable=False)
+    reexport_count = models.PositiveIntegerField(default=0)
+    last_reexport_status = models.CharField(max_length=30, blank=True, null=True)
+    last_reexported_at = models.DateTimeField(blank=True, null=True)
+    last_reexported_by_name = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         db_table = "routing_vendor_order_export_log"
@@ -260,4 +264,67 @@ class VendorOrderExportLog(models.Model):
             if original.buyer_company_reference != self.buyer_company_reference:
                 raise ValueError("buyer_company_reference is immutable")
             super().save(*args, **kwargs)
+
+
+class VendorOrderReexportAttempt(models.Model):
+    """
+    Attempt record of a vendor CSV re-export event.
+    Creates a new child audit record linked to the original export batch.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reexport_attempt_id = models.CharField(max_length=50, blank=True)
+    original_export_batch = models.ForeignKey(
+        VendorOrderExportLog,
+        on_delete=models.CASCADE,
+        related_name="reexport_attempts",
+        db_column="original_export_batch_id"
+    )
+    attempt_number = models.PositiveIntegerField()
+    trigger_type = models.CharField(max_length=20, default="USER")
+    triggered_by_user = models.ForeignKey(
+        "tenant.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        db_column="triggered_by_user_id"
+    )
+    triggered_by_user_name_snapshot = models.CharField(max_length=255, blank=True)
+    triggered_by_company = models.ForeignKey(
+        "tenant.Company",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        db_column="triggered_by_company_id"
+    )
+    triggered_by_role_snapshot = models.CharField(max_length=255, blank=True)
+    reason_code = models.CharField(max_length=255)
+    reason_notes = models.TextField(blank=True, null=True)
+    requested_at = models.DateTimeField(default=timezone.now)
+    processing_started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    delivery_method = models.CharField(max_length=50, default="email")
+    delivery_destination_snapshot = models.TextField(blank=True)
+    file_storage_reference = models.CharField(max_length=500, blank=True)
+    file_checksum = models.CharField(max_length=255, blank=True)
+    delivery_status = models.CharField(max_length=30, default="QUEUED")  # QUEUED, PROCESSING, SENT, DELIVERY_FAILED
+    provider_message_id = models.CharField(max_length=255, blank=True, null=True)
+    error_code = models.CharField(max_length=100, blank=True, null=True)
+    error_message = models.TextField(blank=True, null=True)
+    correlation_id = models.UUIDField(default=uuid.uuid4, editable=False)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = "routing_vendor_order_reexport_attempt"
+        ordering = ["attempt_number"]
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and not self.reexport_attempt_id:
+            # Generate sequential reexport_attempt_id
+            if not self.attempt_number:
+                existing_count = VendorOrderReexportAttempt.objects.filter(original_export_batch=self.original_export_batch).count()
+                self.attempt_number = existing_count + 1
+            self.reexport_attempt_id = f"rx_{self.attempt_number:05d}"
+        super().save(*args, **kwargs)
+
 

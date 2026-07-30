@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { Package, Plus, X, Calendar, User, ShoppingBag, Truck } from 'lucide-react'
 import api from '../lib/apiClient'
 
@@ -9,7 +10,16 @@ const STATUS: Record<string, string> = {
   placed: 'badge-amber', processing: 'badge-blue', shipment_pending: 'badge-amber',
 }
 
+const getImageUrl = (path: string | null) => {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  const apiBase = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1'
+  const host = apiBase.replace('/api/v1', '')
+  return `${host}${path}`
+}
+
 export default function OrdersPage() {
+  const navigate = useNavigate()
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
 
   // Fetch orders list
@@ -144,9 +154,10 @@ export default function OrdersPage() {
             <thead>
               <tr>
                 <th>Order ID</th>
-                <th>Status</th>
-                <th>Placed</th>
                 <th>Buyer</th>
+                <th>Placed</th>
+                <th>Status</th>
+                <th>Customer Name</th>
               </tr>
             </thead>
             <tbody>
@@ -155,13 +166,12 @@ export default function OrdersPage() {
                   <td style={{ color: 'var(--accent)', fontWeight: 500 }} className="mono">
                     {o.id.slice(0, 8)}…
                   </td>
+                  <td>{o.buyer_name ?? '—'}</td>
+                  <td>{new Date(o.placed_at).toLocaleDateString()}</td>
                   <td>
                     <span className={`badge ${STATUS[o.status] ?? 'badge-muted'}`}>{o.status}</span>
                   </td>
-                  <td>{new Date(o.placed_at).toLocaleDateString()}</td>
-                  <td className="mono" style={{ fontSize: 11 }}>
-                    {o.buyer_reference?.slice(0, 8)}…
-                  </td>
+                  <td>{o.customer_name ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -205,6 +215,12 @@ export default function OrdersPage() {
                   </span>
                 </div>
                 <div className="detail-item">
+                  <span className="detail-label">Buyer</span>
+                  <span className="detail-value" style={{ fontWeight: 500 }}>
+                    {orderDetail?.buyer_name ?? '...'}
+                  </span>
+                </div>
+                <div className="detail-item">
                   <span className="detail-label">Buyer Reference</span>
                   <span className="detail-value mono" style={{ fontSize: 11 }}>
                     <User size={13} style={{ color: 'var(--text-muted)', marginRight: 6, verticalAlign: 'middle' }} />
@@ -216,6 +232,43 @@ export default function OrdersPage() {
                   <span className="detail-value mono" style={{ fontSize: 11 }}>
                     {orderDetail?.company_scope_reference ?? '...'}
                   </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Customer Details Section */}
+            <div className="drawer-section">
+              <div className="drawer-section-title"><User size={14} /> Customer Details</div>
+              <div className="detail-card">
+                <div className="detail-item">
+                  <span className="detail-label">First Name</span>
+                  <span className="detail-value">{orderDetail?.customer_details?.first_name || '—'}</span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Last Name</span>
+                  <span className="detail-value">{orderDetail?.customer_details?.last_name || '—'}</span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Address 1</span>
+                  <span className="detail-value">{orderDetail?.customer_details?.address1 || '—'}</span>
+                </div>
+                {orderDetail?.customer_details?.address2 && (
+                  <div className="detail-item">
+                    <span className="detail-label">Address 2</span>
+                    <span className="detail-value">{orderDetail.customer_details.address2}</span>
+                  </div>
+                )}
+                <div className="detail-item">
+                  <span className="detail-label">City</span>
+                  <span className="detail-value">{orderDetail?.customer_details?.city || '—'}</span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">State</span>
+                  <span className="detail-value">{orderDetail?.customer_details?.state || '—'}</span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Zip Code</span>
+                  <span className="detail-value">{orderDetail?.customer_details?.zip_code || '—'}</span>
                 </div>
               </div>
             </div>
@@ -242,11 +295,50 @@ export default function OrdersPage() {
                       {orderLines.map((line: any) => (
                         <tr key={line.id}>
                           <td>
-                            <div style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 13 }}>
-                              {line.product_name}
-                            </div>
-                            <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                              {line.sku}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              {line.primary_image_url ? (
+                                <img
+                                  src={getImageUrl(line.primary_image_url)}
+                                  alt={line.product_name}
+                                  style={{
+                                    width: 40,
+                                    height: 40,
+                                    objectFit: 'cover',
+                                    borderRadius: 6,
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--bg-elevated)',
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 6,
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--bg-elevated)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'var(--text-muted)',
+                                  }}
+                                >
+                                  <Package size={20} />
+                                </div>
+                              )}
+                              <div>
+                                <div style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 13 }}>
+                                  {line.product_name}
+                                </div>
+                                <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                                  SKU: {line.sku} UPC: {line.upc ?? 'N/A'}
+                                </div>
+                                {line.color && line.color !== 'N/A' && (
+                                  <div style={{ fontSize: 10, color: 'var(--accent)', marginTop: 2, fontWeight: 500 }}>
+                                    Color: {line.color}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 500 }}>
@@ -303,9 +395,10 @@ export default function OrdersPage() {
                                   if (confirm('Manually export this suborder to the vendor?')) {
                                     try {
                                       await api.post('/routing/orders/manual-export/', { suborder_ids: [sub.id], confirm: true })
-                                      alert('Manual export initiated successfully! You can download the generated CSV from the "Export Logs" tab in the Fulfillment page.')
+                                      alert('Manual export initiated successfully! You will now be redirected to the "Export Logs" tab in the Fulfillment page to download the CSV.')
                                       refetchOrders()
                                       refetchSuborders()
+                                      navigate('/fulfillment?tab=exportLogs', { state: { tab: 'exportLogs' } })
                                     } catch (err: any) {
                                       alert(err.response?.data?.detail || 'Failed to trigger manual export.')
                                     }

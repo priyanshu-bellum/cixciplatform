@@ -11,20 +11,70 @@ from .models import (
     Order, RoutedSuborder,
     VendorExportSchedule, VendorExportWindow,
     VendorExportBatchItem, VendorExportDeliveryEvidence,
-    VendorOrderExportLog,
+    VendorOrderExportLog, VendorOrderReexportAttempt,
 )
 
 
 # ─── Serializers ──────────────────────────────────────────────────────────────
 
 class OrderSerializer(serializers.ModelSerializer):
+    buyer_name = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    customer_details = serializers.SerializerMethodField()
+
     class Meta:
         model = Order
         fields = [
             "id", "company_scope_reference", "buyer_reference", "buyer_entity_reference",
             "status", "pricing_snapshot_references", "placed_at", "created_at",
+            "buyer_name", "customer_name", "customer_details",
         ]
         read_only_fields = ["id", "created_at", "placed_at"]
+
+    def get_buyer_name(self, obj):
+        from apps.tenant.models import Company
+        company = Company.objects.filter(id=obj.company_scope_reference).first()
+        return company.name if company else "Unknown Buyer"
+
+    def get_customer_name(self, obj):
+        request = self.context.get("request")
+        suborders = obj.routed_suborders.all()
+        if request and request.user and not request.user.is_cixci_admin:
+            entity = getattr(request.user, "entity", None)
+            company = entity.company if entity else None
+            if company and company.company_type == "vendor":
+                suborders = suborders.filter(vendor_company_reference=company.id)
+        
+        sub = suborders.first()
+        if sub and "customer_shipping" in sub.routing_snapshot:
+            cs = sub.routing_snapshot["customer_shipping"]
+            first_name = cs.get("customer_first_name", "") or cs.get("first_name", "")
+            last_name = cs.get("customer_last_name", "") or cs.get("last_name", "")
+            return f"{first_name} {last_name}".strip() or "N/A"
+        return "N/A"
+
+    def get_customer_details(self, obj):
+        request = self.context.get("request")
+        suborders = obj.routed_suborders.all()
+        if request and request.user and not request.user.is_cixci_admin:
+            entity = getattr(request.user, "entity", None)
+            company = entity.company if entity else None
+            if company and company.company_type == "vendor":
+                suborders = suborders.filter(vendor_company_reference=company.id)
+        
+        sub = suborders.first()
+        if sub and "customer_shipping" in sub.routing_snapshot:
+            cs = sub.routing_snapshot["customer_shipping"]
+            return {
+                "first_name": cs.get("customer_first_name") or cs.get("first_name") or "",
+                "last_name": cs.get("customer_last_name") or cs.get("last_name") or "",
+                "address1": cs.get("address_1") or cs.get("address1") or "",
+                "address2": cs.get("address_2") or cs.get("address2") or "",
+                "city": cs.get("city") or "",
+                "state": cs.get("state") or "",
+                "zip_code": cs.get("zip") or cs.get("zip_code") or "",
+            }
+        return None
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):
@@ -89,16 +139,58 @@ class VendorExportDeliveryEvidenceSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
+class VendorOrderReexportAttemptSerializer(serializers.ModelSerializer):
+    triggered_by_email = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VendorOrderReexportAttempt
+        fields = [
+            "id", "reexport_attempt_id", "original_export_batch", "attempt_number", "trigger_type",
+            "triggered_by_user", "triggered_by_user_name_snapshot", "triggered_by_email",
+            "triggered_by_company", "triggered_by_role_snapshot", "reason_code", "reason_notes",
+            "requested_at", "processing_started_at", "completed_at", "delivery_method",
+            "delivery_destination_snapshot", "file_storage_reference", "file_checksum",
+            "delivery_status", "provider_message_id", "error_code", "error_message",
+            "correlation_id", "ip_address", "user_agent"
+        ]
+
+    def get_triggered_by_email(self, obj):
+        return obj.triggered_by_user.email if obj.triggered_by_user else ""
+
+
 class VendorOrderExportLogSerializer(serializers.ModelSerializer):
+    vendor_name = serializers.SerializerMethodField()
+    buyer_name = serializers.SerializerMethodField()
+    triggered_by_name = serializers.SerializerMethodField()
+    reexport_attempts = VendorOrderReexportAttemptSerializer(many=True, read_only=True)
+
     class Meta:
         model = VendorOrderExportLog
         fields = [
             "id", "vendor_company_reference", "buyer_company_reference", "window",
             "filename", "sent_at", "order_count", "suborder_count",
-            "sending_method", "recipients", "trigger_type", "triggered_by",
+            "sending_method", "recipients", "trigger_type", "triggered_by", "triggered_by_name",
             "status_before", "status_after", "csv_backup", "email_send_result",
             "is_reexport", "original_log", "audit_reference",
+            "vendor_name", "buyer_name", "reexport_attempts",
+            "reexport_count", "last_reexport_status", "last_reexported_at", "last_reexported_by_name",
         ]
+
+    def get_vendor_name(self, obj):
+        from apps.tenant.models import Company
+        company = Company.objects.filter(id=obj.vendor_company_reference).first()
+        return company.name if company else "Unknown Vendor"
+
+    def get_buyer_name(self, obj):
+        from apps.tenant.models import Company
+        company = Company.objects.filter(id=obj.buyer_company_reference).first()
+        return company.name if company else "Unknown Buyer"
+
+    def get_triggered_by_name(self, obj):
+        if obj.triggered_by:
+            name = f"{obj.triggered_by.first_name} {obj.triggered_by.last_name}".strip()
+            return name if name else obj.triggered_by.email
+        return "System"
 
 
 # ─── ViewSets ─────────────────────────────────────────────────────────────────
@@ -165,10 +257,28 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
         for line in lines:
             prod_name = "Unknown Product"
             sku = "N/A"
+            upc = "N/A"
+            color = "N/A"
+            primary_image_url = None
             try:
                 prod = Product.objects.get(id=line.product_reference)
                 prod_name = prod.name
                 sku = prod.sku
+                upc = prod.upc or "N/A"
+                color = prod.color or "N/A"
+                
+                if prod.primary_image_reference:
+                    try:
+                        from apps.media.models import MediaAsset
+                        from django.conf import settings
+                        asset = MediaAsset.objects.get(id=prod.primary_image_reference)
+                        if asset.status == "ready":
+                            media_url = getattr(settings, "MEDIA_URL", "/media/")
+                            primary_image_url = f"{media_url}{asset.storage_key}"
+                    except Exception:
+                        pass
+                if not primary_image_url and isinstance(prod.media_references, list) and len(prod.media_references) > 0:
+                    primary_image_url = prod.media_references[0]
             except Product.DoesNotExist:
                 pass
                 
@@ -178,6 +288,9 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                 "product_reference": str(line.product_reference),
                 "product_name": prod_name,
                 "sku": sku,
+                "upc": upc,
+                "color": color,
+                "primary_image_url": primary_image_url,
                 "quantity": line.quantity,
                 "unit_price_snapshot": float(line.unit_price_snapshot),
                 "line_total": float(line.line_total),
@@ -905,6 +1018,51 @@ class VendorExportWindowViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet)
             return Response({"detail": "No delivery evidence yet."}, status=404)
 
 
+def create_reexport_audit_and_evidence(
+    event_code, description, status, company_id, actor_id,
+    reexport_attempt, file_checksum, file_name, correlation_id
+):
+    from apps.audit.models import AuditRecord, EvidenceRecord, RetentionClass, RedactionClass, AccessClass, EvidenceStatus
+    try:
+        # 1. Create AuditRecord
+        audit_rec = AuditRecord.objects.create(
+            event_code=event_code,
+            event_description=description,
+            status=status,
+            actor_reference=actor_id,
+            company_scope_reference=company_id,
+            source_module="routing",
+            source_record_type="VendorOrderReexportAttempt",
+            source_record_id=reexport_attempt.id,
+            correlation_id=correlation_id,
+            retention_class=RetentionClass.STANDARD,
+            redaction_class=RedactionClass.INTERNAL_OPS,
+            access_class=AccessClass.INTERNAL_OPS,
+        )
+        
+        # 2. Create linked EvidenceRecord
+        EvidenceRecord.objects.create(
+            audit_record=audit_rec,
+            evidence_type="file_evidence",
+            evidence_status=EvidenceStatus.ACTIVE,
+            source_module="routing",
+            source_record_type="VendorOrderReexportAttempt",
+            source_record_id=reexport_attempt.id,
+            company_scope_reference=company_id,
+            actor_reference=actor_id,
+            evidence_hash_reference=file_checksum,
+            evidence_schema_version="1.0",
+            correlation_reference=correlation_id,
+            retention_class=RetentionClass.STANDARD,
+            redaction_class=RedactionClass.INTERNAL_OPS,
+            access_class=AccessClass.INTERNAL_OPS,
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to log linked audit and evidence record: {e}")
+
+
 class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     queryset = VendorOrderExportLog.objects.all()
     serializer_class = VendorOrderExportLogSerializer
@@ -936,43 +1094,174 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
         log = self.get_object()
         
         from django.utils import timezone
+        import hashlib
         import base64
+        import json
         from apps.tenant.models import Company, User
         from apps.notification.models import NotificationRequest, NotificationChannel, NotificationTemplate, TemplateStatus
+        from apps.routing.models import ExportWindowStatus, VendorOrderReexportAttempt
         
-        filename = log.filename.replace(".csv", "_REEXPORT.csv")
+        reason = request.data.get("reason")
+        explanation = request.data.get("explanation")
         
-        reexport_log = VendorOrderExportLog.objects.create(
-            vendor_company_reference=log.vendor_company_reference,
-            buyer_company_reference=log.buyer_company_reference,
-            window=log.window,
-            filename=filename,
-            sent_at=timezone.now(),
-            order_count=log.order_count,
-            suborder_count=log.suborder_count,
-            sending_method=log.sending_method,
-            recipients=log.recipients,
-            trigger_type="user",
-            triggered_by=request.user,
-            status_before=log.status_before,
-            status_after=log.status_after,
-            csv_backup=log.csv_backup,
-            is_reexport=True,
-            original_log=log,
-            email_send_result="success"
+        if not reason:
+            return Response({"detail": "Re-export reason is required."}, status=400)
+            
+        if reason == "Other" and not explanation:
+            return Response({"detail": "Explanation is required when reason is 'Other'."}, status=400)
+            
+        # 1. User is authenticated
+        if not request.user.is_authenticated:
+            return Response({"detail": "User is not authenticated."}, status=401)
+            
+        # 2. User has permission to re-export files
+        from apps.tenant.services import check_access
+        access = check_access(request.user, "routing.export.manage")
+        if not access.granted:
+            return Response({"detail": f"Access denied: {access.reason} (required: routing.export.manage)"}, status=403)
+            
+        # 3. User can access the buyer and vendor represented by the batch
+        if not request.user.is_cixci_admin:
+            entity = getattr(request.user, "entity", None)
+            company = entity.company if entity else None
+            if not company:
+                return Response({"detail": "User is not associated with any company."}, status=403)
+            if company.id not in [log.vendor_company_reference, log.buyer_company_reference]:
+                return Response({"detail": "User does not have access to the vendor or buyer represented by this batch."}, status=403)
+                
+        # 4. Original stored CSV still exists
+        if not log.csv_backup:
+            return Response({"detail": "The original stored CSV does not exist."}, status=400)
+            
+        # 5. Vendor delivery configuration is valid
+        try:
+            vendor = Company.objects.get(id=log.vendor_company_reference)
+        except Company.DoesNotExist:
+            return Response({"detail": "Vendor company not found."}, status=400)
+            
+        if vendor.status != "active":
+            return Response({"detail": "Vendor company is inactive."}, status=400)
+            
+        integration_mode = "api"
+        if vendor.external_id:
+            try:
+                meta = json.loads(vendor.external_id)
+                integration_mode = meta.get("integration_mode", "api")
+            except Exception:
+                pass
+        if integration_mode != "manual":
+            return Response({"detail": "Vendor integration mode is not manual."}, status=400)
+            
+        # 6. Original export batch has not been canceled, revoked, or restricted
+        if log.window.status == ExportWindowStatus.CANCELLED:
+            return Response({"detail": "The original export window has been cancelled."}, status=400)
+        if log.email_send_result in ["revoked", "canceled", "restricted"]:
+            return Response({"detail": f"The original export batch is {log.email_send_result}."}, status=400)
+            
+        # Create a re-export attempt record
+        csv_bytes = log.csv_backup.encode("utf-8")
+        file_checksum = hashlib.sha256(csv_bytes).hexdigest()
+        
+        recipient_emails = log.recipients
+        if not recipient_emails:
+            recipient_users = User.objects.filter(email__in=log.recipients)
+            authorized_recipient_ids = []
+            for u in recipient_users:
+                if u.is_active:
+                    if u.is_cixci_admin or (u.entity and u.entity.company_id == log.vendor_company_reference):
+                        authorized_recipient_ids.append(str(u.id))
+            if not authorized_recipient_ids:
+                first_vendor_user = User.objects.filter(entity__company=vendor, is_active=True).first()
+                if first_vendor_user:
+                    recipient_emails = [first_vendor_user.email]
+                else:
+                    system_admin = User.objects.filter(is_superuser=True, is_active=True).first()
+                    if system_admin:
+                        recipient_emails = [system_admin.email]
+                    else:
+                        recipient_emails = ["admin@cixci.local"]
+                        
+        recipient_email_str = ", ".join(recipient_emails)
+        
+        # Get IP address and User Agent
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip_address = x_forwarded_for.split(',')[0].strip()
+        else:
+            ip_address = request.META.get('REMOTE_ADDR')
+            
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        
+        # Snapshot role
+        user = request.user
+        if user.is_cixci_admin:
+            role_snapshot = "CIXCI Admin"
+        elif user.is_staff:
+            role_snapshot = "Staff"
+        elif user.company:
+            role_snapshot = "Vendor Representative" if user.company.company_type == "vendor" else "Buyer Representative"
+        else:
+            role_snapshot = "User"
+
+        reexport_attempt = VendorOrderReexportAttempt.objects.create(
+            original_export_batch=log,
+            attempt_number=log.reexport_attempts.count() + 1,
+            trigger_type="USER",
+            triggered_by_user=user,
+            triggered_by_user_name_snapshot=f"{user.first_name} {user.last_name}".strip() or user.email,
+            triggered_by_company=user.company,
+            triggered_by_role_snapshot=role_snapshot,
+            reason_code=reason,
+            reason_notes=explanation,
+            requested_at=timezone.now(),
+            delivery_status="QUEUED",
+            delivery_destination_snapshot=recipient_email_str,
+            delivery_method=log.sending_method or "email",
+            file_checksum=file_checksum,
+            file_storage_reference=log.filename,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        # Log requested event
+        create_reexport_audit_and_evidence(
+            event_code="order_export.reexport_requested",
+            description=f"Manual re-export requested for export log {log.id}",
+            status="success",
+            company_id=log.vendor_company_reference,
+            actor_id=user.id,
+            reexport_attempt=reexport_attempt,
+            file_checksum=file_checksum,
+            file_name=log.filename,
+            correlation_id=reexport_attempt.correlation_id
         )
         
-        vendor = Company.objects.get(id=log.vendor_company_reference)
+        # Transition attempt status to PROCESSING
+        reexport_attempt.delivery_status = "PROCESSING"
+        reexport_attempt.processing_started_at = timezone.now()
+        reexport_attempt.save(update_fields=["delivery_status", "processing_started_at"])
+        
+        # Deliver email using NotificationRequest
+        filename = log.filename
+        if not filename.endswith("_REEXPORT.csv"):
+            filename = filename.replace(".csv", "_REEXPORT.csv")
+            
+        csv_base64 = base64.b64encode(csv_bytes).decode("utf-8")
+        attachments = [{
+            "filename": filename,
+            "content": csv_base64,
+            "mime_type": "text/csv"
+        }]
+        
         buyer_company = Company.objects.filter(id=log.buyer_company_reference).first()
         buyer_name = buyer_company.name if buyer_company else "Unknown Buyer"
         
-        recipient_users = User.objects.filter(email__in=log.recipients)
+        recipient_users = User.objects.filter(email__in=recipient_emails)
         authorized_recipient_ids = []
         for u in recipient_users:
             if u.is_active:
                 if u.is_cixci_admin or (u.entity and u.entity.company_id == log.vendor_company_reference):
                     authorized_recipient_ids.append(str(u.id))
-                    
         if not authorized_recipient_ids:
             first_vendor_user = User.objects.filter(entity__company=vendor, is_active=True).first()
             if first_vendor_user:
@@ -982,43 +1271,91 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
                 if system_admin:
                     authorized_recipient_ids = [str(system_admin.id)]
                     
-        csv_bytes = log.csv_backup.encode("utf-8")
-        csv_base64 = base64.b64encode(csv_bytes).decode("utf-8")
-        
-        attachments = [{
-            "filename": filename,
-            "content": csv_base64,
-            "mime_type": "text/csv"
-        }]
-        
         template = NotificationTemplate.objects.filter(
             event_type="vendor.order_export",
             channel=NotificationChannel.EMAIL,
             status=TemplateStatus.APPROVED
         ).first()
         
+        email_send_result = "success"
+        email_message_id = None
+        error_code = None
+        error_message = None
+        
         if template:
-            NotificationRequest.objects.create(
-                event_type="vendor.order_export",
-                source_module="routing",
-                source_record_id=log.window.id,
-                safe_payload_summary={
-                    "buyer_name": buyer_name,
-                    "vendor_name": vendor.name,
-                    "export_date": timezone.now().strftime('%Y-%m-%d'),
-                    "export_time": timezone.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
-                    "order_count": log.order_count,
-                    "suborder_count": log.suborder_count,
-                },
-                attachments=attachments,
-                requested_recipient_ids=authorized_recipient_ids,
-                company_scope_reference=log.vendor_company_reference,
-                template_code=template.template_code,
-                channel=NotificationChannel.EMAIL,
-                idempotency_key=f"reexport_{reexport_log.id}"
-            )
+            try:
+                notif = NotificationRequest.objects.create(
+                    event_type="vendor.order_export",
+                    source_module="routing",
+                    source_record_id=log.window.id,
+                    safe_payload_summary={
+                        "buyer_name": buyer_name,
+                        "vendor_name": vendor.name,
+                        "export_date": timezone.now().strftime('%Y-%m-%d'),
+                        "export_time": timezone.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
+                        "order_count": log.order_count,
+                        "suborder_count": log.suborder_count,
+                    },
+                    attachments=attachments,
+                    requested_recipient_ids=authorized_recipient_ids,
+                    company_scope_reference=log.vendor_company_reference,
+                    template_code=template.template_code,
+                    channel=NotificationChannel.EMAIL,
+                    idempotency_key=f"reexport_attempt_{reexport_attempt.id}"
+                )
+                email_message_id = f"msg_{notif.id}"
+            except Exception as e:
+                email_send_result = "failed"
+                error_code = "NOTIFICATION_REQUEST_FAILED"
+                error_message = str(e)
+        else:
+            email_send_result = "no_recipients_configured"
+            error_code = "NO_TEMPLATE"
+            error_message = "No approved notification template found for vendor.order_export"
             
-        return Response(VendorOrderExportLogSerializer(reexport_log).data, status=201)
+        reexport_attempt.delivery_status = "SENT" if email_send_result in ["success", "no_recipients_configured"] else "DELIVERY_FAILED"
+        reexport_attempt.provider_message_id = email_message_id
+        reexport_attempt.completed_at = timezone.now()
+        reexport_attempt.error_code = error_code
+        reexport_attempt.error_message = error_message
+        reexport_attempt.save()
+        
+        # Update parent export summary
+        log.reexport_count = log.reexport_attempts.count()
+        log.last_reexport_status = reexport_attempt.delivery_status
+        log.last_reexported_at = reexport_attempt.requested_at
+        log.last_reexported_by_name = reexport_attempt.triggered_by_user_name_snapshot
+        log.save(update_fields=[
+            "reexport_count", "last_reexport_status", "last_reexported_at", "last_reexported_by_name"
+        ])
+
+        # Log completion event (sent or failed)
+        if reexport_attempt.delivery_status == "SENT":
+            create_reexport_audit_and_evidence(
+                event_code="order_export.reexport_sent",
+                description=f"Manual re-export sent successfully for export log {log.id}",
+                status="success",
+                company_id=log.vendor_company_reference,
+                actor_id=user.id,
+                reexport_attempt=reexport_attempt,
+                file_checksum=file_checksum,
+                file_name=log.filename,
+                correlation_id=reexport_attempt.correlation_id
+            )
+        else:
+            create_reexport_audit_and_evidence(
+                event_code="order_export.reexport_failed",
+                description=f"Manual re-export failed for export log {log.id}: {error_message}",
+                status="failed",
+                company_id=log.vendor_company_reference,
+                actor_id=user.id,
+                reexport_attempt=reexport_attempt,
+                file_checksum=file_checksum,
+                file_name=log.filename,
+                correlation_id=reexport_attempt.correlation_id
+            )
+        
+        return Response(VendorOrderExportLogSerializer(log).data, status=201)
 
 
 # ─── URLs ─────────────────────────────────────────────────────────────────────

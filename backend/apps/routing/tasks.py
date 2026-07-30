@@ -295,6 +295,34 @@ def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, subo
                 routed_suborder=sub
             )
 
+        if trigger_type == "user":
+            from apps.fulfillment.models import FulfillmentHandoff
+            for sub, _ in eligible_subs:
+                sub.status = RoutingStatus.PROCESSING
+                sub.save(update_fields=["status"])
+                
+                # Check if parent order is now fully processing
+                order = sub.order
+                all_processed = True
+                for o_sub in order.routed_suborders.all():
+                    if o_sub.status not in [RoutingStatus.PROCESSING, "shipped", "delivered", "closed"]:
+                        all_processed = False
+                        break
+                if all_processed:
+                    order.status = RoutingStatus.PROCESSING
+                    order.save(update_fields=["status"])
+                
+                # Create Fulfillment Handoff immediately
+                FulfillmentHandoff.objects.get_or_create(
+                    routed_suborder_reference=sub.id,
+                    defaults={
+                        "vendor_company_reference": vendor.id,
+                        "company_scope_reference": order.company_scope_reference,
+                        "status": "shipment_pending",
+                        "delivery_evidence_reference": None
+                    }
+                )
+
         # Generate CSV content
         csv_file = io.StringIO()
         writer = csv.writer(csv_file)

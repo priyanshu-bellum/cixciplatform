@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useLocation } from 'react-router-dom'
 import { Truck, Clock, ShieldAlert, UploadCloud, CheckCircle2, AlertCircle, X, RefreshCw, FileText } from 'lucide-react'
 import api from '../lib/apiClient'
 
@@ -27,7 +28,19 @@ const RETURN_STATUS_COLORS: Record<string, string> = {
 }
 
 export default function FulfillmentPage() {
-  const [tab, setTab] = useState<'handoffs' | 'sla' | 'policies' | 'exportLogs' | 'returns' | 'returnLogs'>('handoffs')
+  const location = useLocation()
+  const queryTab = new URLSearchParams(location.search).get('tab')
+  const initialTab = (queryTab as any) || location.state?.tab || 'handoffs'
+  const [tab, setTab] = useState<'handoffs' | 'sla' | 'policies' | 'exportLogs' | 'returns' | 'returnLogs'>(
+    ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs'].includes(initialTab) ? (initialTab as any) : 'handoffs'
+  )
+
+  useEffect(() => {
+    const activeTab = new URLSearchParams(location.search).get('tab') || location.state?.tab
+    if (activeTab && ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs'].includes(activeTab)) {
+      setTab(activeTab as any)
+    }
+  }, [location])
 
   const { data: handoffData, isLoading: hLoading } = useQuery({
     queryKey: ['fulfillment-handoffs'],
@@ -72,6 +85,16 @@ export default function FulfillmentPage() {
   const returnImportLogs = returnLogData?.results ?? (Array.isArray(returnLogData) ? returnLogData : [])
 
   const [reexportingId, setReexportingId] = useState<string | null>(null)
+  const [selectedLogForReexport, setSelectedLogForReexport] = useState<any | null>(null)
+  const [reexportReason, setReexportReason] = useState<string>('')
+  const [reexportExplanation, setReexportExplanation] = useState<string>('')
+  const [expandedLogIds, setExpandedLogIds] = useState<string[]>([])
+
+  const toggleExpandLog = (id: string) => {
+    setExpandedLogIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
   
   // Return Import Modal States
   const [showImportModal, setShowImportModal] = useState(false)
@@ -80,12 +103,13 @@ export default function FulfillmentPage() {
   const [previewData, setPreviewData] = useState<any>(null)
   const [importError, setImportError] = useState<string | null>(null)
 
-  const handleReexport = async (id: string) => {
+  const handleReexport = async (id: string, reason: string, explanation?: string) => {
     if (reexportingId) return
     setReexportingId(id)
     try {
-      await api.post(`/routing/export-logs/${id}/reexport/`)
+      await api.post(`/routing/export-logs/${id}/reexport/`, { reason, explanation })
       alert('Re-export triggered successfully!')
+      setSelectedLogForReexport(null)
       refetchLogs()
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to trigger re-export.')
@@ -370,61 +394,150 @@ export default function FulfillmentPage() {
               </thead>
               <tbody>
                 {exportLogs.map((log: any) => (
-                  <tr key={log.id}>
-                    <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }} title={log.audit_reference}>
-                      {log.audit_reference?.slice(0, 8)}…
-                    </td>
-                    <td className="mono" style={{ fontSize: 11 }} title={log.vendor_company_reference}>
-                      {log.vendor_company_reference?.slice(0, 8)}…
-                    </td>
-                    <td className="mono" style={{ fontSize: 11 }} title={log.buyer_company_reference}>
-                      {log.buyer_company_reference?.slice(0, 8)}…
-                    </td>
-                    <td style={{ fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.filename}>
-                      {log.filename}
-                    </td>
-                    <td>{log.sent_at ? new Date(log.sent_at).toLocaleString() : '—'}</td>
-                    <td>{log.order_count}</td>
-                    <td>{log.suborder_count}</td>
-                    <td>
-                      <span className={`badge ${log.trigger_type === 'user' ? 'badge-blue' : 'badge-muted'}`}>{log.trigger_type}</span>
-                    </td>
-                    <td>
-                      <span className={`badge ${
-                        log.email_send_result === 'success' ? 'badge-green' :
-                        log.email_send_result === 'no_recipients_configured' ? 'badge-blue' :
-                        log.email_send_result === 'failed' ? 'badge-red' : 'badge-muted'
-                      }`} title={log.email_send_result}>
-                        {log.email_send_result === 'success' ? 'Sent' :
-                         log.email_send_result === 'no_recipients_configured' ? 'Download Only' :
-                         log.email_send_result || 'Pending'}
-                      </span>
-                    </td>
-                    <td>
-                      {log.is_reexport ? (
-                        <span className="badge badge-purple" title={`Original log: ${log.original_log}`}>Re-export</span>
-                      ) : (
-                        <span className="badge badge-muted">Original</span>
-                      )}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                  <Fragment key={log.id}>
+                    <tr>
+                      <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }} title={log.audit_reference}>
+                        {log.audit_reference?.slice(0, 8)}…
+                      </td>
+                      <td title={log.vendor_name || log.vendor_company_reference}>
+                        {log.vendor_name || log.vendor_company_reference}
+                      </td>
+                      <td title={log.buyer_name || log.buyer_company_reference}>
+                        {log.buyer_name || log.buyer_company_reference}
+                      </td>
+                      <td style={{ fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.filename}>
+                        {log.filename}
+                      </td>
+                      <td>{log.sent_at ? new Date(log.sent_at).toLocaleString() : '—'}</td>
+                      <td>{log.order_count}</td>
+                      <td>{log.suborder_count}</td>
+                      <td>
+                        <span className={`badge ${log.trigger_type === 'user' ? 'badge-blue' : 'badge-muted'}`}>{log.trigger_type}</span>
+                      </td>
+                      <td>
+                        <span className={`badge ${
+                          log.email_send_result === 'success' ? 'badge-green' :
+                          log.email_send_result === 'no_recipients_configured' ? 'badge-blue' :
+                          log.email_send_result === 'failed' ? 'badge-red' : 'badge-muted'
+                        }`} title={log.email_send_result}>
+                          {log.email_send_result === 'success' ? 'Sent' :
+                           log.email_send_result === 'no_recipients_configured' ? 'Download Only' :
+                           log.email_send_result || 'Pending'}
+                        </span>
+                      </td>
+                      <td>
                         <button
-                          className="btn btn-primary btn-sm"
-                          disabled={reexportingId === log.id}
-                          onClick={() => handleReexport(log.id)}
+                          onClick={() => toggleExpandLog(log.id)}
+                          className={`badge ${log.reexport_count > 0 ? 'badge-purple' : 'badge-muted'}`}
+                          style={{ border: 'none', cursor: 'pointer', padding: '4px 8px', fontSize: '11px', fontWeight: 500 }}
                         >
-                          {reexportingId === log.id ? 'Sending...' : 'Re-export'}
+                          {log.reexport_count > 0 ? `Original · Re-exported ×${log.reexport_count}` : 'Original'}
                         </button>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => handleDownloadCSV(log)}
-                        >
-                          Download CSV
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => {
+                              setSelectedLogForReexport(log);
+                              setReexportReason('');
+                              setReexportExplanation('');
+                            }}
+                          >
+                            Re-export
+                          </button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleDownloadCSV(log)}
+                          >
+                            Download CSV
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedLogIds.includes(log.id) && (
+                      <tr key={`history-${log.id}`}>
+                        <td colSpan={11} style={{ padding: '16px', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                          <div style={{ padding: '16px', borderLeft: '3px solid var(--accent-color, #7047eb)', background: 'rgba(30, 30, 45, 0.6)', borderRadius: '4px' }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
+                              <span>Export and Re-export Delivery History</span>
+                              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>({log.filename})</span>
+                            </div>
+                            <table className="inner-table" style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                                  <th style={{ textAlign: 'left', padding: '6px', fontWeight: 600 }}>Attempt Type</th>
+                                  <th style={{ textAlign: 'left', padding: '6px', fontWeight: 600 }}>Date and Time</th>
+                                  <th style={{ textAlign: 'left', padding: '6px', fontWeight: 600 }}>Trigger</th>
+                                  <th style={{ textAlign: 'left', padding: '6px', fontWeight: 600 }}>Triggered By</th>
+                                  <th style={{ textAlign: 'left', padding: '6px', fontWeight: 600 }}>Reason</th>
+                                  <th style={{ textAlign: 'left', padding: '6px', fontWeight: 600 }}>Recipient</th>
+                                  <th style={{ textAlign: 'left', padding: '6px', fontWeight: 600 }}>Checksum</th>
+                                  <th style={{ textAlign: 'left', padding: '6px', fontWeight: 600 }}>Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'var(--text-primary)' }}>
+                                  <td style={{ padding: '8px 6px', fontWeight: 500 }}>Original</td>
+                                  <td style={{ padding: '8px 6px' }}>{new Date(log.sent_at).toLocaleString()}</td>
+                                  <td style={{ padding: '8px 6px' }}>
+                                    <span className={`badge ${log.trigger_type === 'user' ? 'badge-blue' : 'badge-muted'}`}>{log.trigger_type}</span>
+                                  </td>
+                                  <td style={{ padding: '8px 6px' }}>{log.triggered_by_name || 'System'}</td>
+                                  <td style={{ padding: '8px 6px' }}>Initial export</td>
+                                  <td style={{ padding: '8px 6px', fontSize: 11 }}>{log.recipients?.join(', ') || '—'}</td>
+                                  <td style={{ padding: '8px 6px', fontFamily: 'monospace', fontSize: 11 }}>—</td>
+                                  <td style={{ padding: '8px 6px' }}>
+                                    <span className={`badge ${
+                                      log.email_send_result === 'success' ? 'badge-green' :
+                                      log.email_send_result === 'no_recipients_configured' ? 'badge-blue' :
+                                      log.email_send_result === 'failed' ? 'badge-red' : 'badge-muted'
+                                    }`}>
+                                      {log.email_send_result === 'success' ? 'Sent' :
+                                       log.email_send_result === 'no_recipients_configured' ? 'Download Only' :
+                                       log.email_send_result || 'Pending'}
+                                    </span>
+                                  </td>
+                                </tr>
+                                {(log.reexport_attempts || []).map((attempt: any) => (
+                                  <tr key={attempt.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'var(--text-primary)' }}>
+                                    <td style={{ padding: '8px 6px', fontWeight: 500, color: '#a78bfa' }}>Re-export</td>
+                                    <td style={{ padding: '8px 6px' }}>{new Date(attempt.requested_at).toLocaleString()}</td>
+                                    <td style={{ padding: '8px 6px' }}>
+                                      <span className="badge badge-blue">{attempt.trigger_type}</span>
+                                    </td>
+                                    <td style={{ padding: '8px 6px' }}>
+                                      <div>{attempt.triggered_by_user_name_snapshot}</div>
+                                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{attempt.triggered_by_email}</div>
+                                    </td>
+                                    <td style={{ padding: '8px 6px' }}>
+                                      <div>{attempt.reason_code}</div>
+                                      {attempt.reason_notes && (
+                                        <div style={{ fontSize: 10, fontStyle: 'italic', color: 'var(--text-muted)' }}>"{attempt.reason_notes}"</div>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '8px 6px', fontSize: 11 }}>{attempt.delivery_destination_snapshot}</td>
+                                    <td style={{ padding: '8px 6px', fontFamily: 'monospace', fontSize: 11 }} title={attempt.file_checksum}>
+                                      {attempt.file_checksum ? `${attempt.file_checksum.slice(0, 8)}…` : '—'}
+                                    </td>
+                                    <td style={{ padding: '8px 6px' }}>
+                                      <span className={`badge ${
+                                        attempt.delivery_status === 'SENT' ? 'badge-green' :
+                                        attempt.delivery_status === 'PROCESSING' ? 'badge-blue' :
+                                        attempt.delivery_status === 'DELIVERY_FAILED' ? 'badge-red' : 'badge-muted'
+                                      }`}>
+                                        {attempt.delivery_status}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -676,6 +789,120 @@ export default function FulfillmentPage() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Re-export Confirmation Modal */}
+      {selectedLogForReexport && (
+        <div className="modal-overlay" onClick={() => setSelectedLogForReexport(null)}>
+          <div className="modal-container" style={{ width: 560, maxWidth: '95%' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Confirm Manual Re-export</div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSelectedLogForReexport(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                padding: '16px',
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '12px 16px',
+                fontSize: '13px'
+              }}>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase' }}>Vendor</span>
+                  <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{selectedLogForReexport.vendor_name || selectedLogForReexport.vendor_company_reference}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase' }}>Buyer</span>
+                  <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{selectedLogForReexport.buyer_name || selectedLogForReexport.buyer_company_reference}</span>
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase' }}>Original Filename</span>
+                  <span className="mono" style={{ fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{selectedLogForReexport.filename}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase' }}>Original Export Date</span>
+                  <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{new Date(selectedLogForReexport.sent_at).toLocaleString()}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase' }}>Counts</span>
+                  <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{selectedLogForReexport.order_count} Orders / {selectedLogForReexport.suborder_count} Suborders</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase' }}>Original Delivery Status</span>
+                  <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{selectedLogForReexport.email_send_result || 'Pending'}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase' }}>Previous Re-exports</span>
+                  <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{selectedLogForReexport.reexport_count} times</span>
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase' }}>Delivery Destination</span>
+                  <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{selectedLogForReexport.recipients?.join(', ') || 'N/A'}</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Re-export Reason <span style={{ color: 'var(--red)' }}>*</span>
+                </label>
+                <select
+                  className="form-control"
+                  style={{ width: '100%', background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px' }}
+                  value={reexportReason}
+                  onChange={e => {
+                    setReexportReason(e.target.value);
+                    if (e.target.value !== 'Other') {
+                      setReexportExplanation('');
+                    }
+                  }}
+                >
+                  <option value="">-- Select a Reason --</option>
+                  <option value="Vendor did not receive file">Vendor did not receive file</option>
+                  <option value="Vendor requested another copy">Vendor requested another copy</option>
+                  <option value="Delivery failure retry">Delivery failure retry</option>
+                  <option value="Internal support request">Internal support request</option>
+                  <option value="Other">Other (Requires explanation)</option>
+                </select>
+              </div>
+
+              {reexportReason === 'Other' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Explanation <span style={{ color: 'var(--red)' }}>*</span>
+                  </label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="Provide a detailed reason for this manual re-export..."
+                    style={{ width: '100%', background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px', fontSize: '13px' }}
+                    value={reexportExplanation}
+                    onChange={e => setReexportExplanation(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn btn-secondary"
+                onClick={() => setSelectedLogForReexport(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!reexportReason || (reexportReason === 'Other' && !reexportExplanation.trim()) || reexportingId === selectedLogForReexport.id}
+                onClick={() => handleReexport(selectedLogForReexport.id, reexportReason, reexportExplanation)}
+              >
+                {reexportingId === selectedLogForReexport.id ? 'Sending...' : 'Confirm Re-export'}
+              </button>
             </div>
           </div>
         </div>
