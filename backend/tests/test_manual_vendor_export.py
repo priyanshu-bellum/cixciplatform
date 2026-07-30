@@ -208,16 +208,25 @@ class TestManualVendorExport:
         assert "MAN-SKU-123" in log.csv_backup
 
         # Let's test the re-export API action
-        response = admin_client.post(f"/api/v1/routing/export-logs/{log.id}/reexport/")
+        response = admin_client.post(
+            f"/api/v1/routing/export-logs/{log.id}/reexport/",
+            {"reason": "delivery_failure", "explanation": "test explanation"},
+            format="json"
+        )
         assert response.status_code == 201
         
-        # Verify a re-export log entry was created
-        reexport_log = VendorOrderExportLog.objects.filter(is_reexport=True).first()
-        assert reexport_log is not None
-        assert reexport_log.original_log == log
-        assert reexport_log.trigger_type == "user"
-        assert "_REEXPORT.csv" in reexport_log.filename
-        assert reexport_log.csv_backup == log.csv_backup
+        # Verify a re-export attempt entry was created
+        log.refresh_from_db()
+        assert log.reexport_count == 1
+        assert log.last_reexport_status == "SENT"
+        
+        attempt = log.reexport_attempts.first()
+        assert attempt is not None
+        assert attempt.attempt_number == 1
+        assert attempt.trigger_type == "USER"
+        assert attempt.reason_code == "delivery_failure"
+        assert attempt.reason_notes == "test explanation"
+        assert attempt.file_storage_reference == log.filename
 
     def test_manual_export_via_api(self, admin_client, buyer_company, buyer_user, vendor_company, product):
         from apps.routing.models import VendorOrderExportLog

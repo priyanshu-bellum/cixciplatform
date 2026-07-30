@@ -147,11 +147,12 @@ class VendorOrderReexportAttemptSerializer(serializers.ModelSerializer):
         fields = [
             "id", "reexport_attempt_id", "original_export_batch", "attempt_number", "trigger_type",
             "triggered_by_user", "triggered_by_user_name_snapshot", "triggered_by_email",
-            "triggered_by_company", "triggered_by_role_snapshot", "reason_code", "reason_notes",
+            "triggered_by_company", "triggered_by_company_name_snapshot", "triggered_by_role_snapshot", "reason_code", "reason_notes",
             "requested_at", "processing_started_at", "completed_at", "delivery_method",
             "delivery_destination_snapshot", "file_storage_reference", "file_checksum",
             "delivery_status", "provider_message_id", "error_code", "error_message",
-            "correlation_id", "ip_address", "user_agent"
+            "correlation_id", "ip_address", "user_agent",
+            "system_process_name", "system_process_id", "system_job_id", "system_schedule_desc"
         ]
 
     def get_triggered_by_email(self, obj):
@@ -174,6 +175,9 @@ class VendorOrderExportLogSerializer(serializers.ModelSerializer):
             "is_reexport", "original_log", "audit_reference",
             "vendor_name", "buyer_name", "reexport_attempts",
             "reexport_count", "last_reexport_status", "last_reexported_at", "last_reexported_by_name",
+            "triggered_by_user_name_snapshot", "triggered_by_company_name_snapshot", "triggered_by_role_snapshot",
+            "ip_address", "user_agent", "correlation_id",
+            "system_process_name", "system_process_id", "system_job_id", "system_schedule_desc"
         ]
 
     def get_vendor_name(self, obj):
@@ -187,9 +191,13 @@ class VendorOrderExportLogSerializer(serializers.ModelSerializer):
         return company.name if company else "Unknown Buyer"
 
     def get_triggered_by_name(self, obj):
+        if obj.triggered_by_user_name_snapshot:
+            return obj.triggered_by_user_name_snapshot
         if obj.triggered_by:
             name = f"{obj.triggered_by.first_name} {obj.triggered_by.last_name}".strip()
             return name if name else obj.triggered_by.email
+        if obj.trigger_type == "system" and obj.system_process_name:
+            return obj.system_process_name
         return "System"
 
 
@@ -404,11 +412,26 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
         for sub in eligible_suborders:
             vendor_groups[sub.vendor_company_reference].append(sub)
             
+        # Resolve client IP and User Agent
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip_address = x_forwarded_for.split(',')[0].strip()
+        else:
+            ip_address = request.META.get('REMOTE_ADDR')
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+
         for vendor_id, subs in vendor_groups.items():
             vendor = Company.objects.get(id=vendor_id)
             subs_ids = [s.id for s in subs]
             subs_qs = RoutedSuborder.objects.filter(id__in=subs_ids)
-            trigger_vendor_export(vendor, trigger_type="user", triggered_by=request.user, suborders_qs=subs_qs)
+            trigger_vendor_export(
+                vendor,
+                trigger_type="user",
+                triggered_by=request.user,
+                suborders_qs=subs_qs,
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
             
         return Response({
             "detail": "Manual export initiated successfully.",
@@ -1210,6 +1233,7 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
             triggered_by_user=user,
             triggered_by_user_name_snapshot=f"{user.first_name} {user.last_name}".strip() or user.email,
             triggered_by_company=user.company,
+            triggered_by_company_name_snapshot=user.company.name if user.company else None,
             triggered_by_role_snapshot=role_snapshot,
             reason_code=reason,
             reason_notes=explanation,

@@ -4,6 +4,7 @@ import csv
 import io
 import base64
 from celery import shared_task
+import uuid
 from django.utils import timezone
 from apps.routing.models import (
     RoutedSuborder, RoutingStatus, VendorExportSchedule,
@@ -16,8 +17,8 @@ from apps.notification.models import NotificationRequest, NotificationChannel, N
 logger = logging.getLogger(__name__)
 
 
-@shared_task(name="apps.routing.tasks.run_manual_vendor_exports", ignore_result=True)
-def run_manual_vendor_exports(current_time=None):
+@shared_task(bind=True, name="apps.routing.tasks.run_manual_vendor_exports", ignore_result=True)
+def run_manual_vendor_exports(self, current_time=None):
     """
     Query routed orders, group them by Vendor/Buyer, and generate/email CSV files.
     """
@@ -54,7 +55,7 @@ def run_manual_vendor_exports(current_time=None):
             continue
 
         # If due, perform the export!
-        trigger_vendor_export(vendor)
+        trigger_vendor_export(vendor, task_id=self.request.id if self.request else None)
 
 
 def validate_line_eligibility(sub, line, product, vendor, buyer_company):
@@ -195,7 +196,7 @@ def validate_line_eligibility(sub, line, product, vendor, buyer_company):
     return True, "Eligible"
 
 
-def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, suborders_qs=None):
+def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, suborders_qs=None, ip_address=None, user_agent=None, correlation_id=None, task_id=None):
     """
     Create export windows and dispatch CSV notifications for a vendor.
     """
@@ -441,6 +442,35 @@ def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, subo
         date_str = timezone.now().strftime('%Y%m%d')
         filename = f"CIXCI_VENDOR_ORDERS_{vendor_clean}_{buyer_clean}_{date_str}_{window.id}.csv"
 
+        # Resolve user audit snapshots if trigger_type is user
+        triggered_by_user_name_snapshot = None
+        triggered_by_company_name_snapshot = None
+        triggered_by_role_snapshot = None
+        
+        system_process_name = None
+        system_process_id = None
+        system_job_id = None
+        system_schedule_desc = None
+        
+        if trigger_type.lower() == "user":
+            if triggered_by:
+                triggered_by_user_name_snapshot = f"{triggered_by.first_name} {triggered_by.last_name}".strip() or triggered_by.email
+                if triggered_by.company:
+                    triggered_by_company_name_snapshot = triggered_by.company.name
+                if triggered_by.is_cixci_admin:
+                    triggered_by_role_snapshot = "CIXCI Admin"
+                elif triggered_by.is_staff:
+                    triggered_by_role_snapshot = "Staff"
+                elif triggered_by.company:
+                    triggered_by_role_snapshot = "Vendor Representative" if triggered_by.company.company_type == "vendor" else "Buyer Representative"
+                else:
+                    triggered_by_role_snapshot = "User"
+        else:
+            system_process_name = "Scheduled Vendor Order Export"
+            system_process_id = "scheduled_order_export"
+            system_job_id = task_id or f"job_{window.id}"
+            system_schedule_desc = "Daily vendor export"
+
         # Create VendorOrderExportLog entry
         log_entry = VendorOrderExportLog.objects.create(
             vendor_company_reference=vendor.id,
@@ -457,7 +487,17 @@ def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, subo
             status_before="placed",
             status_after="processing",
             csv_backup=csv_content,
-            is_reexport=False
+            is_reexport=False,
+            triggered_by_user_name_snapshot=triggered_by_user_name_snapshot,
+            triggered_by_company_name_snapshot=triggered_by_company_name_snapshot,
+            triggered_by_role_snapshot=triggered_by_role_snapshot,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            correlation_id=correlation_id or uuid.uuid4(),
+            system_process_name=system_process_name,
+            system_process_id=system_process_id,
+            system_job_id=system_job_id,
+            system_schedule_desc=system_schedule_desc
         )
 
         if not valid_recipients:

@@ -483,7 +483,29 @@ export default function FulfillmentPage() {
                                   <td style={{ padding: '8px 6px' }}>
                                     <span className={`badge ${log.trigger_type === 'user' ? 'badge-blue' : 'badge-muted'}`}>{log.trigger_type}</span>
                                   </td>
-                                  <td style={{ padding: '8px 6px' }}>{log.triggered_by_name || 'System'}</td>
+                                  <td style={{ padding: '8px 6px' }}>
+                                    {log.trigger_type === 'user' ? (
+                                      <>
+                                        <div style={{ fontWeight: 600 }}>{log.triggered_by_name || log.triggered_by_user_name_snapshot || 'User'}</div>
+                                        {log.triggered_by && (
+                                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>User ID: {log.triggered_by}</div>
+                                        )}
+                                        {log.triggered_by_company_name_snapshot && (
+                                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Company: {log.triggered_by_company_name_snapshot}</div>
+                                        )}
+                                        {log.triggered_by_role_snapshot && (
+                                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Role: {log.triggered_by_role_snapshot}</div>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div style={{ fontWeight: 600 }}>{log.system_process_name || 'Scheduled Vendor Order Export'}</div>
+                                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Process ID: {log.system_process_id || 'scheduled_order_export'}</div>
+                                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Job ID: {log.system_job_id || `job_${log.id.slice(0, 8)}`}</div>
+                                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Schedule: {log.system_schedule_desc || 'Daily vendor export'}</div>
+                                      </>
+                                    )}
+                                  </td>
                                   <td style={{ padding: '8px 6px' }}>Initial export</td>
                                   <td style={{ padding: '8px 6px', fontSize: 11 }}>{log.recipients?.join(', ') || '—'}</td>
                                   <td style={{ padding: '8px 6px', fontFamily: 'monospace', fontSize: 11 }}>—</td>
@@ -507,8 +529,27 @@ export default function FulfillmentPage() {
                                       <span className="badge badge-blue">{attempt.trigger_type}</span>
                                     </td>
                                     <td style={{ padding: '8px 6px' }}>
-                                      <div>{attempt.triggered_by_user_name_snapshot}</div>
-                                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{attempt.triggered_by_email}</div>
+                                      {attempt.trigger_type === 'USER' || attempt.trigger_type === 'user' ? (
+                                        <>
+                                          <div style={{ fontWeight: 600 }}>{attempt.triggered_by_user_name_snapshot || 'User'}</div>
+                                          {attempt.triggered_by_user && (
+                                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>User ID: {attempt.triggered_by_user}</div>
+                                          )}
+                                          {attempt.triggered_by_company_name_snapshot && (
+                                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Company: {attempt.triggered_by_company_name_snapshot}</div>
+                                          )}
+                                          {attempt.triggered_by_role_snapshot && (
+                                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Role: {attempt.triggered_by_role_snapshot}</div>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <div style={{ fontWeight: 600 }}>{attempt.system_process_name || 'Automatic delivery retry'}</div>
+                                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Process: {attempt.system_process_id || 'automated_retry'}</div>
+                                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Job: {attempt.system_job_id || `job_${attempt.id.slice(0, 8)}`}</div>
+                                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Schedule: {attempt.system_schedule_desc || 'Automatic delivery retry'}</div>
+                                        </>
+                                      )}
                                     </td>
                                     <td style={{ padding: '8px 6px' }}>
                                       <div>{attempt.reason_code}</div>

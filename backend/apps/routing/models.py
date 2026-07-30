@@ -241,6 +241,20 @@ class VendorOrderExportLog(models.Model):
     last_reexported_at = models.DateTimeField(blank=True, null=True)
     last_reexported_by_name = models.CharField(max_length=255, blank=True, null=True)
 
+    # Detailed Audit & Snapshot Fields
+    triggered_by_user_name_snapshot = models.CharField(max_length=255, blank=True, null=True)
+    triggered_by_company_name_snapshot = models.CharField(max_length=255, blank=True, null=True)
+    triggered_by_role_snapshot = models.CharField(max_length=255, blank=True, null=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, null=True)
+    correlation_id = models.UUIDField(default=uuid.uuid4, editable=False)
+
+    # System/Automated Trigger Fields
+    system_process_name = models.CharField(max_length=255, blank=True, null=True)
+    system_process_id = models.CharField(max_length=255, blank=True, null=True)
+    system_job_id = models.CharField(max_length=255, blank=True, null=True)
+    system_schedule_desc = models.CharField(max_length=255, blank=True, null=True)
+
     class Meta:
         db_table = "routing_vendor_order_export_log"
         indexes = [
@@ -296,6 +310,7 @@ class VendorOrderReexportAttempt(models.Model):
         on_delete=models.SET_NULL,
         db_column="triggered_by_company_id"
     )
+    triggered_by_company_name_snapshot = models.CharField(max_length=255, blank=True, null=True)
     triggered_by_role_snapshot = models.CharField(max_length=255, blank=True)
     reason_code = models.CharField(max_length=255)
     reason_notes = models.TextField(blank=True, null=True)
@@ -313,6 +328,12 @@ class VendorOrderReexportAttempt(models.Model):
     correlation_id = models.UUIDField(default=uuid.uuid4, editable=False)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True, null=True)
+
+    # System/Automated Trigger Fields for Re-exports
+    system_process_name = models.CharField(max_length=255, blank=True, null=True)
+    system_process_id = models.CharField(max_length=255, blank=True, null=True)
+    system_job_id = models.CharField(max_length=255, blank=True, null=True)
+    system_schedule_desc = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         db_table = "routing_vendor_order_reexport_attempt"
