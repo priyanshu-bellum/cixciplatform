@@ -190,17 +190,17 @@ class TestCompatibilityProjection:
 class TestExportJobs:
     def test_create_export_job(self, buyer_client, buyer_user):
         resp = buyer_client.post("/api/v1/catalog/export-jobs/create_job/", {
-            "format": "csv",
+            "format": "API",
             "include_incompatible": False,
         })
         assert resp.status_code == 201
-        assert resp.data["format"] == "csv"
+        assert resp.data["format"] == "API"
         assert resp.data["status"] == "pending"
 
     def test_list_export_jobs(self, buyer_client, buyer_user):
         # Create two jobs
-        buyer_client.post("/api/v1/catalog/export-jobs/create_job/", {"format": "csv"})
-        buyer_client.post("/api/v1/catalog/export-jobs/create_job/", {"format": "csv"})
+        buyer_client.post("/api/v1/catalog/export-jobs/create_job/", {"format": "API"})
+        buyer_client.post("/api/v1/catalog/export-jobs/create_job/", {"format": "API"})
         resp = buyer_client.get("/api/v1/catalog/export-jobs/list_jobs/")
         assert resp.status_code == 200
         assert len(resp.data) >= 2

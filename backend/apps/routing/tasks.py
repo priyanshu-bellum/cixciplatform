@@ -196,7 +196,7 @@ def validate_line_eligibility(sub, line, product, vendor, buyer_company):
     return True, "Eligible"
 
 
-def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, suborders_qs=None, ip_address=None, user_agent=None, correlation_id=None, task_id=None):
+def trigger_vendor_export(vendor, trigger_type="SYSTEM", triggered_by=None, suborders_qs=None, ip_address=None, user_agent=None, correlation_id=None, task_id=None):
     """
     Create export windows and dispatch CSV notifications for a vendor.
     """
@@ -442,7 +442,7 @@ def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, subo
         date_str = timezone.now().strftime('%Y%m%d')
         filename = f"CIXCI_VENDOR_ORDERS_{vendor_clean}_{buyer_clean}_{date_str}_{window.id}.csv"
 
-        # Resolve user audit snapshots if trigger_type is user
+        # Resolve user audit snapshots if trigger_type is USER
         triggered_by_user_name_snapshot = None
         triggered_by_company_name_snapshot = None
         triggered_by_role_snapshot = None
@@ -452,7 +452,8 @@ def trigger_vendor_export(vendor, trigger_type="system", triggered_by=None, subo
         system_job_id = None
         system_schedule_desc = None
         
-        if trigger_type.lower() == "user":
+        trigger_type = trigger_type.upper()
+        if trigger_type == "USER":
             if triggered_by:
                 triggered_by_user_name_snapshot = f"{triggered_by.first_name} {triggered_by.last_name}".strip() or triggered_by.email
                 if triggered_by.company:

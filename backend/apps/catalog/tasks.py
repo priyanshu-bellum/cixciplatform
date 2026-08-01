@@ -80,10 +80,47 @@ def process_buyer_export_job(job_id):
         products = Product.objects.filter(id__in=product_ids)
         job.product_count = products.count()
 
+        # Build products snapshot
+        from apps.tenant.models import Company
+        from apps.media.models import MediaAsset
+        from django.conf import settings
+        products_snapshot = []
+        for p in products:
+            vendor = Company.objects.filter(id=p.vendor_company_reference).first()
+            vendor_name = vendor.name if vendor else "Unknown Vendor"
+            
+            # Resolve image URL
+            image_url = ""
+            if p.primary_image_reference:
+                try:
+                    asset = MediaAsset.objects.get(id=p.primary_image_reference)
+                    if asset.status == "ready":
+                        media_url = getattr(settings, "MEDIA_URL", "/media/")
+                        image_url = f"{media_url}{asset.storage_key}"
+                except Exception:
+                    pass
+            if not image_url and isinstance(p.media_references, list) and len(p.media_references) > 0:
+                image_url = p.media_references[0]
+
+            products_snapshot.append({
+                "product_id": str(p.id),
+                "vendor_name": vendor_name,
+                "primary_image_url": image_url or "",
+                "product_name": p.name,
+                "sku": p.sku,
+                "upc": p.upc or ""
+            })
+
+        if snapshot:
+            BuyerProductExportSelectionSnapshot.objects.filter(id=snapshot.id).update(
+                product_ids=product_ids,
+                exported_products_snapshot=products_snapshot
+            )
+
         # Format output
         content = ""
-        filename = f"export_{job.id}.{job.format}"
-        mime_type = "text/csv"
+        filename = f"export_{job.id}.json" if job.format == "API" else f"export_{job.id}.{job.format}"
+        mime_type = "application/json" if job.format == "API" else "text/csv"
 
         headers = [
             "id", "sku", "name", "brand", "product_category", "product_type",
@@ -92,7 +129,7 @@ def process_buyer_export_job(job_id):
             "eol_date", "color", "short_description"
         ]
         
-        if job.format == "json":
+        if job.format in ["json", "API"]:
             mime_type = "application/json"
             data_list = []
             for p in products:
@@ -123,7 +160,7 @@ def process_buyer_export_job(job_id):
             owner_record_id=job.id,
             company_scope_reference=job.company_scope_reference,
             original_filename=filename,
-            file_extension=job.format,
+            file_extension="json" if job.format == "API" else job.format,
             mime_type=mime_type,
             storage_key=storage_key,
             storage_provider="local",
@@ -143,9 +180,23 @@ def process_buyer_export_job(job_id):
         job.completed_at = timezone.now()
         job.save()
 
+        # Update or create BuyerProductExportDate records for each product
+        from apps.catalog.models import BuyerProductExportDate
+        for product_id in product_ids:
+            BuyerProductExportDate.objects.update_or_create(
+                buyer_reference=job.buyer_reference,
+                company_scope_reference=job.company_scope_reference,
+                buyer_entity_reference=job.buyer_entity_reference,
+                product_id=product_id,
+                defaults={
+                    "exported_at": job.completed_at
+                }
+            )
+
     except Exception as e:
         job.status = "failed"
         job.completed_at = timezone.now()
+        job.failure_details = str(e)
         job.save()
         raise e
 

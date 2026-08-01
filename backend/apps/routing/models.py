@@ -14,6 +14,7 @@ Architecture rules (spec.md):
 import uuid
 from django.db import models
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 
 
 class RoutingStatus(models.TextChoices):
@@ -226,7 +227,7 @@ class VendorOrderExportLog(models.Model):
     order_count = models.PositiveIntegerField()
     suborder_count = models.PositiveIntegerField()
     sending_method = models.CharField(max_length=50, default="email")
-    recipients = models.JSONField(default=list)
+    recipients = models.JSONField(default=list, blank=True)
     trigger_type = models.CharField(max_length=20, help_text="system | user")
     triggered_by = models.ForeignKey("tenant.User", null=True, blank=True, on_delete=models.SET_NULL)
     status_before = models.CharField(max_length=30, default="placed")
@@ -262,9 +263,38 @@ class VendorOrderExportLog(models.Model):
             models.Index(fields=["sent_at"]),
         ]
 
+    def clean(self):
+        super().clean()
+        if self.trigger_type:
+            self.trigger_type = self.trigger_type.upper()
+        
+        if self.trigger_type == "USER":
+            if not self.triggered_by_id:
+                raise ValidationError({"triggered_by": "triggered_by is required when trigger_type is USER"})
+            if not self.triggered_by_user_name_snapshot:
+                raise ValidationError({"triggered_by_user_name_snapshot": "triggered_by_user_name_snapshot is required when trigger_type is USER"})
+            if not self.triggered_by_role_snapshot:
+                raise ValidationError({"triggered_by_role_snapshot": "triggered_by_role_snapshot is required when trigger_type is USER"})
+            
+            if self.system_process_name or self.system_process_id or self.system_job_id or self.system_schedule_desc:
+                raise ValidationError("System process fields must be blank when trigger_type is USER")
+                
+        elif self.trigger_type == "SYSTEM":
+            if not self.system_process_name:
+                raise ValidationError({"system_process_name": "system_process_name is required when trigger_type is SYSTEM"})
+            if not self.system_process_id:
+                raise ValidationError({"system_process_id": "system_process_id is required when trigger_type is SYSTEM"})
+                
+            if self.triggered_by_id or self.triggered_by_user_name_snapshot or self.triggered_by_company_name_snapshot or self.triggered_by_role_snapshot:
+                raise ValidationError("User actor fields must be blank when trigger_type is SYSTEM")
+        else:
+            raise ValidationError({"trigger_type": "trigger_type must be USER or SYSTEM"})
+
     def save(self, *args, **kwargs):
+        if self.trigger_type:
+            self.trigger_type = self.trigger_type.upper()
+        self.full_clean()
         if self._state.adding:
-            # New record is fine
             super().save(*args, **kwargs)
         else:
             # Enforce immutability on key fields
@@ -277,6 +307,26 @@ class VendorOrderExportLog(models.Model):
                 raise ValueError("vendor_company_reference is immutable")
             if original.buyer_company_reference != self.buyer_company_reference:
                 raise ValueError("buyer_company_reference is immutable")
+            if original.trigger_type != self.trigger_type:
+                raise ValueError("trigger_type is immutable")
+            if original.triggered_by_id != self.triggered_by_id:
+                raise ValueError("triggered_by is immutable")
+            if original.triggered_by_user_name_snapshot != self.triggered_by_user_name_snapshot:
+                raise ValueError("triggered_by_user_name_snapshot is immutable")
+            if original.triggered_by_role_snapshot != self.triggered_by_role_snapshot:
+                raise ValueError("triggered_by_role_snapshot is immutable")
+            if original.triggered_by_company_name_snapshot != self.triggered_by_company_name_snapshot:
+                raise ValueError("triggered_by_company_name_snapshot is immutable")
+            if original.system_process_name != self.system_process_name:
+                raise ValueError("system_process_name is immutable")
+            if original.system_process_id != self.system_process_id:
+                raise ValueError("system_process_id is immutable")
+            if original.system_job_id != self.system_job_id:
+                raise ValueError("system_job_id is immutable")
+            if original.system_schedule_desc != self.system_schedule_desc:
+                raise ValueError("system_schedule_desc is immutable")
+            if original.correlation_id != self.correlation_id:
+                raise ValueError("correlation_id is immutable")
             super().save(*args, **kwargs)
 
 
@@ -294,34 +344,64 @@ class VendorOrderReexportAttempt(models.Model):
         db_column="original_export_batch_id"
     )
     attempt_number = models.PositiveIntegerField()
-    trigger_type = models.CharField(max_length=20, default="USER")
-    triggered_by_user = models.ForeignKey(
+    trigger_type = models.CharField(max_length=20, default="USER") # USER or SYSTEM
+
+    action_type = models.CharField(
+        max_length=50,
+        default="REEXPORT",
+        choices=[
+            ("ORIGINAL_EXPORT", "ORIGINAL_EXPORT"),
+            ("REEXPORT", "REEXPORT"),
+            ("AUTOMATIC_RETRY", "AUTOMATIC_RETRY"),
+            ("MANUAL_RETRY", "MANUAL_RETRY"),
+            ("DOWNLOAD", "DOWNLOAD")
+        ]
+    )
+
+    parent_attempt = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="child_attempts",
+        db_column="parent_attempt_id"
+    )
+
+    # Actor fields for USER
+    actor_user = models.ForeignKey(
         "tenant.User",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        db_column="triggered_by_user_id"
+        db_column="actor_user_id"
     )
-    triggered_by_user_name_snapshot = models.CharField(max_length=255, blank=True)
-    triggered_by_company = models.ForeignKey(
+    actor_user_name_snapshot = models.CharField(max_length=255, blank=True, null=True)
+    actor_company = models.ForeignKey(
         "tenant.Company",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        db_column="triggered_by_company_id"
+        db_column="actor_company_id"
     )
-    triggered_by_company_name_snapshot = models.CharField(max_length=255, blank=True, null=True)
-    triggered_by_role_snapshot = models.CharField(max_length=255, blank=True)
-    reason_code = models.CharField(max_length=255)
+    actor_company_name_snapshot = models.CharField(max_length=255, blank=True, null=True)
+    actor_role_snapshot = models.CharField(max_length=255, blank=True, null=True)
+
+    # Actor fields for SYSTEM
+    actor_process_code = models.CharField(max_length=255, blank=True, null=True)
+    actor_process_name = models.CharField(max_length=255, blank=True, null=True)
+
+    reason_code = models.CharField(max_length=255, blank=True, null=True)
     reason_notes = models.TextField(blank=True, null=True)
     requested_at = models.DateTimeField(default=timezone.now)
     processing_started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    
     delivery_method = models.CharField(max_length=50, default="email")
     delivery_destination_snapshot = models.TextField(blank=True)
     file_storage_reference = models.CharField(max_length=500, blank=True)
     file_checksum = models.CharField(max_length=255, blank=True)
-    delivery_status = models.CharField(max_length=30, default="QUEUED")  # QUEUED, PROCESSING, SENT, DELIVERY_FAILED
+    
+    result_status = models.CharField(max_length=30, default="QUEUED")  # QUEUED, PROCESSING, SENT, FAILED, DELIVERY_FAILED
     provider_message_id = models.CharField(max_length=255, blank=True, null=True)
     error_code = models.CharField(max_length=100, blank=True, null=True)
     error_message = models.TextField(blank=True, null=True)
@@ -329,23 +409,179 @@ class VendorOrderReexportAttempt(models.Model):
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True, null=True)
 
-    # System/Automated Trigger Fields for Re-exports
-    system_process_name = models.CharField(max_length=255, blank=True, null=True)
-    system_process_id = models.CharField(max_length=255, blank=True, null=True)
+    # Automated Trigger Fields for Re-exports
     system_job_id = models.CharField(max_length=255, blank=True, null=True)
     system_schedule_desc = models.CharField(max_length=255, blank=True, null=True)
+
+    # Backward compatibility properties
+    @property
+    def triggered_by_user(self):
+        return self.actor_user
+
+    @triggered_by_user.setter
+    def triggered_by_user(self, value):
+        self.actor_user = value
+
+    @property
+    def triggered_by_user_name_snapshot(self):
+        return self.actor_user_name_snapshot
+
+    @triggered_by_user_name_snapshot.setter
+    def triggered_by_user_name_snapshot(self, value):
+        self.actor_user_name_snapshot = value
+
+    @property
+    def triggered_by_company(self):
+        return self.actor_company
+
+    @triggered_by_company.setter
+    def triggered_by_company(self, value):
+        self.actor_company = value
+
+    @property
+    def triggered_by_company_name_snapshot(self):
+        return self.actor_company_name_snapshot
+
+    @triggered_by_company_name_snapshot.setter
+    def triggered_by_company_name_snapshot(self, value):
+        self.actor_company_name_snapshot = value
+
+    @property
+    def triggered_by_role_snapshot(self):
+        return self.actor_role_snapshot
+
+    @triggered_by_role_snapshot.setter
+    def triggered_by_role_snapshot(self, value):
+        self.actor_role_snapshot = value
+
+    @property
+    def system_process_id(self):
+        return self.actor_process_code
+
+    @system_process_id.setter
+    def system_process_id(self, value):
+        self.actor_process_code = value
+
+    @property
+    def system_process_name(self):
+        return self.actor_process_name
+
+    @system_process_name.setter
+    def system_process_name(self, value):
+        self.actor_process_name = value
+
+    @property
+    def delivery_status(self):
+        return self.result_status
+
+    @delivery_status.setter
+    def delivery_status(self, value):
+        self.result_status = value
 
     class Meta:
         db_table = "routing_vendor_order_reexport_attempt"
         ordering = ["attempt_number"]
 
+    def clean(self):
+        super().clean()
+        if self.trigger_type:
+            self.trigger_type = self.trigger_type.upper()
+        
+        valid_actions = ["ORIGINAL_EXPORT", "REEXPORT", "AUTOMATIC_RETRY", "MANUAL_RETRY", "DOWNLOAD"]
+        if self.action_type not in valid_actions:
+            raise ValidationError({"action_type": f"action_type must be one of {valid_actions}"})
+
+        if self.parent_attempt and self.parent_attempt.original_export_batch != self.original_export_batch:
+            raise ValidationError({"parent_attempt": "parent_attempt must belong to the same original_export_batch"})
+
+        if self.trigger_type == "USER":
+            if not self.actor_user_id:
+                raise ValidationError({"actor_user": "actor_user is required when trigger_type is USER"})
+            if not self.actor_user_name_snapshot:
+                raise ValidationError({"actor_user_name_snapshot": "actor_user_name_snapshot is required when trigger_type is USER"})
+            if not self.actor_role_snapshot:
+                raise ValidationError({"actor_role_snapshot": "actor_role_snapshot is required when trigger_type is USER"})
+            
+            if self.actor_process_code or self.actor_process_name or self.system_job_id or self.system_schedule_desc:
+                raise ValidationError("System process fields must be blank when trigger_type is USER")
+                
+        elif self.trigger_type == "SYSTEM":
+            if not self.actor_process_code:
+                raise ValidationError({"actor_process_code": "actor_process_code is required when trigger_type is SYSTEM"})
+            if not self.actor_process_name:
+                raise ValidationError({"actor_process_name": "actor_process_name is required when trigger_type is SYSTEM"})
+                
+            if self.actor_user_id or self.actor_user_name_snapshot or self.actor_company_id or self.actor_company_name_snapshot or self.actor_role_snapshot:
+                raise ValidationError("User actor fields must be blank when trigger_type is SYSTEM")
+        else:
+            raise ValidationError({"trigger_type": "trigger_type must be USER or SYSTEM"})
+
     def save(self, *args, **kwargs):
+        # Sync delivery_status and result_status
+        if self.result_status:
+            self.delivery_status = self.result_status
+        elif self.delivery_status:
+            self.result_status = self.delivery_status
+
+        if self.trigger_type:
+            self.trigger_type = self.trigger_type.upper()
+
         if self._state.adding and not self.reexport_attempt_id:
             # Generate sequential reexport_attempt_id
             if not self.attempt_number:
                 existing_count = VendorOrderReexportAttempt.objects.filter(original_export_batch=self.original_export_batch).count()
                 self.attempt_number = existing_count + 1
             self.reexport_attempt_id = f"rx_{self.attempt_number:05d}"
-        super().save(*args, **kwargs)
 
+        self.full_clean()
 
+        if self._state.adding:
+            super().save(*args, **kwargs)
+        else:
+            # Enforce immutability on key fields
+            original = VendorOrderReexportAttempt.objects.get(pk=self.pk)
+            if original.original_export_batch_id != self.original_export_batch_id:
+                raise ValueError("original_export_batch is immutable")
+            if original.attempt_number != self.attempt_number:
+                raise ValueError("attempt_number is immutable")
+            if original.trigger_type != self.trigger_type:
+                raise ValueError("trigger_type is immutable")
+            if original.action_type != self.action_type:
+                raise ValueError("action_type is immutable")
+            if original.parent_attempt_id != self.parent_attempt_id:
+                raise ValueError("parent_attempt is immutable")
+            if original.actor_user_id != self.actor_user_id:
+                raise ValueError("actor_user is immutable")
+            if original.actor_user_name_snapshot != self.actor_user_name_snapshot:
+                raise ValueError("actor_user_name_snapshot is immutable")
+            if original.actor_company_id != self.actor_company_id:
+                raise ValueError("actor_company is immutable")
+            if original.actor_company_name_snapshot != self.actor_company_name_snapshot:
+                raise ValueError("actor_company_name_snapshot is immutable")
+            if original.actor_role_snapshot != self.actor_role_snapshot:
+                raise ValueError("actor_role_snapshot is immutable")
+            if original.actor_process_code != self.actor_process_code:
+                raise ValueError("actor_process_code is immutable")
+            if original.actor_process_name != self.actor_process_name:
+                raise ValueError("actor_process_name is immutable")
+            if original.system_job_id != self.system_job_id:
+                raise ValueError("system_job_id is immutable")
+            if original.system_schedule_desc != self.system_schedule_desc:
+                raise ValueError("system_schedule_desc is immutable")
+            if original.requested_at != self.requested_at:
+                raise ValueError("requested_at is immutable")
+            if original.delivery_method != self.delivery_method:
+                raise ValueError("delivery_method is immutable")
+            if original.delivery_destination_snapshot != self.delivery_destination_snapshot:
+                raise ValueError("delivery_destination_snapshot is immutable")
+            if original.file_storage_reference != self.file_storage_reference:
+                raise ValueError("file_storage_reference is immutable")
+            if original.file_checksum != self.file_checksum:
+                raise ValueError("file_checksum is immutable")
+            if original.correlation_id != self.correlation_id:
+                raise ValueError("correlation_id is immutable")
+            if original.ip_address != self.ip_address:
+                raise ValueError("ip_address is immutable")
+            if original.user_agent != self.user_agent:
+                raise ValueError("user_agent is immutable")
+            super().save(*args, **kwargs)

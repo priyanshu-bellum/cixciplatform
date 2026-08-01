@@ -65,9 +65,13 @@ class ProjectionStatus(models.TextChoices):
 class ExportJobStatus(models.TextChoices):
     PENDING = "pending", "Pending"
     RUNNING = "running", "Running"
+    PROCESSING = "processing", "Processing"
     COMPLETED = "completed", "Completed"
+    COMPLETED_WITH_ERRORS = "completed_with_errors", "Completed with Errors"
     FAILED = "failed", "Failed"
     CANCELLED = "cancelled", "Cancelled"
+    CANCELED = "canceled", "Canceled"
+
 
 
 # ─── Product ──────────────────────────────────────────────────────────────────
@@ -975,7 +979,7 @@ class BuyerProductExportJob(models.Model):
     company_scope_reference = models.UUIDField(db_index=True)
     buyer_entity_reference = models.UUIDField(db_index=True)
 
-    status = models.CharField(max_length=20, choices=ExportJobStatus.choices, default=ExportJobStatus.PENDING)
+    status = models.CharField(max_length=30, choices=ExportJobStatus.choices, default=ExportJobStatus.PENDING)
     # Device Catalog snapshot reference (read-only)
     portfolio_snapshot_reference = models.UUIDField(
         null=True, blank=True,
@@ -986,7 +990,7 @@ class BuyerProductExportJob(models.Model):
 
     # Job configuration
     include_incompatible = models.BooleanField(default=False)
-    format = models.CharField(max_length=20, default="csv", help_text="csv | json | xlsx")
+    format = models.CharField(max_length=20, default="API", help_text="API | csv | json | xlsx")
 
     # Output
     output_file_reference = models.UUIDField(null=True, blank=True)
@@ -994,6 +998,12 @@ class BuyerProductExportJob(models.Model):
 
     # Audit
     requested_by = models.UUIDField()
+    trigger_type = models.CharField(max_length=10, choices=[("USER", "User"), ("SYSTEM", "System")], default="USER")
+    triggered_by_id = models.UUIDField(null=True, blank=True)
+    triggered_by_name = models.CharField(max_length=255, null=True, blank=True)
+    triggered_by_role = models.CharField(max_length=100, null=True, blank=True)
+    failure_details = models.TextField(null=True, blank=True)
+
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
@@ -1015,6 +1025,10 @@ class BuyerProductExportSelectionSnapshot(models.Model):
         BuyerProductExportJob, on_delete=models.PROTECT, related_name="selection_snapshot"
     )
     product_ids = models.JSONField(help_text="Frozen list of Product IDs at export time")
+    exported_products_snapshot = models.JSONField(
+        null=True, blank=True,
+        help_text="Immutable JSON snapshot of products: [{product_id, vendor_name, primary_image_url, product_name, sku, upc}]"
+    )
     portfolio_snapshot_reference = models.UUIDField()
     created_at = models.DateTimeField(default=timezone.now)
 
@@ -1025,6 +1039,28 @@ class BuyerProductExportSelectionSnapshot(models.Model):
         if self.pk and BuyerProductExportSelectionSnapshot.objects.filter(pk=self.pk).exists():
             raise ValueError("BuyerProductExportSelectionSnapshot is immutable after creation.")
         super().save(*args, **kwargs)
+
+
+class BuyerProductExportDate(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Buyer-scope triad
+    buyer_reference = models.UUIDField(db_index=True)
+    company_scope_reference = models.UUIDField(db_index=True)
+    buyer_entity_reference = models.UUIDField(db_index=True)
+    
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="exported_dates")
+    exported_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "catalog_buyer_product_exported_date"
+        unique_together = [("buyer_reference", "company_scope_reference", "buyer_entity_reference", "product")]
+        indexes = [
+            models.Index(fields=["company_scope_reference", "product"]),
+        ]
+
+    def __str__(self):
+        return f"BuyerProductExportDate(buyer={self.buyer_reference}, product={self.product.sku}, date={self.exported_at})"
 
 
 class DynamicDropdownConfig(models.Model):

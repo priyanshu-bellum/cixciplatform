@@ -1,4 +1,6 @@
 """Order Routing — Serializers + ViewSets + URLs"""
+import uuid
+import logging
 from rest_framework import serializers, viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -141,11 +143,14 @@ class VendorExportDeliveryEvidenceSerializer(serializers.ModelSerializer):
 
 class VendorOrderReexportAttemptSerializer(serializers.ModelSerializer):
     triggered_by_email = serializers.SerializerMethodField()
+    triggered_by_user = serializers.SerializerMethodField()
+    triggered_by_company = serializers.SerializerMethodField()
 
     class Meta:
         model = VendorOrderReexportAttempt
         fields = [
             "id", "reexport_attempt_id", "original_export_batch", "attempt_number", "trigger_type",
+            "action_type", "parent_attempt",
             "triggered_by_user", "triggered_by_user_name_snapshot", "triggered_by_email",
             "triggered_by_company", "triggered_by_company_name_snapshot", "triggered_by_role_snapshot", "reason_code", "reason_notes",
             "requested_at", "processing_started_at", "completed_at", "delivery_method",
@@ -157,6 +162,19 @@ class VendorOrderReexportAttemptSerializer(serializers.ModelSerializer):
 
     def get_triggered_by_email(self, obj):
         return obj.triggered_by_user.email if obj.triggered_by_user else ""
+
+    def get_triggered_by_user(self, obj):
+        return str(obj.actor_user.id) if obj.actor_user else None
+
+    def get_triggered_by_company(self, obj):
+        return str(obj.actor_company.id) if obj.actor_company else None
+
+    def validate_trigger_type(self, value):
+        if value:
+            value = value.upper()
+        if value not in ["USER", "SYSTEM"]:
+            raise serializers.ValidationError("trigger_type must be USER or SYSTEM")
+        return value
 
 
 class VendorOrderExportLogSerializer(serializers.ModelSerializer):
@@ -179,6 +197,13 @@ class VendorOrderExportLogSerializer(serializers.ModelSerializer):
             "ip_address", "user_agent", "correlation_id",
             "system_process_name", "system_process_id", "system_job_id", "system_schedule_desc"
         ]
+
+    def validate_trigger_type(self, value):
+        if value:
+            value = value.upper()
+        if value not in ["USER", "SYSTEM"]:
+            raise serializers.ValidationError("trigger_type must be USER or SYSTEM")
+        return value
 
     def get_vendor_name(self, obj):
         from apps.tenant.models import Company
@@ -1094,6 +1119,7 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
         "list": "routing.export.list",
         "retrieve": "routing.export.read",
         "reexport": "routing.export.manage",
+        "audit_download": "routing.export.read",
     }
 
     def get_queryset(self):
@@ -1111,6 +1137,106 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
             else:
                 qs = qs.none()
         return qs
+
+    @action(detail=True, methods=["post"])
+    def audit_download(self, request, pk=None):
+        log = self.get_object()
+        
+        # 1. User is authenticated
+        if not request.user.is_authenticated:
+            return Response({"detail": "User is not authenticated."}, status=401)
+            
+        # 2. Check access
+        from apps.tenant.services import check_access
+        access = check_access(request.user, "routing.export.read")
+        if not access.granted:
+            return Response({"detail": f"Access denied: {access.reason} (required: routing.export.read)"}, status=403)
+            
+        # 3. User company filtering / CIXCI Admin scope
+        if not request.user.is_cixci_admin:
+            entity = getattr(request.user, "entity", None)
+            company = entity.company if entity else None
+            if not company:
+                return Response({"detail": "User is not associated with any company."}, status=403)
+            if company.id not in [log.vendor_company_reference, log.buyer_company_reference]:
+                return Response({"detail": "User does not have access to the vendor or buyer represented by this batch."}, status=403)
+        
+        # Resolve IP Address & User Agent
+        ip_address = request.META.get("HTTP_X_FORWARDED_FOR")
+        if ip_address:
+            ip_address = ip_address.split(",")[0].strip()
+        else:
+            ip_address = request.META.get("REMOTE_ADDR")
+        user_agent = request.META.get("HTTP_USER_AGENT")
+
+        # Gather user metadata snapshots
+        triggered_by_user_name_snapshot = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
+        triggered_by_company = None
+        triggered_by_company_name_snapshot = None
+        triggered_by_role_snapshot = "User"
+        
+        entity = getattr(request.user, "entity", None)
+        if entity and entity.company:
+            triggered_by_company = entity.company
+            triggered_by_company_name_snapshot = entity.company.name
+            
+        if request.user.is_cixci_admin:
+            triggered_by_role_snapshot = "CIXCI Admin"
+        elif request.user.is_staff:
+            triggered_by_role_snapshot = "Staff"
+        elif triggered_by_company:
+            triggered_by_role_snapshot = "Vendor Representative" if triggered_by_company.company_type == "vendor" else "Buyer Representative"
+
+        # Calculate file checksum
+        import hashlib
+        csv_content = log.csv_backup or ""
+        file_checksum = hashlib.sha256(csv_content.encode("utf-8")).hexdigest()
+
+        # Find latest parent attempt in chain to link
+        parent_attempt = log.reexport_attempts.order_by("-attempt_number").first()
+
+        # Create a re-export attempt record of type DOWNLOAD
+        from apps.routing.models import VendorOrderReexportAttempt
+        reexport_attempt = VendorOrderReexportAttempt.objects.create(
+            original_export_batch=log,
+            trigger_type="USER",
+            action_type="DOWNLOAD",
+            parent_attempt=parent_attempt,
+            actor_user=request.user,
+            actor_user_name_snapshot=triggered_by_user_name_snapshot,
+            actor_company=triggered_by_company,
+            actor_company_name_snapshot=triggered_by_company_name_snapshot,
+            actor_role_snapshot=triggered_by_role_snapshot,
+            reason_code="DOWNLOAD",
+            reason_notes="User downloaded the CSV file",
+            delivery_method="download",
+            delivery_destination_snapshot="Browser Download",
+            file_storage_reference=log.filename,
+            file_checksum=file_checksum,
+            result_status="SENT",
+            correlation_id=uuid.uuid4(),
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        # Log requested event
+        create_reexport_audit_and_evidence(
+            event_code="order_export.download_audited",
+            description=f"CSV download audited for export log {log.id}",
+            status="success",
+            company_id=log.vendor_company_reference,
+            actor_id=request.user.id,
+            reexport_attempt=reexport_attempt,
+            file_checksum=file_checksum,
+            file_name=log.filename,
+            correlation_id=reexport_attempt.correlation_id
+        )
+
+        # Update parent export summary
+        log.reexport_count = log.reexport_attempts.count()
+        log.save(update_fields=["reexport_count"])
+
+        return Response(VendorOrderExportLogSerializer(log).data, status=201)
 
     @action(detail=True, methods=["post"])
     def reexport(self, request, pk=None):
@@ -1226,10 +1352,14 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
         else:
             role_snapshot = "User"
 
+        parent_attempt = log.reexport_attempts.order_by("-attempt_number").first()
+
         reexport_attempt = VendorOrderReexportAttempt.objects.create(
             original_export_batch=log,
             attempt_number=log.reexport_attempts.count() + 1,
             trigger_type="USER",
+            action_type="REEXPORT",
+            parent_attempt=parent_attempt,
             triggered_by_user=user,
             triggered_by_user_name_snapshot=f"{user.first_name} {user.last_name}".strip() or user.email,
             triggered_by_company=user.company,
@@ -1263,7 +1393,7 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
         # Transition attempt status to PROCESSING
         reexport_attempt.delivery_status = "PROCESSING"
         reexport_attempt.processing_started_at = timezone.now()
-        reexport_attempt.save(update_fields=["delivery_status", "processing_started_at"])
+        reexport_attempt.save(update_fields=["result_status", "processing_started_at"])
         
         # Deliver email using NotificationRequest
         filename = log.filename

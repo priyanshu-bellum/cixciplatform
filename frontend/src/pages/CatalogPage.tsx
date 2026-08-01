@@ -370,6 +370,32 @@ export const formatCurrency = (amount: number | string | null | undefined, curre
   }
 };
 
+export const formatETDate = (dateString: string | null | undefined) => {
+  if (!dateString) return 'Never Exported'
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return 'Never Exported'
+  
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  })
+  
+  const parts = formatter.formatToParts(date)
+  const month = parts.find(p => p.type === 'month')?.value || ''
+  const day = parts.find(p => p.type === 'day')?.value || ''
+  const year = parts.find(p => p.type === 'year')?.value || ''
+  const hour = parts.find(p => p.type === 'hour')?.value || ''
+  const minute = parts.find(p => p.type === 'minute')?.value || ''
+  const dayPeriod = parts.find(p => p.type === 'dayPeriod')?.value || ''
+  
+  return `${month}/${day}/${year} ${hour}:${minute} ${dayPeriod} ET`
+}
+
 export default function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
@@ -377,11 +403,172 @@ export default function CatalogPage() {
   const isVendor = user?.company_type === 'vendor'
   const isBuyer = user?.company_type === 'buyer'
 
-  const [search, setSearch] = useState('')
-  const [tab, setTab] = useState<'products' | 'projection' | 'export_jobs'>('products')
+  const tabParam = searchParams.get('tab')
+  const initialTab = tabParam === 'my-compatibility' ? 'projection' : (tabParam === 'export-jobs' ? 'export_jobs' : 'products')
+  const [tab, setTabState] = useState<'products' | 'projection' | 'export_jobs'>(initialTab)
 
-  // Selection state for Buyer
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const setTab = (newTab: 'products' | 'projection' | 'export_jobs') => {
+    setTabState(newTab)
+    const newParams = new URLSearchParams(searchParams)
+    newParams.set('tab', newTab === 'projection' ? 'my-compatibility' : (newTab === 'products' ? 'all-products' : 'export-jobs'))
+    setSearchParams(newParams)
+  }
+
+  // All Products isolated filters state
+  const [allSearch, setAllSearchState] = useState(searchParams.get('all_search') || '')
+  const setAllSearch = (val: string) => {
+    setAllSearchState(val)
+    const newParams = new URLSearchParams(searchParams)
+    if (val) {
+      newParams.set('all_search', val)
+    } else {
+      newParams.delete('all_search')
+    }
+    setSearchParams(newParams)
+  }
+
+  const allFilterDeviceId = searchParams.get('all_device') || ''
+  const setAllFilterDeviceId = (val: string) => {
+    const newParams = new URLSearchParams(searchParams)
+    if (val) {
+      newParams.set('all_device', val)
+    } else {
+      newParams.delete('all_device')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allFilterStatus, setAllFilterStatusState] = useState<string[]>(
+    searchParams.get('all_status')?.split(',').filter(Boolean) || []
+  )
+  const setAllFilterStatus = (vals: string[]) => {
+    setAllFilterStatusState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('all_status', vals.join(','))
+    } else {
+      newParams.delete('all_status')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allFilterSellingStatus, setAllFilterSellingStatusState] = useState<string[]>(
+    searchParams.get('all_selling_status')?.split(',').filter(Boolean) || []
+  )
+  const setAllFilterSellingStatus = (vals: string[]) => {
+    setAllFilterSellingStatusState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('all_selling_status', vals.join(','))
+    } else {
+      newParams.delete('all_selling_status')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allSort, setAllSortState] = useState(searchParams.get('all_sort') || '')
+  const setAllSort = (val: string) => {
+    setAllSortState(val)
+    const newParams = new URLSearchParams(searchParams)
+    if (val) {
+      newParams.set('all_sort', val)
+    } else {
+      newParams.delete('all_sort')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allPage, setAllPageState] = useState(searchParams.get('all_page') || '1')
+  const setAllPage = (val: string) => {
+    setAllPageState(val)
+    const newParams = new URLSearchParams(searchParams)
+    if (val && val !== '1') {
+      newParams.set('all_page', val)
+    } else {
+      newParams.delete('all_page')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allProductsSelectedIds, setAllProductsSelectedIds] = useState<string[]>([])
+
+  // My Compatibility isolated filters state
+  const [compatSearch, setCompatSearchState] = useState(searchParams.get('compatibility_search') || '')
+  const setCompatSearch = (val: string) => {
+    setCompatSearchState(val)
+    const newParams = new URLSearchParams(searchParams)
+    if (val) {
+      newParams.set('compatibility_search', val)
+    } else {
+      newParams.delete('compatibility_search')
+    }
+    setSearchParams(newParams)
+  }
+
+  const compatFilterDeviceId = searchParams.get('compatibility_device') || ''
+  const setCompatFilterDeviceId = (val: string) => {
+    const newParams = new URLSearchParams(searchParams)
+    if (val) {
+      newParams.set('compatibility_device', val)
+    } else {
+      newParams.delete('compatibility_device')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [compatFilterStatus, setCompatFilterStatusState] = useState<string[]>(
+    searchParams.get('compatibility_status')?.split(',').filter(Boolean) || []
+  )
+  const setCompatFilterStatus = (vals: string[]) => {
+    setCompatFilterStatusState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('compatibility_status', vals.join(','))
+    } else {
+      newParams.delete('compatibility_status')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [compatFilterSellingStatus, setCompatFilterSellingStatusState] = useState<string[]>(
+    searchParams.get('compatibility_selling_status')?.split(',').filter(Boolean) || []
+  )
+  const setCompatFilterSellingStatus = (vals: string[]) => {
+    setCompatFilterSellingStatusState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('compatibility_selling_status', vals.join(','))
+    } else {
+      newParams.delete('compatibility_selling_status')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [compatSort, setCompatSortState] = useState(searchParams.get('compatibility_sort') || '')
+  const setCompatSort = (val: string) => {
+    setCompatSortState(val)
+    const newParams = new URLSearchParams(searchParams)
+    if (val) {
+      newParams.set('compatibility_sort', val)
+    } else {
+      newParams.delete('compatibility_sort')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [compatPage, setCompatPageState] = useState(searchParams.get('compatibility_page') || '1')
+  const setCompatPage = (val: string) => {
+    setCompatPageState(val)
+    const newParams = new URLSearchParams(searchParams)
+    if (val && val !== '1') {
+      newParams.set('compatibility_page', val)
+    } else {
+      newParams.delete('compatibility_page')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [myCompatibilitySelectedIds, setMyCompatibilitySelectedIds] = useState<string[]>([])
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false)
@@ -392,7 +579,27 @@ export default function CatalogPage() {
   const [showDropdownManagerModal, setShowDropdownManagerModal] = useState(false)
   const [manageField, setManageField] = useState<'brand' | 'product_category' | 'system_color'>('brand')
   const [newDropdownValue, setNewDropdownValue] = useState('')
+  const [selectedJob, setSelectedJob] = useState<any>(null)
   const [dropdownError, setDropdownError] = useState<string | null>(null)
+
+  const formatETDate = (dateString: any) => {
+    if (!dateString) return '—';
+    try {
+      const date = new Date(dateString);
+      const formatted = date.toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      return formatted.replace(',', '') + ' ET';
+    } catch (e) {
+      return dateString;
+    }
+  };
 
   // Category Compatibility Config States
   const [editingCategoryConfig, setEditingCategoryConfig] = useState<any | null>(null)
@@ -487,10 +694,119 @@ export default function CatalogPage() {
 
   // Compatibility Management States
   const [manageTab, setManageTab] = useState<'details' | 'compatibility' | 'bulk' | 'audit'>('details')
-  const [filterCategories, setFilterCategories] = useState<string[]>([])
-  const [filterBrands, setFilterBrands] = useState<string[]>([])
-  const [filterColors, setFilterColors] = useState<string[]>([])
-  const [filterMsrps, setFilterMsrps] = useState<string[]>([])
+  // All Products filters state
+  const [allFilterCategories, setAllFilterCategoriesState] = useState<string[]>(
+    searchParams.get('all_category')?.split(',').filter(Boolean) || []
+  )
+  const setAllFilterCategories = (vals: string[]) => {
+    setAllFilterCategoriesState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('all_category', vals.join(','))
+    } else {
+      newParams.delete('all_category')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allFilterBrands, setAllFilterBrandsState] = useState<string[]>(
+    searchParams.get('all_brand')?.split(',').filter(Boolean) || []
+  )
+  const setAllFilterBrands = (vals: string[]) => {
+    setAllFilterBrandsState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('all_brand', vals.join(','))
+    } else {
+      newParams.delete('all_brand')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allFilterColors, setAllFilterColorsState] = useState<string[]>(
+    searchParams.get('all_color')?.split(',').filter(Boolean) || []
+  )
+  const setAllFilterColors = (vals: string[]) => {
+    setAllFilterColorsState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('all_color', vals.join(','))
+    } else {
+      newParams.delete('all_color')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allFilterMsrps, setAllFilterMsrpsState] = useState<string[]>(
+    searchParams.get('all_price')?.split(',').filter(Boolean) || []
+  )
+  const setAllFilterMsrps = (vals: string[]) => {
+    setAllFilterMsrpsState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('all_price', vals.join(','))
+    } else {
+      newParams.delete('all_price')
+    }
+    setSearchParams(newParams)
+  }
+
+  // My Compatibility filters state
+  const [compatFilterCategories, setCompatFilterCategoriesState] = useState<string[]>(
+    searchParams.get('compatibility_category')?.split(',').filter(Boolean) || []
+  )
+  const setCompatFilterCategories = (vals: string[]) => {
+    setCompatFilterCategoriesState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('compatibility_category', vals.join(','))
+    } else {
+      newParams.delete('compatibility_category')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [compatFilterBrands, setCompatFilterBrandsState] = useState<string[]>(
+    searchParams.get('compatibility_brand')?.split(',').filter(Boolean) || []
+  )
+  const setCompatFilterBrands = (vals: string[]) => {
+    setCompatFilterBrandsState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('compatibility_brand', vals.join(','))
+    } else {
+      newParams.delete('compatibility_brand')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [compatFilterColors, setCompatFilterColorsState] = useState<string[]>(
+    searchParams.get('compatibility_color')?.split(',').filter(Boolean) || []
+  )
+  const setCompatFilterColors = (vals: string[]) => {
+    setCompatFilterColorsState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('compatibility_color', vals.join(','))
+    } else {
+      newParams.delete('compatibility_color')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [compatFilterMsrps, setCompatFilterMsrpsState] = useState<string[]>(
+    searchParams.get('compatibility_price')?.split(',').filter(Boolean) || []
+  )
+  const setCompatFilterMsrps = (vals: string[]) => {
+    setCompatFilterMsrpsState(vals)
+    const newParams = new URLSearchParams(searchParams)
+    if (vals.length > 0) {
+      newParams.set('compatibility_price', vals.join(','))
+    } else {
+      newParams.delete('compatibility_price')
+    }
+    setSearchParams(newParams)
+  }
   const [showExcludeModal, setShowExcludeModal] = useState(false)
   const [excludeDevice, setExcludeDevice] = useState<any>(null)
   const [excludeReason, setExcludeReason] = useState('physical_mismatch')
@@ -1349,12 +1665,17 @@ export default function CatalogPage() {
   // Projection recalculation state
   const [refreshingProj, setRefreshingProj] = useState(false)
 
-  const filterDeviceId = searchParams.get('device') || ''
+  const activeSearch = tab === 'projection' ? compatSearch : allSearch
+  const activeFilterDeviceId = tab === 'projection' ? compatFilterDeviceId : allFilterDeviceId
+  const activeFilterCategories = tab === 'projection' ? compatFilterCategories : allFilterCategories
+  const activeFilterBrands = tab === 'projection' ? compatFilterBrands : allFilterBrands
+  const activeFilterColors = tab === 'projection' ? compatFilterColors : allFilterColors
+  const activeFilterMsrps = tab === 'projection' ? compatFilterMsrps : allFilterMsrps
 
   // TanStack Queries
   const { data, isLoading, refetch: refreshProducts } = useQuery({
-    queryKey: ['products', search, filterDeviceId],
-    queryFn: () => api.get('/catalog/products/', { params: { search, device_id: filterDeviceId || undefined } }).then(r => r.data),
+    queryKey: ['products', tab, activeSearch, activeFilterDeviceId],
+    queryFn: () => api.get('/catalog/products/', { params: { search: activeSearch || undefined, device_id: activeFilterDeviceId || undefined } }).then(r => r.data),
   })
 
 
@@ -1425,12 +1746,12 @@ export default function CatalogPage() {
   const filteredProducts = useMemo(() => {
     if (!products) return []
     return products.filter((p: any) => {
-      if (filterCategories.length > 0 && !filterCategories.includes(p.product_category)) return false
-      if (filterBrands.length > 0 && !filterBrands.includes(p.brand)) return false
-      if (filterColors.length > 0 && !filterColors.includes(p.color) && !filterColors.includes(p.system_color)) return false
-      if (filterMsrps.length > 0) {
+      if (activeFilterCategories.length > 0 && !activeFilterCategories.includes(p.product_category)) return false
+      if (activeFilterBrands.length > 0 && !activeFilterBrands.includes(p.brand)) return false
+      if (activeFilterColors.length > 0 && !activeFilterColors.includes(p.color) && !activeFilterColors.includes(p.system_color)) return false
+      if (activeFilterMsrps.length > 0) {
         const msrpVal = p.msrp ? parseFloat(p.msrp) : (p.buyer_wholesale_price ? parseFloat(p.buyer_wholesale_price) : 0)
-        const matchesAny = filterMsrps.some(range => {
+        const matchesAny = activeFilterMsrps.some(range => {
           if (range === '0-25') return msrpVal < 25
           if (range === '25-50') return msrpVal >= 25 && msrpVal <= 50
           if (range === '50-100') return msrpVal >= 50 && msrpVal <= 100
@@ -1442,7 +1763,7 @@ export default function CatalogPage() {
       }
       return true
     })
-  }, [products, filterCategories, filterBrands, filterColors, filterMsrps])
+  }, [products, activeFilterCategories, activeFilterBrands, activeFilterColors, activeFilterMsrps])
 
   const brandsList = useMemo(() => {
     const unique = new Set<string>()
@@ -1451,7 +1772,7 @@ export default function CatalogPage() {
     return Array.from(unique).sort()
   }, [allowedBrands, products])
 
-  const filteredDeviceRef = portfolio?.find((ref: any) => ref.device === filterDeviceId)
+  const filteredDeviceRef = portfolio?.find((ref: any) => ref.device === activeFilterDeviceId)
   const filteredDeviceName = filteredDeviceRef ? filteredDeviceRef.device_name : 'Selected Device'
   const compatibleProducts = filteredProducts.filter((p: any) =>
     projection?.compatible_product_ids?.includes(p.id)
@@ -2333,13 +2654,18 @@ export default function CatalogPage() {
   const handleStartExport = async (e: React.FormEvent) => {
     e.preventDefault()
     setExportError(null)
+    const exportIds = tab === 'products' ? allProductsSelectedIds : myCompatibilitySelectedIds
     try {
       await api.post('/catalog/export-jobs/create_job/', {
         format: exportFormat,
         include_incompatible: includeIncompatible,
-        product_ids: selectedIds,
+        product_ids: exportIds,
       })
-      setSelectedIds([])
+      if (tab === 'products') {
+        setAllProductsSelectedIds([])
+      } else {
+        setMyCompatibilitySelectedIds([])
+      }
       setShowExportModal(false)
       setTab('export_jobs')
       refreshJobs()
@@ -2443,21 +2769,7 @@ export default function CatalogPage() {
     setShowEditModal(true)
   }
 
-  const toggleSelectProduct = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(x => x !== id))
-    } else {
-      setSelectedIds([...selectedIds, id])
-    }
-  }
 
-  const toggleSelectAll = () => {
-    if (selectedIds.length === products.length) {
-      setSelectedIds([])
-    } else {
-      setSelectedIds(products.map((p: any) => p.id))
-    }
-  }
 
   const toggleDeviceSelection = (id: string) => {
     if (selectedDeviceIds.includes(id)) {
@@ -2529,7 +2841,7 @@ export default function CatalogPage() {
               <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Search</label>
               <div className="search-bar" style={{ width: 240, margin: 0 }}>
                 <Search size={14} />
-                <input placeholder="Search by name, SKU, brand, category, color, status, price…" value={search} onChange={e => setSearch(e.target.value)} />
+                <input placeholder="Search by name, SKU, brand, category, color, status, price…" value={allSearch} onChange={e => setAllSearch(e.target.value)} />
               </div>
             </div>
 
@@ -2537,14 +2849,14 @@ export default function CatalogPage() {
               <MultiSelect
                 label="Filter by Device"
                 placeholder="All Devices (My Portfolio)"
-                selected={filterDeviceId ? filterDeviceId.split(',').filter(Boolean) : []}
+                selected={allFilterDeviceId ? allFilterDeviceId.split(',').filter(Boolean) : []}
                 options={portfolio?.filter((d: any) => d.active_flag).map((d: any) => ({ value: d.device, label: d.device_name })) ?? []}
                 onChange={(vals) => {
                   const newParams = new URLSearchParams(searchParams)
                   if (vals.length > 0) {
-                    newParams.set('device', vals.join(','))
+                    newParams.set('all_device', vals.join(','))
                   } else {
-                    newParams.delete('device')
+                    newParams.delete('all_device')
                   }
                   setSearchParams(newParams)
                 }}
@@ -2554,31 +2866,31 @@ export default function CatalogPage() {
             <MultiSelect
               label="Category"
               placeholder="All Categories"
-              selected={filterCategories}
+              selected={allFilterCategories}
               options={allowedCategories}
-              onChange={setFilterCategories}
+              onChange={setAllFilterCategories}
             />
 
             <MultiSelect
               label="Brand"
               placeholder="All Brands"
-              selected={filterBrands}
+              selected={allFilterBrands}
               options={brandsList}
-              onChange={setFilterBrands}
+              onChange={setAllFilterBrands}
             />
 
             <MultiSelect
               label="Color"
               placeholder="All Colors"
-              selected={filterColors}
+              selected={allFilterColors}
               options={allowedColors}
-              onChange={setFilterColors}
+              onChange={setAllFilterColors}
             />
 
             <MultiSelect
               label="MSRP (Wholesale)"
               placeholder="All Prices"
-              selected={filterMsrps}
+              selected={allFilterMsrps}
               options={[
                 { value: '0-25', label: 'Under $25' },
                 { value: '25-50', label: '$25 to $50' },
@@ -2586,26 +2898,40 @@ export default function CatalogPage() {
                 { value: '100-200', label: '$100 to $200' },
                 { value: '200+', label: 'Over $200' }
               ]}
-              onChange={setFilterMsrps}
+              onChange={setAllFilterMsrps}
             />
 
-            {(filterDeviceId || filterCategories.length > 0 || filterBrands.length > 0 || filterColors.length > 0 || filterMsrps.length > 0) && (
+            {(allFilterDeviceId || allFilterCategories.length > 0 || allFilterBrands.length > 0 || allFilterColors.length > 0 || allFilterMsrps.length > 0) && (
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
                 style={{ alignSelf: 'flex-end', height: 38, padding: '0 12px' }}
                 onClick={() => {
-                  setFilterCategories([])
-                  setFilterBrands([])
-                  setFilterColors([])
-                  setFilterMsrps([])
+                  setAllFilterCategories([])
+                  setAllFilterBrands([])
+                  setAllFilterColors([])
+                  setAllFilterMsrps([])
                   const newParams = new URLSearchParams(searchParams)
-                  newParams.delete('device')
+                  newParams.delete('all_device')
                   setSearchParams(newParams)
                 }}
               >
                 Clear Filters
               </button>
+            )}
+
+            {allProductsSelectedIds.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
+                <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
+                  {allProductsSelectedIds.length} selected
+                </span>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowExportModal(true)}>
+                  Export Selection
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setAllProductsSelectedIds([])}>
+                  Clear
+                </button>
+              </div>
             )}
           </div>
           <div className="table-wrap">
@@ -2625,6 +2951,26 @@ export default function CatalogPage() {
               <table>
                 <thead>
                   <tr>
+                    {isBuyer && (
+                      <th style={{ width: 40, textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={filteredProducts.length > 0 && filteredProducts.every((p: any) => allProductsSelectedIds.includes(p.id))}
+                          onChange={() => {
+                            const allSelected = filteredProducts.every((p: any) => allProductsSelectedIds.includes(p.id))
+                            if (allSelected) {
+                              setAllProductsSelectedIds(allProductsSelectedIds.filter(id => !filteredProducts.some((p: any) => p.id === id)))
+                            } else {
+                              const newIds = [...allProductsSelectedIds]
+                              filteredProducts.forEach((p: any) => {
+                                if (!newIds.includes(p.id)) newIds.push(p.id)
+                              })
+                              setAllProductsSelectedIds(newIds)
+                            }
+                          }}
+                        />
+                      </th>
+                    )}
                     <th style={{ width: 60 }}>Image</th>
                     <th>Product Name</th>
                     <th>SKU</th>
@@ -2633,6 +2979,7 @@ export default function CatalogPage() {
                     <th>Category</th>
                     <th>Wholesale Price</th>
                     <th>MSRP</th>
+                    {isBuyer && <th>Exported Date</th>}
                     <th>Status</th>
                     <th>Selling</th>
                   </tr>
@@ -2652,6 +2999,21 @@ export default function CatalogPage() {
                       }}
                       style={{ cursor: 'pointer' }}
                     >
+                      {isBuyer && (
+                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={allProductsSelectedIds.includes(p.id)}
+                            onChange={() => {
+                              if (allProductsSelectedIds.includes(p.id)) {
+                                setAllProductsSelectedIds(allProductsSelectedIds.filter(x => x !== p.id))
+                              } else {
+                                setAllProductsSelectedIds([...allProductsSelectedIds, p.id])
+                              }
+                            }}
+                          />
+                        </td>
+                      )}
                       <td>
                         {p.primary_image_url ? (
                           <img
@@ -2677,6 +3039,15 @@ export default function CatalogPage() {
                         }
                       </td>
                       <td className="mono">{formatCurrency(p.msrp, p.vendor_wholesale_price_currency)}</td>
+                      {isBuyer && (
+                        <td>
+                          {p.exported_date ? (
+                            formatETDate(p.exported_date)
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>Never Exported</span>
+                          )}
+                        </td>
+                      )}
                       <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
                       <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
                     </tr>
@@ -2705,24 +3076,26 @@ export default function CatalogPage() {
             </div>
           ) : (
             <>
-              <div className="card-grid card-grid-3" style={{ marginBottom: 16 }}>
-                <div style={{ textAlign: 'center', padding: '16px 0', background: 'var(--bg-elevated)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--green)' }}>{projection.compatible_product_count ?? 0}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Compatible Products</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 16 }}>
+                <div style={{ textAlign: 'center', padding: '20px 16px', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--green)', lineHeight: 1 }}>{projection.compatible_product_count ?? 0}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginTop: 8 }}>Compatible Products</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Unique accessories currently compatible with one or more devices in My Portfolio</div>
                 </div>
-                <div style={{ textAlign: 'center', padding: '16px 0', background: 'var(--bg-elevated)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--red)' }}>{projection.incompatible_product_ids?.length ?? 0}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Incompatible Accessories</div>
-                </div>
-                <div style={{ textAlign: 'center', padding: '16px 0', background: 'var(--bg-elevated)', borderRadius: 8 }}>
-                  <span className={`badge ${projection.status === 'active' ? 'badge-green' : 'badge-amber'}`} style={{ fontSize: 13, padding: '6px 14px', marginTop: 8 }}>
-                    {projection.status}
+                <div style={{ textAlign: 'center', padding: '20px 16px', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <span className={`badge ${
+                    projection.status === 'active' ? 'badge-green' :
+                    projection.status === 'recalculating' ? 'badge-blue' :
+                    projection.status === 'review_required' ? 'badge-amber' : 'badge-muted'
+                  }`} style={{ fontSize: 13, padding: '6px 14px', textTransform: 'capitalize', display: 'inline-block' }}>
+                    {projection.status === 'recalculating' ? 'Calculating' : (projection.status === 'review_required' ? 'Review Required' : projection.status)}
                   </span>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 12 }}>Projection status</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginTop: 12 }}>Projection Status</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Whether the buyer compatibility projection is active, calculating, or requires review</div>
                 </div>
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 24 }}>
-                Last recalculated: {projection.last_recalculated_at ? new Date(projection.last_recalculated_at).toLocaleString() : '—'}
+                Last recalculated: {projection.last_recalculated_at ? formatETDate(projection.last_recalculated_at) : '—'}
               </div>
 
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
@@ -2741,7 +3114,7 @@ export default function CatalogPage() {
                     <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Search</label>
                     <div className="search-bar" style={{ width: 240, margin: 0 }}>
                       <Search size={14} />
-                      <input placeholder="Search compatible products…" value={search} onChange={e => setSearch(e.target.value)} />
+                      <input placeholder="Search compatible products…" value={compatSearch} onChange={e => setCompatSearch(e.target.value)} />
                     </div>
                   </div>
 
@@ -2749,14 +3122,14 @@ export default function CatalogPage() {
                     <MultiSelect
                       label="Filter by Device"
                       placeholder="All Devices (My Portfolio)"
-                      selected={filterDeviceId ? filterDeviceId.split(',').filter(Boolean) : []}
+                      selected={compatFilterDeviceId ? compatFilterDeviceId.split(',').filter(Boolean) : []}
                       options={portfolio?.filter((d: any) => d.active_flag).map((d: any) => ({ value: d.device, label: d.device_name })) ?? []}
                       onChange={(vals) => {
                         const newParams = new URLSearchParams(searchParams)
                         if (vals.length > 0) {
-                          newParams.set('device', vals.join(','))
+                          newParams.set('compatibility_device', vals.join(','))
                         } else {
-                          newParams.delete('device')
+                          newParams.delete('compatibility_device')
                         }
                         setSearchParams(newParams)
                       }}
@@ -2766,31 +3139,31 @@ export default function CatalogPage() {
                   <MultiSelect
                     label="Category"
                     placeholder="All Categories"
-                    selected={filterCategories}
+                    selected={compatFilterCategories}
                     options={allowedCategories}
-                    onChange={setFilterCategories}
+                    onChange={setCompatFilterCategories}
                   />
 
                   <MultiSelect
                     label="Brand"
                     placeholder="All Brands"
-                    selected={filterBrands}
+                    selected={compatFilterBrands}
                     options={brandsList}
-                    onChange={setFilterBrands}
+                    onChange={setCompatFilterBrands}
                   />
 
                   <MultiSelect
                     label="Color"
                     placeholder="All Colors"
-                    selected={filterColors}
+                    selected={compatFilterColors}
                     options={allowedColors}
-                    onChange={setFilterColors}
+                    onChange={setCompatFilterColors}
                   />
 
                   <MultiSelect
                     label="MSRP (Wholesale)"
                     placeholder="All Prices"
-                    selected={filterMsrps}
+                    selected={compatFilterMsrps}
                     options={[
                       { value: '0-25', label: 'Under $25' },
                       { value: '25-50', label: '$25 to $50' },
@@ -2798,21 +3171,21 @@ export default function CatalogPage() {
                       { value: '100-200', label: '$100 to $200' },
                       { value: '200+', label: 'Over $200' }
                     ]}
-                    onChange={setFilterMsrps}
+                    onChange={setCompatFilterMsrps}
                   />
 
-                  {(filterDeviceId || filterCategories.length > 0 || filterBrands.length > 0 || filterColors.length > 0 || filterMsrps.length > 0) && (
+                  {(compatFilterDeviceId || compatFilterCategories.length > 0 || compatFilterBrands.length > 0 || compatFilterColors.length > 0 || compatFilterMsrps.length > 0) && (
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
                       style={{ alignSelf: 'flex-end', height: 38, padding: '0 12px' }}
                       onClick={() => {
-                        setFilterCategories([])
-                        setFilterBrands([])
-                        setFilterColors([])
-                        setFilterMsrps([])
+                        setCompatFilterCategories([])
+                        setCompatFilterBrands([])
+                        setCompatFilterColors([])
+                        setCompatFilterMsrps([])
                         const newParams = new URLSearchParams(searchParams)
-                        newParams.delete('device')
+                        newParams.delete('compatibility_device')
                         setSearchParams(newParams)
                       }}
                     >
@@ -2820,15 +3193,15 @@ export default function CatalogPage() {
                     </button>
                   )}
 
-                  {selectedIds.length > 0 && (
+                  {myCompatibilitySelectedIds.length > 0 && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
                       <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
-                        {selectedIds.length} selected
+                        {myCompatibilitySelectedIds.length} selected
                       </span>
                       <button className="btn btn-primary btn-sm" onClick={() => setShowExportModal(true)}>
                         Export Selection
                       </button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIds([])}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setMyCompatibilitySelectedIds([])}>
                         Clear
                       </button>
                     </div>
@@ -2847,17 +3220,17 @@ export default function CatalogPage() {
                           <th style={{ width: 40, textAlign: 'center' }}>
                             <input
                               type="checkbox"
-                              checked={compatibleProducts.length > 0 && compatibleProducts.every((p: any) => selectedIds.includes(p.id))}
+                              checked={compatibleProducts.length > 0 && compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))}
                               onChange={() => {
-                                const allSelected = compatibleProducts.every((p: any) => selectedIds.includes(p.id))
+                                const allSelected = compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))
                                 if (allSelected) {
-                                  setSelectedIds(selectedIds.filter(id => !compatibleProducts.some((p: any) => p.id === id)))
+                                  setMyCompatibilitySelectedIds(myCompatibilitySelectedIds.filter(id => !compatibleProducts.some((p: any) => p.id === id)))
                                 } else {
-                                  const newIds = [...selectedIds]
+                                  const newIds = [...myCompatibilitySelectedIds]
                                   compatibleProducts.forEach((p: any) => {
                                     if (!newIds.includes(p.id)) newIds.push(p.id)
                                   })
-                                  setSelectedIds(newIds)
+                                  setMyCompatibilitySelectedIds(newIds)
                                 }
                               }}
                             />
@@ -2892,12 +3265,12 @@ export default function CatalogPage() {
                             <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                               <input
                                 type="checkbox"
-                                checked={selectedIds.includes(p.id)}
+                                checked={myCompatibilitySelectedIds.includes(p.id)}
                                 onChange={() => {
-                                  if (selectedIds.includes(p.id)) {
-                                    setSelectedIds(selectedIds.filter(x => x !== p.id))
+                                  if (myCompatibilitySelectedIds.includes(p.id)) {
+                                    setMyCompatibilitySelectedIds(myCompatibilitySelectedIds.filter(x => x !== p.id))
                                   } else {
-                                    setSelectedIds([...selectedIds, p.id])
+                                    setMyCompatibilitySelectedIds([...myCompatibilitySelectedIds, p.id])
                                   }
                                 }}
                               />
@@ -2957,42 +3330,42 @@ export default function CatalogPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Job ID</th><th>Format</th><th>Include Incompatible</th><th>Created</th><th>Status</th><th>Action</th>
+                    <th>Job ID</th><th>Format</th><th>Exported By</th><th>Product Count</th><th>Created</th><th>Status</th><th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {jobs.map((job: any) => (
                     <tr key={job.id}>
-                      <td className="mono" style={{ fontSize: 12 }}>{job.id.slice(0, 8)}…</td>
+                      <td className="mono" style={{ fontSize: 12 }}>
+                        <button 
+                          className="btn-link" 
+                          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', color: 'var(--blue)', textDecoration: 'underline' }} 
+                          onClick={() => setSelectedJob(job)}
+                        >
+                          {job.id.slice(0, 8)}…
+                        </button>
+                      </td>
                       <td className="mono" style={{ textTransform: 'uppercase' }}>{job.format}</td>
-                      <td>{job.include_incompatible ? 'Yes' : 'No'}</td>
-                      <td>{new Date(job.created_at).toLocaleString()}</td>
+                      <td>{job.triggered_by_name || 'System'}</td>
+                      <td>{job.product_count ?? 0}</td>
+                      <td>{formatETDate(job.created_at)}</td>
                       <td>
                         <span className={`badge ${
                           job.status === 'completed' ? 'badge-green' :
+                          job.status === 'completed_with_errors' ? 'badge-amber' :
                           job.status === 'failed' ? 'badge-red' :
-                          job.status === 'running' ? 'badge-blue' : 'badge-muted'
-                        }`}>
-                          {job.status}
+                          job.status === 'cancelled' || job.status === 'canceled' ? 'badge-muted' :
+                          job.status === 'running' || job.status === 'processing' ? 'badge-blue' : 'badge-muted'
+                        }`} style={{ textTransform: 'capitalize' }}>
+                          {job.status === 'completed_with_errors' ? 'Completed with Errors' :
+                           job.status === 'processing' || job.status === 'running' ? 'Processing' :
+                           job.status}
                         </span>
                       </td>
                       <td>
-                        {job.status === 'completed' ? (
-                          isBuyer ? (
-                            <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
-                              <span className="badge badge-blue" style={{ width: 'fit-content' }}>API Only</span>
-                              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>/api/v1/catalog/export-jobs/{job.id}/</span>
-                            </span>
-                          ) : (
-                            <button className="btn btn-ghost btn-sm" onClick={() => alert(`Downloading export catalog file ${job.id}`)}>
-                              <Download size={13} /> Download
-                            </button>
-                          )
-                        ) : job.status === 'pending' || job.status === 'running' ? (
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Processing…</span>
-                        ) : (
-                          <span style={{ fontSize: 12, color: 'var(--red)' }}>Error</span>
-                        )}
+                        <button className="btn btn-secondary btn-sm" onClick={() => setSelectedJob(job)}>
+                          View Details
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -5057,33 +5430,135 @@ export default function CatalogPage() {
                   <span>{exportError}</span>
                 </div>
               )}
-              <div className="form-group">
-                <label className="label">Export Format</label>
-                <select className="input" value={exportFormat} onChange={e => setExportFormat(e.target.value)}>
-                  <option value="csv">CSV (Comma Separated)</option>
-                  <option value="json">JSON (Structured Data)</option>
-                  <option value="xlsx">Excel Workbook (XLSX)</option>
-                </select>
+              <div style={{ background: 'var(--bg-elevated)', padding: 14, borderRadius: 8, fontSize: 13, color: 'var(--text-primary)', marginBottom: 16, border: '1px solid var(--border)' }}>
+                You are about to initiate an export job for <strong>{tab === 'products' ? allProductsSelectedIds.length : myCompatibilitySelectedIds.length}</strong> selected products.
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0' }}>
-                <input
-                  type="checkbox"
-                  id="include_incomp"
-                  checked={includeIncompatible}
-                  onChange={e => setIncludeIncompatible(e.target.checked)}
-                />
-                <label htmlFor="include_incomp" style={{ fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                  Include Incompatible Products
-                </label>
-              </div>
-              <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8, fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-                This creates a background export task for {selectedIds.length} selected accessory products. Output will be available in the "Export Jobs" tab.
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20 }}>
+                <p style={{ margin: '0 0 8px 0' }}>• Export format: <strong>API</strong></p>
+                <p style={{ margin: 0 }}>• Incompatible products will be excluded.</p>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowExportModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Start Export Job</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── EXPORT JOB DETAILS MODAL (AUDIT COMPLIANT) ────────────────────────── */}
+      {selectedJob && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="card" style={{ width: 680, maxWidth: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Export Job Details</span>
+                <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{selectedJob.id}</span>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setSelectedJob(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: 4 }}>
+              {/* Metadata Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 16, marginBottom: 20 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Status</div>
+                  <div style={{ marginTop: 4 }}>
+                    <span className={`badge ${
+                      selectedJob.status === 'completed' ? 'badge-green' :
+                      selectedJob.status === 'completed_with_errors' ? 'badge-amber' :
+                      selectedJob.status === 'failed' ? 'badge-red' : 'badge-muted'
+                    }`} style={{ textTransform: 'capitalize' }}>
+                      {selectedJob.status === 'completed_with_errors' ? 'Completed with Errors' : selectedJob.status}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Format</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginTop: 4 }}>{selectedJob.format}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Initiated By</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 4 }}>
+                    {selectedJob.triggered_by_name || 'System'} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({selectedJob.triggered_by_role || 'System'})</span>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Trigger Type</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 4 }}>{selectedJob.trigger_type || 'USER'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Initiated Date</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 4 }}>{formatETDate(selectedJob.created_at)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Completed Date</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 4 }}>{formatETDate(selectedJob.completed_at)}</div>
+                </div>
+              </div>
+
+              {/* Failure Details */}
+              {selectedJob.status === 'failed' && selectedJob.failure_details && (
+                <div style={{ background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: 12, borderRadius: 8, fontSize: 13, marginBottom: 20 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Failure Reason:</div>
+                  <div className="mono" style={{ fontSize: 12 }}>{selectedJob.failure_details}</div>
+                </div>
+              )}
+
+              {/* Product Snapshot List */}
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
+                Exported Product Snapshot ({selectedJob.products_snapshot?.length ?? 0} Products)
+              </div>
+              
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                {!selectedJob.products_snapshot || selectedJob.products_snapshot.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                    No products captured in this export job snapshot.
+                  </div>
+                ) : (
+                  <table style={{ margin: 0, width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 60 }}>Image</th>
+                        <th>Vendor</th>
+                        <th>Product Name</th>
+                        <th>SKU</th>
+                        <th>UPC</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedJob.products_snapshot.map((p: any, idx: number) => (
+                        <tr key={p.product_id || idx}>
+                          <td>
+                            {p.primary_image_url ? (
+                              <img 
+                                src={p.primary_image_url} 
+                                alt={p.product_name} 
+                                style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 4, background: '#fff', border: '1px solid var(--border)' }} 
+                              />
+                            ) : (
+                              <div style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
+                                <ShoppingBag size={16} style={{ color: 'var(--text-muted)' }} />
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ fontSize: 13, color: 'var(--text-primary)' }}>{p.vendor_name}</td>
+                          <td style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{p.product_name}</td>
+                          <td className="mono" style={{ fontSize: 12 }}>{p.sku}</td>
+                          <td className="mono" style={{ fontSize: 12 }}>{p.upc || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <button type="button" className="btn btn-primary" onClick={() => setSelectedJob(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}

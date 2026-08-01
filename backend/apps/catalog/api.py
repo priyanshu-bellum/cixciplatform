@@ -23,6 +23,7 @@ from .services import recalculate_buyer_compatibility_projection
 
 class ProductSerializerBase(serializers.ModelSerializer):
     vendor_map_pricing_enforced = serializers.SerializerMethodField()
+    exported_date = serializers.SerializerMethodField()
 
     def get_vendor_map_pricing_enforced(self, obj):
         try:
@@ -31,6 +32,26 @@ class ProductSerializerBase(serializers.ModelSerializer):
             return vendor.map_pricing_enforced if vendor else False
         except Exception:
             return False
+
+    def get_exported_date(self, obj):
+        if hasattr(obj, "exported_date") and obj.exported_date is not None:
+            if hasattr(obj.exported_date, "isoformat"):
+                return obj.exported_date.isoformat()
+            return obj.exported_date
+
+        request = self.context.get("request")
+        if not request or not request.user or request.user.is_anonymous:
+            return None
+        company = getattr(request.user, "company", None)
+        if not company or company.company_type != "buyer":
+            return None
+
+        from apps.catalog.models import BuyerProductExportDate
+        exported = BuyerProductExportDate.objects.filter(
+            company_scope_reference=company.id,
+            product_id=obj.id
+        ).first()
+        return exported.exported_at.isoformat() if exported else None
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
@@ -144,7 +165,7 @@ class ProductListSerializer(ProductSerializerBase):
             "compatible_charging_interface", "wireless_charging_compatibility",
             "storage_expansion_compatibility", "memory_capacity",
             "compatible_watch_case_size", "compatibility_status",
-            "vendor_map_pricing_enforced",
+            "vendor_map_pricing_enforced", "exported_date",
         ]
         read_only_fields = ["id", "created_at"]
 
@@ -400,6 +421,8 @@ class BuyerCompatibilityProjectionSerializer(serializers.ModelSerializer):
 
 class BuyerExportJobSerializer(serializers.ModelSerializer):
     download_url = serializers.SerializerMethodField()
+    buyer_company_name = serializers.SerializerMethodField()
+    products_snapshot = serializers.SerializerMethodField()
 
     class Meta:
         model = BuyerProductExportJob
@@ -407,6 +430,8 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
             "id", "status", "format", "include_incompatible",
             "portfolio_snapshot_reference", "product_count",
             "output_file_reference", "download_url", "created_at", "completed_at",
+            "trigger_type", "triggered_by_id", "triggered_by_name", "triggered_by_role", "failure_details",
+            "buyer_company_name", "products_snapshot"
         ]
 
     def get_download_url(self, obj):
@@ -420,6 +445,34 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
                     media_url += "/"
                 return f"{media_url}{asset.storage_key}"
         return None
+
+    def get_buyer_company_name(self, obj):
+        from apps.tenant.models import Company
+        company = Company.objects.filter(id=obj.company_scope_reference).first()
+        return company.name if company else "Unknown Buyer"
+
+    def get_products_snapshot(self, obj):
+        snapshot = getattr(obj, "selection_snapshot", None)
+        if snapshot and hasattr(snapshot, "exported_products_snapshot") and snapshot.exported_products_snapshot:
+            return snapshot.exported_products_snapshot
+        if snapshot and snapshot.product_ids:
+            from apps.catalog.models import Product
+            from apps.tenant.models import Company
+            products = Product.objects.filter(id__in=snapshot.product_ids)
+            data = []
+            for p in products:
+                vendor = Company.objects.filter(id=p.vendor_company_reference).first()
+                data.append({
+                    "product_id": str(p.id),
+                    "vendor_name": vendor.name if vendor else "Unknown Vendor",
+                    "primary_image_url": p.primary_image_url or "",
+                    "product_name": p.name,
+                    "sku": p.sku,
+                    "upc": p.upc or ""
+                })
+            return data
+        return []
+
 
 
 class DynamicDropdownConfigSerializer(serializers.ModelSerializer):
@@ -470,7 +523,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "status",
         "msrp",
     ]
-    ordering_fields = ["name", "created_at"]
+    ordering_fields = ["name", "created_at", "exported_date"]
     ordering = ["-created_at"]
 
     def get_serializer_class(self):
@@ -483,6 +536,19 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         user = self.request.user
         if not user or user.is_anonymous:
             return Product.objects.none()
+
+        # Annotate buyer-specific exported_date
+        from django.db.models import Subquery, OuterRef, Value, DateTimeField
+        from apps.catalog.models import BuyerProductExportDate
+        company = getattr(user, "company", None)
+        if company and company.company_type == "buyer":
+            exported_subquery = BuyerProductExportDate.objects.filter(
+                company_scope_reference=company.id,
+                product_id=OuterRef("pk")
+            ).values("exported_at")[:1]
+            qs = qs.annotate(exported_date=Subquery(exported_subquery))
+        else:
+            qs = qs.annotate(exported_date=Value(None, output_field=DateTimeField()))
         if user.is_cixci_admin:
             device_id_param = self.request.query_params.get("device_id")
             if device_id_param:
@@ -3020,14 +3086,32 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
             import uuid
             portfolio_snapshot_ref = uuid.uuid4()
 
+        # Get role name
+        role_name = "Buyer"
+        if request.user.is_cixci_admin:
+            role_name = "System Admin"
+        elif request.user.entity and request.user.entity.company:
+            if request.user.entity.company.company_type == "vendor":
+                role_name = "Vendor"
+            else:
+                role_name = "Buyer"
+
+        user_full_name = f"{request.user.first_name} {request.user.last_name}".strip()
+        if not user_full_name:
+            user_full_name = request.user.email
+
         job = BuyerProductExportJob.objects.create(
             buyer_reference=request.user.id,
             company_scope_reference=request.user.entity.company_id,
             buyer_entity_reference=request.user.entity_id,
             requested_by=request.user.id,
             portfolio_snapshot_reference=portfolio_snapshot_ref,
-            format=request.data.get("format", "csv"),
-            include_incompatible=request.data.get("include_incompatible", False),
+            format="API",
+            include_incompatible=False,
+            trigger_type="USER",
+            triggered_by_id=request.user.id,
+            triggered_by_name=user_full_name,
+            triggered_by_role=role_name
         )
 
         from apps.catalog.models import BuyerProductExportSelectionSnapshot

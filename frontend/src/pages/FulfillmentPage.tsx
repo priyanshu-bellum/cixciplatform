@@ -86,6 +86,7 @@ export default function FulfillmentPage() {
 
   const [reexportingId, setReexportingId] = useState<string | null>(null)
   const [selectedLogForReexport, setSelectedLogForReexport] = useState<any | null>(null)
+  const [selectedLogForAuditHistory, setSelectedLogForAuditHistory] = useState<any | null>(null)
   const [reexportReason, setReexportReason] = useState<string>('')
   const [reexportExplanation, setReexportExplanation] = useState<string>('')
   const [expandedLogIds, setExpandedLogIds] = useState<string[]>([])
@@ -118,7 +119,14 @@ export default function FulfillmentPage() {
     }
   }
 
-  const handleDownloadCSV = (log: any) => {
+  const handleDownloadCSV = async (log: any) => {
+    try {
+      await api.post(`/routing/export-logs/${log.id}/audit_download/`)
+      refetchLogs()
+    } catch (err) {
+      console.error("Failed to audit download:", err)
+    }
+
     if (!log.csv_backup) {
       alert('No CSV content available for this log.')
       return
@@ -387,6 +395,7 @@ export default function FulfillmentPage() {
                   <th>Order Count</th>
                   <th>Suborder Count</th>
                   <th>Trigger</th>
+                  <th>Triggered By</th>
                   <th>Delivery Status</th>
                   <th>Re-export Status</th>
                   <th>Action</th>
@@ -412,7 +421,14 @@ export default function FulfillmentPage() {
                       <td>{log.order_count}</td>
                       <td>{log.suborder_count}</td>
                       <td>
-                        <span className={`badge ${log.trigger_type === 'user' ? 'badge-blue' : 'badge-muted'}`}>{log.trigger_type}</span>
+                        <span className={`badge ${log.trigger_type?.toUpperCase() === 'USER' ? 'badge-blue' : 'badge-muted'}`}>{log.trigger_type}</span>
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {log.trigger_type?.toUpperCase() === 'USER' ? (
+                          <span style={{ fontWeight: 500 }}>{log.triggered_by_user_name_snapshot || 'User'}</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>{log.system_process_name || 'System Process'}</span>
+                        )}
                       </td>
                       <td>
                         <span className={`badge ${
@@ -452,12 +468,18 @@ export default function FulfillmentPage() {
                           >
                             Download CSV
                           </button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setSelectedLogForAuditHistory(log)}
+                          >
+                            Audit Trail
+                          </button>
                         </div>
                       </td>
                     </tr>
                     {expandedLogIds.includes(log.id) && (
                       <tr key={`history-${log.id}`}>
-                        <td colSpan={11} style={{ padding: '16px', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                        <td colSpan={12} style={{ padding: '16px', backgroundColor: 'rgba(255,255,255,0.02)' }}>
                           <div style={{ padding: '16px', borderLeft: '3px solid var(--accent-color, #7047eb)', background: 'rgba(30, 30, 45, 0.6)', borderRadius: '4px' }}>
                             <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
                               <span>Export and Re-export Delivery History</span>
@@ -943,6 +965,219 @@ export default function FulfillmentPage() {
                 onClick={() => handleReexport(selectedLogForReexport.id, reexportReason, reexportExplanation)}
               >
                 {reexportingId === selectedLogForReexport.id ? 'Sending...' : 'Confirm Re-export'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detailed Audit History Modal */}
+      {selectedLogForAuditHistory && (
+        <div className="modal-overlay" onClick={() => setSelectedLogForAuditHistory(null)}>
+          <div className="modal-container" style={{ width: 850, maxWidth: '95%' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={18} style={{ color: 'var(--accent)' }} />
+                <span>Fulfillment Audit Trail & History</span>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSelectedLogForAuditHistory(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              
+              {/* Batch Metadata Header Card */}
+              <div style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                padding: '16px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '16px',
+                fontSize: '13px'
+              }}>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>Batch ID / Audit Reference</span>
+                  <span className="mono" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{selectedLogForAuditHistory.audit_reference}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>Filename</span>
+                  <span className="mono" style={{ fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{selectedLogForAuditHistory.filename}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>Vendor / Buyer</span>
+                  <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{selectedLogForAuditHistory.vendor_name || 'Vendor'} &rarr; {selectedLogForAuditHistory.buyer_name || 'Buyer'}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>Total Records</span>
+                  <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{selectedLogForAuditHistory.order_count} Orders / {selectedLogForAuditHistory.suborder_count} Suborders</span>
+                </div>
+              </div>
+
+              {/* Timeline Container */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'relative', paddingLeft: '24px', borderLeft: '2px solid var(--border)' }}>
+                
+                {/* Node 1: Original Export */}
+                <div style={{ position: 'relative', marginBottom: '8px' }}>
+                  {/* Timeline Dot */}
+                  <div style={{
+                    position: 'absolute',
+                    left: '-31px',
+                    top: '2px',
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    backgroundColor: selectedLogForAuditHistory.email_send_result === 'success' ? 'var(--green)' : 'var(--amber)',
+                    border: '3px solid var(--bg-surface)'
+                  }} />
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)' }}>Original Export (Initial Dispatch)</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{new Date(selectedLogForAuditHistory.sent_at).toLocaleString()}</span>
+                  </div>
+                  
+                  <div style={{ background: 'rgba(255, 255, 255, 0.01)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px', fontSize: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>TRIGGER TYPE</span>
+                      <span className="badge badge-muted" style={{ marginTop: '2px' }}>{selectedLogForAuditHistory.trigger_type}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>INITIATED BY</span>
+                      {selectedLogForAuditHistory.trigger_type?.toUpperCase() === 'USER' ? (
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{selectedLogForAuditHistory.triggered_by_user_name_snapshot || 'User'}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Role: {selectedLogForAuditHistory.triggered_by_role_snapshot || 'N/A'}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Company: {selectedLogForAuditHistory.triggered_by_company_name_snapshot || 'N/A'}</div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{selectedLogForAuditHistory.system_process_name || 'System Auto-digest'}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Process ID: {selectedLogForAuditHistory.system_process_id}</div>
+                          {selectedLogForAuditHistory.system_schedule_desc && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Schedule: {selectedLogForAuditHistory.system_schedule_desc}</div>}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>DESTINATION & METHOD</span>
+                      <div style={{ wordBreak: 'break-all' }}>{selectedLogForAuditHistory.recipients?.join(', ') || 'Browser Download'}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Method: {selectedLogForAuditHistory.sending_method}</div>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>DELIVERY OUTCOME</span>
+                      <span className={`badge ${
+                        selectedLogForAuditHistory.email_send_result === 'success' ? 'badge-green' :
+                        selectedLogForAuditHistory.email_send_result === 'no_recipients_configured' ? 'badge-blue' :
+                        selectedLogForAuditHistory.email_send_result === 'failed' ? 'badge-red' : 'badge-muted'
+                      }`} style={{ marginTop: '2px' }}>
+                        {selectedLogForAuditHistory.email_send_result || 'Pending'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Audit chain / Re-export & Download history */}
+                {selectedLogForAuditHistory.reexport_attempts && selectedLogForAuditHistory.reexport_attempts.length > 0 ? (
+                  [...selectedLogForAuditHistory.reexport_attempts]
+                    .sort((a, b) => new Date(a.requested_at).getTime() - new Date(b.requested_at).getTime())
+                    .map((attempt: any) => {
+                      const isDownload = attempt.action_type === 'DOWNLOAD';
+                      return (
+                        <div key={attempt.id} style={{ position: 'relative', marginBottom: '8px' }}>
+                          {/* Timeline Dot */}
+                          <div style={{
+                            position: 'absolute',
+                            left: '-31px',
+                            top: '2px',
+                            width: '12px',
+                            height: '12px',
+                            borderRadius: '50%',
+                            backgroundColor: isDownload ? 'var(--purple)' : (attempt.delivery_status === 'SENT' || attempt.delivery_status === 'succeeded' ? 'var(--green)' : 'var(--red)'),
+                            border: '3px solid var(--bg-surface)'
+                          }} />
+                          
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <span style={{ fontWeight: 600, fontSize: '14px', color: isDownload ? 'var(--purple)' : 'var(--accent)' }}>
+                              {isDownload ? `Manual CSV Download (Attempt #${attempt.attempt_number})` : `Re-export Attempt #${attempt.attempt_number}`}
+                            </span>
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{new Date(attempt.requested_at || attempt.sent_at).toLocaleString()}</span>
+                          </div>
+
+                          <div style={{ background: 'rgba(255, 255, 255, 0.01)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px', fontSize: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>ACTION TYPE</span>
+                              <span className={`badge ${isDownload ? 'badge-purple' : 'badge-blue'}`} style={{ marginTop: '2px' }}>{attempt.action_type || 'REEXPORT'}</span>
+                              {attempt.parent_attempt && (
+                                <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                  Linked to Parent Attempt #{attempt.parent_attempt?.attempt_number || '1'}
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>INITIATED BY</span>
+                              {attempt.trigger_type?.toUpperCase() === 'USER' ? (
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{attempt.triggered_by_user_name_snapshot || 'User'}</div>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Role: {attempt.triggered_by_role_snapshot || 'N/A'}</div>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Company: {attempt.triggered_by_company_name_snapshot || 'N/A'}</div>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{attempt.system_process_name || 'System Automated Retry'}</div>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Process ID: {attempt.system_process_id}</div>
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>DESTINATION & DETAILS</span>
+                              <div style={{ wordBreak: 'break-all' }}>{attempt.delivery_destination_snapshot || 'Browser Download'}</div>
+                              {attempt.reason_code && (
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px', fontStyle: 'italic' }}>
+                                  Reason: "{attempt.reason_code}"
+                                </div>
+                              )}
+                              {attempt.reason_notes && (
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                  Note: "{attempt.reason_notes}"
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>STATUS</span>
+                              <span className={`badge ${
+                                attempt.delivery_status === 'SENT' || attempt.delivery_status === 'succeeded' ? 'badge-green' :
+                                attempt.delivery_status === 'PROCESSING' || attempt.delivery_status === 'QUEUED' ? 'badge-blue' :
+                                attempt.delivery_status === 'failed' || attempt.delivery_status === 'DELIVERY_FAILED' ? 'badge-red' : 'badge-muted'
+                              }`} style={{ marginTop: '2px' }}>
+                                {attempt.delivery_status}
+                              </span>
+                              {attempt.file_checksum && (
+                                <div className="mono" style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '4px', textOverflow: 'ellipsis', overflow: 'hidden' }} title={attempt.file_checksum}>
+                                  SHA-256: {attempt.file_checksum.slice(0, 12)}...
+                                </div>
+                              )}
+                              {attempt.ip_address && (
+                                <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
+                                  IP: {attempt.ip_address}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                ) : (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontStyle: 'italic', padding: '4px 0' }}>
+                    No re-exports or downloads have been recorded for this batch.
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setSelectedLogForAuditHistory(null)}>
+                Close Audit Trail
               </button>
             </div>
           </div>

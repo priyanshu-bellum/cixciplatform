@@ -203,7 +203,7 @@ class TestManualVendorExport:
         assert log.order_count == 1
         assert log.suborder_count == 1
         assert log.is_reexport is False
-        assert log.trigger_type == "system"
+        assert log.trigger_type == "SYSTEM"
         assert "CIXCI_VENDOR_ORDERS_" in log.filename
         assert "MAN-SKU-123" in log.csv_backup
 
@@ -282,7 +282,7 @@ class TestManualVendorExport:
 
         # Verify a log entry was created
         log = VendorOrderExportLog.objects.get(vendor_company_reference=vendor_company.id)
-        assert log.trigger_type == "user"
+        assert log.trigger_type == "USER"
         assert log.is_reexport is False
         assert "MAN-SKU-123" in log.csv_backup
 
@@ -537,11 +537,12 @@ class TestManualVendorExport:
             "suborder_ids": [str(suborder.id)],
             "confirm": True
         }, format="json")
+        print("RESPONSE DATA:", response.data)
         assert response.status_code == 200
 
         # Verify a log entry was created even with zero recipients
         log = VendorOrderExportLog.objects.get(vendor_company_reference=vendor_company.id)
-        assert log.trigger_type == "user"
+        assert log.trigger_type == "USER"
         assert log.is_reexport is False
         assert log.email_send_result == "no_recipients_configured"
         assert log.recipients == []
@@ -557,5 +558,116 @@ class TestManualVendorExport:
         # Verify FulfillmentHandoff exists
         handoff = FulfillmentHandoff.objects.get(routed_suborder_reference=suborder.id)
         assert handoff.status == "shipment_pending"
+
+    def test_audit_compliance_framework(self, admin_client, buyer_company, buyer_user, vendor_company, product):
+        from apps.routing.models import VendorOrderExportLog, VendorOrderReexportAttempt
+        from django.core.exceptions import ValidationError
+
+        # Set up a base log to work with
+        vendor_company.external_id = json.dumps({
+            "integration_mode": "manual",
+            "daily_email_time": "08:00"
+        })
+        vendor_company.primary_contact_email = "vendor@test.com"
+        vendor_company.save()
+
+        # Create active vendor user so digest email recipient is resolved to a User
+        from apps.tenant.models import CompanyEntity, User as TenantUser
+        vendor_entity = CompanyEntity.objects.create(company=vendor_company, name="Vendor HQ")
+        tu = TenantUser.objects.create_user(
+            email="vendor@test.com",
+            entity=vendor_entity,
+            password="vendorpass123",
+        )
+
+        po = PurchaseOrder.objects.create(
+            company_scope_reference=buyer_company.id,
+            buyer_reference=buyer_user.id,
+            vendor_company_reference=vendor_company.id,
+            status=POStatus.APPROVED,
+            po_number="PO-AUDIT-TEST",
+        )
+        PurchaseOrderLine.objects.create(
+            purchase_order=po,
+            product_reference=product.id,
+            quantity=5,
+            unit_price_snapshot=10.0,
+            line_total=50.0,
+        )
+        orchestrate_po_finalization(po)
+        run_manual_vendor_exports(current_time="08:00")
+
+        log = VendorOrderExportLog.objects.get(vendor_company_reference=vendor_company.id)
+
+        # 1. Test ValidationError for invalid trigger type
+        invalid_log = VendorOrderExportLog(
+            vendor_company_reference=vendor_company.id,
+            buyer_company_reference=buyer_company.id,
+            window=log.window,
+            filename="test.csv",
+            trigger_type="INVALID",
+            csv_backup="csv"
+        )
+        with pytest.raises(ValidationError):
+            invalid_log.save()
+
+        # 2. Test ValidationError for trigger_type USER with system fields
+        invalid_user_log = VendorOrderExportLog(
+            vendor_company_reference=vendor_company.id,
+            buyer_company_reference=buyer_company.id,
+            window=log.window,
+            filename="test.csv",
+            trigger_type="USER",
+            triggered_by=tu,
+            triggered_by_user_name_snapshot="Vendor User",
+            triggered_by_role_snapshot="Vendor Representative",
+            system_process_name="System Process", # This field must be blank!
+            csv_backup="csv"
+        )
+        with pytest.raises(ValidationError):
+            invalid_user_log.save()
+
+        # 3. Test ValidationError for trigger_type SYSTEM with user fields
+        invalid_system_log = VendorOrderExportLog(
+            vendor_company_reference=vendor_company.id,
+            buyer_company_reference=buyer_company.id,
+            window=log.window,
+            filename="test.csv",
+            trigger_type="SYSTEM",
+            system_process_name="System Process",
+            system_process_id="sys_proc",
+            triggered_by=tu, # This field must be blank!
+            csv_backup="csv"
+        )
+        with pytest.raises(ValidationError):
+            invalid_system_log.save()
+
+        # 4. Test Immutability of VendorOrderExportLog
+        log_to_mutate = VendorOrderExportLog.objects.get(id=log.id)
+        log_to_mutate.filename = "mutated.csv"
+        with pytest.raises(ValueError, match="filename is immutable"):
+            log_to_mutate.save()
+
+        # 5. Test audit_download API action
+        response = admin_client.post(
+            f"/api/v1/routing/export-logs/{log.id}/audit_download/",
+            format="json"
+        )
+        assert response.status_code == 201
+        
+        # Verify a DOWNLOAD attempt record was created
+        log.refresh_from_db()
+        assert log.reexport_count == 1
+        attempt = log.reexport_attempts.first()
+        assert attempt is not None
+        assert attempt.action_type == "DOWNLOAD"
+        assert attempt.trigger_type == "USER"
+        assert attempt.delivery_method == "download"
+
+        # 6. Test Immutability of VendorOrderReexportAttempt
+        attempt_to_mutate = VendorOrderReexportAttempt.objects.get(id=attempt.id)
+        attempt_to_mutate.action_type = "REEXPORT"
+        with pytest.raises(ValueError, match="action_type is immutable"):
+            attempt_to_mutate.save()
 
 

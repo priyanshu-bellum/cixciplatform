@@ -97,21 +97,94 @@ def recalculate_buyer_compatibility_projection(
             logger.info("Projection Workflow 11: empty portfolio for buyer=%s", buyer_reference)
             return {"status": "empty_portfolio", "compatible_count": 0}
 
-        # Find compatible products via assertions
-        import pytz
-        from django.db.models import Q
-        est = pytz.timezone("US/Eastern")
-        today_est = timezone.now().astimezone(est).date()
+        # Resolve company eligibility
+        from apps.tenant.models import Company, CompanyStatus, CompanyType
+        try:
+            company = Company.objects.get(id=company_scope_reference)
+        except Company.DoesNotExist:
+            company = None
+
+        # Build eligible products base queryset (identical to ProductViewSet.get_queryset() for buyers)
+        product_qs = Product.objects.filter(
+            status=ProductStatus.ACTIVE
+        ).exclude(
+            compatibility_status="incomplete"
+        ).filter(
+            Q(release_date__isnull=True) | Q(release_date__lte=today_est)
+        )
+
+        if company:
+            buyer_regions = company.approved_regions or []
+            if not isinstance(buyer_regions, list):
+                buyer_regions = [buyer_regions]
+
+            region_filter = Q()
+            for r in buyer_regions:
+                region_filter |= Q(approved_regions__icontains=f'"{r}"')
+
+            # Find existing vendor companies that are NOT active OR NOT in the buyer's approved regions
+            invisible_vendor_ids = Company.objects.filter(
+                company_type=CompanyType.VENDOR
+            ).exclude(
+                Q(status=CompanyStatus.ACTIVE) & region_filter
+            ).values_list("id", flat=True)
+
+            product_qs = product_qs.exclude(vendor_company_reference__in=invisible_vendor_ids)
+
+            # MAP Pricing buyer visibility exclusions
+            from apps.pricing.models import MapException
+            from decimal import Decimal
+
+            enforced_vendor_ids = Company.objects.filter(
+                company_type=CompanyType.VENDOR,
+                map_pricing_enforced=True
+            ).values_list("id", flat=True)
+
+            map_products = Product.objects.filter(
+                Q(vendor_company_reference__in=enforced_vendor_ids) | Q(map_price__isnull=False)
+            ).filter(status=ProductStatus.ACTIVE)
+
+            approved_exceptions = MapException.objects.filter(
+                status="approved",
+                start_date__lte=today_est,
+                end_date__gte=today_est
+            ).filter(
+                Q(buyer_company_reference=company.id) | Q(buyer_company_reference__isnull=True)
+            )
+            except_skus = set(approved_exceptions.values_list("sku", flat=True))
+
+            excluded_product_ids = []
+            for p in map_products:
+                if p.vendor_company_reference in enforced_vendor_ids and p.map_price is None:
+                    excluded_product_ids.append(p.id)
+                    continue
+
+                if p.map_price is not None:
+                    wholesale = Decimal(str(p.vendor_wholesale_price_amount or "0.00"))
+                    msrp_val = Decimal(str(p.msrp or "0.00"))
+                    buyer_wholesale_price = wholesale + msrp_val * Decimal("0.14")
+                    if buyer_wholesale_price >= p.map_price and p.sku not in except_skus:
+                        excluded_product_ids.append(p.id)
+                        continue
+
+                    if p.sale_price is not None:
+                        buyer_exc = approved_exceptions.filter(sku=p.sku, vendor_company_reference=p.vendor_company_reference).order_by("approved_minimum_price").first()
+                        eff_map = buyer_exc.approved_minimum_price if buyer_exc else p.map_price
+                        if p.sale_price < eff_map:
+                            excluded_product_ids.append(p.id)
+                            continue
+
+            if excluded_product_ids:
+                product_qs = product_qs.exclude(id__in=excluded_product_ids)
+
+        eligible_product_ids = set(product_qs.values_list("id", flat=True))
 
         compatible_ids = list(
             ProductCompatibilityAssertion.objects.filter(
                 device_reference__in=device_ids,
                 is_compatible=True,
-                product__status=ProductStatus.ACTIVE,
-            ).exclude(
-                product__compatibility_status="incomplete"
-            ).filter(
-                Q(product__release_date__isnull=True) | Q(product__release_date__lte=today_est)
+                is_excluded=False,
+                product_id__in=eligible_product_ids
             ).values_list("product_id", flat=True).distinct()
         )
 
@@ -119,9 +192,8 @@ def recalculate_buyer_compatibility_projection(
             ProductCompatibilityAssertion.objects.filter(
                 device_reference__in=device_ids,
                 is_compatible=False,
-                product__status=ProductStatus.ACTIVE,
-            ).filter(
-                Q(product__release_date__isnull=True) | Q(product__release_date__lte=today_est)
+                is_excluded=False,
+                product_id__in=eligible_product_ids
             ).exclude(product_id__in=compatible_ids)
             .values_list("product_id", flat=True).distinct()
         )
