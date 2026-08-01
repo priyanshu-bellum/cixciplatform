@@ -2996,6 +2996,15 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
     @action(detail=False, methods=["post"])
     def create_job(self, request):
         """Create a new buyer product export job."""
+        # Export jobs are a buyer-scoped feature. CIXCI Admins and users without
+        # a company entity cannot own export jobs.
+        if not request.user.entity or not getattr(request.user.entity, 'company_id', None):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Export jobs require a buyer account linked to a company. "
+                "System admins cannot create personal export jobs."
+            )
+
         product_ids = request.data.get("product_ids", [])
         if product_ids:
             from apps.catalog.models import Product

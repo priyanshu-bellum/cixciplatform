@@ -2670,7 +2670,22 @@ export default function CatalogPage() {
       setTab('export_jobs')
       refreshJobs()
     } catch (err: any) {
-      setExportError(err.response?.data?.detail || 'Failed to create export job.')
+      const data = err.response?.data
+      if (!data) {
+        setExportError('Failed to create export job.')
+      } else if (typeof data === 'string') {
+        setExportError(data)
+      } else if (data.detail) {
+        setExportError(data.detail)
+      } else if (data.product_ids) {
+        // DRF ValidationError with field-level messages
+        const msgs = Array.isArray(data.product_ids) ? data.product_ids : [data.product_ids]
+        setExportError(msgs.join(' '))
+      } else {
+        // Fallback: flatten any DRF error object into a readable string
+        const msgs = Object.values(data).flat()
+        setExportError((msgs as string[]).join(' ') || 'Failed to create export job.')
+      }
     }
   }
 
