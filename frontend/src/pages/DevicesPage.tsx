@@ -226,7 +226,13 @@ export default function DevicesPage() {
 
   // Edit / Detail Modal state
   const [editingDevice, setEditingDevice] = useState<any>(null)
-  const [editTab, setEditTab] = useState<'details' | 'compatibility' | 'audit'>('details')
+  const [editTab, setEditTab] = useState<'details' | 'compatibility' | 'products' | 'audit'>('details')
+
+  // Compatible Products tab state
+  const [compProdSearch, setCompProdSearch] = useState('')
+  const [compProdVendor, setCompProdVendor] = useState('')
+  const [compProdCategory, setCompProdCategory] = useState('')
+  const [compProdStatus, setCompProdStatus] = useState('')
 
   // Remove confirmation state
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
@@ -253,6 +259,88 @@ export default function DevicesPage() {
     queryFn: () => api.get(`/devices/devices/${selectedDeviceIdForAudit}/audit_history/`).then(r => r.data),
     enabled: !!selectedDeviceIdForAudit,
   })
+
+  // Compatible Products Query
+  const { data: compProductsData, isLoading: isLoadingCompProducts } = useQuery({
+    queryKey: ['device-compatible-products', selectedDeviceIdForAudit],
+    queryFn: () => api.get('/catalog/products/', { params: { device_id: selectedDeviceIdForAudit, limit: 1000 } }).then(r => r.data),
+    enabled: !!selectedDeviceIdForAudit && editTab === 'products',
+  })
+
+  const compProducts = useMemo(() => {
+    const list = compProductsData?.results ?? compProductsData ?? []
+    return Array.isArray(list) ? list : []
+  }, [compProductsData])
+
+  const PROD_STATUS_BADGE: Record<string, string> = {
+    active: 'badge-green',
+    inactive: 'badge-muted',
+    archived: 'badge-amber',
+    draft: 'badge-muted',
+    pending_review: 'badge-blue',
+    eol: 'badge-red',
+    out_of_stock: 'badge-red'
+  }
+
+  const vendors = useMemo(() => {
+    const set = new Set<string>()
+    const list: { id: string, name: string }[] = []
+    compProducts.forEach((p: any) => {
+      if (p.vendor_name && !set.has(p.vendor_name)) {
+        set.add(p.vendor_name)
+        list.push({ id: p.vendor_company_reference || '', name: p.vendor_name })
+      }
+    })
+    return list.sort((a, b) => a.name.localeCompare(b.name))
+  }, [compProducts])
+
+  const stats = useMemo(() => {
+    let total = 0
+    let active = 0
+    let inactive = 0
+    let eol = 0
+    let outOfStock = 0
+    let other = 0
+
+    compProducts.forEach((p: any) => {
+      total++
+      const st = String(p.status).toLowerCase()
+      if (st === 'active') active++
+      else if (st === 'inactive') inactive++
+      else if (st === 'eol') eol++
+      else if (st === 'out_of_stock') outOfStock++
+      else other++
+    })
+
+    return { total, active, inactive, eol, outOfStock, other }
+  }, [compProducts])
+
+  const filteredCompProducts = useMemo(() => {
+    let list = compProducts
+    
+    if (compProdSearch.trim()) {
+      const q = compProdSearch.toLowerCase().trim()
+      list = list.filter((p: any) => 
+        (p.name && p.name.toLowerCase().includes(q)) ||
+        (p.sku && p.sku.toLowerCase().includes(q)) ||
+        (p.upc && p.upc.toLowerCase().includes(q))
+      )
+    }
+
+    if (compProdVendor) {
+      list = list.filter((p: any) => p.vendor_company_reference === compProdVendor)
+    }
+
+    if (compProdCategory) {
+      list = list.filter((p: any) => p.product_category === compProdCategory)
+    }
+
+    if (compProdStatus) {
+      list = list.filter((p: any) => p.status === compProdStatus)
+    }
+
+    return list
+  }, [compProducts, compProdSearch, compProdVendor, compProdCategory, compProdStatus])
 
   // Import state
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -479,6 +567,10 @@ export default function DevicesPage() {
     setEditWatchCase(d.compatible_watch_case_size || 'Not Compatible')
     setEditError('')
     setSelectedDeviceIdForAudit(d.id)
+    setCompProdSearch('')
+    setCompProdVendor('')
+    setCompProdCategory('')
+    setCompProdStatus('')
   }
 
   const selectedEditTypeObj = deviceTypes.find((t: any) => t.id === editDeviceType)
@@ -1975,6 +2067,9 @@ export default function DevicesPage() {
               <div className={`tab ${editTab === 'compatibility' ? 'active' : ''}`} onClick={() => setEditTab('compatibility')}>
                 Device Compatibility
               </div>
+              <div className={`tab ${editTab === 'products' ? 'active' : ''}`} onClick={() => setEditTab('products')}>
+                Compatible Products
+              </div>
               <div className={`tab ${editTab === 'audit' ? 'active' : ''}`} onClick={() => setEditTab('audit')}>
                 Audit History
               </div>
@@ -2388,6 +2483,175 @@ export default function DevicesPage() {
                       <div className="form-grid-full" style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
                         No compatibility data available for this device type.
                       </div>
+                    )}
+                  </div>
+                </div>
+                <div className="modal-footer" style={{ padding: '16px 0 0 0', marginTop: 16 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setEditingDevice(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : editTab === 'products' ? (
+              <div className="modal-body">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* Header */}
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Compatible Products — {editingDevice.manufacturer_name || editingDevice.manufacturer} {editingDevice.name}
+                  </div>
+
+                  {/* Summary Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                    <div style={{ padding: 12, background: 'var(--bg-elevated)', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>{stats.total}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Total Compatible</div>
+                    </div>
+                    <div style={{ padding: 12, background: 'var(--bg-elevated)', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>{stats.active}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Active</div>
+                    </div>
+                    <div style={{ padding: 12, background: 'var(--bg-elevated)', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-muted)' }}>{stats.inactive}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Inactive</div>
+                    </div>
+                    <div style={{ padding: 12, background: 'var(--bg-elevated)', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--red)' }}>{stats.eol + stats.outOfStock + stats.other}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>EOL / OOS / Other</div>
+                    </div>
+                  </div>
+
+                  {/* Search and Filters */}
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 200px', position: 'relative' }}>
+                      <Search size={14} style={{ position: 'absolute', left: 10, top: 12, color: 'var(--text-muted)' }} />
+                      <input 
+                        type="text" 
+                        placeholder="Search name, SKU, UPC..." 
+                        className="input input-sm" 
+                        style={{ paddingLeft: 30, height: 38 }}
+                        value={compProdSearch}
+                        onChange={e => setCompProdSearch(e.target.value)}
+                      />
+                    </div>
+                    <select 
+                      className="input input-sm" 
+                      style={{ flex: '1 1 120px', height: 38 }}
+                      value={compProdVendor}
+                      onChange={e => setCompProdVendor(e.target.value)}
+                    >
+                      <option value="">All Vendors</option>
+                      {vendors.map(v => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </select>
+                    <select 
+                      className="input input-sm" 
+                      style={{ flex: '1 1 120px', height: 38 }}
+                      value={compProdCategory}
+                      onChange={e => setCompProdCategory(e.target.value)}
+                    >
+                      <option value="">All Categories</option>
+                      {categories.map((c: string) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <select 
+                      className="input input-sm" 
+                      style={{ flex: '1 1 120px', height: 38 }}
+                      value={compProdStatus}
+                      onChange={e => setCompProdStatus(e.target.value)}
+                    >
+                      <option value="">All Statuses</option>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="draft">Draft</option>
+                      <option value="pending_review">Pending Review</option>
+                      <option value="archived">Archived</option>
+                      <option value="eol">EOL</option>
+                      <option value="out_of_stock">Out of Stock</option>
+                    </select>
+                    {(compProdSearch || compProdVendor || compProdCategory || compProdStatus) && (
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        style={{ height: 38 }}
+                        onClick={() => {
+                          setCompProdSearch('')
+                          setCompProdVendor('')
+                          setCompProdCategory('')
+                          setCompProdStatus('')
+                        }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Table */}
+                  <div style={{ maxHeight: 350, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    {isLoadingCompProducts ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Loading compatible products...</div>
+                    ) : filteredCompProducts.length === 0 ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>No compatible products found.</div>
+                    ) : (
+                      <table style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
+                        <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 1, borderBottom: '1px solid var(--border)' }}>
+                          <tr>
+                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Vendor</th>
+                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Image</th>
+                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Product Name</th>
+                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>SKU</th>
+                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>UPC</th>
+                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Category</th>
+                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Status</th>
+                            <th style={{ padding: 8, textAlign: 'center', fontSize: 12 }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredCompProducts.map((p: any) => (
+                            <tr key={p.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                              <td style={{ padding: 8, fontSize: 12 }}>{p.vendor_name || '—'}</td>
+                              <td style={{ padding: 8 }}>
+                                {p.primary_image_url ? (
+                                  <img 
+                                    src={p.primary_image_url} 
+                                    alt={p.name} 
+                                    style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 4, background: '#fff', border: '1px solid var(--border)' }} 
+                                  />
+                                ) : (
+                                  <div style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
+                                    <Smartphone size={12} style={{ color: 'var(--text-muted)' }} />
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ padding: 8, fontSize: 12, fontWeight: 500 }}>{p.name}</td>
+                              <td className="mono" style={{ padding: 8, fontSize: 11 }}>{p.sku}</td>
+                              <td className="mono" style={{ padding: 8, fontSize: 11 }}>{p.upc || '—'}</td>
+                              <td style={{ padding: 8, fontSize: 11 }}>{p.product_category || '—'}</td>
+                              <td style={{ padding: 8 }}>
+                                <span className={`badge ${PROD_STATUS_BADGE[p.status] || 'badge-muted'}`} style={{ textTransform: 'capitalize', fontSize: 10, padding: '2px 6px' }}>
+                                  {p.status ? p.status.replace('_', ' ') : '—'}
+                                </span>
+                              </td>
+                              <td style={{ padding: 8, textAlign: 'center' }}>
+                                <button 
+                                  className="btn btn-ghost btn-sm" 
+                                  style={{ padding: '2px 8px', fontSize: 11, height: 'auto', minHeight: 0 }}
+                                  onClick={() => {
+                                    const url = `/catalog?tab=all-products&all_search=${encodeURIComponent(p.sku || p.name)}`;
+                                    window.open(url, '_blank');
+                                  }}
+                                >
+                                  View Product
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     )}
                   </div>
                 </div>

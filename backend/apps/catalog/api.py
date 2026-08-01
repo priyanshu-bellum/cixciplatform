@@ -512,10 +512,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "audit_history": "catalog.product.read",
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["product_type", "status", "selling_status", "vendor_company_reference"]
+    filterset_fields = ["product_type", "status", "selling_status", "vendor_company_reference", "product_category"]
     search_fields = [
         "name",
         "sku",
+        "upc",
         "brand",
         "product_category",
         "vendor_wholesale_price_amount",
