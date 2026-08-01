@@ -2671,21 +2671,25 @@ export default function CatalogPage() {
       refreshJobs()
     } catch (err: any) {
       const data = err.response?.data
-      if (!data) {
-        setExportError('Failed to create export job.')
-      } else if (typeof data === 'string') {
-        setExportError(data)
-      } else if (data.detail) {
-        setExportError(data.detail)
-      } else if (data.product_ids) {
-        // DRF ValidationError with field-level messages
-        const msgs = Array.isArray(data.product_ids) ? data.product_ids : [data.product_ids]
-        setExportError(msgs.join(' '))
-      } else {
-        // Fallback: flatten any DRF error object into a readable string
-        const msgs = Object.values(data).flat()
-        setExportError((msgs as string[]).join(' ') || 'Failed to create export job.')
+      let msg = 'Failed to create export job.'
+      if (data) {
+        // CIXCI custom exception handler wraps all errors as { error, status_code, detail }
+        const detail = data.detail ?? data
+        if (typeof detail === 'string') {
+          msg = detail
+        } else if (Array.isArray(detail)) {
+          msg = detail.join(' ')
+        } else if (typeof detail === 'object') {
+          // Field-level errors: { product_ids: ["msg1", "msg2"] } or nested
+          const msgs: string[] = []
+          for (const val of Object.values(detail)) {
+            if (Array.isArray(val)) msgs.push(...val.map(String))
+            else msgs.push(String(val))
+          }
+          msg = msgs.join(' ')
+        }
       }
+      setExportError(msg)
     }
   }
 

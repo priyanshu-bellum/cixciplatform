@@ -3131,9 +3131,17 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
             portfolio_snapshot_reference=portfolio_snapshot_ref
         )
 
-        # Dispatch Celery task for export
+        # Dispatch Celery task for export.
+        # With CELERY_TASK_ALWAYS_EAGER=True the task runs synchronously here.
+        # Wrap in try/except so a task-level error does not kill the HTTP response —
+        # the job record already exists and will show its status in the UI.
         from apps.catalog.tasks import process_buyer_export_job
-        process_buyer_export_job.delay(job.id)
+        try:
+            process_buyer_export_job.delay(job.id)
+        except Exception as task_exc:
+            import logging
+            logger = logging.getLogger("apps.catalog")
+            logger.error("Export task failed inline for job %s: %s", job.id, task_exc)
 
         return Response(BuyerExportJobSerializer(job).data, status=status.HTTP_201_CREATED)
 
