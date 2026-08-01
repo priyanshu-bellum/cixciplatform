@@ -1,0 +1,2 @@
+id,sku,name,brand,product_category,product_type,status,vendor_wholesale_price_amount,vendor_wholesale_price_currency,msrp,map_price,sale_price,upc,launch_date,release_date,eol_date,color,short_description
+a832c3e2-2205-4a4c-8ec3-d1f84d56e5d8,ACC-101,Accessory One,TestBrand,,accessory,active,,USD,,,,,2026-06-18,,,,Premium TestBrand accessory designed for optimal compatibility.

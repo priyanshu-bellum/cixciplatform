@@ -170,15 +170,21 @@ class Device(models.Model):
         return f"{self.manufacturer.name} {self.name}"
 
     def save(self, *args, **kwargs):
+        is_new = not self.pk or not Device.objects.filter(pk=self.pk).exists()
         if self.launch_date:
             from django.utils import timezone
-            if self.launch_date > timezone.localdate():
+            today = timezone.localdate()
+            if self.launch_date > today:
                 self.lifecycle_status = "inactive"
-            elif self.lifecycle_status == "inactive":
-                self.lifecycle_status = "available"
+            elif not is_new and self.lifecycle_status == "inactive":
+                try:
+                    old_self = Device.objects.get(pk=self.pk)
+                    if old_self.launch_date and old_self.launch_date > today:
+                        self.lifecycle_status = "available"
+                except Device.DoesNotExist:
+                    pass
 
         actor_id = kwargs.pop("actor_id", None)
-        is_new = not self.pk or not Device.objects.filter(pk=self.pk).exists()
         old_status = None
         old_launch = None
         old_compat_fields = {}

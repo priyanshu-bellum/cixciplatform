@@ -2500,8 +2500,13 @@ export default function DevicesPage() {
               <div className="modal-body">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   {/* Header */}
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Compatible Products — {editingDevice.manufacturer_name || editingDevice.manufacturer} {editingDevice.name}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Compatible Products — {editingDevice.manufacturer_name || editingDevice.manufacturer} {editingDevice.name}
+                    </div>
+                    <span className={`badge ${LC_COLORS[editingDevice.lifecycle_status] || 'badge-muted'}`} style={{ textTransform: 'capitalize' }}>
+                      Device Status: {editingDevice.lifecycle_status}
+                    </span>
                   </div>
 
                   {/* Summary Cards */}
@@ -2594,8 +2599,14 @@ export default function DevicesPage() {
                   <div style={{ maxHeight: 350, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
                     {isLoadingCompProducts ? (
                       <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Loading compatible products...</div>
+                    ) : compProducts.length === 0 ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                        No compatible products are currently mapped to this device.
+                      </div>
                     ) : filteredCompProducts.length === 0 ? (
-                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>No compatible products found.</div>
+                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                        No compatible products found matching your filters.
+                      </div>
                     ) : (
                       <table style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
                         <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 1, borderBottom: '1px solid var(--border)' }}>

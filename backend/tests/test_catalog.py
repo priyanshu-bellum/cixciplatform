@@ -1255,3 +1255,129 @@ class TestGovernanceAndCompatibilityImport:
         assert prod.compatible_charging_interface == "Type-C"
         assert prod.wireless_charging_compatibility == "Not Compatible"
 
+
+@pytest.mark.django_db
+class TestDeviceLifecycleCompatibility:
+    def test_device_lifecycle_status_compatibility_visibility(self, buyer_client, buyer_user):
+        from apps.devices.models import Device, DeviceType, Manufacturer
+        from apps.catalog.models import Product, ProductCompatibilityAssertion, DynamicDropdownConfig
+        from apps.catalog.compatibility_engine import run_compatibility_automapping
+        from rest_framework.test import APIClient
+
+        # Setup active device type and manufacturer (unique codes to avoid conflicts)
+        dt, _ = DeviceType.objects.get_or_create(name="LC_Smartphone", code="lc_smartphone", defaults={"status": "active"})
+        if dt.status != "active":
+            dt.status = "active"
+            dt.save()
+        mfg, _ = Manufacturer.objects.get_or_create(name="LC_TestMfr")
+        
+        # Setup dropdown config with mapping rules
+        DynamicDropdownConfig.objects.get_or_create(
+            field_name="product_category",
+            value="Chargers & Cables",
+            defaults={
+                "status": "active",
+                "compatibility_mode": "implicit",
+                "eligible_device_types": ["lc_smartphone"],
+                "match_logic": "OR",
+                "accessory_fields": ["compatible_charging_interface"],
+                "compatibility_rules": {
+                    "compatible_charging_interface": {"mode": "required"}
+                }
+            }
+        )
+
+        # Create device that is initially available
+        device = Device.objects.create(
+            name="iPhone 16",
+            device_type=dt,
+            manufacturer=mfg,
+            lifecycle_status="available",
+            compatible_charging_interface="Type-C"
+        )
+
+        # Create compatible product
+        import uuid as _uuid
+        from django.utils import timezone
+        vendor_ref = _uuid.uuid4()
+        product = Product.objects.create(
+            name="Fast Charger",
+            product_category="Chargers & Cables",
+            sku="CHG-LC-100",
+            upc="111222333999",
+            compatible_charging_interface="Type-C",
+            selling_status="for_sale",
+            launch_date=timezone.localdate(),
+            vendor_company_reference=vendor_ref,
+            company_scope_reference=buyer_user.entity.company_id
+        )
+
+        # Trigger auto-mapping
+        run_compatibility_automapping(product)
+
+        # Verify mapping exists
+        assert ProductCompatibilityAssertion.objects.filter(
+            product=product,
+            device_reference=device.id,
+            is_compatible=True
+        ).exists()
+
+        # Promote to admin, then build client
+        buyer_user.is_cixci_admin = True
+        buyer_user.save()
+        admin_client = APIClient()
+        admin_client.force_authenticate(user=buyer_user)
+
+        resp = admin_client.get(f"/api/v1/catalog/products/?device_id={device.id}")
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 1
+        assert resp.data["results"][0]["id"] == str(product.id)
+
+        # 1. Change status to inactive
+        device.lifecycle_status = "inactive"
+        device.save()
+
+        # Verify mapping was NOT deleted or altered
+        assert ProductCompatibilityAssertion.objects.filter(
+            product=product,
+            device_reference=device.id,
+            is_compatible=True
+        ).exists()
+
+        # Check API endpoint still returns it
+        resp = admin_client.get(f"/api/v1/catalog/products/?device_id={device.id}")
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 1
+
+        # 2. Change status to archived
+        device.lifecycle_status = "archived"
+        device.save()
+
+        # Verify mapping was NOT deleted or altered
+        assert ProductCompatibilityAssertion.objects.filter(
+            product=product,
+            device_reference=device.id,
+            is_compatible=True
+        ).exists()
+
+        # Check API endpoint still returns it
+        resp = admin_client.get(f"/api/v1/catalog/products/?device_id={device.id}")
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 1
+
+        # 3. Change status to retired
+        device.lifecycle_status = "retired"
+        device.save()
+
+        # Verify mapping was NOT deleted or altered
+        assert ProductCompatibilityAssertion.objects.filter(
+            product=product,
+            device_reference=device.id,
+            is_compatible=True
+        ).exists()
+
+        # Check API endpoint still returns it
+        resp = admin_client.get(f"/api/v1/catalog/products/?device_id={device.id}")
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 1
+

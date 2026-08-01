@@ -1,0 +1,3 @@
+id,sku,name,brand,product_category,product_type,status,vendor_wholesale_price_amount,vendor_wholesale_price_currency,msrp,map_price,sale_price,upc,launch_date,release_date,eol_date,color,short_description
+ae90653f-673a-47e5-ac21-a1a908b6942c,EXP-SKU-1,Product 1,TestBrand,,accessory,active,,USD,,,,,2026-06-18,,,,Premium TestBrand accessory designed for optimal compatibility.
+c30cb32c-633d-46a7-be0c-5f75828e04a6,EXP-SKU-2,Product 2,TestBrand,,accessory,active,,USD,,,,,2026-06-18,,,,Premium TestBrand accessory designed for optimal compatibility.

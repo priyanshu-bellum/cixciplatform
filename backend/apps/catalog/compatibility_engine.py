@@ -238,15 +238,10 @@ def run_compatibility_automapping(product, actor_id=None, change_source="Auto-Ma
             Product.objects.filter(id=product.id).update(compatibility_status=status)
         return
 
-    # Find matching devices - only active device types, non-retired and launch date <= now
-    from django.utils import timezone
-    now_date = timezone.now().date()
+    # Find matching devices - only active device types
     all_devices = Device.objects.filter(
         device_type__status='active'
-    ).exclude(
-        lifecycle_status='retired'
     )
-    all_devices = [d for d in all_devices if not (d.launch_date and d.launch_date > now_date)]
 
     matched_device_ids = set()
     device_map = {}
@@ -346,12 +341,11 @@ def run_device_remapping(device, actor_id=None, change_source="System Remap"):
     auto_mapped_categories = [cfg.value for cfg in active_configs]
     products = Product.objects.filter(product_category__in=auto_mapped_categories)
     
-    is_active_device = (device.device_type and device.device_type.status == 'active' and device.lifecycle_status != 'retired')
-    is_future = device.launch_date and device.launch_date > timezone.now().date()
+    is_active_device = (device.device_type and device.device_type.status == 'active')
     
     with transaction.atomic():
         for product in products:
-            is_compat = is_active_device and not is_future and check_compatibility(product, device)
+            is_compat = is_active_device and check_compatibility(product, device)
             # Find existing assertion for this product and device
             assertion = ProductCompatibilityAssertion.objects.filter(product=product, device_reference=device.id).first()
             
