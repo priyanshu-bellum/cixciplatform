@@ -2652,8 +2652,7 @@ export default function DevicesPage() {
                                   className="btn btn-ghost btn-sm" 
                                   style={{ padding: '2px 8px', fontSize: 11, height: 'auto', minHeight: 0 }}
                                   onClick={() => {
-                                    const url = `/catalog?tab=all-products&all_search=${encodeURIComponent(p.sku || p.name)}`;
-                                    window.open(url, '_blank');
+                                    navigate(`/catalog?tab=all-products&all_search=${encodeURIComponent(p.sku || p.name)}`);
                                   }}
                                 >
                                   View Product

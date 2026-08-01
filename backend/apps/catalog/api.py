@@ -24,6 +24,15 @@ from .services import recalculate_buyer_compatibility_projection
 class ProductSerializerBase(serializers.ModelSerializer):
     vendor_map_pricing_enforced = serializers.SerializerMethodField()
     exported_date = serializers.SerializerMethodField()
+    vendor_name = serializers.SerializerMethodField()
+
+    def get_vendor_name(self, obj):
+        try:
+            from apps.tenant.models import Company
+            vendor = Company.objects.filter(id=obj.vendor_company_reference).first()
+            return vendor.name if vendor else None
+        except Exception:
+            return None
 
     def get_vendor_map_pricing_enforced(self, obj):
         try:
@@ -152,7 +161,7 @@ class ProductListSerializer(ProductSerializerBase):
         fields = [
             "id", "name", "sku", "brand", "product_type", "product_category",
             "status", "selling_status", "primary_image_reference",
-            "vendor_company_reference", "created_at",
+            "vendor_company_reference", "vendor_name", "created_at",
             "description", "vendor_wholesale_price_amount",
             "vendor_wholesale_price_currency", "primary_image_url",
             "buyer_wholesale_price", "is_tied_to_activity",

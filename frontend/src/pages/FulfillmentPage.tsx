@@ -31,18 +31,18 @@ export default function FulfillmentPage() {
   const location = useLocation()
   const queryTab = new URLSearchParams(location.search).get('tab')
   const initialTab = (queryTab as any) || location.state?.tab || 'handoffs'
-  const [tab, setTab] = useState<'handoffs' | 'sla' | 'policies' | 'exportLogs' | 'returns' | 'returnLogs'>(
-    ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs'].includes(initialTab) ? (initialTab as any) : 'handoffs'
+  const [tab, setTab] = useState<'handoffs' | 'sla' | 'policies' | 'exportLogs' | 'returns' | 'returnLogs' | 'shippingLogs'>(
+    ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs', 'shippingLogs'].includes(initialTab) ? (initialTab as any) : 'handoffs'
   )
 
   useEffect(() => {
     const activeTab = new URLSearchParams(location.search).get('tab') || location.state?.tab
-    if (activeTab && ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs'].includes(activeTab)) {
+    if (activeTab && ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs', 'shippingLogs'].includes(activeTab)) {
       setTab(activeTab as any)
     }
   }, [location])
 
-  const { data: handoffData, isLoading: hLoading } = useQuery({
+  const { data: handoffData, isLoading: hLoading, refetch: refetchHandoffs } = useQuery({
     queryKey: ['fulfillment-handoffs'],
     queryFn: () => api.get('/fulfillment/handoffs/').then(r => r.data).catch(() => ({ results: [] })),
   })
@@ -77,12 +77,19 @@ export default function FulfillmentPage() {
     enabled: tab === 'returnLogs',
   })
 
+  const { data: shippingLogData, isLoading: slLoading, refetch: refetchShippingLogs } = useQuery({
+    queryKey: ['shipping-import-logs'],
+    queryFn: () => api.get('/fulfillment/shipping-import-logs/').then(r => r.data).catch(() => ({ results: [] })),
+    enabled: tab === 'shippingLogs',
+  })
+
   const handoffs = handoffData?.results ?? (Array.isArray(handoffData) ? handoffData : [])
   const slaEvals = slaData?.results ?? (Array.isArray(slaData) ? slaData : [])
   const policies = policyData?.results ?? (Array.isArray(policyData) ? policyData : [])
   const exportLogs = logData?.results ?? (Array.isArray(logData) ? logData : [])
   const returnRequests = returnsData?.results ?? (Array.isArray(returnsData) ? returnsData : [])
   const returnImportLogs = returnLogData?.results ?? (Array.isArray(returnLogData) ? returnLogData : [])
+  const shippingImportLogs = shippingLogData?.results ?? (Array.isArray(shippingLogData) ? shippingLogData : [])
 
   const [reexportingId, setReexportingId] = useState<string | null>(null)
   const [selectedLogForReexport, setSelectedLogForReexport] = useState<any | null>(null)
@@ -103,6 +110,13 @@ export default function FulfillmentPage() {
   const [importing, setImporting] = useState(false)
   const [previewData, setPreviewData] = useState<any>(null)
   const [importError, setImportError] = useState<string | null>(null)
+
+  // Shipping Import Modal States
+  const [showShippingModal, setShowShippingModal] = useState(false)
+  const [shippingFile, setShippingFile] = useState<File | null>(null)
+  const [shippingImporting, setShippingImporting] = useState(false)
+  const [shippingPreviewData, setShippingPreviewData] = useState<any>(null)
+  const [shippingImportError, setShippingImportError] = useState<string | null>(null)
 
   const handleReexport = async (id: string, reason: string, explanation?: string) => {
     if (reexportingId) return
@@ -198,6 +212,63 @@ export default function FulfillmentPage() {
     }
   }
 
+  const handleShippingFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setShippingFile(e.target.files[0])
+      setShippingPreviewData(null)
+      setShippingImportError(null)
+    }
+  }
+
+  const handleShippingPreview = async () => {
+    if (!shippingFile) return
+    setShippingImporting(true)
+    setShippingImportError(null)
+    const fd = new FormData()
+    fd.append('file', shippingFile)
+    fd.append('confirm', 'false')
+    try {
+      const resp = await api.post('/fulfillment/handoffs/import-shipping/', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      setShippingPreviewData(resp.data)
+    } catch (err: any) {
+      const errors = err.response?.data?.errors
+      if (Array.isArray(errors) && errors.length > 0) {
+        setShippingImportError(errors.map((e: any) => `${e.row}: ${e.errors?.join(', ')}`).join('\n'))
+      } else {
+        setShippingImportError(err.response?.data?.detail || 'Failed to process shipping import preview.')
+      }
+    } finally {
+      setShippingImporting(false)
+    }
+  }
+
+  const handleShippingConfirmApply = async () => {
+    if (!shippingFile) return
+    setShippingImporting(true)
+    setShippingImportError(null)
+    const fd = new FormData()
+    fd.append('file', shippingFile)
+    fd.append('confirm', 'true')
+    try {
+      const resp = await api.post('/fulfillment/handoffs/import-shipping/', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      alert(`Shipping import applied successfully! Success: ${resp.data.success_count}, Skipped: ${resp.data.skipped_count}, Rejected: ${resp.data.rejected_count}`)
+      setShowShippingModal(false)
+      setShippingFile(null)
+      setShippingPreviewData(null)
+      refetchHandoffs()
+      refetchShippingLogs()
+    } catch (err: any) {
+      setShippingImportError(err.response?.data?.detail || 'Failed to apply shipping import.')
+    } finally {
+      setShippingImporting(false)
+    }
+  }
+
+
   return (
     <div>
       <div className="page-header">
@@ -213,6 +284,16 @@ export default function FulfillmentPage() {
             setShowImportModal(true);
           }}>
             <UploadCloud size={14} style={{ marginRight: 6 }} /> Import Returns (CSV)
+          </button>
+        )}
+        {tab === 'handoffs' && (
+          <button className="btn btn-primary" onClick={() => {
+            setShippingFile(null);
+            setShippingPreviewData(null);
+            setShippingImportError(null);
+            setShowShippingModal(true);
+          }}>
+            <UploadCloud size={14} style={{ marginRight: 6 }} /> Import Shipping Update (CSV)
           </button>
         )}
       </div>
@@ -235,6 +316,9 @@ export default function FulfillmentPage() {
         </div>
         <div className={`tab ${tab === 'returnLogs' ? 'active' : ''}`} onClick={() => setTab('returnLogs')}>
           Return Import Logs
+        </div>
+        <div className={`tab ${tab === 'shippingLogs' ? 'active' : ''}`} onClick={() => setTab('shippingLogs')}>
+          Shipping Import Logs
         </div>
       </div>
 
@@ -715,6 +799,186 @@ export default function FulfillmentPage() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {tab === 'shippingLogs' && (
+        <div className="table-wrap">
+          {slLoading ? (
+            <div className="loading-overlay"><div className="spinner" /></div>
+          ) : shippingImportLogs.length === 0 ? (
+            <div className="empty-state">
+              <Truck size={40} />
+              <div>No shipping import logs yet</div>
+              <div style={{ fontSize: 12 }}>
+                Logs will appear when shipping CSV files are imported.
+              </div>
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Audit Ref</th>
+                  <th>Uploaded At</th>
+                  <th>Filename</th>
+                  <th>Applied</th>
+                  <th>Skipped</th>
+                  <th>Rejected</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shippingImportLogs.map((log: any) => (
+                  <tr key={log.id}>
+                    <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }} title={log.audit_reference}>
+                      {log.audit_reference?.slice(0, 8)}…
+                    </td>
+                    <td>{log.uploaded_at ? new Date(log.uploaded_at).toLocaleString() : '—'}</td>
+                    <td style={{ fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.csv_filename}>
+                      {log.csv_filename || '—'}
+                    </td>
+                    <td><span className="badge badge-green">{log.rows_applied}</span></td>
+                    <td><span className="badge badge-muted">{log.rows_skipped}</span></td>
+                    <td><span className="badge badge-red">{log.rows_rejected}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Import Shipping Modal */}
+      {showShippingModal && (
+        <div className="modal-overlay" onClick={() => setShowShippingModal(false)}>
+          <div className="modal-container" style={{ width: 680, maxWidth: '95%' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Import Shipping Update CSV</div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowShippingModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {!shippingPreviewData ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{
+                    border: '2px dashed var(--border)',
+                    borderRadius: 'var(--radius)',
+                    padding: '32px 16px',
+                    textAlign: 'center',
+                    background: 'var(--bg-elevated)',
+                    cursor: 'pointer'
+                  }} onClick={() => document.getElementById('shipping-csv-input')?.click()}>
+                    <UploadCloud size={32} style={{ color: 'var(--text-muted)', marginBottom: 8 }} />
+                    <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 4 }}>
+                      {shippingFile ? shippingFile.name : 'Select Shipping CSV File'}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {shippingFile ? `${(shippingFile.size / 1024).toFixed(1)} KB` : 'Click to browse files'}
+                    </div>
+                    <input
+                      id="shipping-csv-input"
+                      type="file"
+                      accept=".csv"
+                      style={{ display: 'none' }}
+                      onChange={handleShippingFileChange}
+                    />
+                  </div>
+
+                  {shippingImportError && (
+                    <div style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                      color: '#f87171',
+                      padding: 12,
+                      borderRadius: 'var(--radius)',
+                      fontSize: 12,
+                      whiteSpace: 'pre-wrap',
+                      fontFamily: 'monospace'
+                    }}>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>Validation Errors:</div>
+                      {shippingImportError}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* Summary Bar */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: 12,
+                    background: 'var(--bg-elevated)',
+                    padding: 12,
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Applied</div>
+                      <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--green)' }}>{shippingPreviewData.summary?.applied || 0}</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Skipped</div>
+                      <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-secondary)' }}>{shippingPreviewData.summary?.skipped || 0}</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Rejected</div>
+                      <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--red)' }}>{shippingPreviewData.summary?.rejected || 0}</div>
+                    </div>
+                  </div>
+
+                  {/* Preview Rows Table */}
+                  <div className="table-wrap" style={{ maxHeight: 250, overflowY: 'auto' }}>
+                    <table style={{ fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: 60 }}>Row</th>
+                          <th>Suborder</th>
+                          <th>Status</th>
+                          <th>Validation / Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(shippingPreviewData.rows || []).map((r: any) => {
+                          const statusClass = r.status === 'applied' ? 'badge-green' : r.status === 'skipped' ? 'badge-muted' : 'badge-red';
+                          return (
+                            <tr key={r.row_index}>
+                              <td>{r.row_index}</td>
+                              <td className="mono" style={{ fontSize: 11 }}>{r.suborder || '—'}</td>
+                              <td><span className={`badge ${statusClass}`}>{r.status}</span></td>
+                              <td style={{ color: r.errors?.length ? 'var(--red)' : 'var(--text-muted)', fontSize: 11 }}>
+                                {r.errors?.join(', ') || 'Validation Passed'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {shippingImportError && (
+                    <div style={{ color: 'var(--red)', fontSize: 12 }}>{shippingImportError}</div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              {!shippingPreviewData ? (
+                <>
+                  <button className="btn btn-secondary" onClick={() => setShowShippingModal(false)}>Cancel</button>
+                  <button className="btn btn-primary" disabled={!shippingFile || shippingImporting} onClick={handleShippingPreview}>
+                    {shippingImporting ? 'Processing...' : 'Upload & Preview'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-secondary" onClick={() => setShippingPreviewData(null)}>Back</button>
+                  <button className="btn btn-primary" disabled={shippingImporting} onClick={handleShippingConfirmApply}>
+                    {shippingImporting ? 'Applying...' : 'Confirm & Apply'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

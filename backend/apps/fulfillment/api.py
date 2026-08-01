@@ -11,7 +11,7 @@ from .models import (
     FulfillmentHandoff, VendorFulfillmentResponseSLAPolicy, SLAEvaluationRecord,
     LateFulfillmentImportException, MissingFulfillmentImportException,
     SLAOverrideExcuseEvidence, DeliveryDateEvidence, BuyerUpdateReadySignal,
-    ReturnRequest, VendorReturnImportLog, ReturnStatus,
+    ReturnRequest, VendorReturnImportLog, ReturnStatus, VendorShippingImportLog,
 )
 
 
@@ -117,6 +117,12 @@ class VendorReturnImportLogSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class VendorShippingImportLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VendorShippingImportLog
+        fields = "__all__"
+
+
 # ─── ViewSets ─────────────────────────────────────────────────────────────────
 
 class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
@@ -158,6 +164,431 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         handoff = self.get_object()
         evidence = handoff.delivery_date_evidence.all()
         return Response(DeliveryDateEvidenceSerializer(evidence, many=True).data)
+
+    @action(detail=False, methods=["post"], url_path="import-shipping")
+    def import_shipping(self, request):
+        """
+        Import buyer shipping update CSV.
+
+        Expected columns (from the standard exported orders CSV):
+          Buyer, First Name, Last Name, Address 1, Address 2, City, State, Zip Code,
+          Suborder, SKU, UPC, Quantity, Vendor Confirmation Number,
+          Shipping Carrier, Shipping Tracking Number, Shipped Date, Delivered Date
+
+        Updatable fields per row: Vendor Confirmation Number, Shipping Carrier,
+        Shipping Tracking Number, Shipped Date, Delivered Date.
+        Status is auto-transitioned: shipped_date → 'shipped', delivered_date → 'delivered'.
+        """
+        import csv
+        import io
+        from datetime import datetime
+        from django.db import transaction
+        from django.utils import timezone
+
+        user = request.user
+        file_obj = request.FILES.get("file") or request.data.get("file")
+        if not file_obj:
+            return Response({"errors": [{"row": "file", "errors": ["No CSV file provided"]}]}, status=400)
+
+        try:
+            csv_content = file_obj.read()
+            if isinstance(csv_content, bytes):
+                csv_content = csv_content.decode("utf-8-sig")
+        except Exception as e:
+            return Response({"errors": [{"row": "file", "errors": [f"Failed to read file: {e}"]}]}, status=400)
+
+        if not csv_content.strip():
+            return Response({"errors": [{"row": "file", "errors": ["Uploaded file is empty"]}]}, status=400)
+
+        f = io.StringIO(csv_content)
+        reader = csv.reader(f)
+        try:
+            raw_headers = next(reader)
+        except StopIteration:
+            return Response({"errors": [{"row": "header", "errors": ["No headers found"]}]}, status=400)
+
+        headers_lower = [h.strip().lower() for h in raw_headers]
+
+        def col(name_variants):
+            for v in name_variants:
+                if v in headers_lower:
+                    return headers_lower.index(v)
+            return None
+
+        idx_suborder       = col(["suborder", "suborder id", "suborder_id"])
+        idx_sku            = col(["sku"])
+        idx_upc            = col(["upc"])
+        idx_quantity       = col(["quantity", "qty", "quantity shipped", "quantity_shipped"])
+        idx_buyer          = col(["buyer"])
+        idx_first_name     = col(["first name", "first_name", "customer first name", "customer_first_name"])
+        idx_last_name      = col(["last name", "last_name", "customer last name", "customer_last_name"])
+        idx_address_1      = col(["address 1", "address_1", "address1"])
+        idx_address_2      = col(["address 2", "address_2", "address2"])
+        idx_city           = col(["city"])
+        idx_state          = col(["state"])
+        idx_zip            = col(["zip code", "zip_code", "zip"])
+        idx_vendor_confirm = col(["vendor confirmation number", "vendor_confirmation_number", "vendor order number", "vendor_order_number", "vendor confirmation"])
+        idx_carrier        = col(["shipping carrier", "shipping_carrier", "carrier"])
+        idx_tracking       = col(["shipping tracking number", "shipping_tracking_number", "tracking number", "tracking_number", "tracking"])
+        idx_shipped        = col(["shipped date", "shipped_date"])
+        idx_delivered      = col(["delivered date", "delivered_date"])
+
+        if idx_suborder is None:
+            return Response({"errors": [{"row": "header", "errors": ["Missing required column: 'Suborder'"]}]}, status=400)
+        if idx_sku is None:
+            return Response({"errors": [{"row": "header", "errors": ["Missing required column: 'SKU'"]}]}, status=400)
+        if idx_quantity is None:
+            return Response({"errors": [{"row": "header", "errors": ["Missing required column: 'Quantity'"]}]}, status=400)
+
+        def cell(row, idx, default=""):
+            if idx is None or idx >= len(row):
+                return default
+            return row[idx].strip()
+
+        def parse_date(val):
+            if not val:
+                return None
+            for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%m-%d-%Y"):
+                try:
+                    return datetime.strptime(val.strip(), fmt).date()
+                except ValueError:
+                    continue
+            return None
+
+        # Determine buyer scope
+        buyer_company_id = None
+        if not user.is_cixci_admin:
+            if not user.entity or not user.entity.company:
+                return Response({"detail": "User has no buyer company scope."}, status=403)
+            buyer_company_id = user.entity.company.id
+
+        rows_analysis = []
+        ops_to_execute = []
+        applied = skipped = rejected = 0
+        has_rejections = False
+        seen_suborders = {}
+
+        for row_idx, row in enumerate(reader, 1):
+            if not row or not any(cell(row, idx).strip() for idx in range(len(row)) if cell(row, idx)):
+                continue
+
+            suborder_val = cell(row, idx_suborder)
+            row_errors = []
+            row_status = "applied"
+
+            if not suborder_val:
+                row_errors.append("Suborder ID is missing")
+                row_status = "rejected"
+
+            # Duplicate within batch
+            if row_status != "rejected" and suborder_val in seen_suborders:
+                row_errors.append(f"Duplicate Suborder {suborder_val} in import (first at row {seen_suborders[suborder_val]})")
+                row_status = "review_required"
+            elif row_status != "rejected":
+                seen_suborders[suborder_val] = row_idx
+
+            sub = None
+            if row_status == "applied":
+                try:
+                    import uuid as _uuid
+                    suborder_uuid = _uuid.UUID(suborder_val)
+                    from apps.routing.models import RoutedSuborder
+                    sub = RoutedSuborder.objects.filter(id=suborder_uuid).first()
+                    if sub is None:
+                        row_errors.append(f"No suborder found for Suborder {suborder_val}")
+                        row_status = "rejected"
+                    elif buyer_company_id and str(sub.order.company_scope_reference) != str(buyer_company_id):
+                        row_errors.append("Permission denied: suborder belongs to a different company")
+                        row_status = "rejected"
+                except ValueError:
+                    row_errors.append(f"Invalid Suborder UUID format: {suborder_val}")
+                    row_status = "rejected"
+
+            # Validate Product & PO Line match (verifies quantity, SKU, and UPC against the PO lines for that suborder's order)
+            if row_status == "applied" and sub:
+                sku_val = cell(row, idx_sku)
+                upc_val = cell(row, idx_upc)
+                qty_val = cell(row, idx_quantity)
+                
+                try:
+                    row_qty = int(qty_val) if qty_val else None
+                    if row_qty is not None and row_qty <= 0:
+                        row_errors.append("Quantity must be greater than 0")
+                        row_status = "rejected"
+                except (ValueError, TypeError):
+                    row_errors.append("Quantity is not numeric")
+                    row_status = "rejected"
+                    row_qty = None
+                
+                if row_status == "applied":
+                    from apps.procurement.models import PurchaseOrderLine
+                    from apps.catalog.models import Product
+                    
+                    po_lines = PurchaseOrderLine.objects.filter(purchase_order_id=sub.order_id)
+                    matched_line = None
+                    for line in po_lines:
+                        try:
+                            prod = Product.objects.get(id=line.product_reference)
+                            if prod.sku.strip() == sku_val.strip() and (prod.upc or "").strip() == (upc_val or "").strip():
+                                matched_line = line
+                                break
+                        except Product.DoesNotExist:
+                            continue
+                            
+                    if not matched_line:
+                        row_errors.append(f"SKU/UPC mismatch: No line matching SKU '{sku_val}' and UPC '{upc_val}' in order {sub.order_id}")
+                        row_status = "rejected"
+                    elif row_qty != matched_line.quantity:
+                        row_errors.append(f"mismatch: Quantity {row_qty} does not match ordered quantity {matched_line.quantity}")
+                        row_status = "rejected"
+
+            # Validate Locked Fields
+            if row_status == "applied" and sub:
+                buyer_val = cell(row, idx_buyer)
+                from apps.tenant.models import Company
+                buyer_company = Company.objects.filter(id=sub.order.company_scope_reference).first()
+                db_buyer_name = buyer_company.name if buyer_company else ""
+                if buyer_val and buyer_val.strip().lower() != db_buyer_name.strip().lower():
+                    row_errors.append(f"mismatch: Buyer '{buyer_val}' does not match original '{db_buyer_name}'")
+                    row_status = "rejected"
+
+                shipping = sub.routing_snapshot.get("customer_shipping") or {}
+                db_first_name = shipping.get("customer_first_name") or ""
+                db_last_name = shipping.get("customer_last_name") or ""
+                db_address_1 = shipping.get("address_1") or ""
+                db_address_2 = shipping.get("address_2") or ""
+                db_city = shipping.get("city") or ""
+                db_state = shipping.get("state") or ""
+                db_zip = shipping.get("zip") or ""
+                
+                first_name_val = cell(row, idx_first_name)
+                last_name_val = cell(row, idx_last_name)
+                address_1_val = cell(row, idx_address_1)
+                address_2_val = cell(row, idx_address_2)
+                city_val = cell(row, idx_city)
+                state_val = cell(row, idx_state)
+                zip_val = cell(row, idx_zip)
+                
+                if first_name_val and first_name_val.strip().lower() != db_first_name.strip().lower():
+                    row_errors.append(f"mismatch: First Name '{first_name_val}' does not match original '{db_first_name}'")
+                    row_status = "rejected"
+                if last_name_val and last_name_val.strip().lower() != db_last_name.strip().lower():
+                    row_errors.append(f"mismatch: Last Name '{last_name_val}' does not match original '{db_last_name}'")
+                    row_status = "rejected"
+                if address_1_val and address_1_val.strip().lower() != db_address_1.strip().lower():
+                    row_errors.append(f"mismatch: Address 1 '{address_1_val}' does not match original '{db_address_1}'")
+                    row_status = "rejected"
+                if address_2_val and address_2_val.strip().lower() != db_address_2.strip().lower():
+                    row_errors.append(f"mismatch: Address 2 '{address_2_val}' does not match original '{db_address_2}'")
+                    row_status = "rejected"
+                if city_val and city_val.strip().lower() != db_city.strip().lower():
+                    row_errors.append(f"mismatch: City '{city_val}' does not match original '{db_city}'")
+                    row_status = "rejected"
+                if state_val and state_val.strip().lower() != db_state.strip().lower():
+                    row_errors.append(f"mismatch: State '{state_val}' does not match original '{db_state}'")
+                    row_status = "rejected"
+                if zip_val and zip_val.strip().lower() != db_zip.strip().lower():
+                    row_errors.append(f"mismatch: Zip Code '{zip_val}' does not match original '{db_zip}'")
+                    row_status = "rejected"
+
+            handoff = None
+            if row_status == "applied" and sub:
+                handoff = FulfillmentHandoff.objects.filter(
+                    routed_suborder_reference=sub.id
+                ).first()
+                if handoff and handoff.status in ("delivered", "closed"):
+                    row_status = "skipped"
+                    row_errors.append(f"Handoff is already in terminal status '{handoff.status}'")
+
+            if row_status == "applied":
+                vendor_confirm = cell(row, idx_vendor_confirm)
+                carrier        = cell(row, idx_carrier)
+                tracking       = cell(row, idx_tracking)
+                shipped_raw    = cell(row, idx_shipped)
+                delivered_raw  = cell(row, idx_delivered)
+
+                shipped_date   = parse_date(shipped_raw)   if shipped_raw   else None
+                delivered_date = parse_date(delivered_raw) if delivered_raw else None
+
+                if shipped_raw and shipped_date is None:
+                    row_errors.append(f"Invalid Shipped Date format: '{shipped_raw}' (use MM/DD/YYYY)")
+                    row_status = "rejected"
+
+                if delivered_raw and delivered_date is None:
+                    row_errors.append(f"Invalid Delivered Date format: '{delivered_raw}' (use MM/DD/YYYY)")
+                    row_status = "rejected"
+
+                if row_status == "applied":
+                    # Check if there's anything to update
+                    updates = {}
+                    if vendor_confirm:
+                        updates["vendor_order_number"] = vendor_confirm
+                    if carrier:
+                        updates["shipping_carrier"] = carrier
+                    if tracking:
+                        updates["tracking_number"] = tracking
+                    if shipped_date:
+                        updates["shipped_date"] = shipped_date
+                    if delivered_date:
+                        updates["delivered_date"] = delivered_date
+
+                    if not updates:
+                        row_status = "skipped"
+                        row_errors.append("No shipping fields provided — nothing to update")
+                    else:
+                        # Determine new status
+                        current_status = handoff.status if handoff else "received"
+                        new_status = current_status
+                        if delivered_date:
+                            new_status = "delivered"
+                        elif shipped_date or carrier or tracking:
+                            if current_status not in ("shipped", "delivered"):
+                                new_status = "shipped"
+
+                        # Check idempotency — skip if data already matches
+                        is_same = False
+                        if handoff:
+                            is_same = all(
+                                str(getattr(handoff, k) or "") == str(v or "")
+                                for k, v in updates.items()
+                            ) and new_status == handoff.status
+                            
+                        if is_same:
+                            row_status = "skipped"
+                        else:
+                            ops_to_execute.append({
+                                "sub": sub,
+                                "handoff": handoff,
+                                "updates": updates,
+                                "new_status": new_status,
+                            })
+                            applied += 1
+
+            if row_status == "skipped":
+                skipped += 1
+            elif row_status == "rejected":
+                rejected += 1
+                has_rejections = True
+            elif row_status == "review_required":
+                rejected += 1
+                has_rejections = True
+
+            rows_analysis.append({
+                "row_index": row_idx,
+                "suborder": suborder_val,
+                "status": row_status,
+                "errors": row_errors,
+            })
+
+        if has_rejections:
+            return Response({
+                "errors": [
+                    {"row": r["row_index"], "errors": r["errors"]}
+                    for r in rows_analysis if r["status"] in ("rejected", "review_required")
+                ]
+            }, status=400)
+
+        summary = {"applied": applied, "skipped": skipped, "rejected": rejected}
+
+        confirm_val = request.data.get("confirm", request.query_params.get("confirm", True))
+        if isinstance(confirm_val, str):
+            confirm = confirm_val.lower() in ("true", "1", "yes")
+        else:
+            confirm = bool(confirm_val)
+
+        if not confirm:
+            return Response({
+                "detail": "Shipping import preview generated. Set confirm=true to apply.",
+                "confirm_required": True,
+                "summary": summary,
+                "rows": rows_analysis,
+            })
+
+        with transaction.atomic():
+            from apps.routing.models import RoutingStatus
+            from apps.fulfillment.models import BuyerUpdateReadySignal, BuyerUpdateKind, BuyerSignalStatus
+            
+            for op in ops_to_execute:
+                sub = op["sub"]
+                h = op["handoff"]
+                if not h:
+                    h = FulfillmentHandoff.objects.create(
+                        routed_suborder_reference=sub.id,
+                        vendor_company_reference=sub.vendor_company_reference,
+                        company_scope_reference=sub.order.company_scope_reference,
+                        status="received"
+                    )
+                for k, v in op["updates"].items():
+                    setattr(h, k, v)
+                h.status = op["new_status"]
+                h.save()
+
+                # Also update RoutedSuborder status
+                if h.status == "delivered":
+                    sub.status = RoutingStatus.DELIVERED
+                elif h.status == "shipped":
+                    sub.status = RoutingStatus.SHIPPED
+                sub.save()
+
+                # Transition parent Order to SHIPPED if all suborders are shipped or delivered
+                order = sub.order
+                all_subs_shipped_or_delivered = True
+                for s in order.routed_suborders.all():
+                    if s.status not in [RoutingStatus.SHIPPED, RoutingStatus.DELIVERED]:
+                        all_subs_shipped_or_delivered = False
+                        break
+                if all_subs_shipped_or_delivered:
+                    order.status = RoutingStatus.SHIPPED
+                    order.save()
+
+                # Update BuyerUpdateReadySignal
+                expected_count = order.routed_suborders.count()
+                confirmed_count = order.routed_suborders.filter(
+                    status__in=[RoutingStatus.SHIPPED, RoutingStatus.DELIVERED]
+                ).count()
+                all_confirmed = (confirmed_count == expected_count)
+                
+                signal, _ = BuyerUpdateReadySignal.objects.get_or_create(
+                    order_reference=order.id,
+                    update_kind=BuyerUpdateKind.SHIPMENT,
+                    defaults={
+                        "buyer_reference": order.company_scope_reference,
+                        "company_scope_reference": order.company_scope_reference,
+                        "status": BuyerSignalStatus.PENDING,
+                        "expected_vendor_count": expected_count,
+                        "confirmed_vendor_count": confirmed_count,
+                        "all_vendors_confirmed": all_confirmed
+                    }
+                )
+                
+                signal.expected_vendor_count = expected_count
+                signal.confirmed_vendor_count = confirmed_count
+                signal.all_vendors_confirmed = all_confirmed
+                if all_confirmed:
+                    signal.status = BuyerSignalStatus.ELIGIBLE
+                else:
+                    signal.status = BuyerSignalStatus.HELD
+                signal.save()
+
+            log_company = buyer_company_id or (user.entity.company.id if user.entity and user.entity.company else user.id)
+            VendorShippingImportLog.objects.create(
+                vendor_company_reference=log_company,
+                company_scope_reference=log_company,
+                uploaded_by=user if user.is_authenticated else None,
+                csv_filename=getattr(file_obj, "name", "shipping_import.csv"),
+                csv_content=csv_content,
+                rows_applied=applied,
+                rows_skipped=skipped,
+                rows_rejected=rejected,
+                results_payload={"rows": rows_analysis, "summary": summary},
+            )
+
+        return Response({
+            "success_count": applied,
+            "skipped_count": skipped,
+            "rejected_count": rejected,
+            "detail": "Shipping import applied successfully.",
+        })
 
 
 class SLAEvaluationRecordViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
@@ -221,6 +652,23 @@ class BuyerUpdateSignalViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["order_reference", "update_kind", "status"]
+
+class VendorShippingImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    queryset = VendorShippingImportLog.objects.all().order_by("-uploaded_at")
+    serializer_class = VendorShippingImportLogSerializer
+    action_capability_map = {
+        "list": "fulfillment.handoff.list",
+        "retrieve": "fulfillment.handoff.read",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["vendor_company_reference", "company_scope_reference"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if not user.is_cixci_admin and user.entity and user.entity.company:
+            qs = qs.filter(company_scope_reference=user.entity.company.id)
+        return qs
 
 
 class VendorReturnImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
@@ -728,5 +1176,6 @@ router.register("sla-overrides", SLAOverrideViewSet, basename="sla-override")
 router.register("buyer-signals", BuyerUpdateSignalViewSet, basename="buyer-signal")
 router.register("return-requests", ReturnRequestViewSet, basename="return-request")
 router.register("return-import-logs", VendorReturnImportLogViewSet, basename="return-import-log")
+router.register("shipping-import-logs", VendorShippingImportLogViewSet, basename="shipping-import-log")
 
 urlpatterns = [path("", include(router.urls))]
