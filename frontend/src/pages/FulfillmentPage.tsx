@@ -276,7 +276,7 @@ export default function FulfillmentPage() {
           <div className="page-title">Fulfillment & Returns</div>
           <div className="page-sub">Vendor handoffs, SLA evaluation records, and response policies</div>
         </div>
-        {tab === 'returns' && (
+        {(tab === 'returns' || tab === 'returnLogs') && (
           <button className="btn btn-primary" onClick={() => {
             setImportFile(null);
             setPreviewData(null);
@@ -286,7 +286,7 @@ export default function FulfillmentPage() {
             <UploadCloud size={14} style={{ marginRight: 6 }} /> Import Returns (CSV)
           </button>
         )}
-        {tab === 'handoffs' && (
+        {(tab === 'handoffs' || tab === 'shippingLogs') && (
           <button className="btn btn-primary" onClick={() => {
             setShippingFile(null);
             setShippingPreviewData(null);
