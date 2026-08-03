@@ -206,7 +206,12 @@ export default function FulfillmentPage() {
       refetchReturns()
       refetchReturnLogs()
     } catch (err: any) {
-      setImportError(err.response?.data?.detail || 'Failed to apply return import.')
+      const errors = err.response?.data?.errors
+      if (Array.isArray(errors) && errors.length > 0) {
+        setImportError(errors.map((e: any) => `${e.row}: ${e.errors?.join(', ')}`).join('\n'))
+      } else {
+        setImportError(err.response?.data?.detail || 'Failed to apply return import.')
+      }
     } finally {
       setImporting(false)
     }
@@ -262,7 +267,12 @@ export default function FulfillmentPage() {
       refetchHandoffs()
       refetchShippingLogs()
     } catch (err: any) {
-      setShippingImportError(err.response?.data?.detail || 'Failed to apply shipping import.')
+      const errors = err.response?.data?.errors
+      if (Array.isArray(errors) && errors.length > 0) {
+        setShippingImportError(errors.map((e: any) => `${e.row}: ${e.errors?.join(', ')}`).join('\n'))
+      } else {
+        setShippingImportError(err.response?.data?.detail || 'Failed to apply shipping import.')
+      }
     } finally {
       setShippingImporting(false)
     }

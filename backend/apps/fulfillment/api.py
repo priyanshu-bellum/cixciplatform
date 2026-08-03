@@ -255,12 +255,13 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     continue
             return None
 
-        # Determine buyer scope
-        buyer_company_id = None
-        if not user.is_cixci_admin:
-            if not user.entity or not user.entity.company:
-                return Response({"detail": "User has no buyer company scope."}, status=403)
-            buyer_company_id = user.entity.company.id
+        # Determine company scope
+        company = None
+        is_admin = user.is_cixci_admin
+        if not is_admin:
+            company = user.company
+            if not company:
+                return Response({"detail": "User has no company scope."}, status=403)
 
         rows_analysis = []
         ops_to_execute = []
@@ -280,12 +281,16 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 row_errors.append("Suborder ID is missing")
                 row_status = "rejected"
 
+            sku_val = cell(row, idx_sku)
+            upc_val = cell(row, idx_upc)
+            seen_key = (suborder_val, sku_val, upc_val)
+
             # Duplicate within batch
-            if row_status != "rejected" and suborder_val in seen_suborders:
-                row_errors.append(f"Duplicate Suborder {suborder_val} in import (first at row {seen_suborders[suborder_val]})")
+            if row_status != "rejected" and seen_key in seen_suborders:
+                row_errors.append(f"Duplicate row for Suborder {suborder_val} and SKU/UPC '{sku_val}/{upc_val}' in import (first at row {seen_suborders[seen_key]})")
                 row_status = "review_required"
             elif row_status != "rejected":
-                seen_suborders[suborder_val] = row_idx
+                seen_suborders[seen_key] = row_idx
 
             sub = None
             if row_status == "applied":
@@ -297,9 +302,18 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     if sub is None:
                         row_errors.append(f"No suborder found for Suborder {suborder_val}")
                         row_status = "rejected"
-                    elif buyer_company_id and str(sub.order.company_scope_reference) != str(buyer_company_id):
-                        row_errors.append("Permission denied: suborder belongs to a different company")
-                        row_status = "rejected"
+                    elif not is_admin and company:
+                        if company.company_type == "buyer":
+                            if str(sub.order.company_scope_reference) != str(company.id):
+                                row_errors.append("Permission denied: suborder belongs to a different company")
+                                row_status = "rejected"
+                        elif company.company_type == "vendor":
+                            if str(sub.vendor_company_reference) != str(company.id):
+                                row_errors.append("Permission denied: suborder belongs to a different company")
+                                row_status = "rejected"
+                        else:
+                            row_errors.append("Permission denied: invalid company type")
+                            row_status = "rejected"
                 except ValueError:
                     row_errors.append(f"Invalid Suborder UUID format: {suborder_val}")
                     row_status = "rejected"
@@ -570,7 +584,7 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     signal.status = BuyerSignalStatus.HELD
                 signal.save()
 
-            log_company = buyer_company_id or (user.entity.company.id if user.entity and user.entity.company else user.id)
+            log_company = company.id if company else user.id
             VendorShippingImportLog.objects.create(
                 vendor_company_reference=log_company,
                 company_scope_reference=log_company,

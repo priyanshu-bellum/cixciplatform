@@ -70,6 +70,14 @@ class TestBuyerShippingImport:
             password="buyerpass123"
         )
 
+        # Create Vendor user
+        vendor_entity = CompanyEntity.objects.create(company=vendor, name="Vendor HQ", status="active")
+        vendor_user = User.objects.create_user(
+            email="vendor@vendor.test",
+            entity=vendor_entity,
+            password="vendorpass123"
+        )
+
         # Create PO
         po = PurchaseOrder.objects.create(
             company_scope_reference=buyer.id,
@@ -132,6 +140,7 @@ class TestBuyerShippingImport:
             "product": product,
             "buyer_user": buyer_user,
             "other_buyer_user": other_buyer_user,
+            "vendor_user": vendor_user,
             "order": routing_order,
             "suborder": sub,
             "handoff": handoff
@@ -208,3 +217,69 @@ class TestBuyerShippingImport:
         # No DB updates
         setup_data["handoff"].refresh_from_db()
         assert setup_data["handoff"].status == "shipment_pending"
+
+    def test_vendor_successful_shipping_csv_import(self, setup_data):
+        client = APIClient()
+        client.force_authenticate(user=setup_data["vendor_user"])
+
+        # 1. Preview Mode (confirm=False)
+        csv_file = self.generate_csv(setup_data)
+        response = client.post("/api/v1/fulfillment/handoffs/import-shipping/", {"file": csv_file, "confirm": False}, format="multipart")
+        assert response.status_code == 200, response.data
+        assert response.data["confirm_required"] is True
+        assert response.data["summary"]["applied"] == 1
+
+        # No change in DB yet
+        setup_data["handoff"].refresh_from_db()
+        assert setup_data["handoff"].status == "shipment_pending"
+
+        # 2. Apply Mode (confirm=True)
+        csv_file.seek(0)
+        response = client.post("/api/v1/fulfillment/handoffs/import-shipping/", {"file": csv_file, "confirm": True}, format="multipart")
+        assert response.status_code == 200, response.data
+        assert response.data["success_count"] == 1
+
+        # Check updates in DB
+        setup_data["handoff"].refresh_from_db()
+        assert setup_data["handoff"].status == "shipped"
+
+    def test_successful_shipping_csv_import_multi_item_suborder(self, setup_data):
+        client = APIClient()
+        client.force_authenticate(user=setup_data["buyer_user"])
+
+        # Let's create another product to have a second line in the purchase order and suborder
+        from apps.catalog.models import Product, ProductStatus
+        from apps.procurement.models import PurchaseOrderLine
+        
+        product2 = Product.objects.create(
+            name="Accessory Product 2",
+            sku="ACC-SKU-888",
+            upc="987654321088",
+            product_type="accessory",
+            vendor_company_reference=setup_data["vendor"].id,
+            company_scope_reference=setup_data["buyer"].id,
+            msrp=30.0,
+            launch_date=timezone.now().date(),
+            status=ProductStatus.ACTIVE,
+            compatibility_status="complete",
+        )
+
+        PurchaseOrderLine.objects.create(
+            purchase_order_id=setup_data["order"].id,
+            product_reference=product2.id,
+            quantity=3,
+            unit_price_snapshot=25.0,
+            line_total=75.0,
+        )
+
+        # CSV Content with two lines for the same suborder ID
+        csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
+        csv_row1 = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,2026-07-28,\n"
+        csv_row2 = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},ACC-SKU-888,987654321088,3,VND-CONF-123,FedEx,TRK-987654,2026-07-28,\n"
+        
+        csv_file = io.BytesIO((csv_header + csv_row1 + csv_row2).encode("utf-8"))
+        csv_file.name = "shipping_import.csv"
+
+        response = client.post("/api/v1/fulfillment/handoffs/import-shipping/", {"file": csv_file, "confirm": True}, format="multipart")
+        assert response.status_code == 200, response.data
+        assert response.data["success_count"] == 2

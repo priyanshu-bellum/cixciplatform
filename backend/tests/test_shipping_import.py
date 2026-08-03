@@ -151,6 +151,7 @@ class TestVendorShippingImport:
             "vendor": vendor,
             "other_vendor": other_vendor,
             "product": product,
+            "buyer_user": buyer_user,
             "vendor_user": vendor_user,
             "other_vendor_user": other_vendor_user,
             "admin_user": admin_user,
@@ -160,13 +161,15 @@ class TestVendorShippingImport:
         }
 
     def test_successful_shipping_csv_import(self, setup_data):
+        from datetime import timedelta
         data = setup_data
         client = APIClient()
         client.force_authenticate(user=data["vendor_user"])
+        shipped_date_str = (timezone.now() - timedelta(days=2)).date().strftime("%Y-%m-%d")
 
         # CSV Content matching exact headers
         csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
-        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,2026-07-28,\n"
+        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,{shipped_date_str},\n"
         csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
         csv_file.name = "shipping.csv"
 
@@ -180,7 +183,7 @@ class TestVendorShippingImport:
         assert data["handoff"].vendor_order_number == "VND-CONF-123"
         assert data["handoff"].shipping_carrier == "FedEx"
         assert data["handoff"].tracking_number == "TRK-987654"
-        assert str(data["handoff"].shipped_date) == "2026-07-28"
+        assert str(data["handoff"].shipped_date) == shipped_date_str
 
         data["suborder"].refresh_from_db()
         assert data["suborder"].status == RoutingStatus.SHIPPED
@@ -197,13 +200,15 @@ class TestVendorShippingImport:
         assert signal.confirmed_vendor_count == 1
 
     def test_locked_fields_mismatch_rejection(self, setup_data):
+        from datetime import timedelta
         data = setup_data
         client = APIClient()
         client.force_authenticate(user=data["vendor_user"])
+        shipped_date_str = (timezone.now() - timedelta(days=2)).date().strftime("%Y-%m-%d")
 
         # CSV Content with mismatched quantity (10 instead of 5)
         csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
-        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,10,VND-CONF-123,FedEx,TRK-987654,2026-07-28,\n"
+        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,10,VND-CONF-123,FedEx,TRK-987654,{shipped_date_str},\n"
         csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
         csv_file.name = "shipping.csv"
 
@@ -218,13 +223,15 @@ class TestVendorShippingImport:
         assert data["suborder"].status == RoutingStatus.PROCESSING
 
     def test_vendor_isolation_permission_check(self, setup_data):
+        from datetime import timedelta
         data = setup_data
         client = APIClient()
         # Login as vendor user from other company
         client.force_authenticate(user=data["other_vendor_user"])
+        shipped_date_str = (timezone.now() - timedelta(days=2)).date().strftime("%Y-%m-%d")
 
         csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
-        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,2026-07-28,\n"
+        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,{shipped_date_str},\n"
         csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
         csv_file.name = "shipping.csv"
 
@@ -511,3 +518,5 @@ class TestVendorShippingImport:
         assert attempts[1].reexport_attempt_id == "rx_00002"
         assert attempts[1].reason_code == "Other"
         assert attempts[1].reason_notes == "Special client request"
+
+
