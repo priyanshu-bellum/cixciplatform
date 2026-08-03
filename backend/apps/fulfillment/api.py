@@ -18,11 +18,17 @@ import re
 def upc_matches(db_upc, csv_upc):
     db_upc = (db_upc or "").strip()
     csv_upc = (csv_upc or "").strip()
-    if db_upc == csv_upc:
-        return True
     if not db_upc or not csv_upc:
         return False
     
+    db_clean = re.sub(r'\D', '', db_upc).lstrip('0')
+    if not db_clean:
+        return False
+        
+    csv_clean_exact = re.sub(r'\D', '', csv_upc).lstrip('0')
+    if db_clean == csv_clean_exact:
+        return True
+        
     if re.match(r'^\d+(\.\d+)?[eE][+-]?\d+$', csv_upc):
         try:
             parts = re.split(r'[eE]', csv_upc)
@@ -32,17 +38,12 @@ def upc_matches(db_upc, csv_upc):
             if '.' in significand:
                 left, right = significand.split('.')
                 significant_digits = left + right
-                num_decimals = len(right)
             else:
-                left = significand
                 significant_digits = significand
-                num_decimals = 0
                 
-            if exponent >= num_decimals:
-                prefix = significant_digits
-                expected_len = len(left) + exponent
-                if db_upc.startswith(prefix) and len(db_upc) == expected_len:
-                    return True
+            csv_clean = significant_digits.lstrip('0')
+            if csv_clean and db_clean.startswith(csv_clean):
+                return True
         except Exception:
             pass
             
@@ -169,6 +170,7 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "destroy": "fulfillment.handoff.manage",
         "sla_evaluations": "fulfillment.sla.read",
         "delivery_dates": "fulfillment.handoff.read",
+        "debug_order": "fulfillment.handoff.list",
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["vendor_company_reference", "status"]
@@ -183,6 +185,40 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             elif company.company_type == "buyer":
                 qs = qs.filter(company_scope_reference=company.id)
         return qs
+
+    @action(detail=False, methods=["get"], url_path="debug-order")
+    def debug_order(self, request):
+        from apps.procurement.models import PurchaseOrderLine
+        from apps.catalog.models import Product
+        
+        order_id = request.query_params.get("order_id", "")
+        po_lines = PurchaseOrderLine.objects.filter(purchase_order_id=order_id)
+        
+        lines_data = []
+        for line in po_lines:
+            prod_info = None
+            try:
+                prod = Product.objects.get(id=line.product_reference)
+                prod_info = {
+                    "id": str(prod.id),
+                    "name": prod.name,
+                    "sku": prod.sku,
+                    "upc": prod.upc,
+                }
+            except Product.DoesNotExist:
+                prod_info = "Product Not Found"
+                
+            lines_data.append({
+                "line_id": str(line.id),
+                "product_reference": str(line.product_reference),
+                "quantity": line.quantity,
+                "product": prod_info,
+            })
+            
+        return Response({
+            "order_id": order_id,
+            "lines": lines_data
+        })
 
     @action(detail=True, methods=["get"])
     def sla_evaluations(self, request, pk=None):

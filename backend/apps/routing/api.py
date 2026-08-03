@@ -20,11 +20,17 @@ import re
 def upc_matches(db_upc, csv_upc):
     db_upc = (db_upc or "").strip()
     csv_upc = (csv_upc or "").strip()
-    if db_upc == csv_upc:
-        return True
     if not db_upc or not csv_upc:
         return False
     
+    db_clean = re.sub(r'\D', '', db_upc).lstrip('0')
+    if not db_clean:
+        return False
+        
+    csv_clean_exact = re.sub(r'\D', '', csv_upc).lstrip('0')
+    if db_clean == csv_clean_exact:
+        return True
+        
     if re.match(r'^\d+(\.\d+)?[eE][+-]?\d+$', csv_upc):
         try:
             parts = re.split(r'[eE]', csv_upc)
@@ -34,17 +40,12 @@ def upc_matches(db_upc, csv_upc):
             if '.' in significand:
                 left, right = significand.split('.')
                 significant_digits = left + right
-                num_decimals = len(right)
             else:
-                left = significand
                 significant_digits = significand
-                num_decimals = 0
                 
-            if exponent >= num_decimals:
-                prefix = significant_digits
-                expected_len = len(left) + exponent
-                if db_upc.startswith(prefix) and len(db_upc) == expected_len:
-                    return True
+            csv_clean = significant_digits.lstrip('0')
+            if csv_clean and db_clean.startswith(csv_clean):
+                return True
         except Exception:
             pass
             
