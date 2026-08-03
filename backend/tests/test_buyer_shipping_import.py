@@ -283,3 +283,19 @@ class TestBuyerShippingImport:
         response = client.post("/api/v1/fulfillment/handoffs/import-shipping/", {"file": csv_file, "confirm": True}, format="multipart")
         assert response.status_code == 200, response.data
         assert response.data["success_count"] == 2
+
+    def test_scientific_notation_upc_matching(self, setup_data):
+        client = APIClient()
+        client.force_authenticate(user=setup_data["buyer_user"])
+
+        # CSV Content with UPC in scientific notation (e.g. 9.87654E+11 for 987654321098)
+        csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
+        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},ACC-SKU-999,9.87654E+11,5,VND-CONF-123,FedEx,TRK-987654,2026-07-28,\n"
+        
+        csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
+        csv_file.name = "shipping_import.csv"
+
+        response = client.post("/api/v1/fulfillment/handoffs/import-shipping/", {"file": csv_file, "confirm": True}, format="multipart")
+        assert response.status_code == 200, response.data
+        assert response.data["success_count"] == 1
+

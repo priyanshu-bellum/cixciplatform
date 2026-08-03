@@ -13,7 +13,40 @@ from .models import (
     SLAOverrideExcuseEvidence, DeliveryDateEvidence, BuyerUpdateReadySignal,
     ReturnRequest, VendorReturnImportLog, ReturnStatus, VendorShippingImportLog,
 )
+import re
 
+def upc_matches(db_upc, csv_upc):
+    db_upc = (db_upc or "").strip()
+    csv_upc = (csv_upc or "").strip()
+    if db_upc == csv_upc:
+        return True
+    if not db_upc or not csv_upc:
+        return False
+    
+    if re.match(r'^\d+(\.\d+)?[eE][+-]?\d+$', csv_upc):
+        try:
+            parts = re.split(r'[eE]', csv_upc)
+            significand = parts[0]
+            exponent = int(parts[1])
+            
+            if '.' in significand:
+                left, right = significand.split('.')
+                significant_digits = left + right
+                num_decimals = len(right)
+            else:
+                left = significand
+                significant_digits = significand
+                num_decimals = 0
+                
+            if exponent >= num_decimals:
+                prefix = significant_digits
+                expected_len = len(left) + exponent
+                if db_upc.startswith(prefix) and len(db_upc) == expected_len:
+                    return True
+        except Exception:
+            pass
+            
+    return False
 
 # ─── Serializers ──────────────────────────────────────────────────────────────
 
@@ -343,7 +376,7 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     for line in po_lines:
                         try:
                             prod = Product.objects.get(id=line.product_reference)
-                            if prod.sku.strip() == sku_val.strip() and (prod.upc or "").strip() == (upc_val or "").strip():
+                            if prod.sku.strip() == sku_val.strip() and upc_matches(prod.upc or "", upc_val):
                                 matched_line = line
                                 break
                         except Product.DoesNotExist:
@@ -980,7 +1013,7 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     row_status = "rejected"
                     
                 upc_val = get_val(row, "upc")
-                if upc_val.strip().lower() != (return_req.upc or "").strip().lower():
+                if not upc_matches(return_req.upc or "", upc_val):
                     row_errors.append(f"mismatch: UPC {upc_val} does not match original {return_req.upc}")
                     row_status = "rejected"
                     
