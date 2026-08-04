@@ -653,10 +653,46 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     signal.status = BuyerSignalStatus.HELD
                 signal.save()
 
-            log_company = company.id if company else user.id
+            log_vendor_id = None
+            log_scope_id = None
+            if ops_to_execute:
+                first_sub = ops_to_execute[0]["sub"]
+                log_vendor_id = first_sub.vendor_company_reference
+                log_scope_id = first_sub.order.company_scope_reference
+            else:
+                from apps.routing.models import RoutedSuborder
+                import uuid as _uuid
+                for r_info in rows_analysis:
+                    sub_val = r_info.get("suborder")
+                    if sub_val:
+                        try:
+                            sub_uuid = _uuid.UUID(sub_val)
+                            sub = RoutedSuborder.objects.filter(id=sub_uuid).first()
+                            if sub:
+                                log_vendor_id = sub.vendor_company_reference
+                                log_scope_id = sub.order.company_scope_reference
+                                break
+                        except ValueError:
+                            continue
+
+            if not log_vendor_id:
+                if company:
+                    log_vendor_id = company.id
+                elif hasattr(user, "entity") and user.entity and user.entity.company:
+                    log_vendor_id = user.entity.company.id
+                else:
+                    log_vendor_id = user.id
+            if not log_scope_id:
+                if company:
+                    log_scope_id = company.id
+                elif hasattr(user, "entity") and user.entity and user.entity.company:
+                    log_scope_id = user.entity.company.id
+                else:
+                    log_scope_id = user.id
+
             VendorShippingImportLog.objects.create(
-                vendor_company_reference=log_company,
-                company_scope_reference=log_company,
+                vendor_company_reference=log_vendor_id,
+                company_scope_reference=log_scope_id,
                 uploaded_by=user if user.is_authenticated else None,
                 csv_filename=getattr(file_obj, "name", "shipping_import.csv"),
                 csv_content=csv_content,
@@ -747,10 +783,14 @@ class VendorShippingImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelVie
     filterset_fields = ["vendor_company_reference", "company_scope_reference"]
 
     def get_queryset(self):
-        qs = super().get_queryset()
         user = self.request.user
-        if not user.is_cixci_admin and user.entity and user.entity.company:
-            qs = qs.filter(company_scope_reference=user.entity.company.id)
+        qs = VendorShippingImportLog.objects.all().order_by("-uploaded_at")
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company.company_type == "vendor":
+                qs = qs.filter(vendor_company_reference=company.id)
+            elif company.company_type == "buyer":
+                qs = qs.filter(company_scope_reference=company.id)
         return qs
 
 
