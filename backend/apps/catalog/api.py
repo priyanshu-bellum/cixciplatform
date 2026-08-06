@@ -471,10 +471,24 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
             data = []
             for p in products:
                 vendor = Company.objects.filter(id=p.vendor_company_reference).first()
+                primary_image_url = ""
+                if p.primary_image_reference:
+                    try:
+                        from apps.media.models import MediaAsset
+                        from django.conf import settings
+                        asset = MediaAsset.objects.get(id=p.primary_image_reference)
+                        if asset.status == "ready":
+                            media_url = getattr(settings, "MEDIA_URL", "/media/")
+                            primary_image_url = f"{media_url}{asset.storage_key}"
+                    except Exception:
+                        pass
+                if not primary_image_url and isinstance(p.media_references, list) and len(p.media_references) > 0:
+                    primary_image_url = p.media_references[0]
+
                 data.append({
                     "product_id": str(p.id),
                     "vendor_name": vendor.name if vendor else "Unknown Vendor",
-                    "primary_image_url": p.primary_image_url or "",
+                    "primary_image_url": primary_image_url or "",
                     "product_name": p.name,
                     "sku": p.sku,
                     "upc": p.upc or ""

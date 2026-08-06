@@ -140,6 +140,7 @@ class BuyerUpdateSignalSerializer(serializers.ModelSerializer):
 
 
 class ReturnRequestSerializer(serializers.ModelSerializer):
+    ran = serializers.CharField(required=False, allow_blank=True)
     class Meta:
         model = ReturnRequest
         fields = "__all__"
@@ -827,6 +828,7 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "partial_update": "fulfillment.return.update",
         "destroy": "fulfillment.return.manage",
         "import_returns": "fulfillment.return.update",
+        "export_returns_csv": "fulfillment.return.list",
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["status", "suborder_reference", "buyer_reference"]
@@ -843,6 +845,84 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             elif company.company_type == "buyer":
                 qs = qs.filter(buyer_reference=company.id)
         return qs
+
+    @action(detail=False, methods=["get"], url_path="export-csv")
+    def export_returns_csv(self, request):
+        """
+        Export returns matching the queryset to CSV format.
+        """
+        import csv
+        from django.http import HttpResponse
+        from apps.tenant.models import Company
+
+        qs = self.get_queryset()
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="export_returns.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            "Buyer", "suborder", "RAN", "Reason", "Return Initiation Date",
+            "Return Quantity", "Vendor Wholesale Price", "SKU", "UPC",
+            "Return Received Date", "Return Refunded Amount", "Rejected Reason"
+        ])
+
+        for req in qs:
+            buyer_company = Company.objects.filter(id=req.buyer_reference).first()
+            buyer_name = buyer_company.name if buyer_company else ""
+            
+            init_date = req.return_initiation_date.strftime("%Y-%m-%d") if req.return_initiation_date else ""
+            received_date = req.return_received_date.strftime("%Y-%m-%d") if req.return_received_date else ""
+            
+            price_ref = ""
+            if req.vendor_wholesale_price is not None:
+                price_ref = str(req.vendor_wholesale_price)
+            elif req.pricing_snapshot_reference is not None:
+                price_ref = str(req.pricing_snapshot_reference)
+                
+            writer.writerow([
+                buyer_name,
+                str(req.suborder_reference),
+                req.ran,
+                req.reason or "",
+                init_date,
+                req.return_quantity,
+                price_ref,
+                req.sku,
+                req.upc or "",
+                received_date,
+                str(req.return_refunded_amount) if req.return_refunded_amount is not None else "",
+                req.rejected_reason or ""
+            ])
+
+        return response
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        buyer_id = None
+        if not user.is_cixci_admin and user.entity:
+            buyer_id = user.entity.company_id
+        else:
+            buyer_id = serializer.validated_data.get("buyer_reference")
+        
+        # Verify suborder belongs to the buyer company
+        suborder_id = serializer.validated_data.get("suborder_reference")
+        if suborder_id and not user.is_cixci_admin and user.entity:
+            from apps.routing.models import RoutedSuborder
+            suborder = RoutedSuborder.objects.filter(id=suborder_id).first()
+            from rest_framework.exceptions import ValidationError
+            if not suborder:
+                raise ValidationError("Suborder does not exist.")
+            if suborder.order.company_scope_reference != user.entity.company_id:
+                raise ValidationError("Unauthorized suborder reference.")
+
+        # Generate RAN if not provided
+        ran = serializer.validated_data.get("ran")
+        if not ran:
+            import uuid
+            ran = f"RAN-{uuid.uuid4().hex[:8].upper()}"
+
+        serializer.save(buyer_reference=buyer_id, ran=ran)
 
     @action(detail=False, methods=["post"], url_path="import-returns")
     def import_returns(self, request):

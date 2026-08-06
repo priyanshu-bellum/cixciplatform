@@ -217,6 +217,23 @@ export default function FulfillmentPage() {
     }
   }
 
+  const handleExportReturnsCSV = async () => {
+    try {
+      const resp = await api.get('/fulfillment/return-requests/export-csv/', { responseType: 'blob' })
+      const blob = new Blob([resp.data], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', 'export_returns.csv')
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to export return requests.')
+    }
+  }
+
   const handleShippingFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setShippingFile(e.target.files[0])
@@ -287,14 +304,19 @@ export default function FulfillmentPage() {
           <div className="page-sub">Vendor handoffs, SLA evaluation records, and response policies</div>
         </div>
         {(tab === 'returns' || tab === 'returnLogs') && (
-          <button className="btn btn-primary" onClick={() => {
-            setImportFile(null);
-            setPreviewData(null);
-            setImportError(null);
-            setShowImportModal(true);
-          }}>
-            <UploadCloud size={14} style={{ marginRight: 6 }} /> Import Returns (CSV)
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-secondary" onClick={handleExportReturnsCSV}>
+              <FileText size={14} style={{ marginRight: 6 }} /> Export Returns (CSV)
+            </button>
+            <button className="btn btn-primary" onClick={() => {
+              setImportFile(null);
+              setPreviewData(null);
+              setImportError(null);
+              setShowImportModal(true);
+            }}>
+              <UploadCloud size={14} style={{ marginRight: 6 }} /> Import Returns (CSV)
+            </button>
+          </div>
         )}
         {(tab === 'handoffs' || tab === 'shippingLogs') && (
           <button className="btn btn-primary" onClick={() => {

@@ -527,3 +527,35 @@ class TestVendorReturnImport:
         req = ReturnRequest.objects.get(ran="RAN-12345")
         assert req.status == ReturnStatus.RETURN_CLOSED
         assert req.rejected_reason == "Item was tampered with"
+
+    # ─── CSV Export ───────────────────────────────────────────────────────
+
+    def test_export_returns_csv(self, setup_data):
+        """Test exporting returns to CSV format."""
+        client = APIClient()
+        cap, _ = Capability.objects.get_or_create(code="fulfillment.return.list", defaults={"module": "fulfillment"})
+        setup_data["vendor_user"].capabilities.add(cap)
+        setup_data["vendor"].capabilities.add(cap)
+        
+        client.force_authenticate(user=setup_data["vendor_user"])
+        response = client.get("/api/v1/fulfillment/return-requests/export-csv/")
+        assert response.status_code == 200
+        assert response["Content-Type"] == "text/csv"
+        
+        csv_content = response.content.decode("utf-8")
+        lines = csv_content.splitlines()
+        assert len(lines) >= 2
+        
+        headers = lines[0].split(",")
+        assert headers[0] == "Buyer"
+        assert headers[1] == "suborder"
+        assert headers[2] == "RAN"
+        assert headers[7] == "SKU"
+        assert headers[8] == "UPC"
+
+        row = lines[1].split(",")
+        assert row[0] == "Test Buyer Corp"
+        assert row[1] == str(setup_data["sub"].id)
+        assert row[2] == "RAN-12345"
+        assert row[7] == "ACC-BAT-111"
+        assert row[8] == "111222333444"

@@ -47,4 +47,5 @@ MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "/media/"
 
 DEBUG = True
+ALLOWED_HOSTS = ["*"]
 print("\n[CIXCI] Using LOCAL settings: SQLite + in-memory cache. No Docker needed.\n")

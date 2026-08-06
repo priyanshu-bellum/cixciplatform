@@ -425,6 +425,17 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["status", "vendor_company_reference"]
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = PurchaseOrder.objects.all().order_by("-created_at")
+        if not user.is_cixci_admin and user.entity:
+            company = user.entity.company
+            if company.company_type == "vendor":
+                qs = qs.filter(vendor_company_reference=company.id)
+            elif company.company_type == "buyer":
+                qs = qs.filter(company_scope_reference=company.id)
+        return qs
+
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
         lines_data = data.pop('lines', None)
