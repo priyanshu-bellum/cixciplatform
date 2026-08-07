@@ -141,6 +141,7 @@ class BuyerUpdateSignalSerializer(serializers.ModelSerializer):
 
 class ReturnRequestSerializer(serializers.ModelSerializer):
     ran = serializers.CharField(required=False, allow_blank=True)
+    buyer_reference = serializers.UUIDField(required=False)
     class Meta:
         model = ReturnRequest
         fields = "__all__"
@@ -905,16 +906,22 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         else:
             buyer_id = serializer.validated_data.get("buyer_reference")
         
-        # Verify suborder belongs to the buyer company
+        # Verify suborder & auto-populate buyer_id if missing
         suborder_id = serializer.validated_data.get("suborder_reference")
-        if suborder_id and not user.is_cixci_admin and user.entity:
+        suborder = None
+        if suborder_id:
             from apps.routing.models import RoutedSuborder
             suborder = RoutedSuborder.objects.filter(id=suborder_id).first()
             from rest_framework.exceptions import ValidationError
             if not suborder:
                 raise ValidationError("Suborder does not exist.")
-            if suborder.order.company_scope_reference != user.entity.company_id:
-                raise ValidationError("Unauthorized suborder reference.")
+            if not user.is_cixci_admin and user.entity:
+                if suborder.order.company_scope_reference != user.entity.company_id:
+                    raise ValidationError("Unauthorized suborder reference.")
+
+        # Fallback to suborder's buyer scope reference if buyer_id is still missing
+        if not buyer_id and suborder:
+            buyer_id = suborder.order.company_scope_reference
 
         # Generate RAN if not provided
         ran = serializer.validated_data.get("ran")
@@ -922,7 +929,15 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             import uuid
             ran = f"RAN-{uuid.uuid4().hex[:8].upper()}"
 
-        serializer.save(buyer_reference=buyer_id, ran=ran)
+        # Default wholesale price snapshot from suborder line item if not provided
+        vendor_price = serializer.validated_data.get("vendor_wholesale_price")
+        if vendor_price is None and suborder:
+            if hasattr(suborder.order, "lines"):
+                line_item = suborder.order.lines.filter(sku=serializer.validated_data.get("sku")).first()
+                if line_item:
+                    vendor_price = getattr(line_item, "unit_price_snapshot", None)
+
+        serializer.save(buyer_reference=buyer_id, ran=ran, vendor_wholesale_price=vendor_price)
 
     @action(detail=False, methods=["post"], url_path="import-returns")
     def import_returns(self, request):

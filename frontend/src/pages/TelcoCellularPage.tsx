@@ -215,10 +215,12 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
                         <tbody>
                           {suborderLines.map((line: any) => {
                             const existingReturn = returns?.find(
-                              (ret: any) => ret.suborder_reference === sub.id && ret.sku === line.sku
+                              (ret: any) => String(ret.suborder_reference) === String(sub.id) && ret.sku === line.sku
                             );
 
                             const isEligibleForReturn = sub.status === 'shipped' || sub.status === 'delivered';
+                            const retStatus = existingReturn?.status ? String(existingReturn.status) : '';
+                            const retStatusDisplay = retStatus ? retStatus.replace(/^return_/, '').replace(/_/g, ' ') : '';
 
                             return (
                               <tr key={line.id}>
@@ -240,8 +242,8 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
                                 <td>${line.line_total.toFixed(2)}</td>
                                 <td style={{ textAlign: 'right' }}>
                                   {existingReturn ? (
-                                    <span className={`return-badge ${existingReturn.status === 'refunded' ? 'closed' : ''}`}>
-                                      Return: {existingReturn.status.replace(/_/g, ' ')} ({existingReturn.ran})
+                                    <span className={`return-badge ${retStatus.includes('refund') ? 'closed' : ''}`}>
+                                      Return: {retStatusDisplay} ({existingReturn.ran || 'Pending'})
                                     </span>
                                   ) : isEligibleForReturn ? (
                                     <button
@@ -340,6 +342,7 @@ export default function TelcoCellularPage() {
       suborder_reference: returnTarget.suborderId,
       sku: returnTarget.line.sku,
       upc: returnTarget.line.upc || 'N/A',
+      return_quantity: returnQty,
       quantity: returnQty,
       reason: returnReason,
     })
@@ -1617,21 +1620,29 @@ export default function TelcoCellularPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {returns.map((ret: any) => (
-                        <tr key={ret.id}>
-                          <td className="mono" style={{ color: '#20D1F2', fontWeight: 600 }}>{ret.ran}</td>
-                          <td className="mono">{ret.suborder_reference.slice(0, 8)}...</td>
-                          <td className="mono">{ret.sku}</td>
-                          <td>{ret.quantity}</td>
-                          <td>{ret.reason || 'N/A'}</td>
-                          <td>
-                            <span className={`suborder-status ${ret.status === 'refunded' ? 'status-badge-delivered' : 'status-badge-pending'}`}>
-                              {ret.status.replace(/_/g, ' ')}
-                            </span>
-                          </td>
-                          <td>{new Date(ret.created_at || Date.now()).toLocaleDateString()}</td>
-                        </tr>
-                      ))}
+                      {returns.map((ret: any) => {
+                        const subRefStr = ret.suborder_reference ? String(ret.suborder_reference) : ''
+                        const subRefDisplay = subRefStr ? `${subRefStr.slice(0, 8)}...` : 'N/A'
+                        const rawStatus = ret.status ? String(ret.status) : 'return_sent_to_vendor'
+                        const statusDisplay = rawStatus.replace(/^return_/, '').replace(/_/g, ' ')
+                        const displayQty = ret.return_quantity ?? ret.quantity ?? 1
+
+                        return (
+                          <tr key={ret.id || Math.random()}>
+                            <td className="mono" style={{ color: '#20D1F2', fontWeight: 600 }}>{ret.ran || 'N/A'}</td>
+                            <td className="mono">{subRefDisplay}</td>
+                            <td className="mono">{ret.sku || 'N/A'}</td>
+                            <td>{displayQty}</td>
+                            <td>{ret.reason || 'N/A'}</td>
+                            <td>
+                              <span className={`suborder-status ${rawStatus.includes('refund') ? 'status-badge-delivered' : 'status-badge-pending'}`}>
+                                {statusDisplay}
+                              </span>
+                            </td>
+                            <td>{ret.created_at ? new Date(ret.created_at).toLocaleDateString() : new Date().toLocaleDateString()}</td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>

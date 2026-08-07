@@ -753,34 +753,41 @@ export default function FulfillmentPage() {
                 </tr>
               </thead>
               <tbody>
-                {returnRequests.map((req: any) => (
-                  <tr key={req.id}>
-                    <td className="mono" style={{ color: 'var(--accent)', fontWeight: 500, fontSize: 11 }}>
-                      {req.ran}
-                    </td>
-                    <td className="mono" style={{ fontSize: 11 }}>
-                      {req.suborder_reference?.slice(0, 8)}…
-                    </td>
-                    <td className="mono" style={{ fontSize: 11 }}>
-                      {req.sku}
-                    </td>
-                    <td className="mono" style={{ fontSize: 11 }}>
-                      {req.upc}
-                    </td>
-                    <td>{req.return_quantity}</td>
-                    <td>{req.vendor_wholesale_price != null ? `$${parseFloat(req.vendor_wholesale_price).toFixed(2)}` : '—'}</td>
-                    <td>
-                      <span className={`badge ${RETURN_STATUS_COLORS[req.status] ?? 'badge-muted'}`}>
-                        {req.status?.replace('return_', '')?.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td>{req.return_received_date ? new Date(req.return_received_date).toLocaleDateString() : '—'}</td>
-                    <td>{req.return_refunded_amount != null ? `$${parseFloat(req.return_refunded_amount).toFixed(2)}` : '—'}</td>
-                    <td style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={req.rejected_reason}>
-                      {req.rejected_reason || '—'}
-                    </td>
-                  </tr>
-                ))}
+                {returnRequests.map((req: any) => {
+                  const subRefStr = req.suborder_reference ? String(req.suborder_reference) : ''
+                  const subRefDisplay = subRefStr ? `${subRefStr.slice(0, 8)}…` : '—'
+                  const rawStatus = req.status ? String(req.status) : 'return_sent_to_vendor'
+                  const statusDisplay = rawStatus.replace(/^return_/, '').replace(/_/g, ' ')
+
+                  return (
+                    <tr key={req.id || Math.random()}>
+                      <td className="mono" style={{ color: 'var(--accent)', fontWeight: 500, fontSize: 11 }}>
+                        {req.ran || '—'}
+                      </td>
+                      <td className="mono" style={{ fontSize: 11 }}>
+                        {subRefDisplay}
+                      </td>
+                      <td className="mono" style={{ fontSize: 11 }}>
+                        {req.sku || '—'}
+                      </td>
+                      <td className="mono" style={{ fontSize: 11 }}>
+                        {req.upc || '—'}
+                      </td>
+                      <td>{req.return_quantity ?? req.quantity ?? 1}</td>
+                      <td>{req.vendor_wholesale_price != null ? `$${parseFloat(req.vendor_wholesale_price).toFixed(2)}` : '—'}</td>
+                      <td>
+                        <span className={`badge ${RETURN_STATUS_COLORS[rawStatus] ?? 'badge-muted'}`}>
+                          {statusDisplay}
+                        </span>
+                      </td>
+                      <td>{req.return_received_date ? new Date(req.return_received_date).toLocaleDateString() : '—'}</td>
+                      <td>{req.return_refunded_amount != null ? `$${parseFloat(req.return_refunded_amount).toFixed(2)}` : '—'}</td>
+                      <td style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={req.rejected_reason}>
+                        {req.rejected_reason || '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
