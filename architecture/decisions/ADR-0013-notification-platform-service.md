@@ -2,7 +2,10 @@
 
 ## Status
 
-Proposed
+Accepted — Phase 1 Implemented
+
+> [!NOTE]
+> **Phase 1 Bounds**: Phase 1 human notification channels are **In-App** and **Email** only. SMS, Mobile Push, Webhooks, Slack, Teams, End-User/Customer notifications, Multilingual templates, and Editable templates are reserved as future extension points and are not Phase 1 functionality. Operational Vendor CSV files deliver via `Source Module -> Logs & Audit -> Integration Management -> Vendor`.
 
 ## Context
 

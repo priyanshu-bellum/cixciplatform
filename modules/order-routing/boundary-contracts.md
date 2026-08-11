@@ -29,7 +29,7 @@ This document is proposal-level architecture. It clarifies Order Routing boundar
 - Whether Fulfillment/Returns has accepted operational execution except as a Fulfillment-owned disposition reference.
 - Whether fulfillment has shipped, returned, replaced, delivered, failed, selected a carrier/warehouse execution path, received a tracking number, generated a tracking URL, or accepted a vendor fulfillment import as operational state.
 - Whether an external vendor export was delivered, received, retried, quarantined, or acknowledged by a provider or external system.
-- Whether a scheduled vendor export email was delivered, bounced, retried, suppressed, or opened.
+- Whether a scheduled vendor export email was delivered, bounced, retried, suppressed, or opened. Operational file delivery is owned by Integration Management via Logs & Audit (`Source Module -> Logs & Audit -> Integration Management -> Vendor`). Notification Platform Service handles approved human alerts and exception notifications only.
 - What immutable file/export/download evidence, file retention, row counts, or audit evidence exists outside Order Routing-owned export references.
 - Whether an invoice is issued, paid, reconciled, disputed, credited, adjusted, or corrected.
 - Whether a warranty claim is approved, denied, fulfilled, or registered with a vendor system.

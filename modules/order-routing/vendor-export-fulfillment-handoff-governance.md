@@ -11,7 +11,7 @@ This document references the shared `architecture/standards/import-export-valida
 - Fulfillment/Returns owns fulfillment handoff acceptance/disposition, shipment execution, tracking numbers, tracking URLs, carrier behavior, shipped dates, delivered dates, fulfillment import validation, return status, refund evidence, and operational fulfillment status.
 - Integration Management owns external delivery/receipt evidence, API/webhook/CSV/SFTP/manual transport evidence, provider failures, retries, and external references.
 - Logs & Audit owns immutable export/download/file evidence, row counts, file references, validation summaries, processing summaries, and audit retention.
-- Notification Platform Service owns scheduled email delivery, recipient delivery status, notification history, and delivery retry behavior.
+- Integration Management via Logs & Audit owns operational file delivery (Vendor Order CSV, Return CSV, re-exports) via `Source Module -> Logs & Audit -> Integration Management -> Vendor`. Notification Platform Service owns approved human alerts, exception notifications, delivery status for human alerts, and notification history.
 - Tenant Company owns user/vendor permission, company/entity scope, schedule authority, manual download authority, and destructive/re-export authority.
 
 ## Vendor Routed-Suborder Export Governance

@@ -55,6 +55,25 @@ def evaluate_vendor_slas():
                     delay_hours=delay_hours
                 )
                 logger.warning("SLA Evaluation %s: LATE by %.2f hours", record.id, delay_hours)
+
+                # Emit NPS alert/exception notification
+                try:
+                    from apps.notification.services import create_notification_request
+                    create_notification_request(
+                        event_type="sla.evaluation_violation",
+                        source_module="fulfillment",
+                        company_scope_reference=record.vendor_company_reference,
+                        recipient_ids=[],
+                        safe_payload_summary={
+                            "sla_record_id": str(record.id),
+                            "outcome": "LATE",
+                            "delay_hours": round(delay_hours, 2),
+                        },
+                        source_record_id=record.id,
+                    )
+                except Exception as notif_ex:
+                    logger.exception("Failed to emit SLA late notification: %s", notif_ex)
+
             evaluated_count += 1
 
         else:
@@ -71,9 +90,28 @@ def evaluate_vendor_slas():
                     status=ExceptionStatus.OPEN
                 )
                 logger.warning("SLA Evaluation %s: MISSING (response window expired)", record.id)
+
+                # Emit NPS alert/exception notification
+                try:
+                    from apps.notification.services import create_notification_request
+                    create_notification_request(
+                        event_type="sla.evaluation_violation",
+                        source_module="fulfillment",
+                        company_scope_reference=record.vendor_company_reference,
+                        recipient_ids=[],
+                        safe_payload_summary={
+                            "sla_record_id": str(record.id),
+                            "outcome": "MISSING",
+                        },
+                        source_record_id=record.id,
+                    )
+                except Exception as notif_ex:
+                    logger.exception("Failed to emit SLA missing notification: %s", notif_ex)
+
                 evaluated_count += 1
             else:
                 # Still within the window, keep pending
                 pass
 
     logger.info("Completed SLA evaluations. Evaluated %d records.", evaluated_count)
+

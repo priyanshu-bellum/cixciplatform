@@ -8,10 +8,12 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from apps.tenant.mixins import CheckAccessMixin
+from django.utils import timezone
 from .models import (
     NotificationTemplate, NotificationPreference,
     NotificationRequest, DeliveryAttempt,
     ActivitySummaryConfiguration, ActivitySummaryDeliveryAttempt,
+    InAppNotification
 )
 
 
@@ -60,6 +62,18 @@ class DeliveryAttemptSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
+class InAppNotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InAppNotification
+        fields = [
+            "id", "recipient", "company_scope_reference", "notification_request",
+            "event_type", "classification", "title", "body", "source_module",
+            "source_record_id", "link", "delivery_mode", "delivery_attempt_reference",
+            "audit_reference", "is_read", "read_at", "created_at"
+        ]
+        read_only_fields = ["id", "recipient", "company_scope_reference", "created_at"]
+
+
 class ActivitySummaryConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivitySummaryConfiguration
@@ -88,6 +102,24 @@ class NotificationTemplateViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filterset_fields = ["channel", "event_type", "status"]
     search_fields = ["template_code", "event_type"]
 
+    def perform_create(self, serializer):
+        if not self.request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Phase 1 templates are CIXCI-controlled and cannot be created by tenant users.")
+        serializer.save()
+
+    def perform_update(self, serializer):
+        if not self.request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Phase 1 templates are CIXCI-controlled and cannot be edited by tenant users.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self.request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Phase 1 templates are CIXCI-controlled and cannot be deleted by tenant users.")
+        instance.delete()
+
 
 class NotificationPreferenceViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -108,7 +140,6 @@ class NotificationPreferenceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"])
     def unsubscribe(self, request):
         """Unsubscribe from a notification type."""
-        from django.utils import timezone
         event_type = request.data.get("event_type", "")
         channel = request.data.get("channel", "")
         pref, _ = NotificationPreference.objects.get_or_create(
@@ -140,6 +171,65 @@ class NotificationRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet
         return Response(DeliveryAttemptSerializer(attempts, many=True).data)
 
 
+class InAppNotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = InAppNotificationSerializer
+
+    def get_queryset(self):
+        return InAppNotification.objects.filter(recipient=self.request.user)
+
+    def retrieve(self, request, *args, **kwargs):
+        notif = self.get_object()
+        # Perform fresh Tenant Company check_access on detail access
+        from apps.tenant.services import check_access
+        capability = "devices.portfolio.self_modify"
+        if notif.source_module == "routing":
+            capability = "fulfillment.shipping.import"
+        elif notif.source_module == "fulfillment":
+            capability = "fulfillment.return.list"
+        elif notif.source_module == "catalog":
+            capability = "catalog.product.create"
+
+        access_res = check_access(request.user, capability, company_id=notif.company_scope_reference)
+        if not access_res.granted:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Fresh Tenant Company authorization check failed.")
+        return super().retrieve(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="mark-read")
+    def mark_read(self, request, pk=None):
+        notif = self.get_object()
+        if not notif.is_read:
+            notif.is_read = True
+            notif.read_at = timezone.now()
+            notif.save(update_fields=["is_read", "read_at"])
+        return Response(InAppNotificationSerializer(notif).data)
+
+    @action(detail=True, methods=["post"], url_path="mark-unread")
+    def mark_unread(self, request, pk=None):
+        notif = self.get_object()
+        if notif.is_read:
+            notif.is_read = False
+            notif.read_at = None
+            notif.save(update_fields=["is_read", "read_at"])
+        return Response(InAppNotificationSerializer(notif).data)
+
+    @action(detail=False, methods=["post"], url_path="mark-all-read")
+    def mark_all_read(self, request):
+        now = timezone.now()
+        updated_count = InAppNotification.objects.filter(
+            recipient=request.user, is_read=False
+        ).update(is_read=True, read_at=now)
+        return Response({"marked_read_count": updated_count})
+
+    @action(detail=False, methods=["get"], url_path="unread-count")
+    def unread_count(self, request):
+        count = InAppNotification.objects.filter(
+            recipient=request.user, is_read=False
+        ).count()
+        return Response({"unread_count": count})
+
+
 class ActivitySummaryConfigViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = ActivitySummaryConfiguration.objects.all()
     serializer_class = ActivitySummaryConfigSerializer
@@ -157,6 +247,8 @@ router = DefaultRouter()
 router.register("templates", NotificationTemplateViewSet, basename="notification-template")
 router.register("preferences", NotificationPreferenceViewSet, basename="notification-preference")
 router.register("requests", NotificationRequestViewSet, basename="notification-request")
+router.register("in-app", InAppNotificationViewSet, basename="notification-in-app")
 router.register("summary-config", ActivitySummaryConfigViewSet, basename="summary-config")
 
 urlpatterns = [path("", include(router.urls))]
+

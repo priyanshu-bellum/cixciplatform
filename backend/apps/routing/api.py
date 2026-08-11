@@ -67,6 +67,21 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "placed_at"]
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        subs = list(instance.routed_suborders.all())
+        if subs:
+            all_delivered = all(s.status == "delivered" for s in subs)
+            if all_delivered and instance.status != "delivered":
+                instance.status = "delivered"
+                instance.save(update_fields=["status"])
+                ret["status"] = "delivered"
+            elif all(s.status in ["shipped", "delivered"] for s in subs) and instance.status not in ["shipped", "delivered"]:
+                instance.status = "shipped"
+                instance.save(update_fields=["status"])
+                ret["status"] = "shipped"
+        return ret
+
     def get_buyer_name(self, obj):
         from apps.tenant.models import Company
         company = Company.objects.filter(id=obj.company_scope_reference).first()
@@ -959,16 +974,18 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                     sub.status = RoutingStatus.PROCESSING
                     sub.save()
                     
-                # Transition parent Order to SHIPPED if all suborders are shipped or delivered
+                # Transition parent Order to DELIVERED if all suborders are delivered, or SHIPPED if all shipped/delivered
                 order = sub.order
-                all_subs_shipped_or_delivered = True
-                for s in order.routed_suborders.all():
-                    if s.status not in [RoutingStatus.SHIPPED, RoutingStatus.DELIVERED]:
-                        all_subs_shipped_or_delivered = False
-                        break
-                if all_subs_shipped_or_delivered:
-                    order.status = RoutingStatus.SHIPPED
-                    order.save()
+                all_subs = list(order.routed_suborders.all())
+                if all_subs:
+                    all_delivered = all(s.status == RoutingStatus.DELIVERED for s in all_subs)
+                    all_shipped_or_delivered = all(s.status in [RoutingStatus.SHIPPED, RoutingStatus.DELIVERED] for s in all_subs)
+                    if all_delivered:
+                        order.status = RoutingStatus.DELIVERED
+                        order.save(update_fields=["status"])
+                    elif all_shipped_or_delivered:
+                        order.status = RoutingStatus.SHIPPED
+                        order.save(update_fields=["status"])
                     
                 # Update BuyerUpdateReadySignal
                 expected_count = order.routed_suborders.count()
@@ -1459,47 +1476,41 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
                 if system_admin:
                     authorized_recipient_ids = [str(system_admin.id)]
                     
-        template = NotificationTemplate.objects.filter(
-            event_type="vendor.order_export",
-            channel=NotificationChannel.EMAIL,
-            status=TemplateStatus.APPROVED
-        ).first()
-        
-        email_send_result = "success"
-        email_message_id = None
+        from apps.integration.services import send_operational_vendor_email
+
+        recipient = recipient_emails[0] if recipient_emails else None
+        res = send_operational_vendor_email(
+            vendor_company_id=log.vendor_company_reference,
+            filename=filename,
+            csv_content=csv_bytes.decode("utf-8", errors="replace"),
+            recipient_email=recipient,
+        )
+
         error_code = None
         error_message = None
-        
-        if template:
-            try:
-                notif = NotificationRequest.objects.create(
-                    event_type="vendor.order_export",
-                    source_module="routing",
-                    source_record_id=log.window.id,
-                    safe_payload_summary={
-                        "buyer_name": buyer_name,
-                        "vendor_name": vendor.name,
-                        "export_date": timezone.now().strftime('%Y-%m-%d'),
-                        "export_time": timezone.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
-                        "order_count": log.order_count,
-                        "suborder_count": log.suborder_count,
-                    },
-                    attachments=attachments,
-                    requested_recipient_ids=authorized_recipient_ids,
-                    company_scope_reference=log.vendor_company_reference,
-                    template_code=template.template_code,
-                    channel=NotificationChannel.EMAIL,
-                    idempotency_key=f"reexport_attempt_{reexport_attempt.id}"
-                )
-                email_message_id = f"msg_{notif.id}"
-            except Exception as e:
-                email_send_result = "failed"
-                error_code = "NOTIFICATION_REQUEST_FAILED"
-                error_message = str(e)
+        email_message_id = None
+
+        if res.get("success"):
+            email_send_result = "success"
+            email_message_id = res.get("message_id", f"msg_{reexport_attempt.id}")
         else:
-            email_send_result = "no_recipients_configured"
-            error_code = "NO_TEMPLATE"
-            error_message = "No approved notification template found for vendor.order_export"
+            email_send_result = "failed"
+            error_code = "OPERATIONAL_TRANSPORT_FAILED"
+            error_message = res.get("error", "Email transport failed")
+
+            from apps.notification.services import create_notification_request
+            create_notification_request(
+                event_type="vendor.export_delivery_failed",
+                source_module="routing",
+                company_scope_reference=log.vendor_company_reference,
+                recipient_ids=authorized_recipient_ids,
+                safe_payload_summary={
+                    "vendor_name": vendor.name,
+                    "filename": filename,
+                    "error_message": error_message
+                },
+                source_record_id=log.window.id,
+            )
             
         reexport_attempt.delivery_status = "SENT" if email_send_result in ["success", "no_recipients_configured"] else "DELIVERY_FAILED"
         reexport_attempt.provider_message_id = email_message_id

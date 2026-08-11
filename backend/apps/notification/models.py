@@ -33,6 +33,9 @@ class DeliveryStatus(models.TextChoices):
     EXPIRED = "expired", "Expired"
     CANCELLED = "cancelled", "Cancelled"
     SUPERSEDED = "superseded", "Superseded"
+    RETRY_SCHEDULED = "retry_scheduled", "Retry Scheduled"
+    RETRY_EXHAUSTED = "retry_exhausted", "Retry Exhausted"
+    REVIEW_REQUIRED = "review_required", "Review Required"
 
 
 class PreferenceOutcome(models.TextChoices):
@@ -42,6 +45,27 @@ class PreferenceOutcome(models.TextChoices):
     DIGEST = "digest", "Digest"
     REVIEW_REQUIRED = "review_required", "Review Required"
     SUPPRESS = "suppress", "Suppress"
+
+
+class NotificationClassification(models.TextChoices):
+    REQUIRED_OPERATIONAL = "REQUIRED_OPERATIONAL", "Required Operational"
+    CONFIGURABLE_OPERATIONAL = "CONFIGURABLE_OPERATIONAL", "Configurable Operational"
+    INFORMATIONAL = "INFORMATIONAL", "Informational"
+    ADMIN_SYSTEM_CRITICAL = "ADMIN_SYSTEM_CRITICAL", "Admin System Critical"
+    DASHBOARD_ONLY = "DASHBOARD_ONLY", "Dashboard Only"
+    API_ONLY = "API_ONLY", "API Only"
+    OPERATIONAL_FILE_DELIVERY = "OPERATIONAL_FILE_DELIVERY", "Operational File Delivery"
+
+
+class DeliveryMode(models.TextChoices):
+    IMMEDIATE = "IMMEDIATE", "Immediate"
+    DAILY_DIGEST = "DAILY_DIGEST", "Daily Digest"
+    DAILY_SUMMARY = "DAILY_SUMMARY", "Daily Summary"
+    SCHEDULED_SUMMARY = "SCHEDULED_SUMMARY", "Scheduled Summary"
+    DASHBOARD = "DASHBOARD", "Dashboard"
+    API = "API", "API"
+    OPERATIONAL_FILE = "OPERATIONAL_FILE", "Operational File"
+    NONE = "NONE", "None"
 
 
 class TemplateStatus(models.TextChoices):
@@ -137,6 +161,9 @@ class NotificationRequest(models.Model):
     # Template
     template_code = models.CharField(max_length=150, blank=True)
     channel = models.CharField(max_length=20, choices=NotificationChannel.choices, default=NotificationChannel.EMAIL)
+    classification = models.CharField(
+        max_length=50, choices=NotificationClassification.choices, default=NotificationClassification.CONFIGURABLE_OPERATIONAL
+    )
     # Idempotency
     idempotency_key = models.CharField(max_length=255, unique=True, db_index=True)
     # Preference evaluation outcome
@@ -284,3 +311,95 @@ class ActivitySummaryDeliveryAttempt(models.Model):
 
     class Meta:
         db_table = "notification_summary_delivery_attempt"
+
+
+# ─── In-App Notification Center (Phase 1) ──────────────────────────────────────
+
+class InAppNotification(models.Model):
+    """
+    Phase 1: In-App Notification Center message for individual user recipients.
+    Scoped by recipient user and company scope.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipient = models.ForeignKey(
+        "tenant.User", on_delete=models.CASCADE, related_name="in_app_notifications"
+    )
+    company_scope_reference = models.UUIDField(db_index=True)
+    notification_request = models.ForeignKey(
+        NotificationRequest, null=True, blank=True, on_delete=models.SET_NULL, related_name="in_app_notifications"
+    )
+    event_type = models.CharField(max_length=200, db_index=True)
+    classification = models.CharField(
+        max_length=50, choices=NotificationClassification.choices, default=NotificationClassification.INFORMATIONAL
+    )
+    title = models.CharField(max_length=255)
+    body = models.TextField()
+    source_module = models.CharField(max_length=100, blank=True)
+    source_record_id = models.UUIDField(null=True, blank=True)
+    link = models.CharField(max_length=500, blank=True, help_text="Optional deep-link target URL or route")
+    delivery_mode = models.CharField(
+        max_length=50, choices=DeliveryMode.choices, default=DeliveryMode.IMMEDIATE
+    )
+    delivery_attempt_reference = models.UUIDField(null=True, blank=True)
+    audit_reference = models.JSONField(default=dict, blank=True)
+    is_read = models.BooleanField(default=False, db_index=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "notification_in_app"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["recipient", "is_read"]),
+            models.Index(fields=["company_scope_reference", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"InAppNotification to {self.recipient_id} ({self.title})"
+
+
+# ─── SLA Reminder Chains (Section 13) ──────────────────────────────────────────
+
+class ChainStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    RESOLVED = "resolved", "Resolved"
+    SUPERSEDED = "superseded", "Superseded"
+    EXHAUSTED = "exhausted", "Exhausted"
+
+
+class SLAReminderChain(models.Model):
+    """
+    Section 13: SLA Reminder Chain for tracking recurring SLA reminder notifications.
+    Source modules signal threshold reached or condition resolved.
+    NPS orchestrates daily reminders and chain resolution.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sla_chain_id = models.CharField(max_length=255, unique=True, db_index=True)
+    source_module = models.CharField(max_length=100)
+    source_condition_reference = models.UUIDField(db_index=True)
+    company_scope_reference = models.UUIDField(db_index=True)
+    event_type = models.CharField(max_length=200)
+    reminder_sequence = models.PositiveIntegerField(default=1)
+    previous_reminder_reference = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="subsequent_reminders"
+    )
+    first_threshold_at = models.DateTimeField(default=timezone.now)
+    last_reminder_at = models.DateTimeField(default=timezone.now)
+    next_reminder_due_at = models.DateTimeField(null=True, blank=True)
+    chain_status = models.CharField(max_length=20, choices=ChainStatus.choices, default=ChainStatus.ACTIVE, db_index=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    escalation_reference = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "notification_sla_reminder_chain"
+        indexes = [
+            models.Index(fields=["source_condition_reference", "chain_status"]),
+            models.Index(fields=["company_scope_reference", "chain_status"]),
+        ]
+
+    def __str__(self):
+        return f"SLAReminderChain {self.sla_chain_id} ({self.chain_status}, seq={self.reminder_sequence})"
+
+

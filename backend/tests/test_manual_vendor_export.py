@@ -98,47 +98,17 @@ class TestManualVendorExport:
 
         # Verify VendorExportWindow is created
         window = VendorExportWindow.objects.get(vendor_company_reference=vendor_company.id)
-        assert window.status == "processing"
+        assert window.status == "closed"
 
         # Verify VendorExportBatchItem links suborder to window
         batch_item = VendorExportBatchItem.objects.get(window=window)
         assert batch_item.routed_suborder == suborder
 
-        # Verify VendorExportDeliveryAttempt is created in progress
+        # Verify VendorExportDeliveryAttempt is succeeded
         attempt = VendorExportDeliveryAttempt.objects.get(window=window)
-        assert attempt.outcome == "in_progress"
+        assert attempt.outcome == "succeeded"
 
-        # Verify NotificationRequest is created with correct event type and scoped company
-        notif_req = NotificationRequest.objects.get(event_type="vendor.order_export")
-        assert notif_req.company_scope_reference == vendor_company.id
-        assert notif_req.source_record_id == window.id
-
-        # Verify CSV attachment exists and is correct
-        assert len(notif_req.attachments) == 1
-        attachment = notif_req.attachments[0]
-        assert "csv" in attachment["filename"]
-        assert attachment["mime_type"] == "text/csv"
-
-        # Decode base64 CSV content and check values
-        csv_text = base64.b64decode(attachment["content"]).decode("utf-8")
-        assert "Buyer" in csv_text
-        assert "First Name" in csv_text
-        assert "Address 1" in csv_text
-        assert "Buyer Corp" in csv_text
-        assert "MAN-SKU-123" in csv_text
-        assert "Suborder" in csv_text
-        assert "Vendor Confirmation Number" in csv_text
-
-        # 5. Process notification request synchronously (Django mail fallback)
-        # Trigger process_notification_request
-        process_notification_request(str(notif_req.id))
-
-        # 6. Verify delivery success, evidence and downstream transitions
-        notif_req.refresh_from_db()
-        delivery_attempt = DeliveryAttempt.objects.get(notification_request=notif_req)
-        assert delivery_attempt.status == DeliveryStatus.SENT
-
-        # Verify attempt, window, suborder, order statuses have transitioned
+        # 5. Verify direct operational delivery success via Integration Management
         attempt.refresh_from_db()
         assert attempt.outcome == "succeeded"
 

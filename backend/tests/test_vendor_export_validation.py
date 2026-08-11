@@ -320,36 +320,23 @@ class TestVendorExportValidation:
             status=RelationshipStatus.ACTIVE
         )
 
-        trigger_vendor_export(vendor)
+        from unittest.mock import patch
+        with patch("apps.integration.services.send_operational_vendor_email") as mock_send:
+            mock_send.return_value = {"success": False, "error": "SMTP Connection Timeout"}
+            trigger_vendor_export(vendor)
 
-        # Get window created
         window = VendorExportWindow.objects.filter(vendor_company_reference=vendor.id).first()
         assert window is not None
-        assert window.status == "processing"
+        assert window.status == "cancelled"
 
-        # Check delivery attempt is in progress
         attempt = VendorExportDeliveryAttempt.objects.filter(window=window).first()
         assert attempt is not None
-        assert attempt.outcome == "in_progress"
-
-        # Get notification request
-        req = NotificationRequest.objects.filter(source_record_id=window.id).first()
-        assert req is not None
-
-        # Simulate exception during sending (mock delivery failing)
-        from apps.routing.services import handle_failed_export_delivery
-        handle_failed_export_delivery(window.id, attempt, error_message="SMTP Connection Timeout")
-
-        window.refresh_from_db()
-        attempt.refresh_from_db()
-        assert window.status == "cancelled"
         assert attempt.outcome == "failed"
 
-        # Check export log updated with fail message
         from apps.routing.models import VendorOrderExportLog
         log = VendorOrderExportLog.objects.filter(window=window).first()
         assert log is not None
-        assert "failed: SMTP Connection Timeout" in log.email_send_result
+        assert log.email_send_result == "failed"
 
     def test_delivery_success_callback(self, setup_data):
         buyer = setup_data["buyer"]
@@ -377,19 +364,11 @@ class TestVendorExportValidation:
 
         window = VendorExportWindow.objects.filter(vendor_company_reference=vendor.id).first()
         assert window is not None
-        assert window.status == "processing"
+        assert window.status == "closed"
 
         attempt = VendorExportDeliveryAttempt.objects.filter(window=window).first()
         assert attempt is not None
-
-        # Mock successful delivery
-        from apps.routing.services import handle_successful_export_delivery
-        class FakeNotificationAttempt:
-            id = uuid.uuid4()
-        
-        handle_successful_export_delivery(window.id, FakeNotificationAttempt())
-
-        window.refresh_from_db()
+        assert attempt.outcome == "succeeded"
         assert window.status == "closed"
 
         # Check export log updated with success message

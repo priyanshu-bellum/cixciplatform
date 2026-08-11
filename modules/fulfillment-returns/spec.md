@@ -29,7 +29,7 @@ Fulfillment and Returns is not the owner of routing decisions, pricing calculati
 - Invoice lifecycle, refund/credit/adjustment lifecycle, payment processing, settlement, reconciliation, or financial finality.
 - Product Catalog, Device Catalog, Media, Tenant Company, Procurement, Launch/Event, Analytics, AI Agent Services, Warranty, Logs & Audit, Integration Management, and Notification Platform Service ownership.
 - Carrier/provider callback receipt evidence and external delivery/transport evidence, which belong to Integration Management where applicable.
-- Scheduled email delivery, notification templates, recipient resolution, notification history, and notification retries.
+- Scheduled email delivery, notification templates, recipient resolution, notification history, and notification retries for human alerts/exceptions. Operational Vendor Return CSV emails deliver via Integration Management and Logs & Audit (`Source Module -> Logs & Audit -> Integration Management -> Vendor`).
 - Immutable file/import/export evidence and audit retention, which belong to Logs & Audit File Tracking.
 
 ## Ownership Boundary
@@ -38,11 +38,11 @@ Order Routing owns routing decisions, routed suborders, routing snapshots, vendo
 
 Fulfillment and Returns owns fulfillment handoff disposition, operational fulfillment state, shipment state, tracking references, shipped/delivered evidence, return operational state, return export/import workflows, return receipt evidence, return condition evidence, vendor return disposition evidence, replacement execution, and fulfillment/return exceptions.
 
-Integration Management owns external delivery/receipt evidence, API/webhook/CSV/SFTP/manual transport evidence, carrier/provider callback receipt evidence, retries, provider failures, and external references.
+Integration Management owns external delivery/receipt evidence, API/webhook/CSV/SFTP/manual transport evidence, carrier/provider callback receipt evidence, retries, provider failures, operational file delivery (Vendor Return CSV), and external references.
 
 Logs & Audit owns immutable audit/file evidence, import/export file tracking, validation outcome evidence, row counts, payload/file references, and retention.
 
-Notification Platform Service owns scheduled email delivery, recipient delivery status, notification history, notification retries, and delivery evidence.
+Notification Platform Service owns human notification templates, preference evaluation, delivery status for human alerts, notification history, and in-app/email alert delivery.
 
 Pricing owns pricing snapshots, adjustment pricing evidence, and commercial interpretation. Invoice Management owns invoice/refund/credit/adjustment lifecycle. Tenant Company owns users, roles, company/entity scope, and permissions.
 

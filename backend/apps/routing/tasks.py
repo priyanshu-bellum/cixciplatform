@@ -514,57 +514,41 @@ def trigger_vendor_export(vendor, trigger_type="SYSTEM", triggered_by=None, subo
             log_entry.save(update_fields=["email_send_result"])
             continue
 
-        attachments = [{
-            "filename": filename,
-            "content": csv_base64,
-            "mime_type": "text/csv"
-        }]
+        from apps.integration.services import send_operational_vendor_email
+        from apps.routing.services import handle_successful_export_delivery, handle_failed_export_delivery
 
-        template = NotificationTemplate.objects.filter(
-            event_type="vendor.order_export",
-            channel=NotificationChannel.EMAIL,
-            status=TemplateStatus.APPROVED
-        ).first()
-        if not template:
-            template = NotificationTemplate.objects.create(
-                template_code="vendor_order_export",
-                version=1,
-                channel=NotificationChannel.EMAIL,
-                event_type="vendor.order_export",
-                subject_template="CIXCI Vendor Orders Export - {vendor_name} ({buyer_name}) - {export_date}",
-                body_template=(
-                    "Vendor: {vendor_name}\n"
-                    "Export Date/Time: {export_time}\n"
-                    "Buyer: {buyer_name}\n"
-                    "Number of Orders: {order_count}\n\n"
-                    "Instructions for completing shipping fields:\n"
-                    "1. Fulfill the orders and ship the products.\n"
-                    "2. Add the Vendor Confirmation Number, Shipping Carrier, Shipping Tracking Number, Shipped Date, and Delivered Date in the respective columns of the CSV file.\n"
-                    "3. Send/import the completed CSV file back to CIXCI via CSV upload or API.\n\n"
-                    "Note: The original order data fields are locked and must not be altered.\n\n"
-                    "Support/Contact: support@cixci.com"
-                ),
-                status=TemplateStatus.APPROVED
+        first_recipient = valid_recipients[0] if valid_recipients else None
+        res = send_operational_vendor_email(
+            vendor_company_id=vendor.id,
+            filename=filename,
+            csv_content=csv_content,
+            recipient_email=first_recipient,
+        )
+
+        if res.get("success"):
+            class FakeAttempt:
+                id = window.id
+            handle_successful_export_delivery(window.id, FakeAttempt())
+            log_entry.email_send_result = "success"
+            log_entry.save(update_fields=["email_send_result"])
+        else:
+            handle_failed_export_delivery(window.id, None, error_message=res.get("error", "Transport failed"))
+            log_entry.email_send_result = "failed"
+            log_entry.save(update_fields=["email_send_result"])
+
+            from apps.notification.services import create_notification_request
+            create_notification_request(
+                event_type="vendor.export_delivery_failed",
+                source_module="routing",
+                company_scope_reference=vendor.id,
+                recipient_ids=authorized_recipient_ids,
+                safe_payload_summary={
+                    "vendor_name": vendor.name,
+                    "filename": filename,
+                    "error_message": res.get("error", "File transport failed")
+                },
+                source_record_id=window.id,
             )
 
-        NotificationRequest.objects.create(
-            event_type="vendor.order_export",
-            source_module="routing",
-            source_record_id=window.id,
-            safe_payload_summary={
-                "buyer_name": buyer_name,
-                "vendor_name": vendor.name,
-                "export_date": timezone.now().strftime('%Y-%m-%d'),
-                "export_time": timezone.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
-                "order_count": len(set(s.order_id for s, _ in eligible_subs)),
-                "suborder_count": len(eligible_subs),
-            },
-            attachments=attachments,
-            requested_recipient_ids=authorized_recipient_ids,
-            company_scope_reference=vendor.id,
-            template_code=template.template_code,
-            channel=NotificationChannel.EMAIL,
-            idempotency_key=f"export_{window.id}"
-        )
 
 

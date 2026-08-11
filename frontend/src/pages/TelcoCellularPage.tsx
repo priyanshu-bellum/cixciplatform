@@ -215,7 +215,8 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
                         <tbody>
                           {suborderLines.map((line: any) => {
                             const existingReturn = returns?.find(
-                              (ret: any) => String(ret.suborder_reference) === String(sub.id) && ret.sku === line.sku
+                              (ret: any) => String(ret.suborder_reference) === String(sub.id) &&
+                                            (ret.sku === line.sku || (ret.sku && line.sku && String(ret.sku).trim().toUpperCase() === String(line.sku).trim().toUpperCase()))
                             );
 
                             const isEligibleForReturn = sub.status === 'shipped' || sub.status === 'delivered';
@@ -249,7 +250,10 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
                                     <button
                                       className="btn btn-secondary"
                                       style={{ padding: '4px 10px', fontSize: 12, borderColor: '#20D1F2', color: '#20D1F2' }}
-                                      onClick={() => onReturnClick(sub.id, line)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onReturnClick(sub.id, line);
+                                      }}
                                     >
                                       Request Return
                                     </button>

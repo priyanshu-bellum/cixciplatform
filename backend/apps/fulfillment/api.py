@@ -615,16 +615,18 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     sub.status = RoutingStatus.SHIPPED
                 sub.save()
 
-                # Transition parent Order to SHIPPED if all suborders are shipped or delivered
+                # Transition parent Order to DELIVERED if all suborders are delivered, or SHIPPED if all shipped/delivered
                 order = sub.order
-                all_subs_shipped_or_delivered = True
-                for s in order.routed_suborders.all():
-                    if s.status not in [RoutingStatus.SHIPPED, RoutingStatus.DELIVERED]:
-                        all_subs_shipped_or_delivered = False
-                        break
-                if all_subs_shipped_or_delivered:
-                    order.status = RoutingStatus.SHIPPED
-                    order.save()
+                all_subs = list(order.routed_suborders.all())
+                if all_subs:
+                    all_delivered = all(s.status == RoutingStatus.DELIVERED for s in all_subs)
+                    all_shipped_or_delivered = all(s.status in [RoutingStatus.SHIPPED, RoutingStatus.DELIVERED] for s in all_subs)
+                    if all_delivered:
+                        order.status = RoutingStatus.DELIVERED
+                        order.save(update_fields=["status"])
+                    elif all_shipped_or_delivered:
+                        order.status = RoutingStatus.SHIPPED
+                        order.save(update_fields=["status"])
 
                 # Update BuyerUpdateReadySignal
                 expected_count = order.routed_suborders.count()
@@ -932,10 +934,20 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         # Default wholesale price snapshot from suborder line item if not provided
         vendor_price = serializer.validated_data.get("vendor_wholesale_price")
         if vendor_price is None and suborder:
-            if hasattr(suborder.order, "lines"):
-                line_item = suborder.order.lines.filter(sku=serializer.validated_data.get("sku")).first()
-                if line_item:
-                    vendor_price = getattr(line_item, "unit_price_snapshot", None)
+            from apps.procurement.models import PurchaseOrderLine
+            from apps.catalog.models import Product
+            target_sku = serializer.validated_data.get("sku")
+            line_item = None
+            prod = Product.objects.filter(sku=target_sku).first() if target_sku else None
+            if prod:
+                line_item = PurchaseOrderLine.objects.filter(
+                    purchase_order_id=suborder.order_id,
+                    product_reference=prod.id
+                ).first()
+            if not line_item:
+                line_item = PurchaseOrderLine.objects.filter(purchase_order_id=suborder.order_id).first()
+            if line_item:
+                vendor_price = getattr(line_item, "unit_price_snapshot", None)
 
         serializer.save(buyer_reference=buyer_id, ran=ran, vendor_wholesale_price=vendor_price)
 
