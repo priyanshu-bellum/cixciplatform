@@ -441,3 +441,119 @@ class ChildOnboardingRequest(models.Model):
 
     def __str__(self):
         return f"Request for {self.company_name} ({self.status})"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Company User Management (Phase 1 V2)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class InvitationStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    ACCEPTED = "accepted", "Accepted"
+    EXPIRED = "expired", "Expired"
+    REVOKED = "revoked", "Revoked"
+
+
+class MembershipStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    SUSPENDED = "suspended", "Suspended"
+    DEACTIVATED = "deactivated", "Deactivated"
+
+
+class UserInvitation(models.Model):
+    """
+    Tenant Company User Invitation record.
+    Expiration default: 7 calendar days.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    target_company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="user_invitations")
+    target_entity = models.ForeignKey(CompanyEntity, null=True, blank=True, on_delete=models.CASCADE, related_name="user_invitations")
+    email = models.EmailField(db_index=True)
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    job_title = models.CharField(max_length=100, blank=True)
+    phone_number = models.CharField(max_length=50, blank=True)
+    role_bundle = models.CharField(max_length=100, default="standard_user")
+    assigned_capabilities = models.ManyToManyField(Capability, blank=True, related_name="invitations")
+    status = models.CharField(max_length=20, choices=InvitationStatus.choices, default=InvitationStatus.PENDING)
+    token = models.CharField(max_length=255, unique=True)
+    expires_at = models.DateTimeField()
+    invited_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="sent_invitations")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "tenant_user_invitation"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["target_company", "status"]),
+            models.Index(fields=["email", "status"]),
+        ]
+
+    def is_valid(self):
+        return self.status == InvitationStatus.PENDING and self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f"Invite for {self.email} to {self.target_company.name} ({self.status})"
+
+
+class CompanyUserMembership(models.Model):
+    """
+    Canonical Company User Membership record connecting a User identity to a Company scope.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="company_memberships")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="memberships")
+    entity = models.ForeignKey(CompanyEntity, null=True, blank=True, on_delete=models.CASCADE, related_name="memberships")
+    status = models.CharField(max_length=20, choices=MembershipStatus.choices, default=MembershipStatus.ACTIVE)
+    role_bundle = models.CharField(max_length=100, default="standard_user")
+    is_company_admin = models.BooleanField(default=False)
+    assigned_capabilities = models.ManyToManyField(Capability, blank=True, related_name="membership_assignments")
+    delegated_capabilities = models.ManyToManyField(Capability, blank=True, related_name="membership_delegations")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "tenant_company_user_membership"
+        unique_together = [("user", "company")]
+        indexes = [
+            models.Index(fields=["company", "status"]),
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} @ {self.company.name} ({self.status})"
+
+
+class CapabilityDelegationEvidence(models.Model):
+    """
+    Audit evidence for capability delegation authority.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor = models.ForeignKey(User, on_delete=models.PROTECT, related_name="delegation_actions")
+    target_user = models.ForeignKey(User, on_delete=models.PROTECT, related_name="received_delegations")
+    company = models.ForeignKey(Company, on_delete=models.PROTECT)
+    capability = models.ForeignKey(Capability, on_delete=models.PROTECT)
+    action = models.CharField(max_length=20, help_text="grant | revoke")
+    passed_7point_rule = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "tenant_capability_delegation_evidence"
+        ordering = ["-created_at"]
+
+
+class EffectiveCompanyAdminEvidence(models.Model):
+    """
+    Snapshot evidence tracking active local Company Admin continuity for a company.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="admin_continuity_evidence")
+    active_admin_count = models.PositiveIntegerField()
+    verified_at = models.DateTimeField(default=timezone.now)
+    actor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        db_table = "tenant_effective_admin_evidence"
+        ordering = ["-verified_at"]
+

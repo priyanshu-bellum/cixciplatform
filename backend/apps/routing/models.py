@@ -27,6 +27,7 @@ class RoutingStatus(models.TextChoices):
     PLACED = "placed", "Placed"
     PROCESSING = "processing", "Processing"
     SHIPMENT_PENDING = "shipment_pending", "Shipment Pending"
+    PARTIALLY_SHIPPED = "partially_shipped", "Partially Shipped"
     SHIPPED = "shipped", "Shipped"
     DELIVERED = "delivered", "Delivered"
 

@@ -447,4 +447,145 @@ class CapabilityViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
 
+from rest_framework.permissions import AllowAny
+from .models import UserInvitation, CompanyUserMembership
+from .serializers import UserInvitationSerializer, CompanyUserMembershipSerializer
+from .services import (
+    create_user_invitation, resend_user_invitation, revoke_user_invitation,
+    accept_user_invitation, update_user_lifecycle, grant_company_admin,
+    revoke_company_admin, system_admin_hierarchy_transfer
+)
+
+class UserInvitationViewSet(viewsets.ModelViewSet):
+    queryset = UserInvitation.objects.all().order_by("-created_at")
+    serializer_class = UserInvitationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if getattr(user, "is_cixci_admin", False):
+            return UserInvitation.objects.all().order_by("-created_at")
+        if user.company:
+            return UserInvitation.objects.filter(target_company=user.company).order_by("-created_at")
+        return UserInvitation.objects.none()
+
+    @action(detail=False, methods=["post"])
+    def invite(self, request):
+        target_company_id = request.data.get("target_company") or (request.user.company.id if request.user.company else None)
+        if not target_company_id:
+            return Response({"error": "target_company is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        company = Company.objects.get(id=target_company_id)
+        email = request.data.get("email")
+        first_name = request.data.get("first_name", "")
+        last_name = request.data.get("last_name", "")
+        role_bundle = request.data.get("role_bundle", "standard_user")
+        job_title = request.data.get("job_title", "")
+        phone_number = request.data.get("phone_number", "")
+        assigned_caps = request.data.get("assigned_capabilities", [])
+
+        try:
+            inv = create_user_invitation(
+                actor=request.user,
+                target_company=company,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                role_bundle=role_bundle,
+                assigned_capability_codes=assigned_caps,
+                job_title=job_title,
+                phone_number=phone_number
+            )
+            return Response(UserInvitationSerializer(inv).data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def resend(self, request, pk=None):
+        try:
+            inv = resend_user_invitation(request.user, pk)
+            return Response(UserInvitationSerializer(inv).data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def revoke(self, request, pk=None):
+        try:
+            inv = revoke_user_invitation(request.user, pk)
+            return Response(UserInvitationSerializer(inv).data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["post"], permission_classes=[AllowAny])
+    def accept(self, request):
+        token = request.data.get("token")
+        password = request.data.get("password")
+        if not token or not password:
+            return Response({"error": "token and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = accept_user_invitation(token, password)
+            return Response({"detail": "Invitation accepted successfully.", "email": user.email}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CompanyUserMembershipViewSet(viewsets.ModelViewSet):
+    queryset = CompanyUserMembership.objects.all().order_by("-created_at")
+    serializer_class = CompanyUserMembershipSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if getattr(user, "is_cixci_admin", False):
+            return CompanyUserMembership.objects.all().order_by("-created_at")
+        if user.company:
+            return CompanyUserMembership.objects.filter(company=user.company).order_by("-created_at")
+        return CompanyUserMembership.objects.none()
+
+    @action(detail=True, methods=["post"])
+    def lifecycle(self, request, pk=None):
+        new_status = request.data.get("status")
+        if new_status not in ("active", "suspended", "deactivated"):
+            return Response({"error": "Invalid status value"}, status=status.HTTP_400_BAD_REQUEST)
+
+        mem = self.get_object()
+        try:
+            updated = update_user_lifecycle(request.user, mem.user.id, new_status)
+            return Response(CompanyUserMembershipSerializer(updated).data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"], url_path="grant-admin")
+    def grant_admin(self, request, pk=None):
+        mem = self.get_object()
+        try:
+            updated = grant_company_admin(request.user, mem.user.id)
+            return Response(CompanyUserMembershipSerializer(updated).data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"], url_path="revoke-admin")
+    def revoke_admin(self, request, pk=None):
+        mem = self.get_object()
+        try:
+            updated = revoke_company_admin(request.user, mem.user.id)
+            return Response(CompanyUserMembershipSerializer(updated).data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["post"], url_path="system-admin-transfer")
+    def system_admin_transfer(self, request):
+        target_user_id = request.data.get("user_id")
+        new_company_id = request.data.get("new_company_id")
+        reason = request.data.get("reason", "System Admin Hierarchy Transfer")
+
+        try:
+            mem = system_admin_hierarchy_transfer(request.user, target_user_id, new_company_id, reason)
+            return Response(CompanyUserMembershipSerializer(mem).data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
 

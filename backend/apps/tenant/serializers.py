@@ -225,3 +225,41 @@ class ChildOnboardingRequestSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Personal email domains are not allowed without explicit administrator approval.")
             return domain
         return value
+
+
+from .models import UserInvitation, CompanyUserMembership
+
+class UserInvitationSerializer(serializers.ModelSerializer):
+    target_company_name = serializers.CharField(source="target_company.name", read_only=True)
+    invited_by_email = serializers.CharField(source="invited_by.email", read_only=True)
+    assigned_capabilities = CapabilitySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = UserInvitation
+        fields = [
+            "id", "target_company", "target_company_name", "target_entity",
+            "email", "first_name", "last_name", "job_title", "phone_number",
+            "role_bundle", "assigned_capabilities", "status", "expires_at",
+            "invited_by", "invited_by_email", "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "status", "expires_at", "invited_by", "created_at", "updated_at"]
+
+
+class CompanyUserMembershipSerializer(serializers.ModelSerializer):
+    user_email = serializers.CharField(source="user.email", read_only=True)
+    user_first_name = serializers.CharField(source="user.first_name", read_only=True)
+    user_last_name = serializers.CharField(source="user.last_name", read_only=True)
+    company_name = serializers.CharField(source="company.name", read_only=True)
+    assigned_capabilities = CapabilitySerializer(many=True, read_only=True)
+    delegated_capabilities = CapabilitySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = CompanyUserMembership
+        fields = [
+            "id", "user", "user_email", "user_first_name", "user_last_name",
+            "company", "company_name", "entity", "status", "role_bundle",
+            "is_company_admin", "assigned_capabilities", "delegated_capabilities",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "user", "company", "created_at", "updated_at"]
+

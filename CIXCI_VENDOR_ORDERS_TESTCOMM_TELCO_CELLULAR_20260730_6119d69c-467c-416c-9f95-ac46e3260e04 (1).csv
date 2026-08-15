@@ -1,0 +1,4 @@
+Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date
+Telco Cellular,Peter,Pan,2300 Telco Way,Suite A,San Jose,CA,95112,a94ad511-65f1-437b-8839-2399f4879485,CP00590,8.10087E+11,1,Z8FPX6A8T9,Fedex,FDX107189825263,8/1/2026,
+Telco Cellular,Peter,Pan,2300 Telco Way,Suite A,San Jose,CA,95112,a94ad511-65f1-437b-8839-2399f4879485,CP00591,8.10087E+11,1,Z8FPX6A8T9,Fedex,FDX107189825263,8/1/2026,
+Telco Cellular,Peter,Pan,2300 Telco Way,Suite A,San Jose,CA,95112,a94ad511-65f1-437b-8839-2399f4879485,CP00592,8.10087E+11,1,Z8FPX6A8T9,Fedex,FDX107189825263,8/1/2026,

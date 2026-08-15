@@ -519,4 +519,113 @@ class TestVendorShippingImport:
         assert attempts[1].reason_code == "Other"
         assert attempts[1].reason_notes == "Special client request"
 
+    def test_chronology_future_shipped_date_rejection(self, setup_data):
+        from datetime import timedelta
+        data = setup_data
+        client = APIClient()
+        client.force_authenticate(user=data["vendor_user"])
+        future_date_str = (timezone.now() + timedelta(days=5)).date().strftime("%Y-%m-%d")
+
+        csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
+        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,{future_date_str},\n"
+        csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
+        csv_file.name = "shipping.csv"
+
+        response = client.post("/api/v1/routing/orders/import-shipping/", {"file": csv_file}, format="multipart")
+        assert response.status_code == 400
+        assert "cannot be in the future" in response.data["errors"][0]["errors"][0]
+
+    def test_chronology_delivered_before_shipped_rejection(self, setup_data):
+        from datetime import timedelta
+        data = setup_data
+        client = APIClient()
+        client.force_authenticate(user=data["vendor_user"])
+        shipped_date_str = (timezone.now() - timedelta(days=2)).date().strftime("%Y-%m-%d")
+        delivered_date_str = (timezone.now() - timedelta(days=5)).date().strftime("%Y-%m-%d")
+
+        csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
+        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,{shipped_date_str},{delivered_date_str}\n"
+        csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
+        csv_file.name = "shipping.csv"
+
+        response = client.post("/api/v1/routing/orders/import-shipping/", {"file": csv_file}, format="multipart")
+        assert response.status_code == 400
+        assert "cannot precede Shipped Date" in response.data["errors"][0]["errors"][0]
+
+    def test_carrier_and_tracking_dependency_rejection(self, setup_data):
+        from datetime import timedelta
+        data = setup_data
+        client = APIClient()
+        client.force_authenticate(user=data["vendor_user"])
+        shipped_date_str = (timezone.now() - timedelta(days=2)).date().strftime("%Y-%m-%d")
+
+        # Missing carrier when tracking and shipped date provided
+        csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
+        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,,TRK-987654,{shipped_date_str},\n"
+        csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
+        csv_file.name = "shipping.csv"
+
+        response = client.post("/api/v1/routing/orders/import-shipping/", {"file": csv_file}, format="multipart")
+        assert response.status_code == 400
+        assert "Carrier is required" in response.data["errors"][0]["errors"][0]
+
+        # Missing tracking number when shipped date provided
+        csv_row2 = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,,{shipped_date_str},\n"
+        csv_file2 = io.BytesIO((csv_header + csv_row2).encode("utf-8"))
+        csv_file2.name = "shipping2.csv"
+
+        response2 = client.post("/api/v1/routing/orders/import-shipping/", {"file": csv_file2}, format="multipart")
+        assert response2.status_code == 400
+        assert "Tracking number is required" in response2.data["errors"][0]["errors"][0]
+
+    def test_other_carrier_acceptance_and_tracking_url(self, setup_data):
+        from datetime import timedelta
+        data = setup_data
+        client = APIClient()
+        client.force_authenticate(user=data["vendor_user"])
+        shipped_date_str = (timezone.now() - timedelta(days=2)).date().strftime("%Y-%m-%d")
+
+        # Test carrier = "Other" with tracking number -> Accepted
+        csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
+        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,Other,TRK-CUSTOM-999,{shipped_date_str},\n"
+        csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
+        csv_file.name = "shipping.csv"
+
+        response = client.post("/api/v1/routing/orders/import-shipping/", {"file": csv_file}, format="multipart")
+        assert response.status_code == 200, response.data
+        assert response.data["success_count"] == 1
+
+    def test_partial_shipment_quantity_import(self, setup_data):
+        from datetime import timedelta
+        data = setup_data
+        client = APIClient()
+        client.force_authenticate(user=data["vendor_user"])
+        shipped_date_str = (timezone.now() - timedelta(days=2)).date().strftime("%Y-%m-%d")
+
+        # 1. Test quantity > ordered_qty (5 ordered, 10 submitted) -> Rejected
+        csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
+        csv_row_exceed = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,10,VND-CONF-123,FedEx,TRK-987654,{shipped_date_str},\n"
+        csv_file = io.BytesIO((csv_header + csv_row_exceed).encode("utf-8"))
+        csv_file.name = "exceed.csv"
+
+        response = client.post("/api/v1/routing/orders/import-shipping/", {"file": csv_file}, format="multipart")
+        assert response.status_code == 400
+        assert "exceeds ordered quantity" in response.data["errors"][0]["errors"][0]
+
+        # 2. Test partial quantity < ordered_qty (5 ordered, 3 submitted) -> Accepted as partial shipment
+        csv_row_partial = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,3,VND-CONF-123,FedEx,TRK-987654,{shipped_date_str},\n"
+        csv_file2 = io.BytesIO((csv_header + csv_row_partial).encode("utf-8"))
+        csv_file2.name = "partial.csv"
+
+        response2 = client.post("/api/v1/routing/orders/import-shipping/", {"file": csv_file2}, format="multipart")
+        assert response2.status_code == 200, response2.data
+        assert response2.data["success_count"] == 1
+
+        # Check handoff & suborder status
+        data["handoff"].refresh_from_db()
+        assert data["handoff"].status in ("partially_shipped", "shipped")
+
+
+
+
 

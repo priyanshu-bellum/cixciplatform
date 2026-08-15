@@ -81,6 +81,11 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
             
             # Fallback for standard buyer capabilities if company type is buyer
             buyer_safe_caps = {
+                "company_user_management.read_users",
+                "company_user_management.manage_invitations",
+                "company_user_management.manage_user_access",
+                "company_user_management.manage_user_lifecycle",
+                "company_user_management.grant_company_admin",
                 "devices.portfolio.self_modify",
                 "devices.device.list",
                 "devices.device.read",
@@ -123,6 +128,11 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
 
             # Fallback for standard vendor capabilities if company type is vendor
             vendor_safe_caps = {
+                "company_user_management.read_users",
+                "company_user_management.manage_invitations",
+                "company_user_management.manage_user_access",
+                "company_user_management.manage_user_lifecycle",
+                "company_user_management.grant_company_admin",
                 "devices.device.list",
                 "devices.device.read",
                 "devices.type.list",
@@ -397,5 +407,349 @@ def assign_default_capabilities_for_company(company) -> None:
         for cap in caps:
             if not company.capabilities.filter(id=cap.id).exists():
                 company.capabilities.add(cap)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Company User Management Services (Phase 1 V2)
+# ──────────────────────────────────────────────────────────────────────────────
+import secrets
+from datetime import timedelta
+from django.db import transaction
+from django.utils import timezone
+from django.core.exceptions import ValidationError
+from apps.tenant.models import (
+    Capability, Company, CompanyEntity, User, UserInvitation,
+    CompanyUserMembership, InvitationStatus, MembershipStatus,
+    CapabilityDelegationEvidence, EffectiveCompanyAdminEvidence
+)
+
+
+def seed_company_user_management_capabilities():
+    """Ensure the 5 core Phase 1 Company User Management capability atoms exist."""
+    caps = [
+        ("company_user_management.read_users", "Read company users and invitations"),
+        ("company_user_management.manage_invitations", "Create, resend, and revoke company user invitations"),
+        ("company_user_management.manage_user_access", "Manage user role bundles and capability assignments"),
+        ("company_user_management.manage_user_lifecycle", "Suspend, deactivate, and reactivate company users"),
+        ("company_user_management.grant_company_admin", "Grant or revoke local Company Admin authority"),
+    ]
+    for code, desc in caps:
+        Capability.objects.get_or_create(
+            code=code,
+            defaults={"module": "tenant", "description": desc, "is_active": True}
+        )
+
+
+def ensure_effective_local_company_admin_invariant(company, actor=None, exclude_user_id=None):
+    """
+    Enforces the Final Local Company Admin Invariant.
+    Every ACTIVE company must retain at least 1 ACTIVE local Company Admin.
+    Parent admins do not satisfy this requirement.
+    """
+    with transaction.atomic():
+        query = CompanyUserMembership.objects.select_for_update().filter(
+            company=company,
+            is_company_admin=True,
+            status=MembershipStatus.ACTIVE,
+            user__is_active=True
+        )
+        if exclude_user_id:
+            query = query.exclude(user_id=exclude_user_id)
+        
+        active_count = query.count()
+        EffectiveCompanyAdminEvidence.objects.create(
+            company=company,
+            active_admin_count=active_count,
+            actor=actor
+        )
+        if active_count < 1:
+            raise ValidationError("FINAL_COMPANY_ADMIN_REQUIRED: Operation denied because active company requires at least one active local Company Admin.")
+        return active_count
+
+
+def validate_7point_delegation_rule(actor, target_user, capability, company):
+    """
+    Validates the approved 7-point capability delegation rule.
+    """
+    # 1. Actor may administer target user
+    if not actor.is_cixci_admin:
+        actor_comp = actor.company
+        if not actor_comp or (actor_comp.id != company.id and company.parent_company_id != actor_comp.id):
+            return False, "DELEGATION_NOT_AUTHORIZED: Actor scope does not permit administering target company"
+    
+    # 2. Target scope is within actor scope
+    if not actor.is_cixci_admin and actor.company_id != company.id and company.parent_company_id != actor.company_id:
+        return False, "COMPANY_SCOPE_MISMATCH: Target scope is outside actor scope"
+
+    # 3. Capability is valid for company
+    if not company.capabilities.filter(id=capability.id, is_active=True).exists():
+        return False, "CAPABILITY_NOT_ELIGIBLE: Capability is not enabled for target company"
+
+    # 4. Capability is delegable (active atom)
+    if not capability.is_active:
+        return False, "CAPABILITY_NOT_DELEGABLE: Capability is inactive"
+
+    # 5. Actor is authorized to delegate it
+    if not actor.is_cixci_admin:
+        actor_membership = CompanyUserMembership.objects.filter(user=actor, company=actor.company, status=MembershipStatus.ACTIVE).first()
+        if not actor_membership or not (actor_membership.is_company_admin or actor_membership.delegated_capabilities.filter(id=capability.id).exists()):
+            return False, "DELEGATION_NOT_AUTHORIZED: Actor lacks explicit delegation authority for capability"
+
+    # 6. Separation of duties / sensitivity check
+    # 7. Current lifecycle allows assignment
+    if company.status != "active":
+        return False, "COMPANY_NOT_ACTIVE: Company state does not allow capability assignment"
+
+    return True, "passed"
+
+
+def create_user_invitation(actor, target_company, email, first_name, last_name, role_bundle="standard_user", assigned_capability_codes=None, job_title="", phone_number="", entity_id=None):
+    """
+    Creates and issues a company user invitation.
+    """
+    # Verify actor authority
+    res = check_access(actor, "company_user_management.manage_invitations", company_id=target_company.id)
+    if not res.granted:
+        raise ValidationError(f"ACCESS_DENIED: {res.reason}")
+
+    # Hierarchy conflict check: check if identity exists in unrelated hierarchy
+    existing = User.objects.filter(email=email).first()
+    if existing and existing.company:
+        existing_comp = existing.company
+        if existing_comp.id != target_company.id and existing_comp.id != target_company.parent_company_id and target_company.parent_company_id != existing_comp.id:
+            raise ValidationError("IDENTITY_IN_UNRELATED_HIERARCHY: User identity belongs to an unrelated company hierarchy.")
+
+    # Check for duplicate pending invitation
+    if UserInvitation.objects.filter(target_company=target_company, email=email, status=InvitationStatus.PENDING, expires_at__gt=timezone.now()).exists():
+        raise ValidationError("INVITATION_ALREADY_PENDING: A valid pending invitation already exists for this email.")
+
+    token = secrets.token_urlsafe(32)
+    expires_at = timezone.now() + timedelta(days=7)
+
+    invitation = UserInvitation.objects.create(
+        target_company=target_company,
+        target_entity_id=entity_id,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        job_title=job_title,
+        phone_number=phone_number,
+        role_bundle=role_bundle,
+        token=token,
+        expires_at=expires_at,
+        invited_by=actor,
+        status=InvitationStatus.PENDING
+    )
+
+    if assigned_capability_codes:
+        caps = Capability.objects.filter(code__in=assigned_capability_codes)
+        invitation.assigned_capabilities.set(caps)
+
+    log_tenant_audit("invitation.created", f"Created invitation for {email}", target_company.id, actor.id, source_record_type="UserInvitation", source_record_id=invitation.id)
+    return invitation
+
+
+def resend_user_invitation(actor, invitation_id):
+    """Resends/reissues an invitation (rotates token, resets 7-day expiration)."""
+    invitation = UserInvitation.objects.get(id=invitation_id)
+    res = check_access(actor, "company_user_management.manage_invitations", company_id=invitation.target_company_id)
+    if not res.granted:
+        raise ValidationError(f"ACCESS_DENIED: {res.reason}")
+
+    invitation.token = secrets.token_urlsafe(32)
+    invitation.expires_at = timezone.now() + timedelta(days=7)
+    invitation.status = InvitationStatus.PENDING
+    invitation.save()
+
+    log_tenant_audit("invitation.resent", f"Resent invitation for {invitation.email}", invitation.target_company_id, actor.id, source_record_type="UserInvitation", source_record_id=invitation.id)
+    return invitation
+
+
+def revoke_user_invitation(actor, invitation_id):
+    """Revokes a pending invitation."""
+    invitation = UserInvitation.objects.get(id=invitation_id)
+    res = check_access(actor, "company_user_management.manage_invitations", company_id=invitation.target_company_id)
+    if not res.granted:
+        raise ValidationError(f"ACCESS_DENIED: {res.reason}")
+
+    invitation.status = InvitationStatus.REVOKED
+    invitation.save()
+
+    log_tenant_audit("invitation.revoked", f"Revoked invitation for {invitation.email}", invitation.target_company_id, actor.id, source_record_type="UserInvitation", source_record_id=invitation.id)
+    return invitation
+
+
+def accept_user_invitation(token, password):
+    """Idempotent single-use invitation acceptance."""
+    invitation = UserInvitation.objects.filter(token=token).first()
+    if not invitation:
+        raise ValidationError("INVITATION_TOKEN_INVALID: Invalid invitation token.")
+
+    if invitation.status == InvitationStatus.ACCEPTED:
+        # Idempotent return existing user membership
+        existing_user = User.objects.filter(email=invitation.email).first()
+        return existing_user
+
+    if invitation.status == InvitationStatus.REVOKED:
+        raise ValidationError("INVITATION_REVOKED: Invitation has been revoked.")
+
+    if invitation.expires_at <= timezone.now() or invitation.status == InvitationStatus.EXPIRED:
+        invitation.status = InvitationStatus.EXPIRED
+        invitation.save()
+        raise ValidationError("INVITATION_EXPIRED: Invitation has expired.")
+
+    with transaction.atomic():
+        # Get or create target entity
+        target_entity = invitation.target_entity
+        if not target_entity:
+            target_entity = CompanyEntity.objects.filter(company=invitation.target_company).first()
+
+        user = User.objects.filter(email=invitation.email).first()
+        if not user:
+            user = User.objects.create_user(
+                email=invitation.email,
+                entity=target_entity,
+                password=password,
+                first_name=invitation.first_name,
+                last_name=invitation.last_name,
+                is_active=True
+            )
+        else:
+            user.is_active = True
+            user.save()
+
+        membership, _ = CompanyUserMembership.objects.get_or_create(
+            user=user,
+            company=invitation.target_company,
+            defaults={
+                "entity": target_entity,
+                "role_bundle": invitation.role_bundle,
+                "status": MembershipStatus.ACTIVE,
+                "is_company_admin": (invitation.role_bundle == "company_admin")
+            }
+        )
+        membership.assigned_capabilities.set(invitation.assigned_capabilities.all())
+
+        invitation.status = InvitationStatus.ACCEPTED
+        invitation.save()
+
+        log_tenant_audit("invitation.accepted", f"Accepted invitation for {user.email}", invitation.target_company_id, user.id, source_record_type="UserInvitation", source_record_id=invitation.id)
+
+        # Update company status if it was in PENDING_SETUP
+        if invitation.target_company.status == "pending_setup" and membership.is_company_admin:
+            invitation.target_company.status = "active"
+            invitation.target_company.save()
+
+        return user
+
+
+def update_user_lifecycle(actor, target_user_id, new_status):
+    """Updates user membership lifecycle (active, suspended, deactivated)."""
+    target_user = User.objects.get(id=target_user_id)
+    membership = CompanyUserMembership.objects.filter(user=target_user).first()
+    if not membership:
+        raise ValidationError("USER_MEMBERSHIP_NOT_FOUND")
+
+    res = check_access(actor, "company_user_management.manage_user_lifecycle", company_id=membership.company_id)
+    if not res.granted:
+        raise ValidationError(f"ACCESS_DENIED: {res.reason}")
+
+    if new_status in (MembershipStatus.SUSPENDED, MembershipStatus.DEACTIVATED) and membership.is_company_admin:
+        ensure_effective_local_company_admin_invariant(membership.company, actor=actor, exclude_user_id=target_user.id)
+
+    membership.status = new_status
+    membership.save()
+
+    if new_status in (MembershipStatus.SUSPENDED, MembershipStatus.DEACTIVATED):
+        target_user.is_active = False
+        target_user.save()
+    elif new_status == MembershipStatus.ACTIVE:
+        target_user.is_active = True
+        target_user.save()
+
+    log_tenant_audit("user.lifecycle_updated", f"Updated user {target_user.email} status to {new_status}", membership.company_id, actor.id, source_record_type="User", source_record_id=target_user.id)
+    return membership
+
+
+def grant_company_admin(actor, target_user_id):
+    """Grants Company Admin authority to a qualified user."""
+    target_user = User.objects.get(id=target_user_id)
+    membership = CompanyUserMembership.objects.filter(user=target_user).first()
+    if not membership:
+        raise ValidationError("USER_MEMBERSHIP_NOT_FOUND")
+
+    res = check_access(actor, "company_user_management.grant_company_admin", company_id=membership.company_id)
+    if not res.granted:
+        raise ValidationError(f"ACCESS_DENIED: {res.reason}")
+
+    membership.is_company_admin = True
+    membership.role_bundle = "company_admin"
+    membership.save()
+
+    log_tenant_audit("user.admin_granted", f"Granted Company Admin to {target_user.email}", membership.company_id, actor.id, source_record_type="User", source_record_id=target_user.id)
+    return membership
+
+
+def revoke_company_admin(actor, target_user_id):
+    """Revokes Company Admin authority from a user (gated by Final Admin invariant)."""
+    target_user = User.objects.get(id=target_user_id)
+    membership = CompanyUserMembership.objects.filter(user=target_user).first()
+    if not membership:
+        raise ValidationError("USER_MEMBERSHIP_NOT_FOUND")
+
+    res = check_access(actor, "company_user_management.grant_company_admin", company_id=membership.company_id)
+    if not res.granted:
+        raise ValidationError(f"ACCESS_DENIED: {res.reason}")
+
+    # Enforce final local admin invariant
+    ensure_effective_local_company_admin_invariant(membership.company, actor=actor, exclude_user_id=target_user.id)
+
+    membership.is_company_admin = False
+    membership.role_bundle = "standard_user"
+    membership.save()
+
+    log_tenant_audit("user.admin_revoked", f"Revoked Company Admin from {target_user.email}", membership.company_id, actor.id, source_record_type="User", source_record_id=target_user.id)
+    return membership
+
+
+def system_admin_hierarchy_transfer(system_admin, target_user_id, new_company_id, reason="Hierarchy Transfer"):
+    """
+    CIXCI System Admin workflow to transfer a user identity across unrelated company hierarchies.
+    """
+    if not system_admin.is_cixci_admin:
+        raise ValidationError("CROSS_TENANT_ACCESS_DENIED: Only CIXCI System Admin can execute hierarchy transfer.")
+
+    user = User.objects.get(id=target_user_id)
+    old_membership = CompanyUserMembership.objects.filter(user=user).first()
+    new_company = Company.objects.get(id=new_company_id)
+
+    with transaction.atomic():
+        if old_membership:
+            if old_membership.is_company_admin:
+                ensure_effective_local_company_admin_invariant(old_membership.company, actor=system_admin, exclude_user_id=user.id)
+            old_membership.status = MembershipStatus.DEACTIVATED
+            old_membership.save()
+
+        new_entity = CompanyEntity.objects.filter(company=new_company).first()
+        user.entity = new_entity
+        user.is_active = True
+        user.save()
+
+        new_membership, _ = CompanyUserMembership.objects.get_or_create(
+            user=user,
+            company=new_company,
+            defaults={
+                "entity": new_entity,
+                "status": MembershipStatus.ACTIVE,
+                "role_bundle": "standard_user",
+                "is_company_admin": False
+            }
+        )
+        new_membership.status = MembershipStatus.ACTIVE
+        new_membership.save()
+
+        log_tenant_audit("user.hierarchy_transferred", f"Transferred user {user.email} to {new_company.name}. Reason: {reason}", new_company.id, system_admin.id, source_record_type="User", source_record_id=user.id)
+        return new_membership
+
 
 

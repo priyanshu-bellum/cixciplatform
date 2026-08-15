@@ -1,0 +1,22 @@
+[
+  {
+    "id": "ddf50c6d-fcde-4c5d-bed9-1c24f2dfa34b",
+    "sku": "ACC-101",
+    "name": "Accessory One",
+    "brand": "TestBrand",
+    "product_category": "",
+    "product_type": "accessory",
+    "status": "active",
+    "vendor_wholesale_price_amount": "",
+    "vendor_wholesale_price_currency": "USD",
+    "msrp": "",
+    "map_price": "",
+    "sale_price": "",
+    "upc": "",
+    "launch_date": "2026-06-18",
+    "release_date": "",
+    "eol_date": "",
+    "color": "",
+    "short_description": "Premium TestBrand accessory designed for optimal compatibility."
+  }
+]

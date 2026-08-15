@@ -331,3 +331,18 @@ The PR-C Activity Summary Configuration and Activity Summary Delivery Attempt en
 ### Files touched by PR-C on the Notification Platform Service side
 
 PR-C touches the following Notification Platform Service files: `README.md`, `spec.md`, `data-model.md`, `workflows.md`, `boundary-contracts.md`, `permissions.md`, `api-contracts.md`, `events.md`, `event-contracts.md`, `test-scenarios.md`, `edge-cases.md`, `assumptions-open-questions.md`. PR-C does NOT touch `openapi-contracts.md`.
+
+### Phase 1 Pre-Account Recipient Extension (Company User Management)
+
+Notification Platform Service supports narrow pre-account recipient handling specifically for account-lifecycle invitation communications:
+
+1. **First Company Admin Bootstrap Invitation**: Invitation email delivered to the initial Company Admin upon creation of a new Tenant Company.
+2. **Company User Invitation**: Invitation email delivered to an invited Buyer or Accessory Vendor user prior to CIXCI authentication account creation.
+3. **Invitation Resend / Reissue**: Reissued invitation email with token rotation and refreshed 7-calendar-day window.
+
+**Platform Boundaries**:
+- Tenant Company owns invitation business truth, status, token generation, 7-day expiration, and single-use acceptance logic.
+- Notification Platform Service owns account-lifecycle invitation template rendering, delivery request intake, transport orchestration, and delivery attempt logging.
+- Ordinary notification preference opt-out does NOT disable account-lifecycle invitation delivery.
+- Pre-account recipient capability is strictly constrained to account-lifecycle invitations and must NOT be used for arbitrary external recipients, end-customer messaging, or marketing outreach.
+

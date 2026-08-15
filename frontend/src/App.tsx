@@ -20,6 +20,7 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import IntegrationPage from './pages/IntegrationPage'
 import LaunchPage from './pages/LaunchPage'
 import TelcoCellularPage from './pages/TelcoCellularPage'
+import CompanyUsersPage from './pages/CompanyUsersPage'
 import { SettingsPage } from './pages/StubPages'
 import ConfirmEmailPage from './pages/ConfirmEmailPage'
 
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="integration" element={<IntegrationPage />} />
             <Route path="launch" element={<LaunchPage />} />
+            <Route path="users" element={<CompanyUsersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/telco-cellular" element={<TelcoCellularPage />} />

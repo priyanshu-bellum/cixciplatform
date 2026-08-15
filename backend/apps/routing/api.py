@@ -714,8 +714,8 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                         row_errors.append(f"SKU/UPC mismatch: No line matching SKU {sku_val} and UPC {upc_val} in order {sub.order_id}")
                         row_status = "rejected"
                     else:
-                        if row_qty != matched_line.quantity:
-                            row_errors.append(f"mismatch: Quantity {row_qty} does not match ordered quantity {matched_line.quantity}")
+                        if row_qty > matched_line.quantity:
+                            row_errors.append(f"mismatch: Quantity {row_qty} exceeds ordered quantity {matched_line.quantity}")
                             row_status = "rejected"
                             
             # 4. Locked Fields check
@@ -796,8 +796,12 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                     try:
                         row_shipped_parsed = datetime.strptime(row_shipped_date, "%Y-%m-%d").date()
                         placed_date = (sub.order.placed_at or sub.order.created_at).date()
+                        today = timezone.now().date()
                         if row_shipped_parsed < placed_date:
                             row_errors.append(f"Shipped date {row_shipped_date} cannot be before order placed date {placed_date}")
+                            row_status = "rejected"
+                        elif row_shipped_parsed > today:
+                            row_errors.append(f"Invalid chronology: Shipped Date ({row_shipped_date}) cannot be in the future")
                             row_status = "rejected"
                     except ValueError:
                         row_errors.append(f"Invalid shipped date format: {row_shipped_date}")
@@ -807,8 +811,29 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                 if row_delivered_date:
                     try:
                         row_delivered_parsed = datetime.strptime(row_delivered_date, "%Y-%m-%d").date()
+                        today = timezone.now().date()
+                        if row_delivered_parsed > today:
+                            row_errors.append(f"Invalid chronology: Delivered Date ({row_delivered_date}) cannot be in the future")
+                            row_status = "rejected"
                     except ValueError:
                         row_errors.append(f"Invalid delivered date format: {row_delivered_date}")
+                        row_status = "rejected"
+
+                effective_shipped = row_shipped_parsed if row_shipped_parsed else db_shipped
+                if row_delivered_parsed and effective_shipped and row_delivered_parsed < effective_shipped:
+                    row_errors.append(f"Invalid chronology: Delivered Date ({row_delivered_date}) cannot precede Shipped Date ({effective_shipped})")
+                    row_status = "rejected"
+
+                if row_status != "rejected":
+                    effective_carrier = row_carrier or db_carrier
+                    effective_tracking = row_tracking or db_tracking
+
+                    if (row_shipped_parsed or effective_tracking) and not effective_carrier:
+                        row_errors.append("Carrier is required when tracking number or shipped date is provided")
+                        row_status = "rejected"
+
+                    if row_shipped_parsed and not effective_tracking:
+                        row_errors.append("Tracking number is required when shipped date is provided")
                         row_status = "rejected"
                         
             # 6. Out-of-order check (Skipped status)
@@ -833,7 +858,7 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                     
                 # Check 2: Tracking Invalid
                 elif merged_carrier or merged_tracking:
-                    accepted_carriers = ["fedex", "ups", "usps", "dhl", "ontrac", "amazon", "dhl express"]
+                    accepted_carriers = ["fedex", "ups", "usps", "dhl", "ontrac", "amazon", "dhl express", "other"]
                     is_carrier_invalid = merged_carrier.lower().strip() not in accepted_carriers
                     is_tracking_invalid = not re.match(r"^[a-zA-Z0-9\- ]{5,50}$", merged_tracking.strip())
                     
@@ -842,6 +867,8 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                     if tracking_url:
                         if not (tracking_url.lower().startswith("http://") or tracking_url.lower().startswith("https://")):
                             is_url_invalid = True
+                    elif merged_carrier.lower().strip() == "other" and not merged_tracking:
+                        is_url_invalid = True
                             
                     if is_carrier_invalid or is_tracking_invalid or is_url_invalid:
                         row_status = "review_required"
@@ -851,7 +878,7 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                         if is_tracking_invalid:
                             row_errors.append(f"Invalid tracking number format: {merged_tracking}")
                         if is_url_invalid:
-                            row_errors.append(f"Invalid tracking URL: {tracking_url}")
+                            row_errors.append(f"Other carrier requires custom tracking URL or tracking instructions")
                             
                 # Check 3: Duplicate tracking number (within DB or this batch)
                 if row_status not in ["review_required"] and merged_tracking:
@@ -962,10 +989,13 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                     handoff.delivered_date = op["delivered"]
                     
                 if op["status"] == "applied":
-                    handoff.status = "shipped"
+                    if op["delivered"]:
+                        handoff.status = "delivered"
+                        sub.status = RoutingStatus.DELIVERED
+                    else:
+                        handoff.status = "shipped"
+                        sub.status = RoutingStatus.SHIPPED
                     handoff.save()
-                    
-                    sub.status = RoutingStatus.SHIPPED
                     sub.save()
                 else: # review_required
                     handoff.status = op["issue_type"]

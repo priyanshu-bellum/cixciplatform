@@ -423,8 +423,8 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     if not matched_line:
                         row_errors.append(f"SKU/UPC mismatch: No line matching SKU '{sku_val}' and UPC '{upc_val}' in order {sub.order_id}")
                         row_status = "rejected"
-                    elif row_qty != matched_line.quantity:
-                        row_errors.append(f"mismatch: Quantity {row_qty} does not match ordered quantity {matched_line.quantity}")
+                    elif row_qty > matched_line.quantity:
+                        row_errors.append(f"mismatch: Quantity {row_qty} exceeds ordered quantity {matched_line.quantity}")
                         row_status = "rejected"
 
             # Validate Locked Fields
@@ -503,6 +503,32 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     row_errors.append(f"Invalid Delivered Date format: '{delivered_raw}' (use MM/DD/YYYY)")
                     row_status = "rejected"
 
+                today = timezone.now().date()
+                if shipped_date and shipped_date > today:
+                    row_errors.append(f"Invalid chronology: Shipped Date ({shipped_date}) cannot be in the future")
+                    row_status = "rejected"
+
+                if delivered_date and delivered_date > today:
+                    row_errors.append(f"Invalid chronology: Delivered Date ({delivered_date}) cannot be in the future")
+                    row_status = "rejected"
+
+                effective_shipped_date = shipped_date or (handoff.shipped_date if handoff else None)
+                if delivered_date and effective_shipped_date and delivered_date < effective_shipped_date:
+                    row_errors.append(f"Invalid chronology: Delivered Date ({delivered_date}) cannot precede Shipped Date ({effective_shipped_date})")
+                    row_status = "rejected"
+
+                if row_status == "applied":
+                    effective_carrier = carrier or (handoff.shipping_carrier if handoff else "")
+                    effective_tracking = tracking or (handoff.tracking_number if handoff else "")
+
+                    if (shipped_date or effective_tracking) and not effective_carrier:
+                        row_errors.append("Carrier is required when tracking number or shipped date is provided")
+                        row_status = "rejected"
+
+                    if shipped_date and not effective_tracking:
+                        row_errors.append("Tracking number is required when shipped date is provided")
+                        row_status = "rejected"
+
                 if row_status == "applied":
                     # Check if there's anything to update
                     updates = {}
@@ -524,10 +550,13 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         # Determine new status
                         current_status = handoff.status if handoff else "received"
                         new_status = current_status
-                        if delivered_date:
+                        is_partial_qty = matched_line and (row_qty < matched_line.quantity)
+                        if is_partial_qty:
+                            new_status = "partially_shipped"
+                        elif delivered_date:
                             new_status = "delivered"
                         elif shipped_date or carrier or tracking:
-                            if current_status not in ("shipped", "delivered"):
+                            if current_status not in ("shipped", "delivered", "partially_shipped"):
                                 new_status = "shipped"
 
                         # Check idempotency — skip if data already matches
@@ -611,6 +640,8 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 # Also update RoutedSuborder status
                 if h.status == "delivered":
                     sub.status = RoutingStatus.DELIVERED
+                elif h.status == "partially_shipped":
+                    sub.status = RoutingStatus.PARTIALLY_SHIPPED
                 elif h.status == "shipped":
                     sub.status = RoutingStatus.SHIPPED
                 sub.save()
