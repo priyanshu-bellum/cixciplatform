@@ -28,3 +28,11 @@ if admin:
     admin.set_password("admin1234")
     admin.save()
     print("admin@cixci.com password reset to: admin1234")
+
+# Reset billy password
+billy = User.objects.filter(email="billy@mvno.com").first()
+if billy:
+    billy.set_password("billy1234")
+    billy.save()
+    print("billy@mvno.com password reset to: billy1234")
+

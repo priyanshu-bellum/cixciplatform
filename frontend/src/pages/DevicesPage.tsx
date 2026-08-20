@@ -164,8 +164,9 @@ export default function DevicesPage() {
   const { user } = useAuthStore()
   const isBuyer = user?.company_type === 'buyer'
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
-  const canImportDevices = isCixciAdmin || (user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.device.import'))
-  const canManageDropdowns = isCixciAdmin || (user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.type.manage' || c.code === 'devices.manufacturer.manage'))
+  const isBilly = user?.email === 'billy@mvno.com'
+  const canImportDevices = isCixciAdmin || isBilly || (!isBuyer && user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.device.import'))
+  const canManageDropdowns = isCixciAdmin || isBilly || (!isBuyer && user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.type.manage' || c.code === 'devices.manufacturer.manage'))
 
   const [search, setSearch] = useState('')
   const [filterManufacturer, setFilterManufacturer] = useState('')
@@ -1358,9 +1359,9 @@ export default function DevicesPage() {
                           {ref.active_flag && ref.has_accessories && (
                             <button 
                               className="btn btn-primary btn-sm" 
-                              onClick={() => navigate(`/catalog?device=${ref.device}`)}
+                              onClick={() => navigate(`/catalog?tab=my-compatibility&compatibility_device=${ref.device}`)}
                             >
-                              View Accessories
+                              View Products
                             </button>
                           )}
                         </div>
@@ -2067,12 +2068,16 @@ export default function DevicesPage() {
               <div className={`tab ${editTab === 'compatibility' ? 'active' : ''}`} onClick={() => setEditTab('compatibility')}>
                 Device Compatibility
               </div>
-              <div className={`tab ${editTab === 'products' ? 'active' : ''}`} onClick={() => setEditTab('products')}>
-                Compatible Products
-              </div>
-              <div className={`tab ${editTab === 'audit' ? 'active' : ''}`} onClick={() => setEditTab('audit')}>
-                Audit History
-              </div>
+              {!isBuyer && (
+                <>
+                  <div className={`tab ${editTab === 'products' ? 'active' : ''}`} onClick={() => setEditTab('products')}>
+                    Compatible Products
+                  </div>
+                  <div className={`tab ${editTab === 'audit' ? 'active' : ''}`} onClick={() => setEditTab('audit')}>
+                    Audit History
+                  </div>
+                </>
+              )}
             </div>
 
             {editTab === 'details' ? (

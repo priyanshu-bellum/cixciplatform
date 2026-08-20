@@ -404,7 +404,7 @@ export default function CatalogPage() {
   const isBuyer = user?.company_type === 'buyer'
 
   const tabParam = searchParams.get('tab')
-  const initialTab = tabParam === 'my-compatibility' ? 'projection' : (tabParam === 'export-jobs' ? 'export_jobs' : 'products')
+  const initialTab = (tabParam === 'my-compatibility' || searchParams.has('compatibility_device') || searchParams.has('device')) ? 'projection' : (tabParam === 'export-jobs' ? 'export_jobs' : 'products')
   const [tab, setTabState] = useState<'products' | 'projection' | 'export_jobs'>(initialTab)
 
   const setTab = (newTab: 'products' | 'projection' | 'export_jobs') => {
@@ -505,13 +505,14 @@ export default function CatalogPage() {
     setSearchParams(newParams)
   }
 
-  const compatFilterDeviceId = searchParams.get('compatibility_device') || ''
+  const compatFilterDeviceId = searchParams.get('compatibility_device') || searchParams.get('device') || ''
   const setCompatFilterDeviceId = (val: string) => {
     const newParams = new URLSearchParams(searchParams)
     if (val) {
       newParams.set('compatibility_device', val)
     } else {
       newParams.delete('compatibility_device')
+      newParams.delete('device')
     }
     setSearchParams(newParams)
   }
@@ -2939,7 +2940,7 @@ export default function CatalogPage() {
               </button>
             )}
 
-            {allProductsSelectedIds.length > 0 && (
+            {!isBuyer && allProductsSelectedIds.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
                 <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                   {allProductsSelectedIds.length} selected
@@ -2970,7 +2971,7 @@ export default function CatalogPage() {
               <table>
                 <thead>
                   <tr>
-                    {isBuyer && (
+                    {!isBuyer && (
                       <th style={{ width: 40, textAlign: 'center' }}>
                         <input
                           type="checkbox"
@@ -3018,7 +3019,7 @@ export default function CatalogPage() {
                       }}
                       style={{ cursor: 'pointer' }}
                     >
-                      {isBuyer && (
+                      {!isBuyer && (
                         <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                           <input
                             type="checkbox"
@@ -3097,7 +3098,12 @@ export default function CatalogPage() {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 16 }}>
                 <div style={{ textAlign: 'center', padding: '20px 16px', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--green)', lineHeight: 1 }}>{projection.compatible_product_count ?? 0}</div>
+                  <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--green)', lineHeight: 1 }}>
+                    {(compatFilterDeviceId || compatSearch || compatFilterCategories.length > 0 || compatFilterBrands.length > 0 || compatFilterColors.length > 0 || compatFilterMsrps.length > 0)
+                      ? compatibleProducts.length
+                      : (projection.compatible_product_count ?? compatibleProducts.length)
+                    }
+                  </div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginTop: 8 }}>Compatible Products</div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Unique accessories currently compatible with one or more devices in My Portfolio</div>
                 </div>
@@ -3205,6 +3211,7 @@ export default function CatalogPage() {
                         setCompatFilterMsrps([])
                         const newParams = new URLSearchParams(searchParams)
                         newParams.delete('compatibility_device')
+                        newParams.delete('device')
                         setSearchParams(newParams)
                       }}
                     >
@@ -4422,12 +4429,6 @@ export default function CatalogPage() {
               <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <div style={{ fontSize: 17, fontWeight: 650, color: 'var(--text-primary)' }}>{selectedManageProduct.name}</div>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>Brand: {selectedManageProduct.brand || '—'} | SKU: {selectedManageProduct.sku}</div>
-                <div style={{ fontSize: 14, color: 'var(--accent)', fontWeight: 600, marginTop: 4 }}>
-                  {isBuyer
-                    ? formatCurrency(selectedManageProduct.buyer_wholesale_price, selectedManageProduct.vendor_wholesale_price_currency)
-                    : formatCurrency(selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)
-                  }
-                </div>
               </div>
             </div>
 
@@ -4633,22 +4634,7 @@ export default function CatalogPage() {
 
                 {/* Right Column: Properties & Descriptions */}
                 <div style={{ flex: '2 2 400px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{selectedManageProduct.name || '—'}</h3>
-                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{selectedManageProduct.brand || '—'}</span>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px 16px', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Product Name</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.name || '—'}</div>
-                    </div>
-
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Brand</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.brand || '—'}</div>
-                    </div>
-
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px 16px' }}>
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Product Status</div>
                       <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, display: 'inline-flex' }}>
@@ -4656,11 +4642,6 @@ export default function CatalogPage() {
                           {selectedManageProduct.status || '—'}
                         </span>
                       </div>
-                    </div>
-
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>SKU</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, fontFamily: 'monospace' }}>{selectedManageProduct.sku || '—'}</div>
                     </div>
 
                     <div>
@@ -4689,7 +4670,7 @@ export default function CatalogPage() {
                     </div>
 
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Vendor Wholesale Price</div>
+                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Wholesale Price</div>
                       <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600, color: 'var(--accent)' }}>
                         {isBuyer
                           ? formatCurrency(selectedManageProduct.buyer_wholesale_price, selectedManageProduct.vendor_wholesale_price_currency)
