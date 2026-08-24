@@ -957,7 +957,7 @@ function AdminDashboard({ count }: any) {
             <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>System Quick Actions</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, justifyContent: 'center' }}>
-            <Link to="/settings" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
+            <Link to="/settings?tab=users&action=invite" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
               <Users size={16} color="var(--accent)" />
               <div style={{ textAlign: 'left', marginLeft: 8 }}>
                 <div style={{ fontWeight: 650 }}>Invite Organization Admin</div>

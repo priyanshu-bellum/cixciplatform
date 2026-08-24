@@ -42,6 +42,13 @@ export default function CompanyUsersPage() {
   const [submittingInvite, setSubmittingInvite] = useState(false)
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('action') === 'invite' || params.get('openInvite') === 'true') {
+      setShowInviteModal(true)
+    }
+  }, [])
+
+  useEffect(() => {
     fetchData()
   }, [activeTab])
 

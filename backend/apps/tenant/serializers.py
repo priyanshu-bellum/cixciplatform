@@ -3,6 +3,16 @@ from rest_framework import serializers
 from .models import Company, CompanyEntity, User, CompanyRelationship, Capability
 
 
+from decimal import Decimal
+import re
+from django.utils.text import slugify
+
+def sanitize_html(text):
+    if isinstance(text, str):
+        return re.sub(r'<[^>]*>', '', text).strip()
+    return text
+
+
 class CapabilitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Capability
@@ -11,6 +21,9 @@ class CapabilitySerializer(serializers.ModelSerializer):
 
 class CompanySerializer(serializers.ModelSerializer):
     capabilities = CapabilitySerializer(many=True, read_only=True)
+    commission_percentage = serializers.DecimalField(
+        max_digits=5, decimal_places=2, min_value=Decimal('0.00'), max_value=Decimal('100.00'), required=False
+    )
 
     class Meta:
         model = Company
@@ -46,9 +59,51 @@ class CompanySerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        is_admin = getattr(user, "is_cixci_admin", False) if user else False
+
+        # BUG-001: Sanitize HTML tags from string input fields
+        for field in ["name", "display_name", "primary_contact_name", "address_line1", "address_line2", "return_address"]:
+            if field in attrs and attrs[field]:
+                attrs[field] = sanitize_html(attrs[field])
+
+        # BUG-006: Block updates on archived companies
+        if self.instance and self.instance.status == "archived":
+            raise serializers.ValidationError("Archived company cannot be modified.")
+
+        # BUG-015: Block parent_company reassignment
+        if self.instance and "parent_company" in attrs:
+            if attrs["parent_company"] != self.instance.parent_company:
+                raise serializers.ValidationError({"parent_company": "Child company parent cannot be reassigned."})
+
+        # BUG-002: Unique display_name check
+        display_name = attrs.get("display_name")
+        if display_name:
+            qs = Company.objects.filter(display_name__iexact=display_name.strip())
+            if self.instance:
+                qs = qs.exclude(id=self.instance.id)
+            if qs.exists():
+                raise serializers.ValidationError({"display_name": "A company with this display name already exists."})
+
+        # BUG-013: Auto-generate slug if omitted
+        if not attrs.get("slug") and attrs.get("display_name"):
+            attrs["slug"] = slugify(attrs["display_name"])
+
+        # BUG-020: Commercial fields admin-only on update
+        if self.instance and not is_admin:
+            for cfield in ["commission_percentage", "buyer_pricing_mode", "map_pricing_enforced"]:
+                if cfield in attrs and attrs[cfield] != getattr(self.instance, cfield):
+                    raise serializers.ValidationError({cfield: f"Only platform administrators can modify {cfield}."})
+
+        # BUG-025: Vendor-only return address
+        if "return_address" in attrs and attrs["return_address"]:
+            comp_type = attrs.get("company_type") or (self.instance.company_type if self.instance else None)
+            if comp_type != "vendor" and not is_admin:
+                raise serializers.ValidationError({"return_address": "Return address can only be set for vendor companies."})
+
         status = attrs.get("status") or (self.instance.status if self.instance else None)
         if status == "active":
-            # Check required fields
             fields_to_check = [
                 "display_name", "website", "primary_contact_name", 
                 "primary_contact_email", "address_line1"
@@ -60,7 +115,6 @@ class CompanySerializer(serializers.ModelSerializer):
                         f"Company cannot be activated without a valid {f}."
                     )
             
-            # Check capabilities
             if self.instance:
                 has_capabilities = self.instance.capabilities.exists()
             else:
@@ -71,7 +125,6 @@ class CompanySerializer(serializers.ModelSerializer):
                     "Company cannot be activated without assigned capabilities."
                 )
 
-            # Check for active admin
             if self.instance:
                 active_user_exists = User.objects.filter(
                     entity__company=self.instance,
@@ -129,6 +182,22 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at", "full_name"]
 
     def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        is_admin = getattr(user, "is_cixci_admin", False) if user else False
+
+        # BUG-001: Sanitize HTML tags from user names
+        for field in ["first_name", "last_name"]:
+            if field in attrs and attrs[field]:
+                attrs[field] = sanitize_html(attrs[field])
+
+        # BUG-023 & BUG-024: Privilege escalation & entity protection
+        if user and not is_admin:
+            if "is_cixci_admin" in attrs and attrs["is_cixci_admin"] != getattr(self.instance, "is_cixci_admin", False):
+                raise serializers.ValidationError({"is_cixci_admin": "Only system administrators can modify administrative privileges."})
+            if "entity" in attrs and self.instance and attrs["entity"] != self.instance.entity:
+                raise serializers.ValidationError({"entity": "Only system administrators can change user entity assignment."})
+
         is_active = attrs.get("is_active")
         if is_active is False and self.instance and self.instance.is_active:
             if not self.instance.is_cixci_admin and self.instance.company:
@@ -141,6 +210,14 @@ class UserSerializer(serializers.ModelSerializer):
                     if not other_active_admins.exists():
                         raise serializers.ValidationError("Cannot deactivate or remove the last active administrator for the company.")
         return attrs
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and not getattr(user, "is_cixci_admin", False):
+            validated_data.pop("is_cixci_admin", None)
+            validated_data.pop("entity", None)
+        return super().update(instance, validated_data)
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

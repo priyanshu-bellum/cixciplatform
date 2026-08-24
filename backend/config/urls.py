@@ -28,11 +28,14 @@ from apps.shared_api import (
     integration_urlpatterns, procurement_urlpatterns, launch_urlpatterns,
 )
 
+from apps.audit.urls import urlpatterns as audit_urls
+
 api_v1 = [
     # ── Phase 1: Foundation ───────────────────────────────────
     path("auth/",           include(auth_urls)),
     path("tenant/",         include(tenant_urls)),
-    path("audit/",          include(([], "audit"))),          # PR-A/B exposed via audit events only
+    path("audit/",          include(audit_urls)),
+
 
     # ── Phase 2: Catalog ──────────────────────────────────────
     path("devices/",        include(device_urls)),

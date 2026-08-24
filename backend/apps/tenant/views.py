@@ -30,7 +30,7 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "remove_capability": "tenant.company.update",
     }
     filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_fields = ["company_type", "status", "parent_company", "is_parent"]
+    filterset_fields = ["company_type", "status", "parent_company", "is_parent", "region_code"]
     search_fields = ["name", "display_name"]
 
     def get_queryset(self):
@@ -38,7 +38,11 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         user = self.request.user
         if not user or user.is_anonymous:
             return Company.objects.none()
+
+        region_code = self.request.query_params.get("region_code")
         if user.is_cixci_admin:
+            if region_code:
+                return qs.filter(region_code=region_code)
             return qs
 
         company = user.company
@@ -59,9 +63,16 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if company.parent_company_id:
             parent_child_q |= Q(id=company.parent_company_id)
 
-        return qs.filter(parent_child_q | vendor_q).distinct()
+        res_qs = qs.filter(parent_child_q | vendor_q).distinct()
+        if region_code:
+            res_qs = res_qs.filter(region_code=region_code)
+        return res_qs
 
     def perform_create(self, serializer):
+        if not getattr(self.request.user, "is_cixci_admin", False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI System Administrators can create companies.")
+
         company = serializer.save()
         from apps.tenant.services import log_tenant_audit
         log_tenant_audit(
@@ -72,6 +83,16 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             source_record_type="Company",
             source_record_id=company.id
         )
+
+    def destroy(self, request, *args, **kwargs):
+        from django.db.models.deletion import ProtectedError
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError as e:
+            return Response(
+                {"error": "Cannot delete company because dependent records (entities/users) exist.", "detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     def perform_update(self, serializer):
         instance = self.get_object()
@@ -167,6 +188,9 @@ class CompanyEntityViewSet(TenantScopedQuerysetMixin, CheckAccessMixin, viewsets
 
 class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = User.objects.select_related("entity__company").prefetch_related("capabilities")
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ["entity__company", "entity", "is_active", "is_cixci_admin"]
+    search_fields = ["email", "first_name", "last_name"]
     action_capability_map = {
         "list": "tenant.user.list",
         "retrieve": "tenant.user.read",
@@ -188,7 +212,11 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         user = self.request.user
         if not user or user.is_anonymous:
             return User.objects.none()
+
+        company_param = self.request.query_params.get("company")
         if user.is_cixci_admin:
+            if company_param:
+                return qs.filter(entity__company_id=company_param)
             return qs
         return qs.filter(entity__company=user.company)
 
@@ -319,8 +347,15 @@ class ChildOnboardingRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("You do not have permission to submit a child onboarding request.")
             
+        parent_company = self.request.user.company
+        if not parent_company and serializer.validated_data.get("parent_company"):
+            parent_company = serializer.validated_data.get("parent_company")
+        if not parent_company:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"parent_company": "Parent company is required."})
+
         req = serializer.save(
-            parent_company=self.request.user.company,
+            parent_company=parent_company,
             requester=self.request.user,
             status="submitted"
         )
@@ -468,6 +503,35 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
         if user.company:
             return UserInvitation.objects.filter(target_company=user.company).order_by("-created_at")
         return UserInvitation.objects.none()
+
+    def perform_create(self, serializer):
+        target_company = serializer.validated_data.get("target_company")
+        if not target_company and self.request.user.company:
+            target_company = self.request.user.company
+        if not target_company:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"target_company": "target_company is required"})
+
+        email = serializer.validated_data.get("email")
+        first_name = serializer.validated_data.get("first_name", "")
+        last_name = serializer.validated_data.get("last_name", "")
+        role_bundle = serializer.validated_data.get("role_bundle", "standard_user")
+        job_title = serializer.validated_data.get("job_title", "")
+        phone_number = serializer.validated_data.get("phone_number", "")
+        entity = serializer.validated_data.get("target_entity")
+
+        inv = create_user_invitation(
+            actor=self.request.user,
+            target_company=target_company,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            role_bundle=role_bundle,
+            job_title=job_title,
+            phone_number=phone_number,
+            entity_id=entity.id if entity else None
+        )
+        serializer.instance = inv
 
     @action(detail=False, methods=["post"])
     def invite(self, request):

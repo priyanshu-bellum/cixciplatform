@@ -222,6 +222,23 @@ def log_tenant_audit(event_code: str, description: str, company_id, actor_id, so
         logger.error(f"Failed to log audit record for {event_code}: {e}")
 
 
+def send_onboarding_invite(user):
+    """Generates onboarding token and simulates sending an onboarding invite email to a user."""
+    from django.core.signing import TimestampSigner
+    signer = TimestampSigner()
+    token = signer.sign(str(user.id))
+    log_tenant_audit(
+        event_code="user.onboarding_invite_sent",
+        description=f"Sent onboarding invite email to {user.email}",
+        company_id=getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None),
+        actor_id=user.id,
+        source_record_type="User",
+        source_record_id=user.id
+    )
+    return token
+
+
+
 def _entity_is_active(user) -> bool:
     """Check if the user's entity is in active status."""
     try:

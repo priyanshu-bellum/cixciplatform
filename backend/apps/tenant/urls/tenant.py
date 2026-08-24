@@ -7,6 +7,8 @@ from apps.tenant.views import (
     UserInvitationViewSet, CompanyUserMembershipViewSet,
 )
 
+from apps.audit.views import AuditRecordViewSet
+
 router = DefaultRouter()
 router.register("companies", CompanyViewSet, basename="company")
 router.register("entities", CompanyEntityViewSet, basename="entity")
@@ -16,7 +18,9 @@ router.register("child-onboarding-requests", ChildOnboardingRequestViewSet, base
 router.register("capabilities", CapabilityViewSet, basename="capability")
 router.register("invitations", UserInvitationViewSet, basename="invitation")
 router.register("memberships", CompanyUserMembershipViewSet, basename="membership")
+router.register("audit", AuditRecordViewSet, basename="tenant-audit")
 
 urlpatterns = [
     path("", include(router.urls)),
 ]
+

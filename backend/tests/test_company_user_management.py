@@ -278,3 +278,115 @@ class TestCompanyUserManagement:
         # 3. API Resend Invite
         response_resend = client.post(f"/api/v1/tenant/invitations/{inv_id}/resend/")
         assert response_resend.status_code == 200
+
+
+@pytest.mark.django_db
+class TestSecurityAndBugFixes:
+    def test_prevent_self_elevation_and_entity_hijack(self, setup_user_mgmt_data):
+        """BUG-023 & BUG-024: Non-admin user cannot self-elevate or change entity."""
+        data = setup_user_mgmt_data
+        buyer_admin = data["buyer_admin"]
+        vendor_company = data["vendor_company"]
+        vendor_entity = CompanyEntity.objects.filter(company=vendor_company).first()
+
+        client = APIClient()
+        client.force_authenticate(user=buyer_admin)
+
+        # Attempt to self-elevate to is_cixci_admin=True
+        res = client.patch(f"/api/v1/tenant/users/{buyer_admin.id}/", {
+            "is_cixci_admin": True
+        }, format="json")
+        # Should be rejected with 400 or ignore is_cixci_admin
+        buyer_admin.refresh_from_db()
+        assert buyer_admin.is_cixci_admin is False
+
+        # Attempt to change entity to vendor_entity
+        res = client.patch(f"/api/v1/tenant/users/{buyer_admin.id}/", {
+            "entity": str(vendor_entity.id)
+        }, format="json")
+        buyer_admin.refresh_from_db()
+        assert str(buyer_admin.entity_id) != str(vendor_entity.id)
+
+    def test_xss_sanitization_in_company_name(self, setup_user_mgmt_data):
+        """BUG-001: XSS tags are stripped from company name."""
+        data = setup_user_mgmt_data
+        sys_admin = data["sys_admin"]
+        client = APIClient()
+        client.force_authenticate(user=sys_admin)
+
+        xss_payload = "<script>alert('XSS')</script> SafeCompany"
+        res = client.post("/api/v1/tenant/companies/", {
+            "name": xss_payload,
+            "display_name": "XSS Company",
+            "company_type": "buyer",
+            "slug": "xss-company-test"
+        }, format="json")
+        assert res.status_code == 201
+        assert "<script>" not in res.data["name"]
+
+    def test_non_admin_cannot_create_company(self, setup_user_mgmt_data):
+        """BUG-018: Non-admin users cannot POST /companies/."""
+        data = setup_user_mgmt_data
+        buyer_admin = data["buyer_admin"]
+        client = APIClient()
+        client.force_authenticate(user=buyer_admin)
+
+        res = client.post("/api/v1/tenant/companies/", {
+            "name": "Unauthorized Company",
+            "display_name": "Unauthorized Company",
+            "company_type": "buyer",
+            "slug": "unauthorized-company"
+        }, format="json")
+        assert res.status_code == 403
+
+    def test_suspended_company_user_login(self, setup_user_mgmt_data):
+        """BUG-019: User of suspended company cannot log in."""
+        data = setup_user_mgmt_data
+        buyer_company = data["buyer_company"]
+        buyer_admin = data["buyer_admin"]
+        buyer_admin.set_password("Password123!")
+        buyer_admin.save()
+
+        # Suspend company
+        buyer_company.status = "suspended"
+        buyer_company.save()
+
+        client = APIClient()
+        res = client.post("/api/v1/auth/login/", {
+            "email": buyer_admin.email,
+            "password": "Password123!"
+        }, format="json")
+        assert res.status_code in (400, 401)
+
+    def test_commission_percentage_range_validation(self, setup_user_mgmt_data):
+        """BUG-021 & BUG-022: Negative or >100% commission is rejected."""
+        data = setup_user_mgmt_data
+        sys_admin = data["sys_admin"]
+        buyer_company = data["buyer_company"]
+
+        client = APIClient()
+        client.force_authenticate(user=sys_admin)
+
+        res_neg = client.patch(f"/api/v1/tenant/companies/{buyer_company.id}/", {
+            "commission_percentage": -5.00
+        }, format="json")
+        assert res_neg.status_code == 400
+
+        res_high = client.patch(f"/api/v1/tenant/companies/{buyer_company.id}/", {
+            "commission_percentage": 150.00
+        }, format="json")
+        assert res_high.status_code == 400
+
+    def test_audit_log_endpoints(self, setup_user_mgmt_data):
+        """BUG-009: Audit log endpoints exist and return 200."""
+        data = setup_user_mgmt_data
+        sys_admin = data["sys_admin"]
+        client = APIClient()
+        client.force_authenticate(user=sys_admin)
+
+        res1 = client.get("/api/v1/audit/")
+        assert res1.status_code == 200
+
+        res2 = client.get("/api/v1/tenant/audit/")
+        assert res2.status_code == 200
+
