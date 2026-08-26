@@ -15,7 +15,8 @@ import {
   CheckCircle,
   X,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Eye
 } from 'lucide-react'
 import api from '../lib/apiClient'
 import toast from 'react-hot-toast'
@@ -311,6 +312,11 @@ export default function TelcoCellularPage() {
   const [returnReason, setReturnReason] = useState('')
   const [returnQty, setReturnQty] = useState(1)
 
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
+  const [detailQty, setDetailQty] = useState<number>(1)
+  const [detailActiveTab, setDetailActiveTab] = useState<'overview' | 'specs' | 'compatibility'>('overview')
+  const [activeImageIndex, setActiveImageIndex] = useState<number>(0)
+
   const { data: orders, isLoading: isOrdersLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['telco-orders'],
     queryFn: () => telcoApi.get('/routing/orders/').then(r => r.data?.results ?? r.data ?? []),
@@ -406,12 +412,12 @@ export default function TelcoCellularPage() {
   }, [accessoriesData])
 
   // Cart operations
-  const addToCart = (product: any) => {
+  const addToCart = (product: any, qtyToAdd: number = 1) => {
     const price = Number(product.sale_price || product.msrp || product.vendor_wholesale_price_amount || 0)
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id)
       if (existing) {
-        return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item)
+        return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + qtyToAdd } : item)
       } else {
         return [
           ...prev,
@@ -420,14 +426,14 @@ export default function TelcoCellularPage() {
             name: product.name,
             sku: product.sku,
             price,
-            qty: 1,
+            qty: qtyToAdd,
             primary_image_url: product.primary_image_url,
             vendor_company_reference: product.vendor_company_reference
           }
         ]
       }
     })
-    toast.success(`${product.name} added to cart!`, { duration: 1500 })
+    toast.success(`${product.name} (${qtyToAdd}x) added to cart!`, { duration: 1500 })
     setIsCartOpen(true)
   }
 
@@ -705,11 +711,296 @@ export default function TelcoCellularPage() {
           position: relative;
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           backdrop-filter: blur(10px);
+          cursor: pointer;
+          user-select: none;
         }
         .telco-card:hover {
           transform: translateY(-4px);
           border-color: #20D1F2;
           box-shadow: 0 4px 20px rgba(32, 209, 242, 0.15);
+        }
+        .telco-card-view-hint {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(15, 23, 42, 0.85);
+          border: 1px solid rgba(32, 209, 242, 0.3);
+          color: #20D1F2;
+          font-size: 10px;
+          font-weight: 600;
+          padding: 3px 8px;
+          border-radius: 99px;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          backdrop-filter: blur(4px);
+          z-index: 2;
+        }
+        .telco-card:hover .telco-card-view-hint {
+          opacity: 1;
+        }
+
+        /* ── Product Detail View Modal ── */
+        .telco-product-detail-modal {
+          width: 840px;
+          max-width: 95vw;
+          max-height: 92vh;
+          background: #0f172a;
+          border: 1px solid #20D1F2;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(32, 209, 242, 0.15);
+          border-radius: 14px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        .detail-modal-body {
+          padding: 24px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+        .detail-top-grid {
+          display: grid;
+          grid-template-columns: 320px 1fr;
+          gap: 24px;
+        }
+        @media (max-width: 768px) {
+          .detail-top-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .detail-media-gallery {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .detail-main-img-wrap {
+          width: 100%;
+          height: 260px;
+          background: #090d16;
+          border: 1px solid #1f2d45;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          position: relative;
+          overflow: hidden;
+        }
+        .detail-main-img-wrap img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+        }
+        .detail-thumbnails {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+        .detail-thumb {
+          width: 54px;
+          height: 54px;
+          border-radius: 6px;
+          background: #090d16;
+          border: 1px solid #1f2d45;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px;
+          flex-shrink: 0;
+          transition: all 0.2s;
+        }
+        .detail-thumb.active, .detail-thumb:hover {
+          border-color: #20D1F2;
+          box-shadow: 0 0 10px rgba(32, 209, 242, 0.3);
+        }
+        .detail-thumb img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+        }
+        .detail-info-pane {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .detail-brand-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 700;
+          color: #20D1F2;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          background: rgba(32, 209, 242, 0.1);
+          padding: 4px 10px;
+          border-radius: 6px;
+          width: fit-content;
+          border: 1px solid rgba(32, 209, 242, 0.2);
+        }
+        .detail-product-title {
+          font-size: 18px;
+          font-weight: 800;
+          color: #f8fafc;
+          line-height: 1.3;
+          margin: 0;
+        }
+        .detail-sku-row {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          font-size: 12px;
+          color: #94a3b8;
+        }
+        .detail-price-card {
+          background: #111827;
+          border: 1px solid #1f2d45;
+          border-radius: 10px;
+          padding: 14px 18px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .detail-price-left {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .detail-price-main {
+          font-size: 24px;
+          font-weight: 800;
+          color: #20D1F2;
+        }
+        .detail-price-msrp {
+          font-size: 13px;
+          color: #64748b;
+          text-decoration: line-through;
+        }
+        .detail-save-tag {
+          background: rgba(34, 197, 94, 0.15);
+          color: #4ade80;
+          border: 1px solid rgba(34, 197, 94, 0.3);
+          font-size: 11px;
+          font-weight: 700;
+          padding: 3px 8px;
+          border-radius: 4px;
+        }
+        .detail-specs-quick {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .detail-quick-pill {
+          font-size: 11px;
+          color: #cbd5e1;
+          background: #1e293b;
+          border: 1px solid #334155;
+          padding: 4px 10px;
+          border-radius: 6px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .detail-actions-row {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          margin-top: 6px;
+        }
+        .detail-qty-picker {
+          display: flex;
+          align-items: center;
+          background: #111827;
+          border: 1px solid #1f2d45;
+          border-radius: 8px;
+          height: 42px;
+          overflow: hidden;
+        }
+        .detail-qty-btn {
+          width: 36px;
+          height: 100%;
+          background: transparent;
+          border: none;
+          color: #94a3b8;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.15s;
+        }
+        .detail-qty-btn:hover {
+          background: #1e293b;
+          color: #f1f5f9;
+        }
+        .detail-qty-input {
+          width: 44px;
+          text-align: center;
+          background: transparent;
+          border: none;
+          color: #f1f5f9;
+          font-weight: 700;
+          font-size: 14px;
+        }
+        .detail-tab-header {
+          display: flex;
+          border-bottom: 1px solid #1f2d45;
+          gap: 8px;
+          margin-top: 8px;
+        }
+        .detail-tab-btn {
+          background: transparent;
+          border: none;
+          color: #94a3b8;
+          padding: 10px 16px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          border-bottom: 2px solid transparent;
+          transition: all 0.2s;
+        }
+        .detail-tab-btn:hover {
+          color: #20D1F2;
+        }
+        .detail-tab-btn.active {
+          color: #20D1F2;
+          border-bottom-color: #20D1F2;
+        }
+        .detail-tab-content {
+          background: #111827;
+          border: 1px solid #1f2d45;
+          border-radius: 10px;
+          padding: 18px;
+          font-size: 13px;
+          color: #cbd5e1;
+          line-height: 1.6;
+        }
+        .detail-specs-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        .detail-specs-table tr {
+          border-bottom: 1px solid #1f2d45;
+        }
+        .detail-specs-table tr:last-child {
+          border-bottom: none;
+        }
+        .detail-specs-table td {
+          padding: 10px 12px;
+          font-size: 13px;
+        }
+        .detail-specs-table td.spec-key {
+          color: #94a3b8;
+          font-weight: 600;
+          width: 40%;
+        }
+        .detail-specs-table td.spec-val {
+          color: #f1f5f9;
         }
         .telco-card-badge {
           position: absolute;
@@ -1494,8 +1785,20 @@ export default function TelcoCellularPage() {
                     const isOutOfStock = product.status === 'out_of_stock' || product.inventory_level <= 0
                     
                     return (
-                      <div className="telco-card" key={product.id}>
+                      <div
+                        className="telco-card"
+                        key={product.id}
+                        onClick={() => {
+                          setSelectedProduct(product)
+                          setDetailQty(1)
+                          setDetailActiveTab('overview')
+                          setActiveImageIndex(0)
+                        }}
+                      >
                         {badgeText && <div className="telco-card-badge">{badgeText}</div>}
+                        <div className="telco-card-view-hint">
+                          <Eye size={12} /> View Specs
+                        </div>
                         
                         <div className="telco-card-img-wrap">
                           {product.primary_image_url ? (
@@ -1541,7 +1844,10 @@ export default function TelcoCellularPage() {
                           <button
                             className="telco-card-btn"
                             disabled={isOutOfStock}
-                            onClick={() => addToCart(product)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              addToCart(product)
+                            }}
                           >
                             {isOutOfStock ? 'Unavailable' : 'Add to Cart'}
                           </button>
@@ -2019,6 +2325,412 @@ export default function TelcoCellularPage() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Details Modal */}
+      {selectedProduct && (
+        <div className="telco-overlay" style={{ zIndex: 1050 }} onClick={() => setSelectedProduct(null)}>
+          <div className="telco-modal telco-product-detail-modal" onClick={e => e.stopPropagation()}>
+            <div className="telco-modal-header" style={{ padding: '16px 24px', borderBottom: '1px solid #1f2d45' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ShoppingBag size={20} style={{ color: '#20D1F2' }} />
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc', margin: 0 }}>Product Specifications & Details</h3>
+                  <span style={{ fontSize: 11, color: '#64748b' }}>Catalog Reference ID #{String(selectedProduct.id).slice(0, 8)}</span>
+                </div>
+              </div>
+              <button className="telco-modal-close" onClick={() => setSelectedProduct(null)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="detail-modal-body">
+              {/* Top Grid: Media Gallery & Key Info */}
+              <div className="detail-top-grid">
+                {/* Left Media Gallery */}
+                <div className="detail-media-gallery">
+                  {(() => {
+                    const allImages = [
+                      selectedProduct.primary_image_url,
+                      ...(Array.isArray(selectedProduct.media_references) ? selectedProduct.media_references : [])
+                    ].filter((img): img is string => Boolean(img && typeof img === 'string'))
+
+                    const currentImg = allImages[activeImageIndex] || selectedProduct.primary_image_url
+
+                    return (
+                      <>
+                        <div className="detail-main-img-wrap">
+                          {currentImg ? (
+                            <img src={currentImg} alt={selectedProduct.name} />
+                          ) : (
+                            <ShoppingBag size={72} style={{ color: '#334155' }} />
+                          )}
+                        </div>
+
+                        {allImages.length > 1 && (
+                          <div className="detail-thumbnails">
+                            {allImages.map((img, idx) => (
+                              <div
+                                key={idx}
+                                className={`detail-thumb ${activeImageIndex === idx ? 'active' : ''}`}
+                                onClick={() => setActiveImageIndex(idx)}
+                              >
+                                <img src={img} alt={`Thumb ${idx}`} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+                </div>
+
+                {/* Right Key Information & Purchase Pane */}
+                <div className="detail-info-pane">
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {selectedProduct.brand && (
+                      <div className="detail-brand-badge">{selectedProduct.brand}</div>
+                    )}
+                    {selectedProduct.product_category && (
+                      <span className="telco-card-spec-pill" style={{ borderColor: '#20D1F2', color: '#20D1F2' }}>
+                        {selectedProduct.product_category}
+                      </span>
+                    )}
+                    {selectedProduct.recommended_accessory && (
+                      <span className="telco-card-badge" style={{ position: 'static' }}>★ Recommended</span>
+                    )}
+                  </div>
+
+                  <h2 className="detail-product-title">{selectedProduct.name}</h2>
+
+                  <div className="detail-sku-row">
+                    <span>SKU: <strong className="mono" style={{ color: '#f1f5f9' }}>{selectedProduct.sku}</strong></span>
+                    {selectedProduct.upc && <span>UPC: <strong className="mono" style={{ color: '#f1f5f9' }}>{selectedProduct.upc}</strong></span>}
+                  </div>
+
+                  {/* Price Box */}
+                  {(() => {
+                    const srp = Number(selectedProduct.msrp || 0)
+                    const salePrice = Number(selectedProduct.sale_price || 0)
+                    const displayPrice = salePrice > 0 ? salePrice : (srp > 0 ? srp : Number(selectedProduct.vendor_wholesale_price_amount || 0))
+                    const savings = salePrice > 0 && srp > salePrice ? srp - salePrice : 0
+                    const savingsPct = savings > 0 ? Math.round((savings / srp) * 100) : 0
+                    const isOutOfStock = selectedProduct.status === 'out_of_stock' || selectedProduct.inventory_level <= 0
+
+                    return (
+                      <>
+                        <div className="detail-price-card">
+                          <div className="detail-price-left">
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                              <span className="detail-price-main">${displayPrice.toFixed(2)}</span>
+                              {salePrice > 0 && srp > salePrice && (
+                                <span className="detail-price-msrp">${srp.toFixed(2)}</span>
+                              )}
+                            </div>
+                            <span style={{ fontSize: 11, color: '#64748b' }}>Unit Price (USD)</span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                            {savings > 0 && (
+                              <div className="detail-save-tag">
+                                Save ${savings.toFixed(2)} ({savingsPct}% OFF)
+                              </div>
+                            )}
+                            <div>
+                              {isOutOfStock ? (
+                                <span className="telco-status-out">Out of Stock</span>
+                              ) : (
+                                <span className="telco-status-active" style={{ fontSize: 12 }}>
+                                  ✓ In Stock ({selectedProduct.inventory_level || 0} units available)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quick specs pills */}
+                        <div className="detail-specs-quick">
+                          {selectedProduct.color && (
+                            <span className="detail-quick-pill">
+                              <span className="telco-color-swatch" style={{ background: selectedProduct.color.toLowerCase() }} />
+                              Color: {selectedProduct.color}
+                            </span>
+                          )}
+                          {selectedProduct.bluetooth_compatibility && (
+                            <span className="detail-quick-pill">Bluetooth {selectedProduct.bluetooth_compatibility}</span>
+                          )}
+                          {selectedProduct.compatible_charging_interface && (
+                            <span className="detail-quick-pill">Charging: {selectedProduct.compatible_charging_interface}</span>
+                          )}
+                          {selectedProduct.wireless_charging_compatibility === 'true' && (
+                            <span className="detail-quick-pill">Wireless Charging Ready</span>
+                          )}
+                          {selectedProduct.headphone_jack_compatibility === 'true' && (
+                            <span className="detail-quick-pill">3.5mm Headphone Jack</span>
+                          )}
+                        </div>
+
+                        {/* Quantity & Cart Action Row */}
+                        <div className="detail-actions-row">
+                          <div className="detail-qty-picker">
+                            <button
+                              className="detail-qty-btn"
+                              onClick={() => setDetailQty(q => Math.max(1, q - 1))}
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <input
+                              className="detail-qty-input"
+                              value={detailQty}
+                              readOnly
+                            />
+                            <button
+                              className="detail-qty-btn"
+                              onClick={() => setDetailQty(q => q + 1)}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+
+                          <button
+                            className="telco-checkout-btn"
+                            style={{ flex: 1, padding: '12px 20px', height: 42 }}
+                            disabled={isOutOfStock}
+                            onClick={() => {
+                              addToCart(selectedProduct, detailQty)
+                            }}
+                          >
+                            <ShoppingCart size={16} />
+                            Add {detailQty} to Cart
+                          </button>
+
+                          <button
+                            className="btn btn-secondary"
+                            style={{ height: 42, padding: '0 18px', borderColor: '#20D1F2', color: '#20D1F2', fontWeight: 600 }}
+                            disabled={isOutOfStock}
+                            onClick={() => {
+                              addToCart(selectedProduct, detailQty)
+                              setSelectedProduct(null)
+                              setIsCheckoutOpen(true)
+                            }}
+                          >
+                            Buy Now
+                          </button>
+                        </div>
+                      </>
+                    )
+                  })()}
+                </div>
+              </div>
+
+              {/* Bottom Section: Tabs for Overview, Specs, Compatibility */}
+              <div>
+                <div className="detail-tab-header">
+                  <button
+                    className={`detail-tab-btn ${detailActiveTab === 'overview' ? 'active' : ''}`}
+                    onClick={() => setDetailActiveTab('overview')}
+                  >
+                    Overview & Description
+                  </button>
+                  <button
+                    className={`detail-tab-btn ${detailActiveTab === 'specs' ? 'active' : ''}`}
+                    onClick={() => setDetailActiveTab('specs')}
+                  >
+                    Technical Specifications
+                  </button>
+                  <button
+                    className={`detail-tab-btn ${detailActiveTab === 'compatibility' ? 'active' : ''}`}
+                    onClick={() => setDetailActiveTab('compatibility')}
+                  >
+                    Device Compatibility ({activeDevices.length})
+                  </button>
+                </div>
+
+                <div className="detail-tab-content">
+                  {detailActiveTab === 'overview' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      {selectedProduct.short_description && (
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9', borderLeft: '3px solid #20D1F2', paddingLeft: 12 }}>
+                          {selectedProduct.short_description}
+                        </div>
+                      )}
+
+                      <div>
+                        <h4 style={{ color: '#f8fafc', fontSize: 14, fontWeight: 700, margin: '0 0 6px 0' }}>Product Description</h4>
+                        <p style={{ margin: 0, color: '#94a3b8', whiteSpace: 'pre-line' }}>
+                          {selectedProduct.description || 'No detailed description provided for this catalog item.'}
+                        </p>
+                      </div>
+
+                      {selectedProduct.promo_information && (
+                        <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: 8, padding: 12 }}>
+                          <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: 12, marginBottom: 2 }}>Promotional Offer</div>
+                          <div style={{ color: '#fbbf24', fontSize: 13 }}>{selectedProduct.promo_information}</div>
+                        </div>
+                      )}
+
+                      {selectedProduct.warranty && (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#94a3b8' }}>
+                          <Info size={14} style={{ color: '#20D1F2' }} />
+                          <span>Warranty: <strong style={{ color: '#f1f5f9' }}>{selectedProduct.warranty}</strong></span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {detailActiveTab === 'specs' && (
+                    <table className="detail-specs-table">
+                      <tbody>
+                        <tr>
+                          <td className="spec-key">Product Name</td>
+                          <td className="spec-val" style={{ fontWeight: 600 }}>{selectedProduct.name}</td>
+                        </tr>
+                        <tr>
+                          <td className="spec-key">Brand</td>
+                          <td className="spec-val">{selectedProduct.brand || 'Generic / Unbranded'}</td>
+                        </tr>
+                        <tr>
+                          <td className="spec-key">Category</td>
+                          <td className="spec-val">{selectedProduct.product_category || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                          <td className="spec-key">Product Type</td>
+                          <td className="spec-val">{selectedProduct.product_type || 'Accessory'}</td>
+                        </tr>
+                        <tr>
+                          <td className="spec-key">SKU Code</td>
+                          <td className="spec-val mono">{selectedProduct.sku}</td>
+                        </tr>
+                        {selectedProduct.upc && (
+                          <tr>
+                            <td className="spec-key">UPC Code</td>
+                            <td className="spec-val mono">{selectedProduct.upc}</td>
+                          </tr>
+                        )}
+                        {selectedProduct.color && (
+                          <tr>
+                            <td className="spec-key">Color</td>
+                            <td className="spec-val">{selectedProduct.color} {selectedProduct.system_color ? `(${selectedProduct.system_color})` : ''}</td>
+                          </tr>
+                        )}
+                        {selectedProduct.bluetooth_compatibility && (
+                          <tr>
+                            <td className="spec-key">Bluetooth Version</td>
+                            <td className="spec-val">{selectedProduct.bluetooth_compatibility}</td>
+                          </tr>
+                        )}
+                        {selectedProduct.compatible_charging_interface && (
+                          <tr>
+                            <td className="spec-key">Charging Interface</td>
+                            <td className="spec-val">{selectedProduct.compatible_charging_interface}</td>
+                          </tr>
+                        )}
+                        {selectedProduct.wireless_charging_compatibility && (
+                          <tr>
+                            <td className="spec-key">Wireless Charging</td>
+                            <td className="spec-val">{selectedProduct.wireless_charging_compatibility === 'true' ? 'Supported' : selectedProduct.wireless_charging_compatibility}</td>
+                          </tr>
+                        )}
+                        {selectedProduct.headphone_jack_compatibility && (
+                          <tr>
+                            <td className="spec-key">3.5mm Audio Jack</td>
+                            <td className="spec-val">{selectedProduct.headphone_jack_compatibility === 'true' ? 'Yes' : selectedProduct.headphone_jack_compatibility}</td>
+                          </tr>
+                        )}
+                        {selectedProduct.memory_capacity && (
+                          <tr>
+                            <td className="spec-key">Memory / Storage Capacity</td>
+                            <td className="spec-val">{selectedProduct.memory_capacity}</td>
+                          </tr>
+                        )}
+                        {selectedProduct.storage_expansion_compatibility && (
+                          <tr>
+                            <td className="spec-key">Storage Expansion</td>
+                            <td className="spec-val">{selectedProduct.storage_expansion_compatibility}</td>
+                          </tr>
+                        )}
+                        {selectedProduct.compatible_watch_case_size && (
+                          <tr>
+                            <td className="spec-key">Watch Case Size</td>
+                            <td className="spec-val">{selectedProduct.compatible_watch_case_size}</td>
+                          </tr>
+                        )}
+                        {(selectedProduct.length || selectedProduct.width || selectedProduct.height) && (
+                          <tr>
+                            <td className="spec-key">Dimensions (L × W × H)</td>
+                            <td className="spec-val">{selectedProduct.length || 0} × {selectedProduct.width || 0} × {selectedProduct.height || 0} inches</td>
+                          </tr>
+                        )}
+                        {selectedProduct.weight && (
+                          <tr>
+                            <td className="spec-key">Weight</td>
+                            <td className="spec-val">{selectedProduct.weight} oz</td>
+                          </tr>
+                        )}
+                        {selectedProduct.map_price && (
+                          <tr>
+                            <td className="spec-key">MAP Price</td>
+                            <td className="spec-val">${Number(selectedProduct.map_price).toFixed(2)}</td>
+                          </tr>
+                        )}
+                        {selectedProduct.warranty && (
+                          <tr>
+                            <td className="spec-key">Manufacturer Warranty</td>
+                            <td className="spec-val">{selectedProduct.warranty}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {detailActiveTab === 'compatibility' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                        The list below indicates devices in your company's active device portfolio compatible with <strong style={{ color: '#20D1F2' }}>{selectedProduct.name}</strong> based on hardware interfaces, device model matching, and vendor compatibility assertions.
+                      </div>
+
+                      {activeDevices.length === 0 ? (
+                        <div style={{ padding: 16, textAlign: 'center', background: '#090d16', borderRadius: 8, color: '#64748b' }}>
+                          No active devices found in your company portfolio.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginTop: 6 }}>
+                          {activeDevices.map((d: any) => {
+                            const isSelectedDevice = selectedDevice && String(d.device) === String(selectedDevice)
+                            const isMatchName = selectedProduct.name.toLowerCase().includes(d.device_name?.toLowerCase() || '')
+
+                            return (
+                              <div
+                                key={d.device}
+                                style={{
+                                  background: '#090d16',
+                                  border: isSelectedDevice || isMatchName ? '1px solid #20D1F2' : '1px solid #1f2d45',
+                                  borderRadius: 8,
+                                  padding: 10,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 10
+                                }}
+                              >
+                                <Smartphone size={20} style={{ color: isSelectedDevice || isMatchName ? '#20D1F2' : '#64748b' }} />
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>{d.device_name}</span>
+                                  <span style={{ fontSize: 10, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                    <CheckCircle size={10} /> Compatible
+                                  </span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
