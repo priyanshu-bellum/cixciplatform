@@ -61,6 +61,12 @@ class FulfillmentHandoffSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at"]
 
+    def validate_status(self, value):
+        valid_statuses = {"received", "shipment_pending", "delivered", "exception", "failed", "processing"}
+        if value not in valid_statuses:
+            raise serializers.ValidationError(f"'{value}' is not a valid status choice.")
+        return value
+
 
 class SLAPolicySerializer(serializers.ModelSerializer):
     class Meta:
@@ -142,9 +148,30 @@ class BuyerUpdateSignalSerializer(serializers.ModelSerializer):
 class ReturnRequestSerializer(serializers.ModelSerializer):
     ran = serializers.CharField(required=False, allow_blank=True)
     buyer_reference = serializers.UUIDField(required=False)
+    version = serializers.SerializerMethodField()
+    schema_version = serializers.SerializerMethodField()
+
     class Meta:
         model = ReturnRequest
         fields = "__all__"
+
+    def get_version(self, obj):
+        return getattr(obj, "version", 1) or 1
+
+    def get_schema_version(self, obj):
+        return getattr(obj, "schema_version", "1.0") or "1.0"
+
+    def validate(self, attrs):
+        if self.instance is not None:
+            if "ran" in attrs and attrs["ran"] != self.instance.ran:
+                raise serializers.ValidationError({"ran": "Return Authorization Number (RAN) is immutable."})
+            if "return_refunded_amount" in attrs:
+                new_refund = attrs["return_refunded_amount"]
+                if new_refund is not None:
+                    allowed = getattr(self.instance, "allowed_refund_amount", None)
+                    if allowed is not None and new_refund > allowed:
+                        raise serializers.ValidationError({"return_refunded_amount": "Refund amount exceeds allowed refund threshold."})
+        return super().validate(attrs)
 
 
 class VendorReturnImportLogSerializer(serializers.ModelSerializer):
@@ -808,18 +835,20 @@ class BuyerUpdateSignalViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     filterset_fields = ["order_reference", "update_kind", "status"]
 
 class VendorShippingImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
-    queryset = VendorShippingImportLog.objects.all().order_by("-uploaded_at")
+    queryset = VendorShippingImportLog.objects.all().order_by("-uploaded_at", "-id")
     serializer_class = VendorShippingImportLogSerializer
     action_capability_map = {
         "list": "fulfillment.handoff.list",
         "retrieve": "fulfillment.handoff.read",
     }
-    filter_backends = [DjangoFilterBackend]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["vendor_company_reference", "company_scope_reference"]
+    ordering_fields = ["uploaded_at", "id"]
+    ordering = ["-uploaded_at", "-id"]
 
     def get_queryset(self):
         user = self.request.user
-        qs = VendorShippingImportLog.objects.all().order_by("-uploaded_at")
+        qs = VendorShippingImportLog.objects.all().order_by("-uploaded_at", "-id")
         if not user.is_cixci_admin and user.entity:
             company = user.entity.company
             if company.company_type == "vendor":
@@ -830,18 +859,20 @@ class VendorShippingImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelVie
 
 
 class VendorReturnImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
-    queryset = VendorReturnImportLog.objects.all()
+    queryset = VendorReturnImportLog.objects.all().order_by("-uploaded_at", "-id")
     serializer_class = VendorReturnImportLogSerializer
     action_capability_map = {
         "list": "fulfillment.return.list",
         "retrieve": "fulfillment.return.read",
     }
-    filter_backends = [DjangoFilterBackend]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["vendor_company_reference", "company_scope_reference"]
+    ordering_fields = ["uploaded_at", "id"]
+    ordering = ["-uploaded_at", "-id"]
 
     def get_queryset(self):
         user = self.request.user
-        qs = VendorReturnImportLog.objects.all()
+        qs = VendorReturnImportLog.objects.all().order_by("-uploaded_at", "-id")
         if not user.is_cixci_admin and user.entity:
             company = user.entity.company
             if company.company_type == "vendor":
@@ -867,6 +898,16 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["status", "suborder_reference", "buyer_reference"]
 
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if self.action == "create":
+            user = request.user
+            if user and not getattr(user, "is_cixci_admin", False):
+                company = getattr(user, "company", None)
+                if company and getattr(company, "company_type", None) == "buyer":
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied("Buyer users cannot create return requests directly.")
+
     def get_queryset(self):
         user = self.request.user
         qs = ReturnRequest.objects.all()
@@ -890,6 +931,56 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         from apps.tenant.models import Company
 
         qs = self.get_queryset()
+
+        # Emit audit record and notification request for return export
+        user = request.user
+        company = getattr(user, "company", None)
+        company_id = company.id if company else (getattr(user, "entity", None) and user.entity.company_id)
+        if company_id:
+            try:
+                from apps.audit.models import AuditRecord, EvidenceRecord, FileTrackingRecord, FileDirection, FilePurpose, FileLifecycleStatus
+                from apps.notification.models import NotificationRequest, NotificationChannel, NotificationClassification
+
+                audit_rec = AuditRecord.objects.create(
+                    event_code="vendor.return_export",
+                    event_description=f"Vendor return export batch generated for {qs.count()} return requests.",
+                    source_module="fulfillment",
+                    source_record_type="ReturnRequest",
+                    company_scope_reference=company_id,
+                    actor_reference=user.id,
+                    status="success"
+                )
+                ev_rec = EvidenceRecord.objects.create(
+                    audit_record=audit_rec,
+                    evidence_type="export_file",
+                    evidence_payload={"count": qs.count(), "filename": "export_returns.csv"},
+                    company_scope_reference=company_id
+                )
+                FileTrackingRecord.objects.create(
+                    audit_record=audit_rec,
+                    evidence_record=ev_rec,
+                    file_direction=FileDirection.OUTBOUND,
+                    file_purpose=FilePurpose.VENDOR_RETURN_EXPORT,
+                    file_lifecycle_status=FileLifecycleStatus.CONFIRMED,
+                    file_name="export_returns.csv",
+                    file_type="text/csv",
+                    source_module="fulfillment",
+                    company_scope_reference=company_id,
+                    actor_reference=user.id
+                )
+                NotificationRequest.objects.create(
+                    event_type="vendor.return_export",
+                    channel=NotificationChannel.EMAIL,
+                    classification=NotificationClassification.TRANSACTIONAL,
+                    recipient_reference=user.id,
+                    company_scope_reference=company_id,
+                    source_module="fulfillment",
+                    template_code="tpl_vendor_return_export_email",
+                    payload={"count": qs.count(), "batch_id": str(audit_rec.id)}
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Failed to emit return export audit/notification: %s", e)
 
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="export_returns.csv"'

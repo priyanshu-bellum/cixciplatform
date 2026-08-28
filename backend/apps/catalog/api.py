@@ -103,6 +103,16 @@ class ProductSerializerBase(serializers.ModelSerializer):
             ret["media_references"] = combined
         except Exception:
             pass
+
+        request = self.context.get("request")
+        if request and hasattr(request, "user") and request.user:
+            user = request.user
+            if not getattr(user, "is_cixci_admin", False):
+                company = getattr(user, "company", None)
+                if company and getattr(company, "company_type", None) == "buyer":
+                    ret.pop("vendor_wholesale_price_amount", None)
+                    ret.pop("vendor_wholesale_price_currency", None)
+
         return ret
 
 
@@ -549,6 +559,16 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     ]
     ordering_fields = ["name", "created_at", "exported_date"]
     ordering = ["-created_at"]
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if self.action in ["create", "update", "partial_update", "destroy", "bulk_upload"]:
+            user = request.user
+            if user and not getattr(user, "is_cixci_admin", False):
+                company = getattr(user, "company", None)
+                if company and getattr(company, "company_type", None) == "buyer":
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied("Buyer users cannot create or modify catalog products.")
 
     def get_serializer_class(self):
         if self.action in ["retrieve", "create", "update", "partial_update"]:

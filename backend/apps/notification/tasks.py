@@ -276,6 +276,9 @@ def seed_vendor_notification_templates():
         ("CATALOG_ROWS_REJECTED", "Catalog Rows Rejected", "{{ rejected_count }} rows were rejected in product catalog import."),
         ("INVENTORY_CATALOG_SLA_ISSUE", "Inventory Catalog SLA Issue", "Inventory catalog update SLA threshold reached for vendor."),
         ("PRICING_CONFIGURATION_BLOCKING_BUYER_VISIBILITY", "Pricing Configuration Issue", "Pricing profile configuration is blocking buyer visibility for product {{ product_name }}."),
+        ("RETURN_EXPORT_COMPLETED", "Vendor Return Export Completed", "Vendor return export completed successfully: {{ file_name }}."),
+        ("RETURN_EXPORT_FAILED", "Vendor Return Export Failed", "Vendor return export failed: {{ error_message }}."),
+        ("vendor_return_export", "Vendor Return Export Logged", "Vendor return export batch {{ batch_id }} created for {{ return_count }} returns."),
     ]
 
     seeded_count = 0

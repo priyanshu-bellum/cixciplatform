@@ -164,6 +164,17 @@ class NotificationRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["event_type", "channel", "preference_outcome", "company_scope_reference"]
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = NotificationRequest.objects.all()
+        if not user or user.is_anonymous:
+            return NotificationRequest.objects.none()
+        if getattr(user, "is_cixci_admin", False):
+            return qs
+        if getattr(user, "company", None):
+            return qs.filter(company_scope_reference=user.company.id)
+        return NotificationRequest.objects.none()
+
     @action(detail=True, methods=["get"])
     def delivery_attempts(self, request, pk=None):
         req = self.get_object()

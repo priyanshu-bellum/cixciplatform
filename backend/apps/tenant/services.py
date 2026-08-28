@@ -108,7 +108,6 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 "routing.order.read",
                 "fulfillment.return.list",
                 "fulfillment.return.read",
-                "fulfillment.return.create",
                 "fulfillment.handoff.update",
             }
             if company.company_type == "buyer" and capability_code in buyer_safe_caps:

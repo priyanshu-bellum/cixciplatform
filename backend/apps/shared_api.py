@@ -314,7 +314,10 @@ class ActivitySummaryWindowViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
         return Response(ActivitySummaryAggregationSerializer(aggs, many=True).data)
 
 # ── Integration ────────────────────────────────────────────────────────────────
-from apps.integration.models import ExternalConnection, ExternalActionRequest, ExternalActionOutcome, CompanyAPIKey
+from apps.integration.models import (
+    ExternalConnection, ExternalActionRequest, ExternalActionOutcome,
+    CompanyAPIKey, WebhookDelivery, InboundWebhookReceipt
+)
 
 class ExternalConnectionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -323,16 +326,7 @@ class ExternalConnectionSerializer(serializers.ModelSerializer):
             "id", "company_scope_reference", "connector_type",
             "status", "label", "config_reference", "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
-
-class ExternalActionRequestSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ExternalActionRequest
-        fields = [
-            "id", "connection", "source_module", "action_type",
-            "source_record_id", "idempotency_key", "created_at",
-        ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "company_scope_reference", "created_at"]
 
 class ExternalConnectionViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = ExternalConnection.objects.all()
@@ -344,6 +338,28 @@ class ExternalConnectionViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["connector_type", "status", "company_scope_reference"]
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        company_id = user.entity.company_id if getattr(user, "entity", None) else None
+        if not company_id and getattr(user, "company", None):
+            company_id = user.company.id
+        serializer.save(company_scope_reference=company_id)
+
+class ExternalActionOutcomeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExternalActionOutcome
+        fields = "__all__"
+
+class ExternalActionRequestSerializer(serializers.ModelSerializer):
+    outcomes = ExternalActionOutcomeSerializer(many=True, read_only=True)
+    class Meta:
+        model = ExternalActionRequest
+        fields = [
+            "id", "company_scope_reference", "connection", "source_module",
+            "action_type", "target_system", "status", "idempotency_key",
+            "created_at", "outcomes",
+        ]
 
 class ExternalActionRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     queryset = ExternalActionRequest.objects.all()
@@ -359,7 +375,7 @@ class CompanyAPIKeySerializer(serializers.ModelSerializer):
             "id", "company_scope_reference", "label", "token",
             "is_active", "created_at", "last_used_at",
         ]
-        read_only_fields = ["id", "company_scope_reference", "token", "created_at", "last_used_at"]
+        read_only_fields = ["id", "token", "created_at", "last_used_at"]
 
 class CompanyAPIKeyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = CompanyAPIKey.objects.all()
@@ -380,14 +396,52 @@ class CompanyAPIKeyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         return CompanyAPIKey.objects.filter(company_scope_reference=user.entity.company_id)
 
     def perform_create(self, serializer):
-        import secrets
+        import secrets, uuid
         token = f"cixci_key_{secrets.token_hex(24)}"
         user = self.request.user
-        company_id = user.entity.company_id if getattr(user, "entity", None) else None
+        company_id = serializer.validated_data.get("company_scope_reference")
+        if not company_id:
+            company_id = user.entity.company_id if getattr(user, "entity", None) else None
+        if not company_id and getattr(user, "company", None):
+            company_id = user.company.id
+        if not company_id and getattr(user, "is_cixci_admin", False):
+            from apps.tenant.models import Company
+            c = Company.objects.first()
+            company_id = c.id if c else uuid.uuid4()
         serializer.save(
             company_scope_reference=company_id,
             token=token
         )
+
+class WebhookDeliverySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WebhookDelivery
+        fields = "__all__"
+
+class WebhookDeliveryViewSet(CheckAccessMixin, viewsets.ModelViewSet):
+    queryset = WebhookDelivery.objects.all()
+    serializer_class = WebhookDeliverySerializer
+    action_capability_map = {
+        "list": "integration.connection.list", "retrieve": "integration.connection.read",
+        "create": "integration.connection.manage", "update": "integration.connection.manage",
+        "partial_update": "integration.connection.manage", "destroy": "integration.connection.manage",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["event_type", "status"]
+
+class InboundWebhookReceiptSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InboundWebhookReceipt
+        fields = "__all__"
+
+class InboundWebhookReceiptViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    queryset = InboundWebhookReceipt.objects.all()
+    serializer_class = InboundWebhookReceiptSerializer
+    action_capability_map = {
+        "list": "integration.connection.list", "retrieve": "integration.connection.read",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["event_type", "processing_status"]
 
 # ── Procurement ────────────────────────────────────────────────────────────────
 from apps.procurement.models import PurchaseOrder, PurchaseOrderLine
@@ -602,6 +656,8 @@ integration_router = DefaultRouter()
 integration_router.register("connections", ExternalConnectionViewSet, basename="ext-connection")
 integration_router.register("action-requests", ExternalActionRequestViewSet, basename="action-request")
 integration_router.register("api-keys", CompanyAPIKeyViewSet, basename="company-api-key")
+integration_router.register("webhooks", WebhookDeliveryViewSet, basename="webhook-delivery")
+integration_router.register("inbound-webhooks", InboundWebhookReceiptViewSet, basename="inbound-webhook")
 
 procurement_router = DefaultRouter()
 procurement_router.register("purchase-orders", PurchaseOrderViewSet, basename="purchase-order")

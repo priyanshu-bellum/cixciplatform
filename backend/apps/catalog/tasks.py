@@ -124,7 +124,7 @@ def process_buyer_export_job(job_id):
 
         headers = [
             "id", "sku", "name", "brand", "product_category", "product_type",
-            "status", "vendor_wholesale_price_amount", "vendor_wholesale_price_currency",
+            "status",
             "msrp", "map_price", "sale_price", "upc", "launch_date", "release_date",
             "eol_date", "color", "short_description"
         ]
