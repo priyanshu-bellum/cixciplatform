@@ -167,10 +167,14 @@ class ReturnRequestSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"ran": "Return Authorization Number (RAN) is immutable."})
             if "return_refunded_amount" in attrs:
                 new_refund = attrs["return_refunded_amount"]
+                if self.instance.return_refunded_amount is not None and new_refund != self.instance.return_refunded_amount:
+                    raise serializers.ValidationError({"return_refunded_amount": "Refund amount is immutable once set."})
                 if new_refund is not None:
                     allowed = getattr(self.instance, "allowed_refund_amount", None)
                     if allowed is not None and new_refund > allowed:
                         raise serializers.ValidationError({"return_refunded_amount": "Refund amount exceeds allowed refund threshold."})
+                    elif allowed is None:
+                        raise serializers.ValidationError({"return_refunded_amount": "Cannot apply refund without an approved allowed refund amount threshold."})
         return super().validate(attrs)
 
 

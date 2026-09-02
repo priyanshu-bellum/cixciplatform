@@ -108,10 +108,8 @@ class ProductSerializerBase(serializers.ModelSerializer):
         if request and hasattr(request, "user") and request.user:
             user = request.user
             if not getattr(user, "is_cixci_admin", False):
-                company = getattr(user, "company", None)
-                if company and getattr(company, "company_type", None) == "buyer":
-                    ret.pop("vendor_wholesale_price_amount", None)
-                    ret.pop("vendor_wholesale_price_currency", None)
+                ret.pop("vendor_wholesale_price_amount", None)
+                ret.pop("vendor_wholesale_price_currency", None)
 
         return ret
 
@@ -610,7 +608,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     return Product.objects.none()
             return qs
 
-        company = user.company
+        company = getattr(user, "company", None) or (user.entity.company if getattr(user, "entity", None) else None)
         if not company:
             return Product.objects.none()
 

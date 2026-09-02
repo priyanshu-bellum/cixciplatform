@@ -31,9 +31,17 @@ class AuditRecordViewSet(viewsets.ReadOnlyModelViewSet):
             return AuditRecord.objects.none()
         if getattr(user, "is_cixci_admin", False):
             return AuditRecord.objects.all().order_by("-created_at", "-id")
-        if getattr(user, "company", None):
-            return AuditRecord.objects.filter(company_scope_reference=user.company.id).order_by("-created_at", "-id")
+        company = getattr(user, "company", None) or (user.entity.company if getattr(user, "entity", None) else None)
+        if company:
+            return AuditRecord.objects.filter(company_scope_reference=company.id).order_by("-created_at", "-id")
         return AuditRecord.objects.none()
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        ordering = list(qs.query.order_by)
+        if not any(f in ordering for f in ["id", "-id", "pk", "-pk"]):
+            qs = qs.order_by(*ordering, "-id")
+        return qs
 
 
 class FileTrackingRecordViewSet(viewsets.ReadOnlyModelViewSet):
@@ -50,7 +58,7 @@ class FileTrackingRecordViewSet(viewsets.ReadOnlyModelViewSet):
         super().check_permissions(request)
         user = request.user
         if user and not getattr(user, "is_cixci_admin", False):
-            company = getattr(user, "company", None)
+            company = getattr(user, "company", None) or (user.entity.company if getattr(user, "entity", None) else None)
             if company and getattr(company, "company_type", None) == "buyer":
                 raise PermissionDenied("Buyer users cannot access file tracking logs.")
 
@@ -60,9 +68,17 @@ class FileTrackingRecordViewSet(viewsets.ReadOnlyModelViewSet):
             return FileTrackingRecord.objects.none()
         if getattr(user, "is_cixci_admin", False):
             return FileTrackingRecord.objects.all().order_by("-created_at", "-id")
-        if getattr(user, "company", None):
-            return FileTrackingRecord.objects.filter(company_scope_reference=user.company.id).order_by("-created_at", "-id")
+        company = getattr(user, "company", None) or (user.entity.company if getattr(user, "entity", None) else None)
+        if company:
+            return FileTrackingRecord.objects.filter(company_scope_reference=company.id).order_by("-created_at", "-id")
         return FileTrackingRecord.objects.none()
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        ordering = list(qs.query.order_by)
+        if not any(f in ordering for f in ["id", "-id", "pk", "-pk"]):
+            qs = qs.order_by(*ordering, "-id")
+        return qs
 
 
 class ImportBatchViewSet(FileTrackingRecordViewSet):

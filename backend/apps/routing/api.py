@@ -1206,17 +1206,17 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
     def get_queryset(self):
         user = self.request.user
         qs = VendorOrderExportLog.objects.all()
-        if not user.is_cixci_admin and user.entity:
-            company = user.entity.company
+        if not getattr(user, "is_cixci_admin", False):
+            company = getattr(user, "company", None) or (user.entity.company if getattr(user, "entity", None) else None)
             if company:
                 if company.company_type == "vendor":
-                    qs = qs.filter(vendor_company_reference=company.id)
+                    return qs.filter(vendor_company_reference=company.id)
                 elif company.company_type == "buyer":
-                    qs = qs.filter(buyer_company_reference=company.id)
+                    return qs.filter(buyer_company_reference=company.id)
                 else:
-                    qs = qs.none()
+                    return qs.none()
             else:
-                qs = qs.none()
+                return qs.none()
         return qs
 
     @action(detail=True, methods=["post"])

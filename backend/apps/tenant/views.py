@@ -37,10 +37,8 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         super().check_permissions(request)
         user = request.user
         if user and not getattr(user, "is_cixci_admin", False):
-            company = getattr(user, "company", None)
-            if company and getattr(company, "company_type", None) == "buyer":
-                from rest_framework.exceptions import PermissionDenied
-                raise PermissionDenied("Buyer users cannot access tenant companies endpoint.")
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI System Administrators can access tenant companies endpoint.")
 
     def get_queryset(self):
         qs = super().get_queryset()

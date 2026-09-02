@@ -171,8 +171,13 @@ class NotificationRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet
             return NotificationRequest.objects.none()
         if getattr(user, "is_cixci_admin", False):
             return qs
-        if getattr(user, "company", None):
-            return qs.filter(company_scope_reference=user.company.id)
+        company = getattr(user, "company", None) or (user.entity.company if getattr(user, "entity", None) else None)
+        if company:
+            from django.db.models import Q
+            return qs.filter(
+                Q(company_scope_reference=company.id) |
+                Q(requested_recipient_ids__contains=[str(user.id)])
+            ).distinct()
         return NotificationRequest.objects.none()
 
     @action(detail=True, methods=["get"])

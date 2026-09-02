@@ -453,20 +453,23 @@ def trigger_vendor_export(vendor, trigger_type="SYSTEM", triggered_by=None, subo
         system_schedule_desc = None
         
         trigger_type = trigger_type.upper()
-        if trigger_type == "USER":
-            if triggered_by:
-                triggered_by_user_name_snapshot = f"{triggered_by.first_name} {triggered_by.last_name}".strip() or triggered_by.email
-                if triggered_by.company:
-                    triggered_by_company_name_snapshot = triggered_by.company.name
-                if triggered_by.is_cixci_admin:
-                    triggered_by_role_snapshot = "CIXCI Admin"
-                elif triggered_by.is_staff:
-                    triggered_by_role_snapshot = "Staff"
-                elif triggered_by.company:
-                    triggered_by_role_snapshot = "Vendor Representative" if triggered_by.company.company_type == "vendor" else "Buyer Representative"
-                else:
-                    triggered_by_role_snapshot = "User"
+        if trigger_type == "USER" and triggered_by:
+            triggered_by_user_name_snapshot = f"{triggered_by.first_name} {triggered_by.last_name}".strip() or triggered_by.email
+            company = getattr(triggered_by, "company", None) or (triggered_by.entity.company if getattr(triggered_by, "entity", None) else None)
+            if company:
+                triggered_by_company_name_snapshot = company.name
+            if getattr(triggered_by, "is_cixci_admin", False):
+                triggered_by_role_snapshot = "CIXCI Admin"
+            elif company and getattr(company, "company_type", None) == "vendor":
+                triggered_by_role_snapshot = "Vendor Representative"
+            elif company and getattr(company, "company_type", None) == "buyer":
+                triggered_by_role_snapshot = "Buyer Representative"
+            elif getattr(triggered_by, "is_staff", False):
+                triggered_by_role_snapshot = "Staff"
+            else:
+                triggered_by_role_snapshot = "User"
         else:
+            triggered_by_role_snapshot = "System Process"
             system_process_name = "Scheduled Vendor Order Export"
             system_process_id = "scheduled_order_export"
             system_job_id = task_id or f"job_{window.id}"
