@@ -27,7 +27,7 @@ dev-migrate:
 	cd backend && python manage.py migrate --settings=config.settings_local
 
 dev-superuser:
-	cd backend && python manage.py shell --settings=config.settings_local -c "from apps.tenant.models import User; User.objects.filter(email='admin@cixci.com').exists() or User.objects.create_superuser(email='admin@cixci.com', password='cixci1234', is_cixci_admin=True); print('Done.')"
+	cd backend && python manage.py shell --settings=config.settings_local -c "from apps.tenant.models import User; u, _ = User.objects.get_or_create(email='admin@cixci.com'); u.set_password('adminpass123'); u.is_staff=True; u.is_superuser=True; u.is_cixci_admin=True; u.is_active=True; u.save(); print('Done.')"
 
 dev-test:
 	cd backend && python -m pytest apps/ -v --settings=config.settings_local
