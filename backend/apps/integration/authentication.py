@@ -40,3 +40,22 @@ class CompanyAPIKeyAuthentication(BaseAuthentication):
             raise AuthenticationFailed("No active user found for the company entity associated with this API key")
 
         return (user, api_key)
+
+
+try:
+    from drf_spectacular.extensions import OpenApiAuthenticationExtension
+
+    class CompanyAPIKeyScheme(OpenApiAuthenticationExtension):
+        target_class = 'apps.integration.authentication.CompanyAPIKeyAuthentication'
+        name = 'ApiKeyAuth'
+
+        def get_security_definition(self, auto_schema):
+            return {
+                'type': 'apiKey',
+                'in': 'header',
+                'name': 'X-API-Key',
+                'description': 'Custom B2B API Key authentication header (X-API-Key: cixci_key_...)'
+            }
+except ImportError:
+    pass
+

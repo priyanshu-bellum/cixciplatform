@@ -352,7 +352,11 @@ class ExternalActionOutcomeSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 class ExternalActionRequestSerializer(serializers.ModelSerializer):
-    outcomes = ExternalActionOutcomeSerializer(many=True, read_only=True)
+    company_scope_reference = serializers.ReadOnlyField(source="connection.company_scope_reference", read_only=True)
+    target_system = serializers.ReadOnlyField(source="connection.connector_type", read_only=True)
+    status = serializers.SerializerMethodField()
+    outcomes = ExternalActionOutcomeSerializer(source="outcome", read_only=True)
+
     class Meta:
         model = ExternalActionRequest
         fields = [
@@ -360,6 +364,11 @@ class ExternalActionRequestSerializer(serializers.ModelSerializer):
             "action_type", "target_system", "status", "idempotency_key",
             "created_at", "outcomes",
         ]
+
+    def get_status(self, obj) -> str:
+        if hasattr(obj, "outcome") and obj.outcome:
+            return obj.outcome.outcome_status
+        return "pending"
 
 class ExternalActionRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     queryset = ExternalActionRequest.objects.all()

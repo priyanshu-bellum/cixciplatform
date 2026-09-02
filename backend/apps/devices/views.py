@@ -663,6 +663,7 @@ class BuyerPortfolioViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
     Portfolio mutations go through services.py (non-collapsible state chain enforced there).
     """
     permission_classes = [IsAuthenticated]
+    serializer_class = BuyerPortfolioReferenceSerializer
 
     def get_queryset(self):
         user = self.request.user
