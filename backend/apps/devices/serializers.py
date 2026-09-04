@@ -197,6 +197,16 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
         ]:
             raise serializers.ValidationError({"name": "Device Name cannot be a generic compatibility feature name."})
 
+        if len(d_name) > 150:
+            raise serializers.ValidationError({"name": "Device name cannot exceed 150 characters."})
+
+        # Sanitize HTML/script tags (BUG-DEV-005)
+        import re
+        if re.search(r'<script.*?>.*?</script>', d_name, flags=re.IGNORECASE | re.DOTALL):
+            d_name = re.sub(r'<script.*?>.*?</script>', '', d_name, flags=re.IGNORECASE | re.DOTALL)
+        from django.utils.html import escape
+        d_name = escape(d_name)
+
         attrs['name'] = d_name
         name = d_name
 
@@ -238,7 +248,6 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
         }
         
         # Resolve the rule mode and details for each model field:
-        # Note: rules may be keyed by model field OR by backend key.
         def get_rule_for_field(model_field):
             b_key = FIELD_MAP[model_field]
             if model_field in rules:
@@ -292,34 +301,27 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
             if mode == "conditional":
                 cond_field = rule.get("condition_field")
                 cond_values = rule.get("condition_values", [])
-                # The condition field in rules could be a model field or a backend key
                 cond_model_field = cond_field
                 if cond_field in FIELD_MAP.values():
-                    # Map backend key to model field
                     for k, v in FIELD_MAP.items():
                         if v == cond_field:
                             cond_model_field = k
                             break
                             
-                # Get the value of the condition field
                 cond_val = cleaned_vals.get(cond_model_field, "")
-                # Normalize condition values and value for comparison
                 cond_val_norm = cond_val.lower()
                 cond_values_norm = [cv.lower() for cv in cond_values]
                 
                 if cond_val_norm in cond_values_norm:
-                    # Required!
                     if is_empty(cleaned_vals[f], f):
                         raise serializers.ValidationError({f: f"{f.replace('_', ' ').title().replace('Compatibility', '').strip()} is required."})
                 else:
-                    # Not required; if empty, we can default to Not Compatible
                     if is_empty(cleaned_vals[f], f):
                         attrs[f] = "No" if f == "bluetooth_compatibility" else "Not Compatible"
                         cleaned_vals[f] = attrs[f]
 
         # 4. Validate value lists for each field
         for f, val in cleaned_vals.items():
-            # If field is hidden, it has already been forced above.
             rule = get_rule_for_field(f)
             mode = rule.get("mode", "optional") if rule else "optional"
             if mode == "hidden":
@@ -339,10 +341,12 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
                     attrs[f] = "Type-C"
                 elif vl == "lightning":
                     attrs[f] = "Lightning"
-                elif vl == "not compatible" or not val:
+                elif vl in ["micro-usb", "microusb"]:
+                    attrs[f] = "Micro-USB"
+                elif vl in ["not compatible", "n/a", "none"] or not val:
                     attrs[f] = "Not Compatible"
                 else:
-                    raise serializers.ValidationError({f: "Compatible Charging Interface must be Type-C, Lightning, or Not Compatible."})
+                    raise serializers.ValidationError({f: "Compatible Charging Interface must be Type-C, Lightning, Micro-USB, or Not Compatible."})
                     
             elif f == "headphone_jack_compatibility":
                 vl = val.lower()
@@ -350,10 +354,12 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
                     attrs[f] = "Type-C"
                 elif vl == "lightning":
                     attrs[f] = "Lightning"
-                elif vl == "not compatible" or not val:
+                elif vl in ["3.5mm", "3.5 mm"]:
+                    attrs[f] = "3.5mm"
+                elif vl in ["not compatible", "n/a", "none"] or not val:
                     attrs[f] = "Not Compatible"
                 else:
-                    raise serializers.ValidationError({f: "Headphone Jack Compatibility must be Type-C, Lightning, or Not Compatible."})
+                    raise serializers.ValidationError({f: "Headphone Jack Compatibility must be 3.5mm, Type-C, Lightning, or Not Compatible."})
                     
             elif f == "storage_expansion_compatibility":
                 vl = val.lower()
@@ -361,7 +367,7 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
                     attrs[f] = "microSDXC"
                 elif vl == "microsdhc":
                     attrs[f] = "microSDHC"
-                elif vl == "not compatible" or not val:
+                elif vl in ["not compatible", "n/a", "none"] or not val:
                     attrs[f] = "Not Compatible"
                 else:
                     raise serializers.ValidationError({f: "Storage Expansion Compatibility must be microSDXC, microSDHC, or Not Compatible."})
@@ -382,13 +388,18 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
                     
             elif f == "compatible_watch_case_size":
                 vl = val.lower()
-                allowed_wcs = ["not compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
-                if not val or vl == "" or vl == "not compatible":
+                allowed_wcs = ["not compatible", "38mm", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "47mm", "49mm"]
+                if not val or vl in ["", "not compatible", "n/a", "none"]:
                     attrs[f] = "Not Compatible"
                 elif vl not in allowed_wcs:
-                    raise serializers.ValidationError({f: "Compatible Watch Case Size must be 40mm, 41mm, 42mm, 44mm, 45mm, 46mm, 49mm, or Not Compatible."})
+                    raise serializers.ValidationError({f: "Compatible Watch Case Size must be 38mm, 40mm, 41mm, 42mm, 44mm, 45mm, 46mm, 47mm, 49mm, or Not Compatible."})
                 else:
                     attrs[f] = vl
+
+                # BUG-DEV-012: Watch case size is only valid for Watch device type
+                dt_name = device_type.name.lower() if device_type and hasattr(device_type, "name") else ""
+                if dt_name not in ["watch", "smartwatch"] and attrs[f] != "Not Compatible":
+                    raise serializers.ValidationError({f: "Compatible Watch Case Size is only applicable for Watch device types."})
                     
             elif f == "wireless_charging_compatibility":
                 if not val or val.lower() == "not compatible":

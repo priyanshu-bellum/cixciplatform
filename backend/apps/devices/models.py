@@ -128,7 +128,7 @@ class Device(models.Model):
     device_type = models.ForeignKey(DeviceType, on_delete=models.PROTECT, related_name="devices")
     manufacturer = models.ForeignKey(Manufacturer, on_delete=models.PROTECT, related_name="devices")
 
-    name = models.CharField(max_length=300)
+    name = models.CharField(max_length=150)
     model_number = models.CharField(max_length=200, blank=True, db_index=True)
     sku = models.CharField(max_length=200, blank=True, db_index=True)
     lifecycle_status = models.CharField(
@@ -170,6 +170,13 @@ class Device(models.Model):
         return f"{self.manufacturer.name} {self.name}"
 
     def save(self, *args, **kwargs):
+        if self.name:
+            import re
+            from django.utils.html import escape
+            # Escape or strip script tags
+            if re.search(r'<script.*?>.*?</script>', self.name, flags=re.IGNORECASE | re.DOTALL):
+                self.name = re.sub(r'<script.*?>.*?</script>', '', self.name, flags=re.IGNORECASE | re.DOTALL)
+            self.name = escape(self.name.strip())
         is_new = not self.pk or not Device.objects.filter(pk=self.pk).exists()
         if self.launch_date:
             from django.utils import timezone

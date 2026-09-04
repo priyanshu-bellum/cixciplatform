@@ -164,9 +164,8 @@ export default function DevicesPage() {
   const { user } = useAuthStore()
   const isBuyer = user?.company_type === 'buyer'
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
-  const isBilly = user?.email === 'billy@mvno.com'
-  const canImportDevices = isCixciAdmin || isBilly || (!isBuyer && user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.device.import'))
-  const canManageDropdowns = isCixciAdmin || isBilly || (!isBuyer && user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.type.manage' || c.code === 'devices.manufacturer.manage'))
+  const canImportDevices = isCixciAdmin || (!isBuyer && user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.device.import'))
+  const canManageDropdowns = isCixciAdmin || (!isBuyer && user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.type.manage' || c.code === 'devices.manufacturer.manage'))
 
   const [search, setSearch] = useState('')
   const [filterManufacturer, setFilterManufacturer] = useState('')

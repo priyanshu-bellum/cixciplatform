@@ -151,7 +151,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             else:
                 qs = qs.filter(
                     Q(lifecycle_status="available") |
-                    (Q(lifecycle_status="inactive") & Q(launch_date__gt=today))
+                    (Q(lifecycle_status="inactive") & Q(launch_date__isnull=False) & Q(launch_date__gt=today))
                 )
         else:
             if not (user and user.is_authenticated and user.is_cixci_admin):
@@ -168,6 +168,27 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 if status_param:
                     qs = qs.filter(lifecycle_status=status_param)
         return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not (user and user.is_authenticated and getattr(user, "is_cixci_admin", False)):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI Admins can create device records.")
+        serializer.save(actor_id=user.id)
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        if not (user and user.is_authenticated and getattr(user, "is_cixci_admin", False)):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI Admins can edit device records.")
+        serializer.save(actor_id=user.id)
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        if not (user and user.is_authenticated and getattr(user, "is_cixci_admin", False)):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI Admins can delete device records.")
+        instance.delete()
     action_capability_map = {
         "list": "devices.device.list",
         "retrieve": "devices.device.read",
@@ -299,15 +320,27 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"])
     def bulk_import(self, request):
+        user = request.user
+        if not (user and user.is_authenticated and getattr(user, "is_cixci_admin", False)):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI Admins can import devices.")
+
         from django.db import transaction
         import csv
         import io
-        
-        import_mode = request.data.get("import_mode", "Create New Only")
+
+        raw_mode = str(request.data.get("import_mode", "Create New Only")).strip().lower()
+        if raw_mode in ["update", "update_existing", "update existing", "mode_update"]:
+            import_mode = "Update Existing"
+        elif raw_mode in ["upsert", "mode_upsert"]:
+            import_mode = "Upsert"
+        else:
+            import_mode = "Create New Only"
+
         file = request.FILES.get("file")
         if not file:
             return Response({"error": "No file uploaded."}, status=400)
-            
+
         try:
             decoded_file = file.read().decode('utf-8-sig')
             io_string = io.StringIO(decoded_file)
@@ -315,28 +348,30 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             headers = next(reader)
         except Exception as e:
             return Response({"error": f"Failed to parse CSV file: {str(e)}"}, status=400)
-            
+
         expected_cols = [
             "Device Manufacturer", "Device Name", "Device Type", "Launch Date",
             "Compatible Charging Interface", "Storage Expansion Compatibility", "Maximum Supported Storage",
             "Headphone Jack Compatibility", "Bluetooth Compatibility", "Wireless Charging Compatibility",
             "Compatible Watch Case Size"
         ]
-        
+
         headers = [h.strip() for h in headers if h.strip()]
         if headers != expected_cols:
             return Response({"error": f"CSV columns do not match the expected template. Expected: {', '.join(expected_cols)}"}, status=400)
-            
+
         rows = list(reader)
         if not rows:
             return Response({"error": "No data rows found in the CSV file."}, status=400)
-            
+
         validation_errors = []
+        imported_count = 0
+        updated_count = 0
         from apps.devices.models import Manufacturer, DeviceType, Device
-        
+
         manufacturers_by_name = {m.name.strip().lower(): m for m in Manufacturer.objects.filter(is_active=True)}
         device_types_by_name = {t.name.strip().lower(): t for t in DeviceType.objects.all()}
-        
+
         for idx, row in enumerate(rows, start=1):
             row = [r.strip() for r in row]
             if not any(row):
@@ -345,13 +380,13 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 row = row[:len(expected_cols)]
             elif len(row) < len(expected_cols):
                 row = row + [""] * (len(expected_cols) - len(row))
-                
+
             row_errors = {}
             m_val = row[0]
             name_val = row[1]
             t_val = row[2]
             launch_date_val = row[3]
-            
+
             m_obj = None
             if not m_val:
                 row_errors["Device Manufacturer"] = "Device Manufacturer is required."
@@ -359,7 +394,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 m_obj = manufacturers_by_name.get(m_val.lower())
                 if not m_obj:
                     row_errors["Device Manufacturer"] = f"Device Manufacturer '{m_val}' does not exist or is inactive."
-                    
+
             t_obj = None
             if not t_val:
                 row_errors["Device Type"] = "Device Type is required."
@@ -367,7 +402,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 t_lower = t_val.lower()
                 if t_lower == 'smartphone':
                     t_lower = 'phone'
-                if t_lower not in ['phone', 'tablet', 'smartwatch', 'laptop']:
+                if t_lower not in ['phone', 'tablet', 'smartwatch', 'laptop', 'watch']:
                     row_errors["Device Type"] = "Device Type must be Phone, Tablet, Smartwatch or Laptop."
                 else:
                     t_obj = device_types_by_name.get(t_lower)
@@ -375,10 +410,10 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         row_errors["Device Type"] = f"Device Type '{t_val}' does not exist."
                     elif not t_obj.is_active or t_obj.status != 'active':
                         row_errors["Device Type"] = f"Device Type '{t_val}' is in {t_obj.status} status and must be configured/Active before it can be used."
-                        
+
             if not name_val:
                 row_errors["Device Name"] = "Device Name is required."
-                
+
             parsed_date = None
             if not launch_date_val:
                 row_errors["Launch Date"] = "Launch Date is required."
@@ -391,14 +426,14 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         parsed_date = datetime.strptime(launch_date_val, "%Y-%m-%d").date()
                     except ValueError:
                         row_errors["Launch Date"] = "Launch Date must be in MM/DD/YYYY format."
-                        
+
             cleaned_name = name_val
             if m_obj and name_val:
                 m_name = m_obj.name.strip().lower()
                 d_name = name_val.strip()
                 if d_name.lower().startswith(m_name):
                     cleaned_name = d_name[len(m_name):].strip().lstrip(" -/\\")
-                    
+
             if cleaned_name and not row_errors.get("Device Name"):
                 cleaned_name_stripped = cleaned_name.strip()
                 if any(char in cleaned_name_stripped for char in [",", ";"]):
@@ -419,17 +454,19 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         if dev.name.replace(" ", "").lower() == norm_cleaned:
                             existing_device = dev
                             break
+
                 if existing_device:
-                    if import_mode == "Create New Only" or not import_mode:
-                        row_errors["Device Name"] = f"Device with Manufacturer '{m_obj.name}' and Name '{cleaned_name}' already exists."
+                    if import_mode == "Create New Only":
+                        row_errors["Device Name"] = f"The Device Already Exists"
                 else:
                     if import_mode == "Update Existing":
                         row_errors["Device Name"] = f"Device with Manufacturer '{m_obj.name}' and Name '{cleaned_name}' does not exist."
-                        
+
+            serializer_data = None
             if m_obj and t_obj and not row_errors.get("Launch Date") and parsed_date and not row_errors.get("Device Type"):
                 serializer_data = {
                     "manufacturer": m_obj.id,
-                    "name": existing_device.name if existing_device else cleaned_name,
+                    "name": existing_device.name if (existing_device and import_mode != "Create New Only") else cleaned_name,
                     "device_type": t_obj.id,
                     "launch_date": launch_date_val,
                     "compatible_charging_interface": row[4],
@@ -440,8 +477,8 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "wireless_charging_compatibility": row[9],
                     "compatible_watch_case_size": row[10],
                 }
-                
-                serializer = DeviceDetailSerializer(instance=existing_device if (existing_device and import_mode != "Create New Only") else None, data=serializer_data)
+
+                serializer = DeviceDetailSerializer(instance=existing_device if (existing_device and import_mode != "Create New Only") else None, data=serializer_data, partial=True)
                 if not serializer.is_valid():
                     field_to_col = {
                         "compatible_charging_interface": "Compatible Charging Interface",
@@ -458,7 +495,7 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     for field, err_list in serializer.errors.items():
                         col_name = field_to_col.get(field, field)
                         row_errors[col_name] = err_list[0] if isinstance(err_list, list) else str(err_list)
-                        
+
             if row_errors:
                 for col_name, err_msg in row_errors.items():
                     validation_errors.append({
@@ -467,9 +504,30 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         "submitted_value": row[expected_cols.index(col_name)] if col_name in expected_cols else "",
                         "error_message": err_msg
                     })
-                    
-        if validation_errors:
-            from apps.devices.services import log_device_audit
+            elif serializer_data:
+                try:
+                    with transaction.atomic():
+                        if existing_device and import_mode != "Create New Only":
+                            serializer = DeviceDetailSerializer(instance=existing_device, data=serializer_data, partial=True)
+                            if serializer.is_valid():
+                                serializer.save(actor_id=request.user.id)
+                                updated_count += 1
+                        else:
+                            serializer_data["lifecycle_status"] = "available"
+                            serializer = DeviceDetailSerializer(data=serializer_data)
+                            if serializer.is_valid():
+                                serializer.save(actor_id=request.user.id)
+                                imported_count += 1
+                except Exception as ex:
+                    validation_errors.append({
+                        "row": idx + 1,
+                        "column": "General",
+                        "submitted_value": "",
+                        "error_message": str(ex)
+                    })
+
+        from apps.devices.services import log_device_audit
+        if validation_errors and imported_count == 0 and updated_count == 0:
             log_device_audit(
                 event_code="devices.device.import_failed",
                 description=f"CSV import failed validation. Mode: {import_mode}. File contained {len(rows)} rows. Found {len(validation_errors)} validation errors.",
@@ -481,82 +539,19 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 "status": "validation_failed",
                 "errors": validation_errors
             }, status=400)
-            
-        imported_count = 0
-        updated_count = 0
-        
-        with transaction.atomic():
-            for row in rows:
-                row = [r.strip() for r in row]
-                if not any(row):
-                    continue
-                m_val = row[0]
-                name_val = row[1]
-                t_val = row[2]
-                launch_date_val = row[3]
-                
-                m_obj = manufacturers_by_name.get(m_val.lower())
-                t_lookup = t_val.lower()
-                if t_lookup == 'smartphone':
-                    t_lookup = 'phone'
-                t_obj = device_types_by_name.get(t_lookup)
-                
-                from datetime import datetime
-                try:
-                    parsed_date = datetime.strptime(launch_date_val, "%m/%d/%Y").date()
-                except ValueError:
-                    parsed_date = datetime.strptime(launch_date_val, "%Y-%m-%d").date()
-                    
-                cleaned_name = name_val
-                m_name = m_obj.name.strip().lower()
-                d_name = name_val.strip()
-                if d_name.lower().startswith(m_name):
-                    cleaned_name = d_name[len(m_name):].strip().lstrip(" -/\\")
-                    
-                device = Device.objects.filter(manufacturer=m_obj, name__iexact=cleaned_name).first()
-                
-                serializer_data = {
-                    "manufacturer": m_obj.id,
-                    "name": cleaned_name,
-                    "device_type": t_obj.id,
-                    "launch_date": launch_date_val,
-                    "compatible_charging_interface": row[4],
-                    "storage_expansion_compatibility": row[5],
-                    "maximum_supported_storage": row[6],
-                    "headphone_jack_compatibility": row[7],
-                    "bluetooth_compatibility": row[8],
-                    "wireless_charging_compatibility": row[9],
-                    "compatible_watch_case_size": row[10],
-                }
-                
-                if device:
-                    if import_mode == "Create New Only":
-                        continue
-                    serializer = DeviceDetailSerializer(instance=device, data=serializer_data)
-                    if serializer.is_valid():
-                        serializer.save(actor_id=request.user.id)
-                        updated_count += 1
-                else:
-                    if import_mode == "Update Existing":
-                        continue
-                    serializer_data["lifecycle_status"] = "available"
-                    serializer = DeviceDetailSerializer(data=serializer_data)
-                    if serializer.is_valid():
-                        serializer.save(actor_id=request.user.id)
-                        imported_count += 1
-                    
-        from apps.devices.services import log_device_audit
+
         log_device_audit(
             event_code="devices.device.imported",
-            description=f"CSV import completed successfully. Mode: {import_mode}. Created {imported_count} new devices, updated {updated_count} devices.",
+            description=f"CSV import completed. Mode: {import_mode}. Created: {imported_count}, Updated: {updated_count}. Errors: {len(validation_errors)}.",
             device_id=None,
             actor_id=request.user.id if request.user else None,
             status="success"
         )
         return Response({
-            "status": "success",
+            "status": "success" if not validation_errors else "partial_success",
             "created_count": imported_count,
-            "updated_count": updated_count
+            "updated_count": updated_count,
+            "errors": validation_errors
         })
 
     @action(detail=True, methods=["post"], url_path="recalculate-compatibility")
