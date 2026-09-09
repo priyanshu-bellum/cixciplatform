@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings, ChevronLeft, ChevronRight, LayoutGrid, List, Eye } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import api from '../lib/apiClient'
@@ -406,6 +406,7 @@ export default function CatalogPage() {
   const tabParam = searchParams.get('tab')
   const initialTab = (tabParam === 'my-compatibility' || searchParams.has('compatibility_device') || searchParams.has('device')) ? 'projection' : (tabParam === 'export-jobs' ? 'export_jobs' : 'products')
   const [tab, setTabState] = useState<'products' | 'projection' | 'export_jobs'>(initialTab)
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
 
   const setTab = (newTab: 'products' | 'projection' | 'export_jobs') => {
     setTabState(newTab)
@@ -2799,8 +2800,324 @@ export default function CatalogPage() {
     }
   }
 
+  const renderCatalogProductCard = (
+    p: any,
+    isSelected: boolean,
+    onToggleSelect: () => void,
+    showCheckbox: boolean
+  ) => {
+    const srp = Number(p.msrp || 0)
+    const salePrice = Number(p.sale_price || 0)
+    const displayPrice = isBuyer
+      ? (p.buyer_wholesale_price ?? p.vendor_wholesale_price_amount ?? (salePrice > 0 ? salePrice : srp))
+      : (p.vendor_wholesale_price_amount ?? (salePrice > 0 ? salePrice : srp))
+
+    const hasPromo = p.promo_information && p.promo_information.trim() !== ''
+    const badgeText = hasPromo ? p.promo_information : (salePrice > 0 && salePrice < srp ? 'Sale' : '')
+
+    const specs = []
+    if (p.brand) specs.push({ label: p.brand })
+    if (p.color) specs.push({ type: 'color', val: p.color })
+    if (p.headphone_jack_compatibility && p.headphone_jack_compatibility !== 'Not Compatible') {
+      specs.push({ label: `Jack: ${p.headphone_jack_compatibility}` })
+    }
+    if (p.bluetooth_compatibility && p.bluetooth_compatibility !== 'No') {
+      specs.push({ label: `BT ${p.bluetooth_compatibility}` })
+    }
+    if (p.compatible_charging_interface && p.compatible_charging_interface !== 'Not Compatible') {
+      specs.push({ label: p.compatible_charging_interface })
+    }
+    if (p.wireless_charging_compatibility && p.wireless_charging_compatibility !== 'Not Compatible') {
+      specs.push({ label: `Wireless: ${p.wireless_charging_compatibility}` })
+    }
+
+    return (
+      <div
+        className="telco-card"
+        key={p.id}
+        style={{
+          border: isSelected ? '1px solid #20D1F2' : undefined,
+          boxShadow: isSelected ? '0 0 12px rgba(32, 209, 242, 0.3)' : undefined,
+        }}
+        onClick={async () => {
+          setSelectedManageProduct(p)
+          setShowManageModal(true)
+          try {
+            const detailRes = await api.get(`/catalog/products/${p.id}/`)
+            setSelectedManageProduct(detailRes.data)
+          } catch {}
+        }}
+      >
+        {showCheckbox && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 10,
+              left: 10,
+              zIndex: 5,
+              background: 'rgba(15, 23, 42, 0.9)',
+              borderRadius: 4,
+              padding: '2px 4px',
+              display: 'flex',
+              alignItems: 'center',
+              border: '1px solid #1f2d45',
+            }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelect()
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => {}}
+              style={{ cursor: 'pointer' }}
+            />
+          </div>
+        )}
+
+        {badgeText && (
+          <div className="telco-card-badge" style={{ left: showCheckbox ? 36 : 10 }}>
+            {badgeText}
+          </div>
+        )}
+
+        <div className="telco-card-view-hint">
+          <Eye size={12} /> View Details
+        </div>
+        
+        <div className="telco-card-img-wrap">
+          {p.primary_image_url ? (
+            <img src={getImageUrl(p.primary_image_url)} alt={p.name} />
+          ) : (
+            <ShoppingBag size={32} style={{ color: 'var(--text-muted)' }} />
+          )}
+        </div>
+
+        <div className="telco-card-name" title={p.name}>
+          {p.name}
+        </div>
+        <div className="telco-card-sku">SKU: {p.sku}</div>
+
+        <div className="telco-card-spec-row">
+          {specs.map((s, idx) => (
+            <span className="telco-card-spec-pill" key={idx}>
+              {s.type === 'color' && (
+                <span className="telco-color-swatch" style={{ background: s.val.toLowerCase() }} />
+              )}
+              {s.label || s.val}
+            </span>
+          ))}
+        </div>
+
+        <div className="telco-card-footer">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="telco-price-row">
+              <span className="telco-sale-price">
+                {formatCurrency(displayPrice, p.vendor_wholesale_price_currency)}
+              </span>
+              {srp > 0 && srp > Number(displayPrice) && (
+                <span className="telco-msrp-strike">
+                  {formatCurrency(srp, p.vendor_wholesale_price_currency)}
+                </span>
+              )}
+            </div>
+            <div className="telco-status-row">
+              <span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`} style={{ fontSize: 10 }}>
+                {p.status}
+              </span>
+            </div>
+          </div>
+
+          <button
+            className="telco-card-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              setSelectedManageProduct(p)
+              setShowManageModal(true)
+              api.get(`/catalog/products/${p.id}/`).then(res => setSelectedManageProduct(res.data)).catch(() => {})
+            }}
+          >
+            Manage Product
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
+      <style>{`
+        .telco-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+          gap: 16px;
+        }
+        .telco-card {
+          background: rgba(17, 24, 39, 0.6);
+          border: 1px solid rgba(32, 209, 242, 0.15);
+          border-radius: 10px;
+          padding: 14px;
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          position: relative;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          backdrop-filter: blur(10px);
+          cursor: pointer;
+          user-select: none;
+        }
+        .telco-card:hover {
+          transform: translateY(-4px);
+          border-color: #20D1F2;
+          box-shadow: 0 4px 20px rgba(32, 209, 242, 0.15);
+        }
+        .telco-card-view-hint {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(15, 23, 42, 0.85);
+          border: 1px solid rgba(32, 209, 242, 0.3);
+          color: #20D1F2;
+          font-size: 10px;
+          font-weight: 600;
+          padding: 3px 8px;
+          border-radius: 99px;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          backdrop-filter: blur(4px);
+          z-index: 2;
+        }
+        .telco-card:hover .telco-card-view-hint {
+          opacity: 1;
+        }
+        .telco-card-badge {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+          color: #fff;
+          font-size: 9px;
+          font-weight: 700;
+          padding: 3px 6px;
+          border-radius: 4px;
+          text-transform: uppercase;
+          z-index: 2;
+          max-width: 110px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .telco-card-img-wrap {
+          height: 140px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #0f172a;
+          border-radius: 8px;
+          margin-bottom: 12px;
+          overflow: hidden;
+          border: 1px solid #1f2d45;
+        }
+        .telco-card-img-wrap img {
+          max-width: 90%;
+          max-height: 120px;
+          object-fit: contain;
+        }
+        .telco-card-name {
+          font-size: 13px;
+          font-weight: 700;
+          color: #f1f5f9;
+          line-height: 1.4;
+          margin-bottom: 4px;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .telco-card-sku {
+          font-size: 10px;
+          font-family: 'JetBrains Mono', monospace;
+          color: #64748b;
+          margin-bottom: 8px;
+        }
+        .telco-card-spec-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          margin-bottom: 12px;
+        }
+        .telco-card-spec-pill {
+          font-size: 9px;
+          font-weight: 600;
+          color: #94a3b8;
+          background: #1e293b;
+          padding: 2px 6px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          border: 1px solid #334155;
+        }
+        .telco-color-swatch {
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          border: 1px solid rgba(255,255,255,0.2);
+        }
+        .telco-card-footer {
+          margin-top: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          border-top: 1px solid #1f2d45;
+          padding-top: 10px;
+        }
+        .telco-price-row {
+          display: flex;
+          align-items: baseline;
+          gap: 6px;
+        }
+        .telco-sale-price {
+          font-size: 15px;
+          font-weight: 800;
+          color: #20D1F2;
+        }
+        .telco-msrp-strike {
+          font-size: 11px;
+          color: #64748b;
+          text-decoration: line-through;
+        }
+        .telco-status-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 11px;
+        }
+        .telco-card-btn {
+          width: 100%;
+          background: linear-gradient(135deg, #20D1F2 0%, #006488 100%);
+          color: #fff;
+          border: none;
+          border-radius: 6px;
+          padding: 8px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+        }
+        .telco-card-btn:hover {
+          filter: brightness(1.1);
+        }
+      `}</style>
       <div className="page-header">
         <div>
           <div className="page-title">Product Catalog</div>
@@ -2953,9 +3270,58 @@ export default function CatalogPage() {
                 </button>
               </div>
             )}
+
+            {/* View Mode Toggle Switch */}
+            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 3, marginLeft: (!isBuyer && allProductsSelectedIds.length > 0) ? 0 : 'auto' }}>
+              <button
+                type="button"
+                title="Grid View"
+                onClick={() => setViewMode('grid')}
+                style={{
+                  background: viewMode === 'grid' ? 'rgba(32, 209, 242, 0.15)' : 'transparent',
+                  border: viewMode === 'grid' ? '1px solid rgba(32, 209, 242, 0.4)' : '1px solid transparent',
+                  color: viewMode === 'grid' ? '#20D1F2' : 'var(--text-muted)',
+                  borderRadius: 4,
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <LayoutGrid size={14} />
+                Grid
+              </button>
+              <button
+                type="button"
+                title="Table View"
+                onClick={() => setViewMode('table')}
+                style={{
+                  background: viewMode === 'table' ? 'rgba(32, 209, 242, 0.15)' : 'transparent',
+                  border: viewMode === 'table' ? '1px solid rgba(32, 209, 242, 0.4)' : '1px solid transparent',
+                  color: viewMode === 'table' ? '#20D1F2' : 'var(--text-muted)',
+                  borderRadius: 4,
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <List size={14} />
+                Table
+              </button>
+            </div>
           </div>
-          <div className="table-wrap">
-            {isLoading ? (
+
+          {viewMode === 'grid' ? (
+            isLoading ? (
               <div className="loading-overlay"><div className="spinner" /> Loading products…</div>
             ) : isBuyer && (!portfolio || portfolio.filter((d: any) => d.active_flag).length === 0) ? (
               <div className="empty-state">
@@ -2968,114 +3334,146 @@ export default function CatalogPage() {
                 <div>No products found matching filters</div>
               </div>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    {!isBuyer && (
-                      <th style={{ width: 40, textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={filteredProducts.length > 0 && filteredProducts.every((p: any) => allProductsSelectedIds.includes(p.id))}
-                          onChange={() => {
-                            const allSelected = filteredProducts.every((p: any) => allProductsSelectedIds.includes(p.id))
-                            if (allSelected) {
-                              setAllProductsSelectedIds(allProductsSelectedIds.filter(id => !filteredProducts.some((p: any) => p.id === id)))
-                            } else {
-                              const newIds = [...allProductsSelectedIds]
-                              filteredProducts.forEach((p: any) => {
-                                if (!newIds.includes(p.id)) newIds.push(p.id)
-                              })
-                              setAllProductsSelectedIds(newIds)
-                            }
-                          }}
-                        />
-                      </th>
-                    )}
-                    <th style={{ width: 60 }}>Image</th>
-                    <th>Product Name</th>
-                    <th>SKU</th>
-                    <th>Brand</th>
-                    <th>Type</th>
-                    <th>Category</th>
-                    <th>Wholesale Price</th>
-                    <th>MSRP</th>
-                    {isBuyer && <th>Exported Date</th>}
-                    <th>Status</th>
-                    <th>Selling</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredProducts.map((p: any) => (
-                    <tr
-                      key={p.id}
-                      onClick={async () => {
-                        setSelectedManageProduct(p)
-                        setShowManageModal(true)
-                        // Fetch full product detail to get enriched media_references (all uploaded images)
-                        try {
-                          const detailRes = await api.get(`/catalog/products/${p.id}/`)
-                          setSelectedManageProduct(detailRes.data)
-                        } catch {}
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    >
+              <div className="telco-grid" style={{ marginBottom: 24 }}>
+                {filteredProducts.map((p: any) =>
+                  renderCatalogProductCard(
+                    p,
+                    allProductsSelectedIds.includes(p.id),
+                    () => {
+                      if (allProductsSelectedIds.includes(p.id)) {
+                        setAllProductsSelectedIds(allProductsSelectedIds.filter(x => x !== p.id))
+                      } else {
+                        setAllProductsSelectedIds([...allProductsSelectedIds, p.id])
+                      }
+                    },
+                    !isBuyer
+                  )
+                )}
+              </div>
+            )
+          ) : (
+            <div className="table-wrap">
+              {isLoading ? (
+                <div className="loading-overlay"><div className="spinner" /> Loading products…</div>
+              ) : isBuyer && (!portfolio || portfolio.filter((d: any) => d.active_flag).length === 0) ? (
+                <div className="empty-state">
+                  <ShoppingBag size={40} />
+                  <div>Please add devices to your portfolio to view compatible products</div>
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="empty-state">
+                  <ShoppingBag size={40} />
+                  <div>No products found matching filters</div>
+                </div>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
                       {!isBuyer && (
-                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <th style={{ width: 40, textAlign: 'center' }}>
                           <input
                             type="checkbox"
-                            checked={allProductsSelectedIds.includes(p.id)}
+                            checked={filteredProducts.length > 0 && filteredProducts.every((p: any) => allProductsSelectedIds.includes(p.id))}
                             onChange={() => {
-                              if (allProductsSelectedIds.includes(p.id)) {
-                                setAllProductsSelectedIds(allProductsSelectedIds.filter(x => x !== p.id))
+                              const allSelected = filteredProducts.every((p: any) => allProductsSelectedIds.includes(p.id))
+                              if (allSelected) {
+                                setAllProductsSelectedIds(allProductsSelectedIds.filter(id => !filteredProducts.some((p: any) => p.id === id)))
                               } else {
-                                setAllProductsSelectedIds([...allProductsSelectedIds, p.id])
+                                const newIds = [...allProductsSelectedIds]
+                                filteredProducts.forEach((p: any) => {
+                                  if (!newIds.includes(p.id)) newIds.push(p.id)
+                                })
+                                setAllProductsSelectedIds(newIds)
                               }
                             }}
                           />
-                        </td>
+                        </th>
                       )}
-                      <td>
-                        {p.primary_image_url ? (
-                          <img
-                            src={getImageUrl(p.primary_image_url)}
-                            alt={p.name}
-                            style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }}
-                          />
-                        ) : (
-                          <div style={{ width: 36, height: 36, background: 'var(--bg-elevated)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            <ShoppingBag size={14} />
-                          </div>
+                      <th style={{ width: 60 }}>Image</th>
+                      <th>Product Name</th>
+                      <th>SKU</th>
+                      <th>Brand</th>
+                      <th>Type</th>
+                      <th>Category</th>
+                      <th>Wholesale Price</th>
+                      <th>MSRP</th>
+                      {isBuyer && <th>Exported Date</th>}
+                      <th>Status</th>
+                      <th>Selling</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProducts.map((p: any) => (
+                      <tr
+                        key={p.id}
+                        onClick={async () => {
+                          setSelectedManageProduct(p)
+                          setShowManageModal(true)
+                          try {
+                            const detailRes = await api.get(`/catalog/products/${p.id}/`)
+                            setSelectedManageProduct(detailRes.data)
+                          } catch {}
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {!isBuyer && (
+                          <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={allProductsSelectedIds.includes(p.id)}
+                              onChange={() => {
+                                if (allProductsSelectedIds.includes(p.id)) {
+                                  setAllProductsSelectedIds(allProductsSelectedIds.filter(x => x !== p.id))
+                                } else {
+                                  setAllProductsSelectedIds([...allProductsSelectedIds, p.id])
+                                }
+                              }}
+                            />
+                          </td>
                         )}
-                      </td>
-                      <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.name}</td>
-                      <td>{p.sku}</td>
-                      <td>{p.brand}</td>
-                      <td>{p.product_type}</td>
-                      <td>{p.product_category || '—'}</td>
-                      <td className="mono">
-                        {isBuyer
-                          ? formatCurrency(p.buyer_wholesale_price, p.vendor_wholesale_price_currency)
-                          : formatCurrency(p.vendor_wholesale_price_amount, p.vendor_wholesale_price_currency)
-                        }
-                      </td>
-                      <td className="mono">{formatCurrency(p.msrp, p.vendor_wholesale_price_currency)}</td>
-                      {isBuyer && (
                         <td>
-                          {p.exported_date ? (
-                            formatETDate(p.exported_date)
+                          {p.primary_image_url ? (
+                            <img
+                              src={getImageUrl(p.primary_image_url)}
+                              alt={p.name}
+                              style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }}
+                            />
                           ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>Never Exported</span>
+                            <div style={{ width: 36, height: 36, background: 'var(--bg-elevated)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                              <ShoppingBag size={14} />
+                            </div>
                           )}
                         </td>
-                      )}
-                      <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
-                      <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                        <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.name}</td>
+                        <td>{p.sku}</td>
+                        <td>{p.brand}</td>
+                        <td>{p.product_type}</td>
+                        <td>{p.product_category || '—'}</td>
+                        <td className="mono">
+                          {isBuyer
+                            ? formatCurrency(p.buyer_wholesale_price, p.vendor_wholesale_price_currency)
+                            : formatCurrency(p.vendor_wholesale_price_amount, p.vendor_wholesale_price_currency)
+                          }
+                        </td>
+                        <td className="mono">{formatCurrency(p.msrp, p.vendor_wholesale_price_currency)}</td>
+                        {isBuyer && (
+                          <td>
+                            {p.exported_date ? (
+                              formatETDate(p.exported_date)
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>Never Exported</span>
+                            )}
+                          </td>
+                        )}
+                        <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
+                        <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -3232,108 +3630,182 @@ export default function CatalogPage() {
                       </button>
                     </div>
                   )}
+
+                  {/* View Mode Toggle Switch */}
+                  <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 3, marginLeft: myCompatibilitySelectedIds.length > 0 ? 0 : 'auto' }}>
+                    <button
+                      type="button"
+                      title="Grid View"
+                      onClick={() => setViewMode('grid')}
+                      style={{
+                        background: viewMode === 'grid' ? 'rgba(32, 209, 242, 0.15)' : 'transparent',
+                        border: viewMode === 'grid' ? '1px solid rgba(32, 209, 242, 0.4)' : '1px solid transparent',
+                        color: viewMode === 'grid' ? '#20D1F2' : 'var(--text-muted)',
+                        borderRadius: 4,
+                        padding: '4px 10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <LayoutGrid size={14} />
+                      Grid
+                    </button>
+                    <button
+                      type="button"
+                      title="Table View"
+                      onClick={() => setViewMode('table')}
+                      style={{
+                        background: viewMode === 'table' ? 'rgba(32, 209, 242, 0.15)' : 'transparent',
+                        border: viewMode === 'table' ? '1px solid rgba(32, 209, 242, 0.4)' : '1px solid transparent',
+                        color: viewMode === 'table' ? '#20D1F2' : 'var(--text-muted)',
+                        borderRadius: 4,
+                        padding: '4px 10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <List size={14} />
+                      Table
+                    </button>
+                  </div>
                 </div>
-                <div className="table-wrap">
-                  {compatibleProducts.length === 0 ? (
+
+                {viewMode === 'grid' ? (
+                  compatibleProducts.length === 0 ? (
                     <div className="empty-state" style={{ padding: '32px 0' }}>
                       <ShoppingBag size={32} />
                       <div>No compatible products found</div>
                     </div>
                   ) : (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th style={{ width: 40, textAlign: 'center' }}>
-                            <input
-                              type="checkbox"
-                              checked={compatibleProducts.length > 0 && compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))}
-                              onChange={() => {
-                                const allSelected = compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))
-                                if (allSelected) {
-                                  setMyCompatibilitySelectedIds(myCompatibilitySelectedIds.filter(id => !compatibleProducts.some((p: any) => p.id === id)))
-                                } else {
-                                  const newIds = [...myCompatibilitySelectedIds]
-                                  compatibleProducts.forEach((p: any) => {
-                                    if (!newIds.includes(p.id)) newIds.push(p.id)
-                                  })
-                                  setMyCompatibilitySelectedIds(newIds)
-                                }
-                              }}
-                            />
-                          </th>
-                          <th style={{ width: 60 }}>Image</th>
-                          <th>Product Name</th>
-                          <th>SKU</th>
-                          <th>Brand</th>
-                          <th>Type</th>
-                          <th>Category</th>
-                          <th>Wholesale Price</th>
-                          <th>MSRP</th>
-                          <th>Status</th>
-                          <th>Selling</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {compatibleProducts.map((p: any) => (
-                          <tr
-                            key={p.id}
-                            onClick={async () => {
-                              setSelectedManageProduct(p)
-                              setShowManageModal(true)
-                              // Fetch full product detail to get enriched media_references (all uploaded images)
-                              try {
-                                const detailRes = await api.get(`/catalog/products/${p.id}/`)
-                                setSelectedManageProduct(detailRes.data)
-                              } catch {}
-                            }}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                    <div className="telco-grid" style={{ marginBottom: 24 }}>
+                      {compatibleProducts.map((p: any) =>
+                        renderCatalogProductCard(
+                          p,
+                          myCompatibilitySelectedIds.includes(p.id),
+                          () => {
+                            if (myCompatibilitySelectedIds.includes(p.id)) {
+                              setMyCompatibilitySelectedIds(myCompatibilitySelectedIds.filter(x => x !== p.id))
+                            } else {
+                              setMyCompatibilitySelectedIds([...myCompatibilitySelectedIds, p.id])
+                            }
+                          },
+                          true
+                        )
+                      )}
+                    </div>
+                  )
+                ) : (
+                  <div className="table-wrap">
+                    {compatibleProducts.length === 0 ? (
+                      <div className="empty-state" style={{ padding: '32px 0' }}>
+                        <ShoppingBag size={32} />
+                        <div>No compatible products found</div>
+                      </div>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th style={{ width: 40, textAlign: 'center' }}>
                               <input
                                 type="checkbox"
-                                checked={myCompatibilitySelectedIds.includes(p.id)}
+                                checked={compatibleProducts.length > 0 && compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))}
                                 onChange={() => {
-                                  if (myCompatibilitySelectedIds.includes(p.id)) {
-                                    setMyCompatibilitySelectedIds(myCompatibilitySelectedIds.filter(x => x !== p.id))
+                                  const allSelected = compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))
+                                  if (allSelected) {
+                                    setMyCompatibilitySelectedIds(myCompatibilitySelectedIds.filter(id => !compatibleProducts.some((p: any) => p.id === id)))
                                   } else {
-                                    setMyCompatibilitySelectedIds([...myCompatibilitySelectedIds, p.id])
+                                    const newIds = [...myCompatibilitySelectedIds]
+                                    compatibleProducts.forEach((p: any) => {
+                                      if (!newIds.includes(p.id)) newIds.push(p.id)
+                                    })
+                                    setMyCompatibilitySelectedIds(newIds)
                                   }
                                 }}
                               />
-                            </td>
-                            <td>
-                              {p.primary_image_url ? (
-                                <img
-                                  src={getImageUrl(p.primary_image_url)}
-                                  alt={p.name}
-                                  style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }}
-                                />
-                              ) : (
-                                <div style={{ width: 36, height: 36, background: 'var(--bg-elevated)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                                  <ShoppingBag size={14} />
-                                </div>
-                              )}
-                            </td>
-                            <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.name}</td>
-                            <td>{p.sku}</td>
-                            <td>{p.brand}</td>
-                            <td>{p.product_type}</td>
-                            <td>{p.product_category || '—'}</td>
-                            <td className="mono">
-                              {isBuyer
-                                ? formatCurrency(p.buyer_wholesale_price, p.vendor_wholesale_price_currency)
-                                : formatCurrency(p.vendor_wholesale_price_amount, p.vendor_wholesale_price_currency)
-                              }
-                            </td>
-                            <td className="mono">{formatCurrency(p.msrp, p.vendor_wholesale_price_currency)}</td>
-                            <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
-                            <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
+                            </th>
+                            <th style={{ width: 60 }}>Image</th>
+                            <th>Product Name</th>
+                            <th>SKU</th>
+                            <th>Brand</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Wholesale Price</th>
+                            <th>MSRP</th>
+                            <th>Status</th>
+                            <th>Selling</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+                        </thead>
+                        <tbody>
+                          {compatibleProducts.map((p: any) => (
+                            <tr
+                              key={p.id}
+                              onClick={async () => {
+                                setSelectedManageProduct(p)
+                                setShowManageModal(true)
+                                try {
+                                  const detailRes = await api.get(`/catalog/products/${p.id}/`)
+                                  setSelectedManageProduct(detailRes.data)
+                                } catch {}
+                              }}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={myCompatibilitySelectedIds.includes(p.id)}
+                                  onChange={() => {
+                                    if (myCompatibilitySelectedIds.includes(p.id)) {
+                                      setMyCompatibilitySelectedIds(myCompatibilitySelectedIds.filter(x => x !== p.id))
+                                    } else {
+                                      setMyCompatibilitySelectedIds([...myCompatibilitySelectedIds, p.id])
+                                    }
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                {p.primary_image_url ? (
+                                  <img
+                                    src={getImageUrl(p.primary_image_url)}
+                                    alt={p.name}
+                                    style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }}
+                                  />
+                                ) : (
+                                  <div style={{ width: 36, height: 36, background: 'var(--bg-elevated)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                                    <ShoppingBag size={14} />
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.name}</td>
+                              <td>{p.sku}</td>
+                              <td>{p.brand}</td>
+                              <td>{p.product_type}</td>
+                              <td>{p.product_category || '—'}</td>
+                              <td className="mono">
+                                {isBuyer
+                                  ? formatCurrency(p.buyer_wholesale_price, p.vendor_wholesale_price_currency)
+                                  : formatCurrency(p.vendor_wholesale_price_amount, p.vendor_wholesale_price_currency)
+                                }
+                              </td>
+                              <td className="mono">{formatCurrency(p.msrp, p.vendor_wholesale_price_currency)}</td>
+                              <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
+                              <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}

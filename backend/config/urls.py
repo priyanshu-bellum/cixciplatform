@@ -60,13 +60,62 @@ api_v1 = [
     path("launch/",         include(launch_urlpatterns)),
 ]
 
+import os
+import yaml
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+class BuyerSchemaView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, *args, **kwargs):
+        schema_path = os.path.join(settings.BASE_DIR, "schema.yml")
+        if not os.path.exists(schema_path):
+            return Response({"error": "Schema file not found"}, status=404)
+        
+        with open(schema_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            
+        buyer_paths = {
+            "/api/v1/catalog/products/",
+            "/api/v1/catalog/products/{id}/",
+            "/api/v1/catalog/my-projection/",
+            "/api/v1/catalog/my-projection/refresh/",
+            "/api/v1/catalog/export-jobs/",
+            "/api/v1/catalog/export-jobs/create_job/",
+            "/api/v1/catalog/export-jobs/list_jobs/",
+            "/api/v1/catalog/export-jobs/{id}/",
+            "/api/v1/catalog/export-jobs/{id}/download/",
+            "/api/v1/procurement/purchase-orders/",
+            "/api/v1/procurement/purchase-orders/{id}/",
+            "/api/v1/procurement/purchase-orders/{id}/lines/",
+            "/api/v1/routing/orders/",
+            "/api/v1/routing/orders/{id}/",
+            "/api/v1/routing/orders/{id}/suborders/",
+            "/api/v1/routing/orders/{id}/lines/",
+            "/api/v1/fulfillment/handoffs/import-shipping/",
+            "/api/v1/fulfillment/return-requests/",
+            "/api/v1/fulfillment/return-requests/{id}/",
+        }
+        
+        data["paths"] = {p: item for p, item in data.get("paths", {}).items() if p in buyer_paths}
+        data["info"]["title"] = "CIXCI Buyer Integration API Documentation"
+        data["info"]["description"] = "Dedicated OpenAPI documentation for Buyer MVNO integration covering Accessory Catalog & Export, Purchase Orders & Shipping, and Return Requests."
+        
+        return Response(data)
+
 urlpatterns = [
     path("admin/",          admin.site.urls),
     path("api/v1/",         include(api_v1)),
-    # OpenAPI docs
+    # Overall OpenAPI docs
     path("api/schema/",     SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/",       SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/redoc/",      SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    # Dedicated Buyer API docs
+    path("api/buyer-schema/", BuyerSchemaView.as_view(), name="buyer-schema"),
+    path("api/buyer-docs/",   SpectacularSwaggerView.as_view(url_name="buyer-schema"), name="buyer-swagger-ui"),
+    path("api/buyer-redoc/",  SpectacularRedocView.as_view(url_name="buyer-schema"), name="buyer-redoc"),
 ]
 
 if settings.DEBUG:
