@@ -123,7 +123,14 @@ class Company(models.Model):
     map_pricing_enforced = models.BooleanField(default=False)
 
     # Return Address
-    return_address = models.TextField(blank=True, help_text="Return Address for items")
+    return_address = models.TextField(blank=True, help_text="Return Address for items (legacy single field)")
+
+    # Structured Return Address (per Buyer Data Integration Spec)
+    return_address_line1 = models.CharField(max_length=255, blank=True, help_text="Primary return address line")
+    return_address_line2 = models.CharField(max_length=255, blank=True, help_text="Secondary return address line")
+    return_city = models.CharField(max_length=100, blank=True, help_text="Return address city")
+    return_state = models.CharField(max_length=50, blank=True, help_text="Return address state")
+    return_zip_code = models.CharField(max_length=20, blank=True, help_text="Return address zip/postal code")
 
     # Order Digest Emails
     order_digest_emails = models.JSONField(default=list, blank=True, help_text="List of email addresses for automated order digests")

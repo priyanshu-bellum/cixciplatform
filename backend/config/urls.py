@@ -77,31 +77,108 @@ class BuyerSchemaView(APIView):
         with open(schema_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
             
-        buyer_paths = {
-            "/api/v1/catalog/products/",
-            "/api/v1/catalog/products/{id}/",
-            "/api/v1/catalog/my-projection/",
-            "/api/v1/catalog/my-projection/refresh/",
-            "/api/v1/catalog/export-jobs/",
-            "/api/v1/catalog/export-jobs/create_job/",
-            "/api/v1/catalog/export-jobs/list_jobs/",
-            "/api/v1/catalog/export-jobs/{id}/",
-            "/api/v1/catalog/export-jobs/{id}/download/",
-            "/api/v1/procurement/purchase-orders/",
-            "/api/v1/procurement/purchase-orders/{id}/",
-            "/api/v1/procurement/purchase-orders/{id}/lines/",
-            "/api/v1/routing/orders/",
-            "/api/v1/routing/orders/{id}/",
-            "/api/v1/routing/orders/{id}/suborders/",
-            "/api/v1/routing/orders/{id}/lines/",
-            "/api/v1/fulfillment/handoffs/import-shipping/",
-            "/api/v1/fulfillment/return-requests/",
-            "/api/v1/fulfillment/return-requests/{id}/",
+        # Precise Buyer API specification matching the 4 data flow use cases:
+        buyer_endpoint_config = {
+            # ── 1. Products: CIXCI Sends Selected Product Data to Buyer ──
+            "/api/v1/catalog/products/": {
+                "methods": {"get"},
+                "tag": "1. Products (Catalog & Export)",
+            },
+            "/api/v1/catalog/products/{id}/": {
+                "methods": {"get"},
+                "tag": "1. Products (Catalog & Export)",
+            },
+            "/api/v1/catalog/export-jobs/create_job/": {
+                "methods": {"post"},
+                "tag": "1. Products (Catalog & Export)",
+            },
+            "/api/v1/catalog/export-jobs/list_jobs/": {
+                "methods": {"get"},
+                "tag": "1. Products (Catalog & Export)",
+            },
+            "/api/v1/catalog/export-jobs/{id}/": {
+                "methods": {"get"},
+                "tag": "1. Products (Catalog & Export)",
+            },
+            "/api/v1/catalog/export-jobs/{id}/download/": {
+                "methods": {"get"},
+                "tag": "1. Products (Catalog & Export)",
+            },
+
+            # ── 2. Orders: CIXCI Receives Order Information from Buyer ──
+            "/api/v1/routing/orders/": {
+                "methods": {"get", "post"},
+                "tag": "2. Orders (Customer Purchases)",
+            },
+            "/api/v1/routing/orders/{id}/": {
+                "methods": {"get"},
+                "tag": "2. Orders (Customer Purchases)",
+            },
+
+            # ── 3. Shipping: CIXCI Sends Shipping Information to Buyer ──
+            "/api/v1/fulfillment/handoffs/": {
+                "methods": {"get"},
+                "tag": "3. Shipping (Order Tracking & Delivery)",
+            },
+            "/api/v1/fulfillment/handoffs/{id}/": {
+                "methods": {"get"},
+                "tag": "3. Shipping (Order Tracking & Delivery)",
+            },
+
+            # ── 4. Returns: Return Information & Confirmations ──
+            "/api/v1/fulfillment/return-requests/": {
+                "methods": {"get", "post"},
+                "tag": "4. Returns (RMA & Confirmations)",
+            },
+            "/api/v1/fulfillment/return-requests/{id}/": {
+                "methods": {"get"},
+                "tag": "4. Returns (RMA & Confirmations)",
+            },
         }
-        
-        data["paths"] = {p: item for p, item in data.get("paths", {}).items() if p in buyer_paths}
+
+        filtered_paths = {}
+        for path_pattern, config in buyer_endpoint_config.items():
+            if path_pattern in data.get("paths", {}):
+                path_item = data["paths"][path_pattern]
+                filtered_ops = {}
+                for method, op in path_item.items():
+                    if method.lower() in config["methods"]:
+                        op_copy = dict(op)
+                        op_copy["tags"] = [config["tag"]]
+                        filtered_ops[method] = op_copy
+                if filtered_ops:
+                    filtered_paths[path_pattern] = filtered_ops
+
+        data["paths"] = filtered_paths
         data["info"]["title"] = "CIXCI Buyer Integration API Documentation"
-        data["info"]["description"] = "Dedicated OpenAPI documentation for Buyer MVNO integration covering Accessory Catalog & Export, Purchase Orders & Shipping, and Return Requests."
+        data["info"]["version"] = "1.0.0"
+        data["info"]["description"] = (
+            "## Preliminary Data Integration Specifications for Buyers\n\n"
+            "This documentation specifies the dedicated API endpoints for Buyers (MVNOs/Carriers) "
+            "to integrate with CIXCI across the 4 core use cases:\n\n"
+            "1. **CIXCI Sends Selected Product Data to Buyer**: Product IDs, descriptions, pricing (MSRP, buyer wholesale), and inventory levels.\n"
+            "2. **CIXCI Receives Order Information from Buyer**: Customer purchase details, shipping destination, product lines, quantities, and transaction dates.\n"
+            "3. **CIXCI Sends Shipping Information to Buyer**: Tracking numbers, shipping carriers, order status, shipped dates, and delivery evidence.\n"
+            "4. **Return Information**: Return requests (RAN), return confirmations, restocking fees, item inspection conditions, refund statuses, and vendor return addresses."
+        )
+        data["tags"] = [
+            {
+                "name": "1. Products (Catalog & Export)",
+                "description": "Retrieve available accessory products and generate/download catalog export feeds (JSON / CSV)."
+            },
+            {
+                "name": "2. Orders (Customer Purchases)",
+                "description": "Submit customer purchase orders to CIXCI and monitor processing status."
+            },
+            {
+                "name": "3. Shipping (Order Tracking & Delivery)",
+                "description": "Access vendor fulfillment details, shipping carriers, tracking numbers, and delivery status."
+            },
+            {
+                "name": "4. Returns (RMA & Confirmations)",
+                "description": "Submit customer return requests and receive vendor return confirmations, restocking fees, and refund statuses."
+            },
+        ]
         
         return Response(data)
 

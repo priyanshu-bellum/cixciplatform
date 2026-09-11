@@ -52,14 +52,54 @@ def upc_matches(db_upc, csv_upc):
 # ─── Serializers ──────────────────────────────────────────────────────────────
 
 class FulfillmentHandoffSerializer(serializers.ModelSerializer):
+    buyer_order_number = serializers.SerializerMethodField()
+    buyer_id = serializers.SerializerMethodField()
+    order_status = serializers.SerializerMethodField()
+
     class Meta:
         model = FulfillmentHandoff
         fields = [
             "id", "routed_suborder_reference", "vendor_company_reference",
             "company_scope_reference", "status", "delivery_evidence_reference",
+            "vendor_order_number", "shipping_carrier", "tracking_number",
+            "shipped_date", "delivered_date",
+            "buyer_order_number", "buyer_id", "order_status",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+    def get_buyer_order_number(self, obj):
+        """Resolve the buyer's native order number from the routing snapshot."""
+        try:
+            from apps.routing.models import RoutedSuborder
+            sub = RoutedSuborder.objects.filter(id=obj.routed_suborder_reference).first()
+            if sub and sub.routing_snapshot:
+                return sub.routing_snapshot.get("buyer_order_number", "")
+            if sub and sub.order:
+                return str(sub.order_id)
+        except Exception:
+            pass
+        return ""
+
+    def get_buyer_id(self, obj):
+        """Return the buyer company scope reference."""
+        return str(obj.company_scope_reference) if obj.company_scope_reference else ""
+
+    def get_order_status(self, obj):
+        """Map handoff status to buyer-facing order status."""
+        status_map = {
+            "received": "Processing",
+            "processing": "Processing",
+            "shipped": "Shipped",
+            "delivered": "Delivered",
+            "exception": "Exception",
+            "closed": "Closed",
+            "tracking_missing": "Processing",
+            "tracking_invalid": "Processing",
+            "review_required": "Processing",
+            "delivery_exception": "Exception",
+        }
+        return status_map.get(obj.status, obj.status)
 
     def validate_status(self, value):
         valid_statuses = {"received", "shipment_pending", "delivered", "exception", "failed", "processing"}
@@ -150,6 +190,8 @@ class ReturnRequestSerializer(serializers.ModelSerializer):
     buyer_reference = serializers.UUIDField(required=False)
     version = serializers.SerializerMethodField()
     schema_version = serializers.SerializerMethodField()
+    confirmation_id = serializers.SerializerMethodField()
+    buyer_order_number = serializers.SerializerMethodField()
 
     class Meta:
         model = ReturnRequest
@@ -160,6 +202,22 @@ class ReturnRequestSerializer(serializers.ModelSerializer):
 
     def get_schema_version(self, obj):
         return getattr(obj, "schema_version", "1.0") or "1.0"
+
+    def get_confirmation_id(self, obj):
+        return str(obj.id)
+
+    def get_buyer_order_number(self, obj):
+        """Resolve the buyer's native order number from the routed suborder snapshot or order."""
+        try:
+            from apps.routing.models import RoutedSuborder
+            sub = RoutedSuborder.objects.filter(id=obj.suborder_reference).first()
+            if sub and sub.routing_snapshot:
+                return sub.routing_snapshot.get("buyer_order_number", "")
+            if sub and sub.order:
+                return str(sub.order_id)
+        except Exception:
+            pass
+        return ""
 
     def validate(self, attrs):
         if self.instance is not None:

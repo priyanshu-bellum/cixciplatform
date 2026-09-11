@@ -355,6 +355,22 @@ class ReturnStatus(models.TextChoices):
     RETURN_CLOSED = "return_closed", "Return Closed"
 
 
+class RefundStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    PROCESSED = "processed", "Processed"
+    REJECTED = "rejected", "Rejected"
+    PARTIAL = "partial", "Partial"
+
+
+class ItemCondition(models.TextChoices):
+    UNOPENED = "unopened", "Unopened"
+    LIKE_NEW = "like_new", "Like New"
+    USED = "used", "Used"
+    DAMAGED = "damaged", "Damaged"
+    DEFECTIVE = "defective", "Defective"
+    OTHER = "other", "Other"
+
+
 class ReturnRequest(models.Model):
     """
     Operational return request sent to vendor.
@@ -374,6 +390,21 @@ class ReturnRequest(models.Model):
     return_received_date = models.DateTimeField(null=True, blank=True)
     return_refunded_amount = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     rejected_reason = models.TextField(blank=True)
+
+    # Buyer return confirmation fields (per Data Integration Spec)
+    restocking_fee = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        help_text="Fee deducted from refund for restocking the returned item"
+    )
+    item_condition = models.CharField(
+        max_length=100, blank=True, choices=ItemCondition.choices,
+        help_text="Physical condition of the item when returned"
+    )
+    refund_status = models.CharField(
+        max_length=50, blank=True, choices=RefundStatus.choices,
+        help_text="Current status of the refund processing"
+    )
+
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

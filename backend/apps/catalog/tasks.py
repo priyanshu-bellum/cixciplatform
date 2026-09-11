@@ -117,32 +117,107 @@ def process_buyer_export_job(job_id):
                 exported_products_snapshot=products_snapshot
             )
 
+        # Pre-cache vendor data (return address sent once per vendor per spec)
+        vendor_cache = {}  # vendor_id -> Company
+        vendor_address_emitted = set()  # track which vendors already had address emitted
+
+        def resolve_vendor(vendor_id):
+            if vendor_id not in vendor_cache:
+                vendor_cache[vendor_id] = Company.objects.filter(id=vendor_id).first()
+            return vendor_cache[vendor_id]
+
+        def resolve_image_url(product):
+            url = ""
+            if product.primary_image_reference:
+                try:
+                    asset = MediaAsset.objects.get(id=product.primary_image_reference)
+                    if asset.status == "ready":
+                        media_url = getattr(settings, "MEDIA_URL", "/media/")
+                        url = f"{media_url}{asset.storage_key}"
+                except Exception:
+                    pass
+            if not url and isinstance(product.media_references, list) and len(product.media_references) > 0:
+                url = product.media_references[0]
+            return url
+
+        def build_product_row(p):
+            vendor = resolve_vendor(p.vendor_company_reference)
+            vendor_name = vendor.name if vendor else "Unknown Vendor"
+            image_url = resolve_image_url(p)
+
+            # Vendor return address: sent once per vendor per buyer (per spec)
+            vendor_id = str(p.vendor_company_reference)
+            emit_address = vendor_id not in vendor_address_emitted
+            if emit_address:
+                vendor_address_emitted.add(vendor_id)
+
+            return {
+                # Required fields
+                "vendor": vendor_name,
+                "product_name": p.name,
+                "product_category": p.product_category or "",
+                "sku": p.sku,
+                "upc": p.upc or "",
+                "product_status": p.status,
+                "launch_date": str(p.launch_date) if p.launch_date else "",
+                "msrp": str(p.msrp) if p.msrp is not None else "",
+                "buyer_wholesale_price": str(p.buyer_wholesale_price) if p.buyer_wholesale_price is not None else "",
+                "vendor_color": p.color or "",
+                "system_color": p.system_color or "",
+                "device_compatibility": p.compatibility_status or "",
+                "product_description": p.description or "",
+                "image_urls": image_url,
+                "brand_warranty": p.warranty or "",
+                "inventory_level": str(p.inventory_level) if p.inventory_level is not None else "",
+                "length": str(p.length) if p.length is not None else "",
+                "width": str(p.width) if p.width is not None else "",
+                "height": str(p.height) if p.height is not None else "",
+                "weight": str(p.weight) if p.weight is not None else "",
+                "meta_title": p.meta_title or "",
+                "meta_description": p.meta_description or "",
+                # Vendor return address (once per vendor)
+                "vendor_return_address1": (vendor.return_address_line1 if vendor else "") if emit_address else "",
+                "vendor_return_address2": (vendor.return_address_line2 if vendor else "") if emit_address else "",
+                "vendor_return_city": (vendor.return_city if vendor else "") if emit_address else "",
+                "vendor_return_state": (vendor.return_state if vendor else "") if emit_address else "",
+                "vendor_return_zip_code": (vendor.return_zip_code if vendor else "") if emit_address else "",
+                # Non-required fields (included if data exists)
+                "sale_price": str(p.sale_price) if p.sale_price is not None else "",
+                "short_description": p.short_description or "",
+                "promotional_information": p.promo_information or "",
+                "map_price": str(p.map_price) if p.map_price is not None else "",
+            }
+
         # Format output
         content = ""
         filename = f"export_{job.id}.json" if job.format == "API" else f"export_{job.id}.{job.format}"
         mime_type = "application/json" if job.format == "API" else "text/csv"
 
-        headers = [
-            "id", "sku", "name", "brand", "product_category", "product_type",
-            "status",
-            "msrp", "map_price", "sale_price", "upc", "launch_date", "release_date",
-            "eol_date", "color", "short_description"
+        export_headers = [
+            "vendor", "product_name", "product_category", "sku", "upc",
+            "product_status", "launch_date", "msrp", "buyer_wholesale_price",
+            "vendor_color", "system_color", "device_compatibility",
+            "product_description", "image_urls", "brand_warranty", "inventory_level",
+            "length", "width", "height", "weight",
+            "meta_title", "meta_description",
+            "vendor_return_address1", "vendor_return_address2",
+            "vendor_return_city", "vendor_return_state", "vendor_return_zip_code",
+            "sale_price", "short_description", "promotional_information", "map_price",
         ]
-        
+
         if job.format in ["json", "API"]:
             mime_type = "application/json"
-            data_list = []
-            for p in products:
-                data_list.append({h: str(getattr(p, h)) if getattr(p, h) is not None else "" for h in headers})
+            data_list = [build_product_row(p) for p in products]
             content = json.dumps(data_list, indent=2)
         else:
             # CSV or XLSX fallback
             import io
             f_out = io.StringIO()
             writer = csv.writer(f_out)
-            writer.writerow(headers)
+            writer.writerow(export_headers)
             for p in products:
-                writer.writerow([getattr(p, h) for h in headers])
+                row_data = build_product_row(p)
+                writer.writerow([row_data.get(h, "") for h in export_headers])
             content = f_out.getvalue()
             if job.format == "xlsx":
                 mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
