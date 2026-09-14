@@ -9,6 +9,8 @@ class CixciCursorPagination(CursorPagination):
     ordering = "-created_at"
 
     def paginate_queryset(self, queryset, request, view=None):
+        if request.query_params.get("paginate") == "false":
+            return None
         try:
             self.count = queryset.count()
         except Exception:

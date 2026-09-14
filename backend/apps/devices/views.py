@@ -145,12 +145,13 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if status_param == "available":
                 qs = qs.filter(lifecycle_status="available")
             elif status_param == "launching":
-                qs = qs.filter(lifecycle_status="inactive", launch_date__gt=today)
+                qs = qs.filter(Q(lifecycle_status="launching") | (Q(lifecycle_status="inactive") & Q(launch_date__gt=today)))
             elif status_param:
                 qs = qs.none()
             else:
                 qs = qs.filter(
                     Q(lifecycle_status="available") |
+                    Q(lifecycle_status="launching") |
                     (Q(lifecycle_status="inactive") & Q(launch_date__isnull=False) & Q(launch_date__gt=today))
                 )
         else:
@@ -159,14 +160,20 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     Q(launch_date__isnull=True) | Q(launch_date__lte=today)
                 )
                 if status_param:
-                    qs = qs.filter(lifecycle_status=status_param)
+                    if status_param == "launching":
+                        qs = qs.filter(Q(lifecycle_status="launching") | (Q(lifecycle_status="inactive") & Q(launch_date__gt=today)))
+                    else:
+                        qs = qs.filter(lifecycle_status=status_param)
                 else:
                     qs = qs.exclude(
                         Q(lifecycle_status="inactive") & (Q(launch_date__isnull=True) | Q(launch_date__gt=today))
                     )
             else:
                 if status_param:
-                    qs = qs.filter(lifecycle_status=status_param)
+                    if status_param == "launching":
+                        qs = qs.filter(Q(lifecycle_status="launching") | (Q(lifecycle_status="inactive") & Q(launch_date__gt=today)))
+                    else:
+                        qs = qs.filter(lifecycle_status=status_param)
         return qs
 
     def perform_create(self, serializer):

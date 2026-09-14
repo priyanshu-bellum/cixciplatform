@@ -23,13 +23,15 @@ from django.utils import timezone
 # ─── Enumerations ─────────────────────────────────────────────────────────────
 
 class DeviceLifecycleStatus(models.TextChoices):
-    ANNOUNCED = "announced", "Announced"
     AVAILABLE = "available", "Available"
+    LAUNCHING = "launching", "Launching"
+    INACTIVE = "inactive", "Inactive"
+    EOL = "eol", "EOL"
+    # Legacy choices for backward compatibility
+    ANNOUNCED = "announced", "Announced"
     CURRENT = "current", "Current"
     LEGACY = "legacy", "Legacy"
-    EOL = "eol", "End of Life"
     RETIRED = "retired", "Retired"
-    INACTIVE = "inactive", "Inactive"
     ARCHIVED = "archived", "Archived"
 
 

@@ -112,3 +112,42 @@ def test_intelligent_compatibility_mapping(buyer_client, buyer_user):
     assert resp3.status_code == 207, resp3.data
     assert resp3.data["rows_failed"] == 1
     assert "Invalid device/feature part 'iPhone 99'" in resp3.data["errors"][0]["validation_error"]
+
+@pytest.mark.django_db
+def test_product_wireless_charging_bulk_import_comma_separated(admin_client, db):
+    DynamicDropdownConfig.objects.get_or_create(
+        field_name="product_category",
+        value="Chargers and Cables",
+        display_name="Chargers and Cables",
+        defaults={
+            "compatibility_rules": {
+                "wireless_charging_compatibility": {"mode": "optional"},
+                "compatible_charging_interface": {"mode": "optional"}
+            }
+        }
+    )
+    DynamicDropdownConfig.objects.get_or_create(field_name="brand", value="ChargeCo", display_name="ChargeCo")
+
+    csv_data = (
+        "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,"
+        "Compatible Charging Interface,Wireless Charging Compatibility\n"
+        'CHG-SKU-999,ChargeCo,Chargers and Cables,123456789999,06/18/2026,15.00,30.00,Fast Charger,Dual wireless charger,Active,Type-C,"MagSafe, Qi2"\n'
+    )
+    file_obj = io.BytesIO(csv_data.encode("utf-8"))
+    file_obj.name = "import_charger.csv"
+
+    resp = admin_client.post(
+        "/api/v1/catalog/products/bulk_upload/",
+        {"file": file_obj, "update_mode": "create_only"},
+        format="multipart"
+    )
+    assert resp.status_code == 200, resp.data
+    assert resp.data["rows_failed"] == 0
+
+    prod = Product.objects.get(sku="CHG-SKU-999")
+    assert prod.wireless_charging_compatibility == "MagSafe+Qi2"
+
+    from apps.catalog.api import ProductDetailSerializer
+    rep = ProductDetailSerializer(prod).data
+    assert rep["wireless_charging_compatibility"] == "MagSafe+Qi2"
+

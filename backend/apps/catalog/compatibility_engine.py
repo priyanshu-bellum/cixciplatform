@@ -87,8 +87,9 @@ def check_compatibility(product, device):
             return device.compatible_charging_interface == str(p_val).strip()
             
         elif field in ["wireless_charging_compatibility", "wireless_charging_type"]:
-            p_wire = [w.strip() for w in str(p_val).split('+') if w.strip() and w.strip() != 'Not Compatible']
-            d_wire = [w.strip() for w in (device.wireless_charging_compatibility or "").split('+') if w.strip() and w.strip() != 'Not Compatible']
+            import re
+            p_wire = [w.strip().lower() for w in re.split(r'[\+,;]', str(p_val)) if w.strip() and w.strip().lower() != 'not compatible']
+            d_wire = [w.strip().lower() for w in re.split(r'[\+,;]', str(device.wireless_charging_compatibility or "")) if w.strip() and w.strip().lower() != 'not compatible']
             if p_wire and d_wire:
                 return any(w in d_wire for w in p_wire)
             return False

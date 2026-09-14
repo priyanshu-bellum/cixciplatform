@@ -340,16 +340,28 @@ class Product(models.Model):
                             raise ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
 
                     elif f == "wireless_charging_compatibility":
-                        w_vals = [w.strip() for w in val.split('+') if w.strip()]
+                        import re
+                        w_vals = [w.strip() for w in re.split(r'[\+,;]', val) if w.strip()]
                         if not w_vals:
                             raise ValidationError({f: "Wireless Charging Compatibility is required."})
-                        if 'Not Compatible' in w_vals and len(w_vals) > 1:
-                            raise ValidationError({f: "Not Compatible cannot be selected with any other value."})
+                        normalized = []
                         for w in w_vals:
-                            if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                            wl = w.lower()
+                            if wl == "magsafe":
+                                normalized.append("MagSafe")
+                            elif wl == "qi":
+                                normalized.append("Qi")
+                            elif wl == "qi2":
+                                normalized.append("Qi2")
+                            elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
+                                normalized.append("Not Compatible")
+                            else:
                                 raise ValidationError({f: f"Invalid Wireless Charging value '{w}'."})
-                        if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
+                        if 'Not Compatible' in normalized and len(normalized) > 1:
+                            raise ValidationError({f: "Not Compatible cannot be selected with any other value."})
+                        if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
                             raise ValidationError({f: "Qi cannot be selected with MagSafe or Qi2."})
+                        setattr(self, f, "+".join(normalized))
 
                     elif f == "storage_expansion_compatibility":
                         if val not in ["Not Compatible", "microSDXC", "microSDHC"]:

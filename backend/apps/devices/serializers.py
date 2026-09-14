@@ -141,6 +141,18 @@ class DeviceListSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["id", "created_at"]
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        wc = ret.get("wireless_charging_compatibility")
+        if wc:
+            import re
+            parts = [p.strip() for p in re.split(r'[\+,;]', wc) if p.strip()]
+            case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
+            norm = [case_map.get(p.lower(), p) for p in parts]
+            if norm:
+                ret["wireless_charging_compatibility"] = "+".join(norm)
+        return ret
+
 
 class DeviceDetailSerializer(serializers.ModelSerializer):
     manufacturer_name = serializers.CharField(source="manufacturer.name", read_only=True)
@@ -446,6 +458,14 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
         ret = super().to_representation(instance)
         if instance.launch_date:
             ret['launch_date'] = instance.launch_date.strftime("%m/%d/%Y")
+        wc = ret.get("wireless_charging_compatibility")
+        if wc:
+            import re
+            parts = [p.strip() for p in re.split(r'[\+,;]', wc) if p.strip()]
+            case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
+            norm = [case_map.get(p.lower(), p) for p in parts]
+            if norm:
+                ret["wireless_charging_compatibility"] = "+".join(norm)
         return ret
 
 

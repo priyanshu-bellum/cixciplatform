@@ -104,6 +104,10 @@ def recalculate_buyer_compatibility_projection(
         except Company.DoesNotExist:
             company = None
 
+        import zoneinfo
+        est = zoneinfo.ZoneInfo("America/New_York")
+        today_est = timezone.now().astimezone(est).date()
+
         # Build eligible products base queryset (identical to ProductViewSet.get_queryset() for buyers)
         product_qs = Product.objects.filter(
             status=ProductStatus.ACTIVE

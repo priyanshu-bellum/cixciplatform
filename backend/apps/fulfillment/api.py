@@ -269,7 +269,10 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = FulfillmentHandoff.objects.all()
-        if not user.is_cixci_admin and user.entity:
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if not is_admin and user.entity:
             company = user.entity.company
             if company.company_type == "vendor":
                 qs = qs.filter(vendor_company_reference=company.id)
@@ -846,7 +849,10 @@ class SLAEvaluationRecordViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet
     def get_queryset(self):
         user = self.request.user
         qs = SLAEvaluationRecord.objects.all()
-        if not user.is_cixci_admin and user.entity:
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if not is_admin and user.entity:
             company = user.entity.company
             if company.company_type == "vendor":
                 qs = qs.filter(handoff__vendor_company_reference=company.id)
@@ -911,7 +917,10 @@ class VendorShippingImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelVie
     def get_queryset(self):
         user = self.request.user
         qs = VendorShippingImportLog.objects.all().order_by("-uploaded_at", "-id")
-        if not user.is_cixci_admin and user.entity:
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if not is_admin and user.entity:
             company = user.entity.company
             if company.company_type == "vendor":
                 qs = qs.filter(vendor_company_reference=company.id)
@@ -935,7 +944,10 @@ class VendorReturnImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
     def get_queryset(self):
         user = self.request.user
         qs = VendorReturnImportLog.objects.all().order_by("-uploaded_at", "-id")
-        if not user.is_cixci_admin and user.entity:
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if not is_admin and user.entity:
             company = user.entity.company
             if company.company_type == "vendor":
                 qs = qs.filter(vendor_company_reference=company.id)
@@ -973,7 +985,10 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = ReturnRequest.objects.all()
-        if not user.is_cixci_admin and user.entity:
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if not is_admin and user.entity:
             company = user.entity.company
             if company.company_type == "vendor":
                 from apps.routing.models import RoutedSuborder

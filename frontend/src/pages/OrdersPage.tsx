@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Package, Plus, X, Calendar, User, ShoppingBag, Truck } from 'lucide-react'
 import api from '../lib/apiClient'
+import Pagination, { usePagination } from '../components/Pagination'
 
 const STATUS: Record<string, string> = {
   pending: 'badge-amber', routed: 'badge-green', in_progress: 'badge-blue',
@@ -25,9 +26,17 @@ export default function OrdersPage() {
   // Fetch orders list
   const { data, isLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['orders'],
-    queryFn: () => api.get('/routing/orders/').then(r => r.data),
+    queryFn: () => api.get('/routing/orders/', { params: { paginate: 'false' } }).then(r => r.data),
   })
-  const orders = data?.results ?? data ?? []
+  const orders = data?.results ?? (Array.isArray(data) ? data : [])
+
+  const {
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    totalItems,
+    paginatedItems: paginatedOrders,
+  } = usePagination(orders, 50)
 
   // Fetch detail for selected order
   const { data: orderDetail } = useQuery({
@@ -161,7 +170,7 @@ export default function OrdersPage() {
               </tr>
             </thead>
             <tbody>
-              {orders.map((o: any) => (
+              {paginatedOrders.map((o: any) => (
                 <tr key={o.id} onClick={() => setSelectedOrderId(o.id)} className="clickable-row">
                   <td style={{ color: 'var(--accent)', fontWeight: 500 }} className="mono">
                     {o.id.slice(0, 8)}…
@@ -178,6 +187,15 @@ export default function OrdersPage() {
           </table>
         )}
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={totalItems}
+        pageSize={50}
+        onPageChange={setCurrentPage}
+        itemName="orders"
+      />
 
       {/* Slide-over Order Details Drawer */}
       {selectedOrderId && (

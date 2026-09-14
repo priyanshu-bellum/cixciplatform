@@ -395,4 +395,55 @@ class TestDeviceBulkImport:
         for err in errors:
             assert err["row"] == 3
 
+    def test_device_wireless_charging_normalization_and_comma_separated(self, admin_client, db):
+        from apps.devices.models import Manufacturer, DeviceType, Device
+        from apps.devices.serializers import DeviceDetailSerializer
+        
+        m = Manufacturer.objects.create(name="Apple", is_active=True)
+        t = DeviceType.objects.create(name="Phone", code="phone", status="active", is_active=True)
+
+        # 1. Direct Serializer validation with comma-separated values
+        serializer = DeviceDetailSerializer(data={
+            "manufacturer": m.id,
+            "name": "iPhone 17 Pro Max",
+            "device_type": t.id,
+            "launch_date": "09/15/2026",
+            "compatible_charging_interface": "Type-C",
+            "storage_expansion_compatibility": "Not Compatible",
+            "maximum_supported_storage": "Not Compatible",
+            "headphone_jack_compatibility": "Type-C",
+            "bluetooth_compatibility": "Yes",
+            "wireless_charging_compatibility": "MagSafe, Qi2",
+            "compatible_watch_case_size": "Not Compatible",
+        })
+        assert serializer.is_valid(), serializer.errors
+        dev = serializer.save()
+        assert dev.wireless_charging_compatibility == "MagSafe+Qi2"
+
+        # 2. Representation check when DB has comma format
+        dev.wireless_charging_compatibility = "MagSafe, Qi2"
+        dev.save()
+        rep = DeviceDetailSerializer(dev).data
+        assert rep["wireless_charging_compatibility"] == "MagSafe+Qi2"
+
+        # 3. CSV bulk import with comma-separated wireless charging
+        import io
+        csv_content = (
+            "Device Manufacturer,Device Name,Device Type,Launch Date,Compatible Charging Interface,"
+            "Storage Expansion Compatibility,Maximum Supported Storage,Headphone Jack Compatibility,"
+            "Bluetooth Compatibility,Wireless Charging Compatibility,Compatible Watch Case Size\n"
+            "Apple,iPhone 17 Air,Smartphone,09/15/2026,Type-C,Not Compatible,,Type-C,Yes,\"MagSafe, Qi2\",Not Compatible\n"
+        )
+        file_obj = io.BytesIO(csv_content.encode('utf-8-sig'))
+        file_obj.name = "import_wireless_test.csv"
+        
+        resp = admin_client.post("/api/v1/devices/devices/bulk_import/", {
+            "file": file_obj,
+            "import_mode": "Create New Only"
+        }, format="multipart")
+        assert resp.status_code == 200, resp.data
+        air_dev = Device.objects.get(name="iPhone 17 Air")
+        assert air_dev.wireless_charging_compatibility == "MagSafe+Qi2"
+
+
 

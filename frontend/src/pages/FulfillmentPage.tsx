@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
 import { Truck, Clock, ShieldAlert, UploadCloud, CheckCircle2, AlertCircle, X, RefreshCw, FileText } from 'lucide-react'
 import api from '../lib/apiClient'
+import Pagination, { usePagination } from '../components/Pagination'
 
 const HANDOFF_STATUS: Record<string, string> = {
   received: 'badge-blue', processing: 'badge-amber', shipped: 'badge-purple',
@@ -44,42 +45,42 @@ export default function FulfillmentPage() {
 
   const { data: handoffData, isLoading: hLoading, refetch: refetchHandoffs } = useQuery({
     queryKey: ['fulfillment-handoffs'],
-    queryFn: () => api.get('/fulfillment/handoffs/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/fulfillment/handoffs/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => ({ results: [] })),
   })
 
   const { data: slaData, isLoading: sLoading } = useQuery({
     queryKey: ['sla-evaluations'],
-    queryFn: () => api.get('/fulfillment/sla-evaluations/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/fulfillment/sla-evaluations/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => ({ results: [] })),
     enabled: tab === 'sla',
   })
 
   const { data: policyData, isLoading: pLoading } = useQuery({
     queryKey: ['sla-policies'],
-    queryFn: () => api.get('/fulfillment/sla-policies/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/fulfillment/sla-policies/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => ({ results: [] })),
     enabled: tab === 'policies',
   })
 
   const { data: logData, isLoading: lLoading, refetch: refetchLogs } = useQuery({
     queryKey: ['export-logs'],
-    queryFn: () => api.get('/routing/export-logs/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/routing/export-logs/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => ({ results: [] })),
     enabled: tab === 'exportLogs',
   })
 
   const { data: returnsData, isLoading: rLoading, refetch: refetchReturns } = useQuery({
     queryKey: ['return-requests'],
-    queryFn: () => api.get('/fulfillment/return-requests/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/fulfillment/return-requests/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => ({ results: [] })),
     enabled: tab === 'returns',
   })
 
   const { data: returnLogData, isLoading: rlLoading, refetch: refetchReturnLogs } = useQuery({
     queryKey: ['return-import-logs'],
-    queryFn: () => api.get('/fulfillment/return-import-logs/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/fulfillment/return-import-logs/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => ({ results: [] })),
     enabled: tab === 'returnLogs',
   })
 
   const { data: shippingLogData, isLoading: slLoading, refetch: refetchShippingLogs } = useQuery({
     queryKey: ['shipping-import-logs'],
-    queryFn: () => api.get('/fulfillment/shipping-import-logs/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/fulfillment/shipping-import-logs/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => ({ results: [] })),
     enabled: tab === 'shippingLogs',
   })
 
@@ -90,6 +91,62 @@ export default function FulfillmentPage() {
   const returnRequests = returnsData?.results ?? (Array.isArray(returnsData) ? returnsData : [])
   const returnImportLogs = returnLogData?.results ?? (Array.isArray(returnLogData) ? returnLogData : [])
   const shippingImportLogs = shippingLogData?.results ?? (Array.isArray(shippingLogData) ? shippingLogData : [])
+
+  const {
+    currentPage: handoffPage,
+    setCurrentPage: setHandoffPage,
+    totalPages: totalHandoffPages,
+    totalItems: totalHandoffs,
+    paginatedItems: paginatedHandoffs,
+  } = usePagination(handoffs, 50)
+
+  const {
+    currentPage: slaPage,
+    setCurrentPage: setSlaPage,
+    totalPages: totalSlaPages,
+    totalItems: totalSlaEvals,
+    paginatedItems: paginatedSlaEvals,
+  } = usePagination(slaEvals, 50)
+
+  const {
+    currentPage: policyPage,
+    setCurrentPage: setPolicyPage,
+    totalPages: totalPolicyPages,
+    totalItems: totalPolicies,
+    paginatedItems: paginatedPolicies,
+  } = usePagination(policies, 50)
+
+  const {
+    currentPage: logPage,
+    setCurrentPage: setLogPage,
+    totalPages: totalLogPages,
+    totalItems: totalExportLogs,
+    paginatedItems: paginatedExportLogs,
+  } = usePagination(exportLogs, 50)
+
+  const {
+    currentPage: returnPage,
+    setCurrentPage: setReturnPage,
+    totalPages: totalReturnPages,
+    totalItems: totalReturnRequests,
+    paginatedItems: paginatedReturnRequests,
+  } = usePagination(returnRequests, 50)
+
+  const {
+    currentPage: returnLogPage,
+    setCurrentPage: setReturnLogPage,
+    totalPages: totalReturnLogPages,
+    totalItems: totalReturnImportLogs,
+    paginatedItems: paginatedReturnImportLogs,
+  } = usePagination(returnImportLogs, 50)
+
+  const {
+    currentPage: shippingLogPage,
+    setCurrentPage: setShippingLogPage,
+    totalPages: totalShippingLogPages,
+    totalItems: totalShippingImportLogs,
+    paginatedItems: paginatedShippingImportLogs,
+  } = usePagination(shippingImportLogs, 50)
 
   const [reexportingId, setReexportingId] = useState<string | null>(null)
   const [selectedLogForReexport, setSelectedLogForReexport] = useState<any | null>(null)
@@ -355,140 +412,171 @@ export default function FulfillmentPage() {
       </div>
 
       {tab === 'handoffs' && (
-        <div className="table-wrap">
-          {hLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : handoffs.length === 0 ? (
-            <div className="empty-state">
-              <Truck size={40} />
-              <div>No fulfillment handoffs</div>
-              <div style={{ fontSize: 12 }}>
-                Handoffs are created when Order Routing hands off a suborder to a vendor
+        <>
+          <div className="table-wrap">
+            {hLoading ? (
+              <div className="loading-overlay"><div className="spinner" /></div>
+            ) : handoffs.length === 0 ? (
+              <div className="empty-state">
+                <Truck size={40} />
+                <div>No fulfillment handoffs</div>
+                <div style={{ fontSize: 12 }}>
+                  Handoffs are created when Order Routing hands off a suborder to a vendor
+                </div>
               </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Handoff ID</th><th>Vendor</th><th>Status</th><th>Created</th><th>Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {handoffs.map((h: any) => (
-                  <tr key={h.id}>
-                    <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }}>
-                      {h.id?.slice(0, 8)}…
-                    </td>
-                    <td className="mono" style={{ fontSize: 11 }}>
-                      {h.vendor_company_reference?.slice(0, 8)}…
-                    </td>
-                    <td>
-                      <span className={`badge ${HANDOFF_STATUS[h.status] ?? 'badge-muted'}`}>{h.status}</span>
-                    </td>
-                    <td>{h.created_at ? new Date(h.created_at).toLocaleDateString() : '—'}</td>
-                    <td>{h.updated_at ? new Date(h.updated_at).toLocaleDateString() : '—'}</td>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Handoff ID</th><th>Vendor</th><th>Status</th><th>Created</th><th>Updated</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {paginatedHandoffs.map((h: any) => (
+                    <tr key={h.id}>
+                      <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }}>
+                        {h.id?.slice(0, 8)}…
+                      </td>
+                      <td className="mono" style={{ fontSize: 11 }}>
+                        {h.vendor_company_reference?.slice(0, 8)}…
+                      </td>
+                      <td>
+                        <span className={`badge ${HANDOFF_STATUS[h.status] ?? 'badge-muted'}`}>{h.status}</span>
+                      </td>
+                      <td>{h.created_at ? new Date(h.created_at).toLocaleDateString() : '—'}</td>
+                      <td>{h.updated_at ? new Date(h.updated_at).toLocaleDateString() : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <Pagination
+            currentPage={handoffPage}
+            totalPages={totalHandoffPages}
+            totalItems={totalHandoffs}
+            pageSize={50}
+            onPageChange={setHandoffPage}
+            itemName="handoffs"
+          />
+        </>
       )}
 
       {tab === 'sla' && (
-        <div className="table-wrap">
-          {sLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : slaEvals.length === 0 ? (
-            <div className="empty-state">
-              <Clock size={40} />
-              <div>No SLA evaluations yet</div>
-              <div style={{ fontSize: 12 }}>
-                SLA evaluations are triggered by confirmed delivery evidence from Order Routing.
-                Records are immutable after creation.
+        <>
+          <div className="table-wrap">
+            {sLoading ? (
+              <div className="loading-overlay"><div className="spinner" /></div>
+            ) : slaEvals.length === 0 ? (
+              <div className="empty-state">
+                <Clock size={40} />
+                <div>No SLA evaluations yet</div>
+                <div style={{ fontSize: 12 }}>
+                  SLA evaluations are triggered by confirmed delivery evidence from Order Routing.
+                  Records are immutable after creation.
+                </div>
               </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Evaluation ID</th><th>Outcome</th><th>Expected Response By</th>
-                  <th>Import Received</th><th>Evaluated At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {slaEvals.map((e: any) => (
-                  <tr key={e.id}>
-                    <td className="mono" style={{ color: 'var(--text-primary)', fontSize: 11 }}>
-                      {e.id?.slice(0, 8)}…
-                    </td>
-                    <td>
-                      <span className={`badge ${SLA_OUTCOME[e.outcome] ?? 'badge-muted'}`}>{e.outcome}</span>
-                    </td>
-                    <td>{e.expected_response_by ? new Date(e.expected_response_by).toLocaleString() : '—'}</td>
-                    <td>
-                      {e.fulfillment_import_received_timestamp
-                        ? new Date(e.fulfillment_import_received_timestamp).toLocaleString()
-                        : <span className="badge badge-muted">Not received</span>}
-                    </td>
-                    <td>
-                      {e.evaluated_at
-                        ? new Date(e.evaluated_at).toLocaleString()
-                        : <span className="badge badge-amber">Pending</span>}
-                    </td>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Evaluation ID</th><th>Outcome</th><th>Expected Response By</th>
+                    <th>Import Received</th><th>Evaluated At</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {paginatedSlaEvals.map((e: any) => (
+                    <tr key={e.id}>
+                      <td className="mono" style={{ color: 'var(--text-primary)', fontSize: 11 }}>
+                        {e.id?.slice(0, 8)}…
+                      </td>
+                      <td>
+                        <span className={`badge ${SLA_OUTCOME[e.outcome] ?? 'badge-muted'}`}>{e.outcome}</span>
+                      </td>
+                      <td>{e.expected_response_by ? new Date(e.expected_response_by).toLocaleString() : '—'}</td>
+                      <td>
+                        {e.fulfillment_import_received_timestamp
+                          ? new Date(e.fulfillment_import_received_timestamp).toLocaleString()
+                          : <span className="badge badge-muted">Not received</span>}
+                      </td>
+                      <td>
+                        {e.evaluated_at
+                          ? new Date(e.evaluated_at).toLocaleString()
+                          : <span className="badge badge-amber">Pending</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <Pagination
+            currentPage={slaPage}
+            totalPages={totalSlaPages}
+            totalItems={totalSlaEvals}
+            pageSize={50}
+            onPageChange={setSlaPage}
+            itemName="evaluations"
+          />
+        </>
       )}
 
       {tab === 'policies' && (
-        <div className="table-wrap">
-          {pLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : policies.length === 0 ? (
-            <div className="empty-state">
-              <ShieldAlert size={40} />
-              <div>No SLA policies defined</div>
-              <div style={{ fontSize: 12 }}>
-                Configure per-vendor SLA response windows and partial fulfillment thresholds
+        <>
+          <div className="table-wrap">
+            {pLoading ? (
+              <div className="loading-overlay"><div className="spinner" /></div>
+            ) : policies.length === 0 ? (
+              <div className="empty-state">
+                <ShieldAlert size={40} />
+                <div>No SLA policies defined</div>
+                <div style={{ fontSize: 12 }}>
+                  Configure per-vendor SLA response windows and partial fulfillment thresholds
+                </div>
               </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Policy ID</th><th>Vendor</th><th>Status</th>
-                  <th>Response Window</th><th>Partial Threshold</th><th>Effective From</th>
-                </tr>
-              </thead>
-              <tbody>
-                {policies.map((p: any) => (
-                  <tr key={p.id}>
-                    <td className="mono" style={{ color: 'var(--text-primary)', fontSize: 11 }}>
-                      {p.id?.slice(0, 8)}…
-                    </td>
-                    <td className="mono" style={{ fontSize: 11 }}>
-                      {p.vendor_company_reference?.slice(0, 8)}…
-                    </td>
-                    <td>
-                      <span className={`badge ${POLICY_STATUS[p.status] ?? 'badge-muted'}`}>{p.status}</span>
-                    </td>
-                    <td>{p.response_window_hours != null ? `${p.response_window_hours}h` : '—'}</td>
-                    <td>{p.partial_threshold_percent != null ? `${p.partial_threshold_percent}%` : '—'}</td>
-                    <td>{p.effective_from ? new Date(p.effective_from).toLocaleDateString() : '—'}</td>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Policy ID</th><th>Vendor</th><th>Status</th>
+                    <th>Response Window</th><th>Partial Threshold</th><th>Effective From</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {paginatedPolicies.map((p: any) => (
+                    <tr key={p.id}>
+                      <td className="mono" style={{ color: 'var(--text-primary)', fontSize: 11 }}>
+                        {p.id?.slice(0, 8)}…
+                      </td>
+                      <td className="mono" style={{ fontSize: 11 }}>
+                        {p.vendor_company_reference?.slice(0, 8)}…
+                      </td>
+                      <td>
+                        <span className={`badge ${POLICY_STATUS[p.status] ?? 'badge-muted'}`}>{p.status}</span>
+                      </td>
+                      <td>{p.response_window_hours != null ? `${p.response_window_hours}h` : '—'}</td>
+                      <td>{p.partial_threshold_percent != null ? `${p.partial_threshold_percent}%` : '—'}</td>
+                      <td>{p.effective_from ? new Date(p.effective_from).toLocaleDateString() : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <Pagination
+            currentPage={policyPage}
+            totalPages={totalPolicyPages}
+            totalItems={totalPolicies}
+            pageSize={50}
+            onPageChange={setPolicyPage}
+            itemName="policies"
+          />
+        </>
       )}
 
       {tab === 'exportLogs' && (
-        <div className="table-wrap">
+        <>
+          <div className="table-wrap">
           {lLoading ? (
             <div className="loading-overlay"><div className="spinner" /></div>
           ) : exportLogs.length === 0 ? (
@@ -518,7 +606,7 @@ export default function FulfillmentPage() {
                 </tr>
               </thead>
               <tbody>
-                {exportLogs.map((log: any) => (
+                {paginatedExportLogs.map((log: any) => (
                   <Fragment key={log.id}>
                     <tr>
                       <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }} title={log.audit_reference}>
@@ -722,168 +810,207 @@ export default function FulfillmentPage() {
             </table>
           )}
         </div>
+          <Pagination
+            currentPage={logPage}
+            totalPages={totalLogPages}
+            totalItems={totalExportLogs}
+            pageSize={50}
+            onPageChange={setLogPage}
+            itemName="export logs"
+          />
+        </>
       )}
 
       {tab === 'returns' && (
-        <div className="table-wrap">
-          {rLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : returnRequests.length === 0 ? (
-            <div className="empty-state">
-              <FileText size={40} />
-              <div>No return requests found</div>
-              <div style={{ fontSize: 12 }}>
-                Return requests appear when buyers initiate vendor returns.
+        <>
+          <div className="table-wrap">
+            {rLoading ? (
+              <div className="loading-overlay"><div className="spinner" /></div>
+            ) : returnRequests.length === 0 ? (
+              <div className="empty-state">
+                <FileText size={40} />
+                <div>No return requests found</div>
+                <div style={{ fontSize: 12 }}>
+                  Return requests appear when buyers initiate vendor returns.
+                </div>
               </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>RAN</th>
-                  <th>Suborder ID</th>
-                  <th>SKU</th>
-                  <th>UPC</th>
-                  <th>Qty</th>
-                  <th>Wholesale Price</th>
-                  <th>Status</th>
-                  <th>Received Date</th>
-                  <th>Refunded Amount</th>
-                  <th>Rejection Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {returnRequests.map((req: any) => {
-                  const subRefStr = req.suborder_reference ? String(req.suborder_reference) : ''
-                  const subRefDisplay = subRefStr ? `${subRefStr.slice(0, 8)}…` : '—'
-                  const rawStatus = req.status ? String(req.status) : 'return_sent_to_vendor'
-                  const statusDisplay = rawStatus.replace(/^return_/, '').replace(/_/g, ' ')
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>RAN</th>
+                    <th>Suborder ID</th>
+                    <th>SKU</th>
+                    <th>UPC</th>
+                    <th>Qty</th>
+                    <th>Wholesale Price</th>
+                    <th>Status</th>
+                    <th>Received Date</th>
+                    <th>Refunded Amount</th>
+                    <th>Rejection Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedReturnRequests.map((req: any) => {
+                    const subRefStr = req.suborder_reference ? String(req.suborder_reference) : ''
+                    const subRefDisplay = subRefStr ? `${subRefStr.slice(0, 8)}…` : '—'
+                    const rawStatus = req.status ? String(req.status) : 'return_sent_to_vendor'
+                    const statusDisplay = rawStatus.replace(/^return_/, '').replace(/_/g, ' ')
 
-                  return (
-                    <tr key={req.id || Math.random()}>
-                      <td className="mono" style={{ color: 'var(--accent)', fontWeight: 500, fontSize: 11 }}>
-                        {req.ran || '—'}
-                      </td>
-                      <td className="mono" style={{ fontSize: 11 }}>
-                        {subRefDisplay}
-                      </td>
-                      <td className="mono" style={{ fontSize: 11 }}>
-                        {req.sku || '—'}
-                      </td>
-                      <td className="mono" style={{ fontSize: 11 }}>
-                        {req.upc || '—'}
-                      </td>
-                      <td>{req.return_quantity ?? req.quantity ?? 1}</td>
-                      <td>{req.vendor_wholesale_price != null ? `$${parseFloat(req.vendor_wholesale_price).toFixed(2)}` : '—'}</td>
-                      <td>
-                        <span className={`badge ${RETURN_STATUS_COLORS[rawStatus] ?? 'badge-muted'}`}>
-                          {statusDisplay}
-                        </span>
-                      </td>
-                      <td>{req.return_received_date ? new Date(req.return_received_date).toLocaleDateString() : '—'}</td>
-                      <td>{req.return_refunded_amount != null ? `$${parseFloat(req.return_refunded_amount).toFixed(2)}` : '—'}</td>
-                      <td style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={req.rejected_reason}>
-                        {req.rejected_reason || '—'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+                    return (
+                      <tr key={req.id || Math.random()}>
+                        <td className="mono" style={{ color: 'var(--accent)', fontWeight: 500, fontSize: 11 }}>
+                          {req.ran || '—'}
+                        </td>
+                        <td className="mono" style={{ fontSize: 11 }}>
+                          {subRefDisplay}
+                        </td>
+                        <td className="mono" style={{ fontSize: 11 }}>
+                          {req.sku || '—'}
+                        </td>
+                        <td className="mono" style={{ fontSize: 11 }}>
+                          {req.upc || '—'}
+                        </td>
+                        <td>{req.return_quantity ?? req.quantity ?? 1}</td>
+                        <td>{req.vendor_wholesale_price != null ? `$${parseFloat(req.vendor_wholesale_price).toFixed(2)}` : '—'}</td>
+                        <td>
+                          <span className={`badge ${RETURN_STATUS_COLORS[rawStatus] ?? 'badge-muted'}`}>
+                            {statusDisplay}
+                          </span>
+                        </td>
+                        <td>{req.return_received_date ? new Date(req.return_received_date).toLocaleDateString() : '—'}</td>
+                        <td>{req.return_refunded_amount != null ? `$${parseFloat(req.return_refunded_amount).toFixed(2)}` : '—'}</td>
+                        <td style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={req.rejected_reason}>
+                          {req.rejected_reason || '—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <Pagination
+            currentPage={returnPage}
+            totalPages={totalReturnPages}
+            totalItems={totalReturnRequests}
+            pageSize={50}
+            onPageChange={setReturnPage}
+            itemName="return requests"
+          />
+        </>
       )}
 
       {tab === 'returnLogs' && (
-        <div className="table-wrap">
-          {rlLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : returnImportLogs.length === 0 ? (
-            <div className="empty-state">
-              <Truck size={40} />
-              <div>No return import logs yet</div>
-              <div style={{ fontSize: 12 }}>
-                Logs will appear when return CSV files are imported.
+        <>
+          <div className="table-wrap">
+            {rlLoading ? (
+              <div className="loading-overlay"><div className="spinner" /></div>
+            ) : returnImportLogs.length === 0 ? (
+              <div className="empty-state">
+                <Truck size={40} />
+                <div>No return import logs yet</div>
+                <div style={{ fontSize: 12 }}>
+                  Logs will appear when return CSV files are imported.
+                </div>
               </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Audit Ref</th>
-                  <th>Uploaded At</th>
-                  <th>Filename</th>
-                  <th>Applied</th>
-                  <th>Skipped</th>
-                  <th>Review Req</th>
-                  <th>Rejected</th>
-                </tr>
-              </thead>
-              <tbody>
-                {returnImportLogs.map((log: any) => (
-                  <tr key={log.id}>
-                    <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }} title={log.audit_reference}>
-                      {log.audit_reference?.slice(0, 8)}…
-                    </td>
-                    <td>{log.uploaded_at ? new Date(log.uploaded_at).toLocaleString() : '—'}</td>
-                    <td style={{ fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.csv_filename}>
-                      {log.csv_filename || '—'}
-                    </td>
-                    <td><span className="badge badge-green">{log.rows_applied}</span></td>
-                    <td><span className="badge badge-muted">{log.rows_skipped}</span></td>
-                    <td><span className="badge badge-amber">{log.rows_review_required}</span></td>
-                    <td><span className="badge badge-red">{log.rows_rejected}</span></td>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Audit Ref</th>
+                    <th>Uploaded At</th>
+                    <th>Filename</th>
+                    <th>Applied</th>
+                    <th>Skipped</th>
+                    <th>Review Req</th>
+                    <th>Rejected</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {paginatedReturnImportLogs.map((log: any) => (
+                    <tr key={log.id}>
+                      <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }} title={log.audit_reference}>
+                        {log.audit_reference?.slice(0, 8)}…
+                      </td>
+                      <td>{log.uploaded_at ? new Date(log.uploaded_at).toLocaleString() : '—'}</td>
+                      <td style={{ fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.csv_filename}>
+                        {log.csv_filename || '—'}
+                      </td>
+                      <td><span className="badge badge-green">{log.rows_applied}</span></td>
+                      <td><span className="badge badge-muted">{log.rows_skipped}</span></td>
+                      <td><span className="badge badge-amber">{log.rows_review_required}</span></td>
+                      <td><span className="badge badge-red">{log.rows_rejected}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <Pagination
+            currentPage={returnLogPage}
+            totalPages={totalReturnLogPages}
+            totalItems={totalReturnImportLogs}
+            pageSize={50}
+            onPageChange={setReturnLogPage}
+            itemName="import logs"
+          />
+        </>
       )}
 
       {tab === 'shippingLogs' && (
-        <div className="table-wrap">
-          {slLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : shippingImportLogs.length === 0 ? (
-            <div className="empty-state">
-              <Truck size={40} />
-              <div>No shipping import logs yet</div>
-              <div style={{ fontSize: 12 }}>
-                Logs will appear when shipping CSV files are imported.
+        <>
+          <div className="table-wrap">
+            {slLoading ? (
+              <div className="loading-overlay"><div className="spinner" /></div>
+            ) : shippingImportLogs.length === 0 ? (
+              <div className="empty-state">
+                <Truck size={40} />
+                <div>No shipping import logs yet</div>
+                <div style={{ fontSize: 12 }}>
+                  Logs will appear when shipping CSV files are imported.
+                </div>
               </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Audit Ref</th>
-                  <th>Uploaded At</th>
-                  <th>Filename</th>
-                  <th>Applied</th>
-                  <th>Skipped</th>
-                  <th>Rejected</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shippingImportLogs.map((log: any) => (
-                  <tr key={log.id}>
-                    <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }} title={log.audit_reference}>
-                      {log.audit_reference?.slice(0, 8)}…
-                    </td>
-                    <td>{log.uploaded_at ? new Date(log.uploaded_at).toLocaleString() : '—'}</td>
-                    <td style={{ fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.csv_filename}>
-                      {log.csv_filename || '—'}
-                    </td>
-                    <td><span className="badge badge-green">{log.rows_applied}</span></td>
-                    <td><span className="badge badge-muted">{log.rows_skipped}</span></td>
-                    <td><span className="badge badge-red">{log.rows_rejected}</span></td>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Audit Ref</th>
+                    <th>Uploaded At</th>
+                    <th>Filename</th>
+                    <th>Applied</th>
+                    <th>Skipped</th>
+                    <th>Rejected</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {paginatedShippingImportLogs.map((log: any) => (
+                    <tr key={log.id}>
+                      <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }} title={log.audit_reference}>
+                        {log.audit_reference?.slice(0, 8)}…
+                      </td>
+                      <td>{log.uploaded_at ? new Date(log.uploaded_at).toLocaleString() : '—'}</td>
+                      <td style={{ fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.csv_filename}>
+                        {log.csv_filename || '—'}
+                      </td>
+                      <td><span className="badge badge-green">{log.rows_applied}</span></td>
+                      <td><span className="badge badge-muted">{log.rows_skipped}</span></td>
+                      <td><span className="badge badge-red">{log.rows_rejected}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <Pagination
+            currentPage={shippingLogPage}
+            totalPages={totalShippingLogPages}
+            totalItems={totalShippingImportLogs}
+            pageSize={50}
+            onPageChange={setShippingLogPage}
+            itemName="import logs"
+          />
+        </>
       )}
 
       {/* Import Shipping Modal */}

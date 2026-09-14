@@ -202,6 +202,18 @@ class ProductListSerializer(ProductSerializerBase):
             return obj.media_references[0]
         return None
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        wc = ret.get("wireless_charging_compatibility")
+        if wc:
+            import re
+            parts = [p.strip() for p in re.split(r'[\+,;]', wc) if p.strip()]
+            case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
+            norm = [case_map.get(p.lower(), p) for p in parts]
+            if norm:
+                ret["wireless_charging_compatibility"] = "+".join(norm)
+        return ret
+
 
 class ProductDetailSerializer(ProductSerializerBase):
     primary_image_url = serializers.SerializerMethodField()
@@ -325,16 +337,28 @@ class ProductDetailSerializer(ProductSerializerBase):
                         raise serializers.ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
 
                 elif f == "wireless_charging_compatibility":
-                    w_vals = [w.strip() for w in val.split('+') if w.strip()]
+                    import re
+                    w_vals = [w.strip() for w in re.split(r'[\+,;]', val) if w.strip()]
                     if not w_vals:
                         raise serializers.ValidationError({f: "Wireless Charging Compatibility is required."})
-                    if 'Not Compatible' in w_vals and len(w_vals) > 1:
-                        raise serializers.ValidationError({f: "Not Compatible cannot be selected with any other value."})
+                    normalized = []
                     for w in w_vals:
-                        if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                        wl = w.lower()
+                        if wl == "magsafe":
+                            normalized.append("MagSafe")
+                        elif wl == "qi":
+                            normalized.append("Qi")
+                        elif wl == "qi2":
+                            normalized.append("Qi2")
+                        elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
+                            normalized.append("Not Compatible")
+                        else:
                             raise serializers.ValidationError({f: f"Invalid Wireless Charging value '{w}'."})
-                    if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
+                    if 'Not Compatible' in normalized and len(normalized) > 1:
+                        raise serializers.ValidationError({f: "Not Compatible cannot be selected with any other value."})
+                    if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
                         raise serializers.ValidationError({f: "Qi cannot be selected with MagSafe or Qi2."})
+                    attrs[f] = "+".join(normalized)
 
                 elif f == "storage_expansion_compatibility":
                     if val not in ["Not Compatible", "microSDXC", "microSDHC"]:
@@ -2278,13 +2302,24 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
                         comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
                     if row_wireless:
-                        w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                        if 'Not Compatible' in w_vals and len(w_vals) > 1:
-                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                        import re
+                        w_vals = [w.strip() for w in re.split(r'[\+,;]', row_wireless) if w.strip()]
+                        normalized = []
                         for w in w_vals:
-                            if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                            wl = w.lower()
+                            if wl == "magsafe":
+                                normalized.append("MagSafe")
+                            elif wl == "qi":
+                                normalized.append("Qi")
+                            elif wl == "qi2":
+                                normalized.append("Qi2")
+                            elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
+                                normalized.append("Not Compatible")
+                            else:
                                 comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
-                        if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
+                        if 'Not Compatible' in normalized and len(normalized) > 1:
+                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                        if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
                             comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
 
                 elif product_category == "Memory":
@@ -2319,13 +2354,24 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
                         comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
                     if row_wireless:
-                        w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                        if 'Not Compatible' in w_vals and len(w_vals) > 1:
-                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                        import re
+                        w_vals = [w.strip() for w in re.split(r'[\+,;]', row_wireless) if w.strip()]
+                        normalized = []
                         for w in w_vals:
-                            if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                            wl = w.lower()
+                            if wl == "magsafe":
+                                normalized.append("MagSafe")
+                            elif wl == "qi":
+                                normalized.append("Qi")
+                            elif wl == "qi2":
+                                normalized.append("Qi2")
+                            elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
+                                normalized.append("Not Compatible")
+                            else:
                                 comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
-                        if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
+                        if 'Not Compatible' in normalized and len(normalized) > 1:
+                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                        if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
                             comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
 
                 elif product_category == "Watch Accessories":
@@ -2334,13 +2380,24 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     if row_watch_size and row_watch_size not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
                         comp_errors.append(f"Invalid Compatible Watch Case Size '{row_watch_size}'.")
                     if row_wireless:
-                        w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                        if 'Not Compatible' in w_vals and len(w_vals) > 1:
-                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                        import re
+                        w_vals = [w.strip() for w in re.split(r'[\+,;]', row_wireless) if w.strip()]
+                        normalized = []
                         for w in w_vals:
-                            if w not in ['Not Compatible', 'MagSafe', 'Qi', 'Qi2']:
+                            wl = w.lower()
+                            if wl == "magsafe":
+                                normalized.append("MagSafe")
+                            elif wl == "qi":
+                                normalized.append("Qi")
+                            elif wl == "qi2":
+                                normalized.append("Qi2")
+                            elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
+                                normalized.append("Not Compatible")
+                            else:
                                 comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
-                        if 'Qi' in w_vals and ('MagSafe' in w_vals or 'Qi2' in w_vals):
+                        if 'Not Compatible' in normalized and len(normalized) > 1:
+                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
+                        if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
                             comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
 
                 if comp_errors:
@@ -2613,13 +2670,23 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
                 # 1. Wireless Charging Compatibility
                 rule = cat_rules.get("wireless_charging_compatibility", {})
-                mode = rule.get("mode", "hidden")
+                default_mode = "optional" if (product_category in ["Chargers and Cables", "Chargers & Cables", "Wearable Tech", "Watch Accessories"] or row_wireless) else "hidden"
+                mode = rule.get("mode", default_mode)
                 w_val = None
                 if row_wireless:
-                    w_vals = [w.strip() for w in row_wireless.replace(";", "+").split("+") if w.strip()]
-                    case_map_exact = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
-                    parsed_w = "+".join(case_map_exact[w.lower()] for w in w_vals if w.lower() in case_map_exact)
-                    w_val = parsed_w if parsed_w else "Not Compatible"
+                    import re
+                    w_vals = [w.strip() for w in re.split(r'[\+,;]', row_wireless) if w.strip()]
+                    case_map_exact = {
+                        "magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2",
+                        "not compatible": "Not Compatible", "not_compatible": "Not Compatible",
+                        "none": "Not Compatible", "n/a": "Not Compatible"
+                    }
+                    normalized_w = []
+                    for w in w_vals:
+                        target = case_map_exact.get(w.lower())
+                        if target and target not in normalized_w:
+                            normalized_w.append(target)
+                    w_val = "+".join(normalized_w) if normalized_w else "Not Compatible"
                 else:
                     name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
                     w_found = []

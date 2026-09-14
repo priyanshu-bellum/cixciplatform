@@ -4,12 +4,13 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Smartphone, ChevronRight, Check, Trash2, X, AlertCircle, Download, Settings } from 'lucide-react'
 import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
+import Pagination, { usePagination } from '../components/Pagination'
 
 const LC_COLORS: Record<string, string> = {
   available: 'badge-green',
-  inactive: 'badge-muted',
-  archived: 'badge-amber',
   launching: 'badge-amber',
+  inactive: 'badge-muted',
+  eol: 'badge-red',
 }
 
 const formatDate = (dateStr: string) => {
@@ -157,6 +158,27 @@ function parseApiError(err: any, fallback: string = 'An error occurred'): string
   }
 
   return fallback
+}
+
+export function parseWirelessCharging(val: string | null | undefined): string[] {
+  if (!val) return []
+  const parts = val.split(/[\+,;\/]+/).map(s => s.trim()).filter(Boolean)
+  const result: string[] = []
+  for (const p of parts) {
+    const pl = p.toLowerCase()
+    if (pl === 'magsafe') {
+      if (!result.includes('MagSafe')) result.push('MagSafe')
+    } else if (pl === 'qi2') {
+      if (!result.includes('Qi2')) result.push('Qi2')
+    } else if (pl === 'qi') {
+      if (!result.includes('Qi')) result.push('Qi')
+    } else if (pl === 'not compatible' || pl === 'not_compatible' || pl === 'none' || pl === 'n/a') {
+      if (!result.includes('Not Compatible')) result.push('Not Compatible')
+    } else if (p && !result.includes(p)) {
+      result.push(p)
+    }
+  }
+  return result
 }
 
 export default function DevicesPage() {
@@ -386,6 +408,7 @@ export default function DevicesPage() {
         manufacturer: filterManufacturer || undefined,
         device_type: filterType || undefined,
         lifecycle_status: filterStatus || undefined,
+        paginate: 'false',
       }
     }).then(r => r.data),
   })
@@ -406,7 +429,7 @@ export default function DevicesPage() {
     queryFn: () => api.get('/devices/types/', { params: { limit: 100 } }).then(r => r.data),
   })
 
-  const devices = data?.results ?? data ?? []
+  const devices = data?.results ?? (Array.isArray(data) ? data : [])
   const myDevices = portfolio ?? []
 
   const filteredMyDevices = useMemo(() => {
@@ -428,6 +451,31 @@ export default function DevicesPage() {
     }
     return list
   }, [portfolio, portfolioSearch, portfolioMfg, portfolioType])
+
+  const {
+    currentPage: devicePage,
+    setCurrentPage: setDevicePage,
+    totalPages: totalDevicePages,
+    totalItems: totalDevices,
+    paginatedItems: paginatedDevices,
+  } = usePagination(devices, 50)
+
+  useEffect(() => {
+    setDevicePage(1)
+  }, [search, filterManufacturer, filterType, filterStatus, setDevicePage])
+
+  const {
+    currentPage: portfolioPage,
+    setCurrentPage: setPortfolioPage,
+    totalPages: totalPortfolioPages,
+    totalItems: totalPortfolioDevices,
+    paginatedItems: paginatedMyDevices,
+  } = usePagination(filteredMyDevices, 50)
+
+  useEffect(() => {
+    setPortfolioPage(1)
+  }, [portfolioSearch, portfolioMfg, portfolioType, setPortfolioPage])
+
   const manufacturers = manufacturersData?.results ?? manufacturersData ?? []
   const deviceTypes = typesData?.results ?? typesData ?? []
 
@@ -563,7 +611,7 @@ export default function DevicesPage() {
     setEditMaxStorage(d.maximum_supported_storage || 'Not Compatible')
     setEditHeadphone(d.headphone_jack_compatibility || 'Not Compatible')
     setEditBluetooth(d.bluetooth_compatibility || 'Yes')
-    setEditWireless(d.wireless_charging_compatibility ? d.wireless_charging_compatibility.split('+') : [])
+    setEditWireless(parseWirelessCharging(d.wireless_charging_compatibility))
     setEditWatchCase(d.compatible_watch_case_size || 'Not Compatible')
     setEditError('')
     setSelectedDeviceIdForAudit(d.id)
@@ -1209,7 +1257,7 @@ export default function DevicesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {devices.map((d: any) => {
+                  {paginatedDevices.map((d: any) => {
                     const inPortfolio = portfolioDeviceIds.has(d.id)
                     return (
                       <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => handleRowClick(d)}>
@@ -1218,11 +1266,11 @@ export default function DevicesPage() {
                         <td>{d.device_type_name ?? d.device_type}</td>
                         <td>
                           {(() => {
-                            const isLaunching = d.lifecycle_status === 'inactive' && d.launch_date && new Date(d.launch_date) > new Date();
+                            const isLaunching = d.lifecycle_status === 'launching' || (d.lifecycle_status === 'inactive' && d.launch_date && new Date(d.launch_date) > new Date());
                             const displayStatus = isLaunching ? 'launching' : d.lifecycle_status;
                             return (
                               <span className={`badge ${LC_COLORS[displayStatus] ?? 'badge-muted'}`}>
-                                {displayStatus}
+                                {displayStatus === 'eol' ? 'EOL' : displayStatus}
                               </span>
                             );
                           })()}
@@ -1248,6 +1296,14 @@ export default function DevicesPage() {
               </table>
             )}
           </div>
+          <Pagination
+            currentPage={devicePage}
+            totalPages={totalDevicePages}
+            totalItems={totalDevices}
+            pageSize={50}
+            onPageChange={setDevicePage}
+            itemName="devices"
+          />
         </>
       )}
 
@@ -1314,7 +1370,7 @@ export default function DevicesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredMyDevices.map((ref: any) => (
+                  {paginatedMyDevices.map((ref: any) => (
                     <tr key={ref.id}>
                       <td 
                         style={{ 
@@ -1334,11 +1390,11 @@ export default function DevicesPage() {
                       <td>{ref.device_type ?? '—'}</td>
                       <td>
                         {(() => {
-                          const isLaunching = ref.device_status === 'inactive' && ref.device_launch_date && new Date(ref.device_launch_date) > new Date();
+                          const isLaunching = ref.device_status === 'launching' || (ref.device_status === 'inactive' && ref.device_launch_date && new Date(ref.device_launch_date) > new Date());
                           const displayStatus = isLaunching ? 'launching' : ref.device_status;
                           return (
                             <span className={`badge ${LC_COLORS[displayStatus] ?? 'badge-muted'}`}>
-                              {displayStatus || 'available'}
+                              {displayStatus === 'eol' ? 'EOL' : (displayStatus || 'available')}
                             </span>
                           );
                         })()}
@@ -1371,6 +1427,14 @@ export default function DevicesPage() {
               </table>
             )}
           </div>
+          <Pagination
+            currentPage={portfolioPage}
+            totalPages={totalPortfolioPages}
+            totalItems={totalPortfolioDevices}
+            pageSize={50}
+            onPageChange={setPortfolioPage}
+            itemName="devices"
+          />
         </>
       )}
 
@@ -2165,14 +2229,16 @@ export default function DevicesPage() {
                           onChange={e => setEditStatus(e.target.value)}
                         >
                           <option value="available">Available</option>
+                          <option value="launching">Launching</option>
                           <option value="inactive">Inactive</option>
-                          <option value="archived">Archived</option>
+                          <option value="eol">EOL</option>
                         </select>
                       ) : (
                         <div className="input-read-only">
                           {(() => {
-                            const isLaunching = editingDevice.lifecycle_status === 'inactive' && editingDevice.launch_date && new Date(editingDevice.launch_date) > new Date();
-                            return isLaunching ? 'launching' : editingDevice.lifecycle_status;
+                            const isLaunching = editingDevice.lifecycle_status === 'launching' || (editingDevice.lifecycle_status === 'inactive' && editingDevice.launch_date && new Date(editingDevice.launch_date) > new Date());
+                            const display = isLaunching ? 'launching' : editingDevice.lifecycle_status;
+                            return display === 'eol' ? 'EOL' : display;
                           })()}
                         </div>
                       )}
@@ -2472,7 +2538,7 @@ export default function DevicesPage() {
                     {(selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
                       <div className="form-group form-grid-full">
                         <label className="label">Wireless Charging Compatibility</label>
-                        <div className="input-read-only">{editingDevice.wireless_charging_compatibility?.replace(/\+/g, ', ') || 'Not Compatible'}</div>
+                        <div className="input-read-only">{parseWirelessCharging(editingDevice.wireless_charging_compatibility).join(', ') || 'Not Compatible'}</div>
                       </div>
                     )}
 
@@ -2508,8 +2574,8 @@ export default function DevicesPage() {
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
                       Compatible Products — {editingDevice.manufacturer_name || editingDevice.manufacturer} {editingDevice.name}
                     </div>
-                    <span className={`badge ${LC_COLORS[editingDevice.lifecycle_status] || 'badge-muted'}`} style={{ textTransform: 'capitalize' }}>
-                      Device Status: {editingDevice.lifecycle_status}
+                    <span className={`badge ${LC_COLORS[editingDevice.lifecycle_status] || 'badge-muted'}`} style={{ textTransform: editingDevice.lifecycle_status === 'eol' ? 'uppercase' : 'capitalize' }}>
+                      Device Status: {editingDevice.lifecycle_status === 'eol' ? 'EOL' : editingDevice.lifecycle_status}
                     </span>
                   </div>
 

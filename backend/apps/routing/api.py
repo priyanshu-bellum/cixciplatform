@@ -297,14 +297,17 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = Order.objects.all()
-        if not user.is_cixci_admin and user.entity:
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if not is_admin and user.entity:
             company = user.entity.company
             if company and company.company_type == "vendor":
-                qs = qs.filter(routed_suborders__vendor_company_reference=company.id)
+                qs = qs.filter(routed_suborders__vendor_company_reference=company.id).distinct()
             else:
                 qs = qs.filter(
                     buyer_reference=user.id,
-                    company_scope_reference=company.id,
+                    company_scope_reference=company.id if company else None,
                 )
         return qs
 
@@ -328,7 +331,10 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
         lines = PurchaseOrderLine.objects.filter(purchase_order_id=order.id)
         
         user = self.request.user
-        if not user.is_cixci_admin and user.entity:
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if not is_admin and user.entity:
             company = user.entity.company
             if company.company_type == "vendor":
                 lines = lines.filter(product_reference__in=
@@ -1206,7 +1212,10 @@ class VendorOrderExportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSe
     def get_queryset(self):
         user = self.request.user
         qs = VendorOrderExportLog.objects.all()
-        if not getattr(user, "is_cixci_admin", False):
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if not is_admin:
             company = getattr(user, "company", None) or (user.entity.company if getattr(user, "entity", None) else None)
             if company:
                 if company.company_type == "vendor":

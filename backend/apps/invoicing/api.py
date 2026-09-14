@@ -7,6 +7,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from apps.tenant.mixins import CheckAccessMixin
+from django.db.models import Q
 from .models import (
     InvoiceRun, InvoicePeriod, Invoice, InvoiceLine, InvoiceAdjustment,
     InvoiceExceptionRecord, InvoiceReport,
@@ -39,17 +40,40 @@ class InvoicePeriodSerializer(serializers.ModelSerializer):
 
 
 class InvoiceListSerializer(serializers.ModelSerializer):
+    counterparty_name = serializers.SerializerMethodField()
+    company_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Invoice
         fields = [
             "id", "invoice_type", "status",
-            "counterparty_role", "counterparty_reference",
+            "counterparty_role", "counterparty_reference", "counterparty_name",
+            "company_scope_reference", "company_name",
             "grand_total", "currency", "issued_at", "created_at",
         ]
         read_only_fields = ["id", "created_at"]
 
+    def get_counterparty_name(self, obj):
+        try:
+            from apps.tenant.models import Company
+            c = Company.objects.filter(id=obj.counterparty_reference).first()
+            return c.name if c else str(obj.counterparty_reference)[:8]
+        except Exception:
+            return str(obj.counterparty_reference)[:8]
+
+    def get_company_name(self, obj):
+        try:
+            from apps.tenant.models import Company
+            c = Company.objects.filter(id=obj.company_scope_reference).first()
+            return c.name if c else str(obj.company_scope_reference)[:8]
+        except Exception:
+            return str(obj.company_scope_reference)[:8]
+
 
 class InvoiceDetailSerializer(serializers.ModelSerializer):
+    counterparty_name = serializers.SerializerMethodField()
+    company_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Invoice
         fields = "__all__"
@@ -57,6 +81,22 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             "id", "created_at", "updated_at",
             "quickbooks_payment_status_reference", "auto_payment_submitted",
         ]
+
+    def get_counterparty_name(self, obj):
+        try:
+            from apps.tenant.models import Company
+            c = Company.objects.filter(id=obj.counterparty_reference).first()
+            return c.name if c else str(obj.counterparty_reference)[:8]
+        except Exception:
+            return str(obj.counterparty_reference)[:8]
+
+    def get_company_name(self, obj):
+        try:
+            from apps.tenant.models import Company
+            c = Company.objects.filter(id=obj.company_scope_reference).first()
+            return c.name if c else str(obj.company_scope_reference)[:8]
+        except Exception:
+            return str(obj.company_scope_reference)[:8]
 
 
 class InvoiceLineSerializer(serializers.ModelSerializer):
@@ -121,6 +161,18 @@ class InvoiceRunViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["status", "company_scope_reference"]
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = InvoiceRun.objects.all()
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if is_admin:
+            return qs
+        if hasattr(user, "entity") and user.entity and user.entity.company:
+            return qs.filter(company_scope_reference=user.entity.company.id)
+        return qs
+
 
 class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = Invoice.objects.select_related("run", "period")
@@ -134,6 +186,7 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "lines": "invoicing.invoice.read",
         "adjustments": "invoicing.invoice.read",
         "reconciliation": "invoicing.reconciliation.read",
+        "issue": "invoicing.invoice.issue",
     }
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = [
@@ -141,6 +194,19 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "company_scope_reference",
     ]
     ordering = ["-created_at"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Invoice.objects.select_related("run", "period")
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if is_admin:
+            return qs
+        if hasattr(user, "entity") and user.entity and user.entity.company:
+            cid = user.entity.company.id
+            return qs.filter(Q(company_scope_reference=cid) | Q(counterparty_reference=cid))
+        return qs
 
     def get_serializer_class(self):
         return InvoiceDetailSerializer if self.action == "retrieve" else InvoiceListSerializer

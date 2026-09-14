@@ -62,7 +62,10 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
     )
 
     # ── 1. CIXCI System Admin ─────────────────────────────────────────────────
-    if getattr(user, "is_cixci_admin", False) and getattr(user, "is_active", False):
+    is_admin = getattr(user, "is_cixci_admin", False) or (
+        getattr(user, "company", None) and getattr(user.company, "company_type", None) == "cixci_internal"
+    )
+    if is_admin and getattr(user, "is_active", False):
         return AccessResult(granted=True, reason="cixci_admin", actor_id=user.id, capability_code=capability_code)
 
     # ── 2. User must be active ────────────────────────────────────────────────

@@ -1,11 +1,13 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings, ChevronLeft, ChevronRight, LayoutGrid, List, Eye } from 'lucide-react'
+import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings, ChevronLeft, ChevronRight, LayoutGrid, List, Eye, Image as ImageIcon } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
+import { parseWirelessCharging } from './DevicesPage'
+import Pagination, { usePagination } from '../components/Pagination'
 
 const STATUS_BADGE: Record<string, string> = {
   active: 'badge-green', draft: 'badge-muted', archived: 'badge-muted',
@@ -554,18 +556,6 @@ export default function CatalogPage() {
       newParams.set('compatibility_sort', val)
     } else {
       newParams.delete('compatibility_sort')
-    }
-    setSearchParams(newParams)
-  }
-
-  const [compatPage, setCompatPageState] = useState(searchParams.get('compatibility_page') || '1')
-  const setCompatPage = (val: string) => {
-    setCompatPageState(val)
-    const newParams = new URLSearchParams(searchParams)
-    if (val && val !== '1') {
-      newParams.set('compatibility_page', val)
-    } else {
-      newParams.delete('compatibility_page')
     }
     setSearchParams(newParams)
   }
@@ -1174,7 +1164,7 @@ export default function CatalogPage() {
       compBluetooth !== (editingProduct.bluetooth_compatibility || '') ||
       compHeadphoneJack !== (editingProduct.headphone_jack_compatibility || '') ||
       compChargingInterface !== (editingProduct.compatible_charging_interface || '') ||
-      compWirelessCharging.join('+') !== (editingProduct.wireless_charging_compatibility || '') ||
+      parseWirelessCharging(compWirelessCharging.join('+')).sort().join('+') !== parseWirelessCharging(editingProduct.wireless_charging_compatibility || '').sort().join('+') ||
       compStorageExpansion !== (editingProduct.storage_expansion_compatibility || '') ||
       compMemoryCapacity !== (editingProduct.memory_capacity || '') ||
       compWatchCaseSize !== (editingProduct.compatible_watch_case_size || '')
@@ -1677,7 +1667,7 @@ export default function CatalogPage() {
   // TanStack Queries
   const { data, isLoading, refetch: refreshProducts } = useQuery({
     queryKey: ['products', tab, activeSearch, activeFilterDeviceId],
-    queryFn: () => api.get('/catalog/products/', { params: { search: activeSearch || undefined, device_id: activeFilterDeviceId || undefined } }).then(r => r.data),
+    queryFn: () => api.get('/catalog/products/', { params: { search: activeSearch || undefined, device_id: activeFilterDeviceId || undefined, paginate: 'false' } }).then(r => r.data),
   })
 
 
@@ -1701,7 +1691,7 @@ export default function CatalogPage() {
 
   const { data: exportJobs, refetch: refreshJobs, isRefetching: isRefetchingJobs } = useQuery({
     queryKey: ['export-jobs'],
-    queryFn: () => api.get('/catalog/export-jobs/list_jobs/').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/catalog/export-jobs/list_jobs/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => []),
     enabled: tab === 'export_jobs' && isBuyer,
   })
 
@@ -1781,6 +1771,41 @@ export default function CatalogPage() {
   )
   const jobs = Array.isArray(exportJobs) ? exportJobs : (exportJobs?.results ?? [])
   const devices = devicesData?.results ?? devicesData ?? []
+
+  // 1. All Products pagination (50 items per page)
+  const {
+    currentPage: allProductsPage,
+    setCurrentPage: setAllProductsPage,
+    totalPages: totalAllProductsPages,
+    totalItems: totalAllProducts,
+    paginatedItems: paginatedAllProducts,
+  } = usePagination(filteredProducts, 50)
+
+  useEffect(() => {
+    setAllProductsPage(1)
+  }, [allSearch, allFilterCategories, allFilterBrands, allFilterColors, allFilterMsrps, activeFilterDeviceId, setAllProductsPage])
+
+  // 2. My Compatibility pagination (50 items per page)
+  const {
+    currentPage: compatPage,
+    setCurrentPage: setCompatPage,
+    totalPages: totalCompatPages,
+    totalItems: totalCompatProducts,
+    paginatedItems: paginatedCompatProducts,
+  } = usePagination(compatibleProducts, 50)
+
+  useEffect(() => {
+    setCompatPage(1)
+  }, [compatSearch, compatFilterCategories, compatFilterBrands, compatFilterColors, compatFilterMsrps, projection, setCompatPage])
+
+  // 3. Export Jobs pagination (50 items per page)
+  const {
+    currentPage: jobsPage,
+    setCurrentPage: setJobsPage,
+    totalPages: totalJobsPages,
+    totalItems: totalJobs,
+    paginatedItems: paginatedJobs,
+  } = usePagination(jobs, 50)
 
   const formatExcelDate = (val: any): string => {
     if (val === undefined || val === null) return ''
@@ -2772,11 +2797,7 @@ export default function CatalogPage() {
     setCompChargingInterface(p.compatible_charging_interface || '')
     
     const wirelessVal = p.wireless_charging_compatibility || ''
-    if (wirelessVal) {
-      setCompWirelessCharging(wirelessVal.split('+'))
-    } else {
-      setCompWirelessCharging([])
-    }
+    setCompWirelessCharging(parseWirelessCharging(wirelessVal))
     
     setCompStorageExpansion(p.storage_expansion_compatibility || '')
     setCompMemoryCapacity(p.memory_capacity || '')
@@ -2800,12 +2821,277 @@ export default function CatalogPage() {
     }
   }
 
+  const getColorSwatchBg = (colorStr?: string | null, sysColorStr?: string | null) => {
+    const c = ((colorStr || '') + ' ' + (sysColorStr || '')).toLowerCase().trim()
+    if (c.includes('black') || c.includes('charcoal') || c.includes('dark')) return '#18181b'
+    if (c.includes('white') || c.includes('arctic') || c.includes('silver') || c.includes('platinum')) return '#f8fafc'
+    if (c.includes('blue') || c.includes('navy')) return '#1d4ed8'
+    if (c.includes('red') || c.includes('crimson')) return '#dc2626'
+    if (c.includes('green') || c.includes('olive') || c.includes('emerald')) return '#16a34a'
+    if (c.includes('clear') || c.includes('transparent')) return 'linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(200,225,255,0.4) 100%)'
+    if (c.includes('gold') || c.includes('yellow')) return '#eab308'
+    if (c.includes('purple') || c.includes('violet')) return '#9333ea'
+    if (c.includes('pink') || c.includes('rose')) return '#f43f5e'
+    if (c.includes('orange')) return '#f97316'
+    if (c.includes('gray') || c.includes('grey') || c.includes('graphite')) return '#64748b'
+    return '#94a3b8'
+  }
+
+  const formatExportedDate = (dateVal: any) => {
+    if (!dateVal) return null
+    try {
+      const d = new Date(dateVal)
+      if (isNaN(d.getTime())) return null
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    } catch {
+      return null
+    }
+  }
+
   const renderCatalogProductCard = (
     p: any,
     isSelected: boolean,
     onToggleSelect: () => void,
     showCheckbox: boolean
   ) => {
+    if (isCixciAdmin || isVendor || isBuyer) {
+      const primaryUrl = p.primary_image_url || ''
+      const cleanPrimary = primaryUrl.replace(/^(https?:\/\/[^\/]+)/, '')
+      const additionalImages = (p.media_references || []).map((ref: any) => {
+        return typeof ref === 'string' ? ref : (ref?.url || ref?.storage_key || '')
+      }).filter((url: string) => {
+        if (!url) return false
+        const cleanRef = url.replace(/^(https?:\/\/[^\/]+)/, '')
+        return cleanRef !== cleanPrimary
+      })
+
+      const inv = p.inventory_level !== undefined && p.inventory_level !== null ? Number(p.inventory_level) : null
+      let stockText = 'IN STOCK'
+      let stockBadgeClass = 'in-stock'
+      if (inv !== null) {
+        if (inv <= 0) {
+          stockText = `OUT OF STOCK (${inv})`
+          stockBadgeClass = 'out-of-stock'
+        } else if (inv <= 10) {
+          stockText = `LOW STOCK (${inv})`
+          stockBadgeClass = 'low-stock'
+        } else {
+          stockText = `IN STOCK (${inv})`
+          stockBadgeClass = 'in-stock'
+        }
+      } else if (p.status === 'out_of_stock') {
+        stockText = 'OUT OF STOCK (0)'
+        stockBadgeClass = 'out-of-stock'
+      } else if (p.status === 'inactive' || p.status === 'eol') {
+        stockText = p.status.toUpperCase()
+        stockBadgeClass = 'out-of-stock'
+      } else {
+        stockText = 'IN STOCK'
+        stockBadgeClass = 'in-stock'
+      }
+
+      return (
+        <div
+          className="admin-product-card"
+          key={p.id}
+          style={{
+            border: isSelected ? '1px solid #20D1F2' : undefined,
+            boxShadow: isSelected ? '0 0 16px rgba(32, 209, 242, 0.35)' : undefined,
+          }}
+          onClick={async () => {
+            setSelectedManageProduct(p)
+            setShowManageModal(true)
+            try {
+              const detailRes = await api.get(`/catalog/products/${p.id}/`)
+              setSelectedManageProduct(detailRes.data)
+            } catch {}
+          }}
+        >
+          {!isBuyer && showCheckbox && (
+            <div
+              className="admin-card-checkbox"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleSelect()
+              }}
+              title="Select listing"
+            >
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => {}}
+              />
+            </div>
+          )}
+
+          {p.recommended_accessory && (
+            <div className="admin-recommended-badge">
+              ★ RECOMMENDED
+            </div>
+          )}
+
+          <div className="admin-photo-container">
+            {p.primary_image_url ? (
+              <img src={getImageUrl(p.primary_image_url)} alt={p.name} className="admin-main-img" />
+            ) : (
+              <div className="admin-placeholder-photo">
+                <ImageIcon size={32} className="admin-placeholder-icon" />
+                <span className="admin-placeholder-text">Main product photo</span>
+              </div>
+            )}
+
+            <div className="admin-spec-preview-tooltip">
+              <div className="spec-title">SPEC PREVIEW</div>
+              <div className="spec-grid">
+                <div className="spec-row"><span>Dim:</span> <strong>{p.length && p.width && p.height ? `${p.length}×${p.width}×${p.height} in` : 'Standard'}</strong></div>
+                <div className="spec-row"><span>Weight:</span> <strong>{p.weight ? `${p.weight} oz` : 'Standard'}</strong></div>
+                <div className="spec-row"><span>Warranty:</span> <strong>{p.warranty || '1 Year'}</strong></div>
+                <div className="spec-row"><span>Category:</span> <strong>{p.product_category || p.product_type || 'Accessory'}</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="admin-angle-row">
+            {[0, 1, 2, 3].map((idx) => {
+              const angleImg = additionalImages[idx]
+              return (
+                <div key={idx} className="admin-angle-box">
+                  {angleImg ? (
+                    <img src={getImageUrl(angleImg)} alt={`Angle ${idx + 1}`} />
+                  ) : (
+                    <span>Angle</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="admin-card-brand">
+            {(p.brand || p.vendor_name || 'TESTCOMM').toUpperCase()}
+          </div>
+
+          <div className="admin-card-title" title={p.name}>
+            {p.name}
+          </div>
+
+          <div className="admin-cat-wrap">
+            <span className="admin-category-pill">
+              <span className="admin-cat-dot" />
+              {p.product_category || p.product_type || 'Accessories'}
+            </span>
+          </div>
+
+          {(isCixciAdmin || isBuyer) && p.exported_date && formatExportedDate(p.exported_date) ? (
+            <div className="admin-exported-row">
+              <span className="admin-label">Exported Date:</span>
+              <span className="admin-val">{formatExportedDate(p.exported_date)}</span>
+            </div>
+          ) : null}
+
+          <div className="admin-code-row">
+            <div className="admin-code-item">
+              <span className="admin-label">SKU</span>
+              <span className="admin-code-val">{p.sku || '—'}</span>
+            </div>
+            <div className="admin-code-item">
+              <span className="admin-label">UPC</span>
+              <span className="admin-code-val">{p.upc || '—'}</span>
+            </div>
+          </div>
+
+          <div className="admin-color-block">
+            <div className="admin-color-row">
+              <span className="admin-label">Color:</span>
+              <span
+                className="admin-color-swatch"
+                style={{
+                  background: getColorSwatchBg(p.color, p.system_color),
+                  border: p.color?.toLowerCase()?.includes('white') || p.color?.toLowerCase()?.includes('clear') ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.3)',
+                }}
+              />
+              <span className="admin-color-val">{p.color || '—'}</span>
+            </div>
+            <div className="admin-color-row">
+              <span className="admin-label">System Color:</span>
+              <span className="admin-color-val">{p.system_color || p.color || '—'}</span>
+            </div>
+          </div>
+
+          <div className="admin-card-footer">
+            <div className="admin-msrp-row">
+              <span className="admin-label">MSRP:</span>
+              <span className="admin-msrp-val">
+                {formatCurrency(p.msrp || 0, p.vendor_wholesale_price_currency)}
+              </span>
+            </div>
+
+            {(isCixciAdmin || isBuyer) && (
+              <div className="admin-price-row">
+                <span className="admin-label">Wholesale Price:</span>
+                <span className="admin-val">
+                  {formatCurrency(p.buyer_wholesale_price ?? p.vendor_wholesale_price_amount ?? 0, p.vendor_wholesale_price_currency)}
+                </span>
+              </div>
+            )}
+
+            {(isCixciAdmin || isVendor) && (
+              <div className="admin-price-row">
+                <span className="admin-label">Vendor Wholesale Price:</span>
+                <span className="admin-val">
+                  {formatCurrency(p.vendor_wholesale_price_amount ?? 0, p.vendor_wholesale_price_currency)}
+                </span>
+              </div>
+            )}
+
+            {p.map_price && Number(p.map_price) > 0 ? (
+              <div className="admin-price-row">
+                <span className="admin-label">MAP:</span>
+                <span className="admin-val">
+                  {formatCurrency(p.map_price, p.vendor_wholesale_price_currency)}
+                </span>
+              </div>
+            ) : null}
+
+            {p.sale_price && Number(p.sale_price) > 0 ? (
+              <div className="admin-price-row admin-sale-row">
+                <span className="admin-label">Sale Price:</span>
+                <span className="admin-val">
+                  {formatCurrency(p.sale_price, p.vendor_wholesale_price_currency)}
+                </span>
+              </div>
+            ) : null}
+
+            <div className="admin-status-row">
+              <span className="admin-label">Product Status:</span>
+              <span className={`admin-stock-badge ${stockBadgeClass}`}>
+                {stockText}
+              </span>
+            </div>
+
+            {isBuyer && (
+              <div
+                className={`buyer-add-product-btn ${isSelected ? 'selected' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleSelect()
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => {}}
+                  style={{ cursor: 'pointer', accentColor: '#38bdf8', width: 14, height: 14 }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 600, color: isSelected ? '#38bdf8' : '#f1f5f9' }}>
+                  Add Product
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
     const srp = Number(p.msrp || 0)
     const salePrice = Number(p.sale_price || 0)
     const displayPrice = isBuyer
@@ -2828,7 +3114,10 @@ export default function CatalogPage() {
       specs.push({ label: p.compatible_charging_interface })
     }
     if (p.wireless_charging_compatibility && p.wireless_charging_compatibility !== 'Not Compatible') {
-      specs.push({ label: `Wireless: ${p.wireless_charging_compatibility}` })
+      const parsedWireless = parseWirelessCharging(p.wireless_charging_compatibility).join(', ')
+      if (parsedWireless && parsedWireless !== 'Not Compatible') {
+        specs.push({ label: `Wireless: ${parsedWireless}` })
+      }
     }
 
     return (
@@ -2950,8 +3239,363 @@ export default function CatalogPage() {
       <style>{`
         .telco-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-          gap: 16px;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 20px;
+        }
+        .admin-product-card {
+          background: #08162b;
+          border: 1px solid #14284b;
+          border-radius: 12px;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          position: relative;
+          cursor: pointer;
+          user-select: none;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .admin-product-card:hover {
+          transform: translateY(-2px);
+          border-color: #20D1F2;
+          box-shadow: 0 6px 24px rgba(32, 209, 242, 0.15);
+        }
+        .admin-card-checkbox {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          z-index: 10;
+          background: rgba(8, 22, 43, 0.85);
+          border-radius: 4px;
+          padding: 3px 5px;
+          display: flex;
+          align-items: center;
+          border: 1px solid rgba(56, 189, 248, 0.3);
+          cursor: pointer;
+        }
+        .admin-card-checkbox input {
+          cursor: pointer;
+          accent-color: #38bdf8;
+        }
+        .buyer-add-product-btn {
+          margin-top: 10px;
+          background: rgba(8, 26, 56, 0.75);
+          border: 1px solid rgba(56, 189, 248, 0.25);
+          border-radius: 6px;
+          padding: 8px 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .buyer-add-product-btn:hover {
+          background: rgba(14, 38, 78, 0.9);
+          border-color: #20D1F2;
+        }
+        .buyer-add-product-btn.selected {
+          background: rgba(32, 209, 242, 0.15);
+          border-color: #20D1F2;
+        }
+        .admin-recommended-badge {
+          align-self: flex-start;
+          margin-bottom: 8px;
+          background: rgba(245, 158, 11, 0.12);
+          border: 1px dashed rgba(245, 158, 11, 0.5);
+          color: #fbbf24;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          padding: 3px 8px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .admin-photo-container {
+          height: 160px;
+          background: #061122;
+          border: 1px dashed rgba(56, 189, 248, 0.15);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          overflow: hidden;
+        }
+        .admin-main-img {
+          max-width: 85%;
+          max-height: 135px;
+          object-fit: contain;
+        }
+        .admin-placeholder-photo {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+        }
+        .admin-placeholder-icon {
+          color: #2a3e5c;
+        }
+        .admin-placeholder-text {
+          font-size: 12px;
+          color: #435b7d;
+          font-weight: 500;
+        }
+        .admin-spec-preview-tooltip {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          background: rgba(6, 15, 30, 0.95);
+          backdrop-filter: blur(6px);
+          border-top: 1px solid rgba(56, 189, 248, 0.3);
+          padding: 8px 10px;
+          font-size: 10px;
+          color: #94a3b8;
+          transform: translateY(100%);
+          transition: transform 0.2s ease, opacity 0.2s ease;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .admin-photo-container:hover .admin-spec-preview-tooltip {
+          transform: translateY(0);
+          opacity: 1;
+        }
+        .admin-spec-preview-tooltip .spec-title {
+          font-size: 9px;
+          font-weight: 700;
+          color: #38bdf8;
+          letter-spacing: 0.08em;
+          margin-bottom: 4px;
+        }
+        .admin-spec-preview-tooltip .spec-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 3px 6px;
+        }
+        .admin-spec-preview-tooltip .spec-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 4px;
+        }
+        .admin-spec-preview-tooltip .spec-row span {
+          color: #64748b;
+        }
+        .admin-spec-preview-tooltip .spec-row strong {
+          color: #e2e8f0;
+          font-weight: 500;
+        }
+        .admin-angle-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 6px;
+          margin-top: 8px;
+          margin-bottom: 14px;
+        }
+        .admin-angle-box {
+          height: 42px;
+          background: #061122;
+          border: 1px dashed rgba(56, 189, 248, 0.15);
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 11px;
+          font-weight: 500;
+          color: #435b7d;
+          overflow: hidden;
+        }
+        .admin-angle-box img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+        }
+        .admin-card-brand {
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          color: #38bdf8;
+          text-transform: uppercase;
+          margin-bottom: 4px;
+        }
+        .admin-card-title {
+          font-size: 15px;
+          font-weight: 700;
+          color: #ffffff;
+          line-height: 1.35;
+          margin-bottom: 8px;
+          min-height: 38px;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .admin-cat-wrap {
+          margin-bottom: 12px;
+        }
+        .admin-category-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(14, 30, 56, 0.8);
+          border: 1px solid rgba(56, 189, 248, 0.2);
+          padding: 4px 12px;
+          border-radius: 9999px;
+          font-size: 12px;
+          font-weight: 500;
+          color: #93c5fd;
+        }
+        .admin-cat-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #38bdf8;
+          display: inline-block;
+        }
+        .admin-exported-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          margin-bottom: 8px;
+        }
+        .admin-exported-row .admin-label {
+          color: #64748b;
+          font-size: 11px;
+        }
+        .admin-exported-row .admin-val {
+          color: #cbd5e1;
+          font-weight: 500;
+          font-size: 11px;
+        }
+        .admin-code-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 11px;
+          margin-bottom: 8px;
+          font-family: 'JetBrains Mono', ui-monospace, monospace;
+        }
+        .admin-code-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .admin-code-item .admin-label {
+          color: #64748b;
+          font-size: 10px;
+          font-weight: 600;
+        }
+        .admin-code-item .admin-code-val {
+          color: #cbd5e1;
+          font-size: 11px;
+        }
+        .admin-color-block {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-bottom: 14px;
+          font-size: 12px;
+        }
+        .admin-color-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .admin-color-row .admin-label {
+          color: #64748b;
+          font-size: 12px;
+          min-width: 82px;
+        }
+        .admin-color-swatch {
+          width: 11px;
+          height: 11px;
+          border-radius: 50%;
+          display: inline-block;
+          flex-shrink: 0;
+        }
+        .admin-color-row .admin-color-val {
+          color: #ffffff;
+          font-weight: 600;
+          font-size: 12px;
+        }
+        .admin-card-footer {
+          margin-top: auto;
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          padding-top: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .admin-msrp-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          margin-bottom: 2px;
+        }
+        .admin-msrp-row .admin-label {
+          color: #94a3b8;
+          font-size: 12px;
+        }
+        .admin-msrp-val {
+          font-size: 22px;
+          font-weight: 800;
+          color: #ffffff;
+          letter-spacing: -0.02em;
+        }
+        .admin-price-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 12px;
+        }
+        .admin-price-row .admin-label {
+          color: #94a3b8;
+        }
+        .admin-price-row .admin-val {
+          color: #f1f5f9;
+          font-weight: 600;
+        }
+        .admin-sale-row .admin-label,
+        .admin-sale-row .admin-val {
+          color: #f97316 !important;
+          font-weight: 700 !important;
+        }
+        .admin-status-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 12px;
+          margin-top: 4px;
+        }
+        .admin-status-row .admin-label {
+          color: #94a3b8;
+        }
+        .admin-stock-badge {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          padding: 3px 8px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+        }
+        .admin-stock-badge.in-stock {
+          background: rgba(2, 132, 199, 0.15);
+          border: 1px solid rgba(56, 189, 248, 0.4);
+          color: #38bdf8;
+        }
+        .admin-stock-badge.low-stock {
+          background: rgba(180, 83, 9, 0.2);
+          border: 1px solid rgba(234, 179, 8, 0.4);
+          color: #facc15;
+        }
+        .admin-stock-badge.out-of-stock {
+          background: rgba(127, 29, 29, 0.25);
+          border: 1px solid rgba(239, 68, 68, 0.4);
+          color: #fb923c;
         }
         .telco-card {
           background: rgba(17, 24, 39, 0.6);
@@ -3120,8 +3764,48 @@ export default function CatalogPage() {
       `}</style>
       <div className="page-header">
         <div>
-          <div className="page-title">Product Catalog</div>
-          <div className="page-sub">Accessories, compatibility projections, export governance</div>
+          {isCixciAdmin ? (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
+                PRODUCT CATALOG
+              </div>
+              <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
+                CIXCI Admin Product View
+              </div>
+              <div className="page-sub" style={{ fontSize: 13, color: '#94a3b8' }}>
+                Select listings to route into a management action. Hover a product image for a quick spec preview.
+              </div>
+            </>
+          ) : isVendor ? (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
+                PRODUCT CATALOG
+              </div>
+              <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
+                Vendor submission review
+              </div>
+              <div className="page-sub" style={{ fontSize: 13, color: '#94a3b8' }}>
+                Select listings to route into a management action. Hover a product image for a quick spec preview.
+              </div>
+            </>
+          ) : isBuyer ? (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
+                PRODUCT CATALOG
+              </div>
+              <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
+                Buyer Product View
+              </div>
+              <div className="page-sub" style={{ fontSize: 13, color: '#94a3b8' }}>
+                Select listings to route into a management action. Hover a product image for a quick spec preview.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="page-title">Product Catalog</div>
+              <div className="page-sub">Accessories, compatibility projections, export governance</div>
+            </>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           {isCixciAdmin && (
@@ -3257,7 +3941,7 @@ export default function CatalogPage() {
               </button>
             )}
 
-            {!isBuyer && allProductsSelectedIds.length > 0 && (
+            {allProductsSelectedIds.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
                 <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                   {allProductsSelectedIds.length} selected
@@ -3272,7 +3956,7 @@ export default function CatalogPage() {
             )}
 
             {/* View Mode Toggle Switch */}
-            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 3, marginLeft: (!isBuyer && allProductsSelectedIds.length > 0) ? 0 : 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 3, marginLeft: allProductsSelectedIds.length > 0 ? 0 : 'auto' }}>
               <button
                 type="button"
                 title="Grid View"
@@ -3335,7 +4019,7 @@ export default function CatalogPage() {
               </div>
             ) : (
               <div className="telco-grid" style={{ marginBottom: 24 }}>
-                {filteredProducts.map((p: any) =>
+                {paginatedAllProducts.map((p: any) =>
                   renderCatalogProductCard(
                     p,
                     allProductsSelectedIds.includes(p.id),
@@ -3346,7 +4030,7 @@ export default function CatalogPage() {
                         setAllProductsSelectedIds([...allProductsSelectedIds, p.id])
                       }
                     },
-                    !isBuyer
+                    true
                   )
                 )}
               </div>
@@ -3403,7 +4087,7 @@ export default function CatalogPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProducts.map((p: any) => (
+                    {paginatedAllProducts.map((p: any) => (
                       <tr
                         key={p.id}
                         onClick={async () => {
@@ -3474,6 +4158,14 @@ export default function CatalogPage() {
               )}
             </div>
           )}
+          <Pagination
+            currentPage={allProductsPage}
+            totalPages={totalAllProductsPages}
+            totalItems={totalAllProducts}
+            pageSize={50}
+            onPageChange={setAllProductsPage}
+            itemName="products"
+          />
         </>
       )}
 
@@ -3688,7 +4380,7 @@ export default function CatalogPage() {
                     </div>
                   ) : (
                     <div className="telco-grid" style={{ marginBottom: 24 }}>
-                      {compatibleProducts.map((p: any) =>
+                      {paginatedCompatProducts.map((p: any) =>
                         renderCatalogProductCard(
                           p,
                           myCompatibilitySelectedIds.includes(p.id),
@@ -3746,7 +4438,7 @@ export default function CatalogPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {compatibleProducts.map((p: any) => (
+                          {paginatedCompatProducts.map((p: any) => (
                             <tr
                               key={p.id}
                               onClick={async () => {
@@ -3806,6 +4498,14 @@ export default function CatalogPage() {
                     )}
                   </div>
                 )}
+                <Pagination
+                  currentPage={compatPage}
+                  totalPages={totalCompatPages}
+                  totalItems={totalCompatProducts}
+                  pageSize={50}
+                  onPageChange={setCompatPage}
+                  itemName="products"
+                />
               </div>
             </>
           )}
@@ -3832,7 +4532,7 @@ export default function CatalogPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {jobs.map((job: any) => (
+                  {paginatedJobs.map((job: any) => (
                     <tr key={job.id}>
                       <td className="mono" style={{ fontSize: 12 }}>
                         <button 
@@ -3871,6 +4571,14 @@ export default function CatalogPage() {
               </table>
             )}
           </div>
+          <Pagination
+            currentPage={jobsPage}
+            totalPages={totalJobsPages}
+            totalItems={totalJobs}
+            pageSize={50}
+            onPageChange={setJobsPage}
+            itemName="jobs"
+          />
         </div>
       )}
 
