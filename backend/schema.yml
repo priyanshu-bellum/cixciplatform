@@ -17341,27 +17341,56 @@ components:
         is_tied_to_activity:
           type: string
           readOnly: true
-        headphone_jack_compatibility:
+        device_compatibility:
+          type: array
+          items:
+            type: string
+          description: Device compatibility list (Manufacturer and Model)
+        vendor_return_address:
+          type: object
+          nullable: true
+          description: Vendor return address (sent once per vendor, per buyer)
+          properties:
+            vendor_return_address1:
+              type: string
+              nullable: true
+              description: Primary address line of the shipping information
+            vendor_return_address2:
+              type: string
+              nullable: true
+              description: Secondary address line of the shipping information
+            vendor_return_city:
+              type: string
+              nullable: true
+              description: City of the shipping address
+            vendor_return_state:
+              type: string
+              nullable: true
+              description: State of the shipping address
+            vendor_return_zip_code:
+              type: string
+              nullable: true
+              description: Postal code of the shipping address
+        vendor_return_address1:
           type: string
           nullable: true
-        bluetooth_compatibility:
+          description: Primary address line of the vendor return address
+        vendor_return_address2:
           type: string
           nullable: true
-        compatible_charging_interface:
+          description: Secondary address line of the vendor return address
+        vendor_return_city:
           type: string
           nullable: true
-        wireless_charging_compatibility:
+          description: City of the vendor return address
+        vendor_return_state:
           type: string
           nullable: true
-        storage_expansion_compatibility:
+          description: State of the vendor return address
+        vendor_return_zip_code:
           type: string
           nullable: true
-        memory_capacity:
-          type: string
-          nullable: true
-        compatible_watch_case_size:
-          type: string
-          nullable: true
+          description: Postal code of the vendor return address
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
@@ -17494,25 +17523,12 @@ components:
         meta_description:
           type: string
           nullable: true
-        deactivation_reason:
-          type: string
-          nullable: true
-          maxLength: 200
         compatibility_status:
           type: string
           maxLength: 30
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
       required:
       - buyer_wholesale_price
       - company_scope_reference
-      - created_at
       - exported_date
       - id
       - is_tied_to_activity
@@ -17520,34 +17536,17 @@ components:
       - primary_image_url
       - product_type
       - sku
-      - updated_at
       - vendor_company_reference
       - vendor_map_pricing_enforced
       - vendor_name
     ProductDetailRequest:
       type: object
       properties:
-        headphone_jack_compatibility:
-          type: string
-          nullable: true
-        bluetooth_compatibility:
-          type: string
-          nullable: true
-        compatible_charging_interface:
-          type: string
-          nullable: true
-        wireless_charging_compatibility:
-          type: string
-          nullable: true
-        storage_expansion_compatibility:
-          type: string
-          nullable: true
-        memory_capacity:
-          type: string
-          nullable: true
-        compatible_watch_case_size:
-          type: string
-          nullable: true
+        device_compatibility:
+          type: array
+          items:
+            type: string
+          description: Device compatibility list
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
@@ -17679,10 +17678,6 @@ components:
         meta_description:
           type: string
           nullable: true
-        deactivation_reason:
-          type: string
-          nullable: true
-          maxLength: 200
         compatibility_status:
           type: string
           minLength: 1
@@ -17842,28 +17837,56 @@ components:
         meta_description:
           type: string
           nullable: true
-        media_references: {}
-        headphone_jack_compatibility:
+        device_compatibility:
+          type: array
+          items:
+            type: string
+          description: Device compatibility list (Manufacturer and Model)
+        vendor_return_address:
+          type: object
+          nullable: true
+          description: Vendor return address (sent once per vendor, per buyer)
+          properties:
+            vendor_return_address1:
+              type: string
+              nullable: true
+              description: Primary address line of the shipping information
+            vendor_return_address2:
+              type: string
+              nullable: true
+              description: Secondary address line of the shipping information
+            vendor_return_city:
+              type: string
+              nullable: true
+              description: City of the shipping address
+            vendor_return_state:
+              type: string
+              nullable: true
+              description: State of the shipping address
+            vendor_return_zip_code:
+              type: string
+              nullable: true
+              description: Postal code of the shipping address
+        vendor_return_address1:
           type: string
-          maxLength: 50
-        bluetooth_compatibility:
+          nullable: true
+          description: Primary address line of the vendor return address
+        vendor_return_address2:
           type: string
-          maxLength: 50
-        compatible_charging_interface:
+          nullable: true
+          description: Secondary address line of the vendor return address
+        vendor_return_city:
           type: string
-          maxLength: 50
-        wireless_charging_compatibility:
+          nullable: true
+          description: City of the vendor return address
+        vendor_return_state:
           type: string
-          maxLength: 100
-        storage_expansion_compatibility:
+          nullable: true
+          description: State of the vendor return address
+        vendor_return_zip_code:
           type: string
-          maxLength: 50
-        memory_capacity:
-          type: string
-          maxLength: 50
-        compatible_watch_case_size:
-          type: string
-          maxLength: 50
+          nullable: true
+          description: Postal code of the vendor return address
         compatibility_status:
           type: string
           maxLength: 30
@@ -17875,7 +17898,6 @@ components:
           readOnly: true
       required:
       - buyer_wholesale_price
-      - created_at
       - exported_date
       - id
       - is_tied_to_activity
@@ -18020,27 +18042,11 @@ components:
           type: string
           nullable: true
         media_references: {}
-        headphone_jack_compatibility:
-          type: string
-          maxLength: 50
-        bluetooth_compatibility:
-          type: string
-          maxLength: 50
-        compatible_charging_interface:
-          type: string
-          maxLength: 50
-        wireless_charging_compatibility:
-          type: string
-          maxLength: 100
-        storage_expansion_compatibility:
-          type: string
-          maxLength: 50
-        memory_capacity:
-          type: string
-          maxLength: 50
-        compatible_watch_case_size:
-          type: string
-          maxLength: 50
+        device_compatibility:
+          type: array
+          items:
+            type: string
+          description: Device compatibility list
         compatibility_status:
           type: string
           minLength: 1
