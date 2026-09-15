@@ -539,24 +539,24 @@ urlpatterns = [
     path("api/docs/",          SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/redoc/",         SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
     path("api/v1/schema/",     AdminSchemaView.as_view(), name="v1-schema"),
-    path("api/v1/docs/",       SpectacularSwaggerView.as_view(url_name="schema"), name="v1-swagger-ui"),
-    path("api/v1/redoc/",      SpectacularRedocView.as_view(url_name="schema"), name="v1-redoc"),
+    path("api/v1/docs/",       SpectacularSwaggerView.as_view(url_name="v1-schema"), name="v1-swagger-ui"),
+    path("api/v1/redoc/",      SpectacularRedocView.as_view(url_name="v1-schema"), name="v1-redoc"),
 
     # ── External: Buyer API docs ───────────────────────────────────────────────
     path("api/buyer-schema/",  BuyerSchemaView.as_view(), name="buyer-schema"),
     path("api/buyer-docs/",    SpectacularSwaggerView.as_view(url_name="buyer-schema"), name="buyer-swagger-ui"),
     path("api/buyer-redoc/",   SpectacularRedocView.as_view(url_name="buyer-schema"), name="buyer-redoc"),
     path("api/v1/buyer-schema/",  BuyerSchemaView.as_view(), name="v1-buyer-schema"),
-    path("api/v1/buyer-docs/",    SpectacularSwaggerView.as_view(url_name="buyer-schema"), name="v1-buyer-swagger-ui"),
-    path("api/v1/buyer-redoc/",   SpectacularRedocView.as_view(url_name="buyer-schema"), name="v1-buyer-redoc"),
+    path("api/v1/buyer-docs/",    SpectacularSwaggerView.as_view(url_name="v1-buyer-schema"), name="v1-buyer-swagger-ui"),
+    path("api/v1/buyer-redoc/",   SpectacularRedocView.as_view(url_name="v1-buyer-schema"), name="v1-buyer-redoc"),
 
     # ── External: Vendor API docs ──────────────────────────────────────────────
     path("api/vendor-schema/", VendorSchemaView.as_view(), name="vendor-schema"),
     path("api/vendor-docs/",   SpectacularSwaggerView.as_view(url_name="vendor-schema"), name="vendor-swagger-ui"),
     path("api/vendor-redoc/",  SpectacularRedocView.as_view(url_name="vendor-schema"), name="vendor-redoc"),
     path("api/v1/vendor-schema/", VendorSchemaView.as_view(), name="v1-vendor-schema"),
-    path("api/v1/vendor-docs/",   SpectacularSwaggerView.as_view(url_name="vendor-schema"), name="v1-vendor-swagger-ui"),
-    path("api/v1/vendor-redoc/",  SpectacularRedocView.as_view(url_name="vendor-schema"), name="v1-vendor-redoc"),
+    path("api/v1/vendor-docs/",   SpectacularSwaggerView.as_view(url_name="v1-vendor-schema"), name="v1-vendor-swagger-ui"),
+    path("api/v1/vendor-redoc/",  SpectacularRedocView.as_view(url_name="v1-vendor-schema"), name="v1-vendor-redoc"),
 ]
 
 if settings.DEBUG:

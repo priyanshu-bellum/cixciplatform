@@ -14997,6 +14997,61 @@ components:
           $ref: '#/components/schemas/OrderStatusEnum'
         pricing_snapshot_references:
           description: product_id → EffectivePriceSnapshot ID mapping
+        vendor_id:
+          type: string
+          format: uuid
+          description: The ID of the brand associated with the order entity.
+        first_name:
+          type: string
+          description: The first name associated with the shipping information.
+        last_name:
+          type: string
+          description: The last name associated with the shipping information.
+        email:
+          type: string
+          format: email
+          description: The email address associated with the shipping information.
+        address1:
+          type: string
+          description: The primary address line of the shipping information.
+        address2:
+          type: string
+          description: The secondary address line of the shipping information.
+          nullable: true
+        city:
+          type: string
+          description: The city of the shipping address.
+        state:
+          type: string
+          description: The state of the shipping address.
+        zip_code:
+          type: string
+          description: The postal code of the shipping address.
+        sku:
+          type: string
+          description: The Stock Keeping Unit of the order entity.
+        product_name:
+          type: string
+          description: Name of product.
+        vendor_color:
+          type: string
+          description: The product's color as the vendor specifies.
+        quantity:
+          type: integer
+          description: The number of units ordered.
+        upc:
+          type: string
+          description: The Universal Product Code of the product in the order.
+        order_date_time:
+          type: string
+          format: date-time
+          description: The date and time when the order was placed.
+        buyer_id:
+          type: string
+          description: The identifier of the buyer from which the order was placed.
+        buyer_order_number:
+          type: string
+          description: The unique order number the buyer assigns.
       required:
       - buyer_entity_reference
       - buyer_reference
@@ -16674,6 +16729,61 @@ components:
           $ref: '#/components/schemas/OrderStatusEnum'
         pricing_snapshot_references:
           description: product_id → EffectivePriceSnapshot ID mapping
+        vendor_id:
+          type: string
+          format: uuid
+          description: The ID of the brand associated with the order entity.
+        first_name:
+          type: string
+          description: The first name associated with the shipping information.
+        last_name:
+          type: string
+          description: The last name associated with the shipping information.
+        email:
+          type: string
+          format: email
+          description: The email address associated with the shipping information.
+        address1:
+          type: string
+          description: The primary address line of the shipping information.
+        address2:
+          type: string
+          description: The secondary address line of the shipping information.
+          nullable: true
+        city:
+          type: string
+          description: The city of the shipping address.
+        state:
+          type: string
+          description: The state of the shipping address.
+        zip_code:
+          type: string
+          description: The postal code of the shipping address.
+        sku:
+          type: string
+          description: The Stock Keeping Unit of the order entity.
+        product_name:
+          type: string
+          description: Name of product.
+        vendor_color:
+          type: string
+          description: The product's color as the vendor specifies.
+        quantity:
+          type: integer
+          description: The number of units ordered.
+        upc:
+          type: string
+          description: The Universal Product Code of the product in the order.
+        order_date_time:
+          type: string
+          format: date-time
+          description: The date and time when the order was placed.
+        buyer_id:
+          type: string
+          description: The identifier of the buyer from which the order was placed.
+        buyer_order_number:
+          type: string
+          description: The unique order number the buyer assigns.
     PatchedPricingProfileRequest:
       type: object
       properties:
@@ -16728,27 +16838,11 @@ components:
     PatchedProductDetailRequest:
       type: object
       properties:
-        headphone_jack_compatibility:
-          type: string
-          nullable: true
-        bluetooth_compatibility:
-          type: string
-          nullable: true
-        compatible_charging_interface:
-          type: string
-          nullable: true
-        wireless_charging_compatibility:
-          type: string
-          nullable: true
-        storage_expansion_compatibility:
-          type: string
-          nullable: true
-        memory_capacity:
-          type: string
-          nullable: true
-        compatible_watch_case_size:
-          type: string
-          nullable: true
+        device_compatibility:
+          type: array
+          items:
+            type: string
+          description: Device compatibility list
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
@@ -16880,10 +16974,6 @@ components:
         meta_description:
           type: string
           nullable: true
-        deactivation_reason:
-          type: string
-          nullable: true
-          maxLength: 200
         compatibility_status:
           type: string
           minLength: 1
