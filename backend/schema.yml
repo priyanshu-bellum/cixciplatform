@@ -13592,6 +13592,34 @@ components:
           nullable: true
           description: VendorExportDeliveryEvidence ID (read-only reference from Order
             Routing)
+        buyer_order_number:
+          type: string
+          description: The unique order number the buyer assigns.
+        buyer_id:
+          type: string
+          description: The identifier of the buyer associated with the order.
+        vendor_order:
+          type: string
+          description: The order number assigned by the vendor or manufacturer.
+        shipping_carrier:
+          type: string
+          description: The name of the shipping carrier responsible for the delivery of the order.
+        shipping_tracking_number:
+          type: string
+          description: The tracking number provided by the shipping carrier.
+        order_status:
+          type: string
+          description: 'The current status of the order. Examples: "Shipped", "Delivered"'
+        shipped_date:
+          type: string
+          format: date
+          nullable: true
+          description: The date when the order was shipped.
+        delivered_date:
+          type: string
+          format: date
+          nullable: true
+          description: The date when the order was delivered.
         created_at:
           type: string
           format: date-time

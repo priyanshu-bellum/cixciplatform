@@ -125,13 +125,23 @@ class TestBuyerDataIntegrationSpec:
         serializer = FulfillmentHandoffSerializer(handoff)
         data = serializer.data
 
+        # 8 Required Fields from Shipping Information Data Specification for Buyers
         assert data["buyer_order_number"] == "BUYER-ORD-5555"
         assert data["buyer_id"] == str(self.buyer_company.id)
-        assert data["order_status"] == "Shipped"
-        assert data["vendor_order_number"] == "VND-ORD-111"
+        assert data["vendor_order"] == "VND-ORD-111"
         assert data["shipping_carrier"] == "UPS"
-        assert data["tracking_number"] == "1Z9999999999999999"
+        assert data["shipping_tracking_number"] == "1Z9999999999999999"
+        assert data["order_status"] == "Shipped"
         assert str(data["shipped_date"]) == str(handoff.shipped_date)
+        assert data["delivered_date"] is None
+
+        # Verify delivered transition
+        handoff.status = "delivered"
+        handoff.delivered_date = timezone.now().date()
+        handoff.save()
+        data2 = FulfillmentHandoffSerializer(handoff).data
+        assert data2["order_status"] == "Delivered"
+        assert str(data2["delivered_date"]) == str(handoff.delivered_date)
 
     def test_product_export_task_headers(self):
         """Component 4: Product export task generates rows matching the full Data Integration Spec."""

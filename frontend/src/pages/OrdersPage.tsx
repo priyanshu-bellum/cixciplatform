@@ -791,6 +791,63 @@ export default function OrdersPage() {
               )}
             </div>
 
+            {/* Shipping Information Section (8-Field Buyer Shipping Specification) */}
+            <div className="drawer-section">
+              <div className="drawer-section-title"><Truck size={14} /> Shipping Information</div>
+              <div className="detail-card">
+                <div className="detail-item">
+                  <span className="detail-label">1. Buyer Order Number</span>
+                  <span className="detail-value mono" style={{ fontWeight: 600 }}>
+                    {orderDetail?.buyer_order_number || orderDetail?.buyer_reference || '—'}
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">2. Buyer ID</span>
+                  <span className="detail-value mono" style={{ fontSize: 11 }}>
+                    {orderDetail?.buyer_id || orderDetail?.company_scope_reference || '—'}
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">3. Vendor Order</span>
+                  <span className="detail-value mono">
+                    {orderDetail?.vendor_order || (suborders && suborders[0]?.id ? 'VO-' + suborders[0].id.slice(0, 8) : '—')}
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">4. Shipping Carrier</span>
+                  <span className="detail-value" style={{ fontWeight: 550, color: 'var(--accent)' }}>
+                    {orderDetail?.shipping_carrier || (suborders && suborders[0]?.shipping_carrier) || '—'}
+                  </span>
+                </div>
+                <div className="detail-item" style={{ gridColumn: '1 / -1' }}>
+                  <span className="detail-label">5. Shipping Tracking Number</span>
+                  <span className="detail-value mono" style={{ fontSize: 13, letterSpacing: '0.5px' }}>
+                    {orderDetail?.shipping_tracking_number || (suborders && suborders[0]?.tracking_number) || '—'}
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">6. Order Status</span>
+                  <span className="detail-value">
+                    <span className={`badge ${STATUS[orderDetail?.status] ?? 'badge-muted'}`}>
+                      {orderDetail?.order_status || orderDetail?.status || '—'}
+                    </span>
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">7. Shipped Date</span>
+                  <span className="detail-value">
+                    {orderDetail?.shipped_date || (suborders && suborders[0]?.shipped_date) || '—'}
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">8. Delivered Date</span>
+                  <span className="detail-value">
+                    {orderDetail?.delivered_date || (suborders && suborders[0]?.delivered_date) || '—'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {/* Suborders Section */}
             <div className="drawer-section" style={{ marginBottom: 0 }}>
               <div className="drawer-section-title"><Truck size={14} /> Vendor Suborders</div>

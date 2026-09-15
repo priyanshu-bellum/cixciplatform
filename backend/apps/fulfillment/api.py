@@ -54,6 +54,8 @@ def upc_matches(db_upc, csv_upc):
 class FulfillmentHandoffSerializer(serializers.ModelSerializer):
     buyer_order_number = serializers.SerializerMethodField()
     buyer_id = serializers.SerializerMethodField()
+    vendor_order = serializers.SerializerMethodField()
+    shipping_tracking_number = serializers.SerializerMethodField()
     order_status = serializers.SerializerMethodField()
 
     class Meta:
@@ -61,32 +63,74 @@ class FulfillmentHandoffSerializer(serializers.ModelSerializer):
         fields = [
             "id", "routed_suborder_reference", "vendor_company_reference",
             "company_scope_reference", "status", "delivery_evidence_reference",
-            "vendor_order_number", "shipping_carrier", "tracking_number",
-            "shipped_date", "delivered_date",
-            "buyer_order_number", "buyer_id", "order_status",
+            # Required Shipping Info Data Specification fields
+            "buyer_order_number", "buyer_id", "vendor_order", "shipping_carrier",
+            "shipping_tracking_number", "order_status", "shipped_date", "delivered_date",
+            # Retained legacy/internal field names
+            "vendor_order_number", "tracking_number",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at"]
 
-    def get_buyer_order_number(self, obj):
-        """Resolve the buyer's native order number from the routing snapshot."""
+    def get_vendor_order(self, obj):
+        """The order number assigned by the vendor or manufacturer."""
+        if obj.vendor_order_number:
+            return obj.vendor_order_number
         try:
             from apps.routing.models import RoutedSuborder
             sub = RoutedSuborder.objects.filter(id=obj.routed_suborder_reference).first()
             if sub and sub.routing_snapshot:
-                return sub.routing_snapshot.get("buyer_order_number", "")
+                if sub.routing_snapshot.get("vendor_order"):
+                    return str(sub.routing_snapshot.get("vendor_order"))
+                if sub.routing_snapshot.get("vendor_order_number"):
+                    return str(sub.routing_snapshot.get("vendor_order_number"))
+            if sub and sub.id:
+                return f"VO-{str(sub.id)[:8]}"
+        except Exception:
+            pass
+        return ""
+
+    def get_shipping_tracking_number(self, obj):
+        """The tracking number provided by the shipping carrier."""
+        return obj.tracking_number or ""
+
+    def get_buyer_order_number(self, obj):
+        """Resolve the buyer's native order number from the routing snapshot or linked order."""
+        try:
+            from apps.routing.models import RoutedSuborder
+            sub = RoutedSuborder.objects.filter(id=obj.routed_suborder_reference).first()
+            if sub and sub.routing_snapshot:
+                if sub.routing_snapshot.get("buyer_order_number"):
+                    return str(sub.routing_snapshot.get("buyer_order_number"))
+                if sub.routing_snapshot.get("buyer_reference"):
+                    return str(sub.routing_snapshot.get("buyer_reference"))
+                if sub.routing_snapshot.get("po_number"):
+                    return str(sub.routing_snapshot.get("po_number"))
             if sub and sub.order:
+                if hasattr(sub.order, "buyer_order_number") and sub.order.buyer_order_number:
+                    return str(sub.order.buyer_order_number)
+                if hasattr(sub.order, "buyer_reference") and sub.order.buyer_reference:
+                    return str(sub.order.buyer_reference)
                 return str(sub.order_id)
         except Exception:
             pass
         return ""
 
     def get_buyer_id(self, obj):
-        """Return the buyer company scope reference."""
-        return str(obj.company_scope_reference) if obj.company_scope_reference else ""
+        """Return the buyer identifier associated with the order."""
+        if obj.company_scope_reference:
+            return str(obj.company_scope_reference)
+        try:
+            from apps.routing.models import RoutedSuborder
+            sub = RoutedSuborder.objects.filter(id=obj.routed_suborder_reference).first()
+            if sub and sub.order and sub.order.company_scope_reference:
+                return str(sub.order.company_scope_reference)
+        except Exception:
+            pass
+        return ""
 
     def get_order_status(self, obj):
-        """Map handoff status to buyer-facing order status."""
+        """Map handoff status to buyer-facing order status (e.g. 'Shipped', 'Delivered')."""
         status_map = {
             "received": "Processing",
             "processing": "Processing",
@@ -99,7 +143,7 @@ class FulfillmentHandoffSerializer(serializers.ModelSerializer):
             "review_required": "Processing",
             "delivery_exception": "Exception",
         }
-        return status_map.get(obj.status, obj.status)
+        return status_map.get(str(obj.status).lower(), str(obj.status).capitalize())
 
     def validate_status(self, value):
         valid_statuses = {"received", "shipment_pending", "delivered", "exception", "failed", "processing"}

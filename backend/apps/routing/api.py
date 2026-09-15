@@ -79,6 +79,13 @@ class OrderSerializer(serializers.ModelSerializer):
     buyer_id = serializers.SerializerMethodField()
     buyer_order_number = serializers.SerializerMethodField()
     order_lines = serializers.SerializerMethodField()
+    # Shipping Information Data Specification for Buyers
+    vendor_order = serializers.SerializerMethodField()
+    shipping_carrier = serializers.SerializerMethodField()
+    shipping_tracking_number = serializers.SerializerMethodField()
+    shipped_date = serializers.SerializerMethodField()
+    delivered_date = serializers.SerializerMethodField()
+    shipping_info = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -91,6 +98,9 @@ class OrderSerializer(serializers.ModelSerializer):
             "address1", "address2", "city", "state", "zip_code",
             "sku", "product_name", "vendor_color", "quantity", "upc",
             "order_date_time", "buyer_id", "buyer_order_number", "order_lines",
+            # Shipping Information Data Specification fields
+            "vendor_order", "shipping_carrier", "shipping_tracking_number",
+            "shipped_date", "delivered_date", "shipping_info",
         ]
         read_only_fields = ["id", "created_at", "placed_at"]
 
@@ -251,6 +261,57 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def get_order_lines(self, obj):
         return self._get_order_lines(obj)
+
+    def _get_handoff(self, obj):
+        try:
+            from apps.fulfillment.models import FulfillmentHandoff
+            sub = self._get_primary_suborder(obj)
+            if sub:
+                return FulfillmentHandoff.objects.filter(routed_suborder_reference=sub.id).first()
+        except Exception:
+            pass
+        return None
+
+    def get_vendor_order(self, obj):
+        h = self._get_handoff(obj)
+        if h and h.vendor_order_number:
+            return h.vendor_order_number
+        sub = self._get_primary_suborder(obj)
+        if sub and sub.routing_snapshot:
+            if sub.routing_snapshot.get("vendor_order"):
+                return str(sub.routing_snapshot.get("vendor_order"))
+            if sub.routing_snapshot.get("vendor_order_number"):
+                return str(sub.routing_snapshot.get("vendor_order_number"))
+        return f"VO-{str(sub.id)[:8]}" if sub else ""
+
+    def get_shipping_carrier(self, obj):
+        h = self._get_handoff(obj)
+        return h.shipping_carrier if h and h.shipping_carrier else ""
+
+    def get_shipping_tracking_number(self, obj):
+        h = self._get_handoff(obj)
+        return h.tracking_number if h and h.tracking_number else ""
+
+    def get_shipped_date(self, obj):
+        h = self._get_handoff(obj)
+        return str(h.shipped_date) if h and h.shipped_date else None
+
+    def get_delivered_date(self, obj):
+        h = self._get_handoff(obj)
+        return str(h.delivered_date) if h and h.delivered_date else None
+
+    def get_shipping_info(self, obj):
+        """Structured 8-field Shipping Information Data Specification for Buyers."""
+        return {
+            "buyer_order_number": self.get_buyer_order_number(obj),
+            "buyer_id": self.get_buyer_id(obj),
+            "vendor_order": self.get_vendor_order(obj),
+            "shipping_carrier": self.get_shipping_carrier(obj),
+            "shipping_tracking_number": self.get_shipping_tracking_number(obj),
+            "order_status": str(obj.status).capitalize(),
+            "shipped_date": self.get_shipped_date(obj),
+            "delivered_date": self.get_delivered_date(obj),
+        }
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):

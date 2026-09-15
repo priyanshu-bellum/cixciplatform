@@ -35,6 +35,7 @@ export default function FulfillmentPage() {
   const [tab, setTab] = useState<'handoffs' | 'sla' | 'policies' | 'exportLogs' | 'returns' | 'returnLogs' | 'shippingLogs'>(
     ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs', 'shippingLogs'].includes(initialTab) ? (initialTab as any) : 'handoffs'
   )
+  const [selectedHandoff, setSelectedHandoff] = useState<any | null>(null)
 
   useEffect(() => {
     const activeTab = new URLSearchParams(location.search).get('tab') || location.state?.tab
@@ -428,23 +429,50 @@ export default function FulfillmentPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Handoff ID</th><th>Vendor</th><th>Status</th><th>Created</th><th>Updated</th>
+                    <th>Buyer Order #</th>
+                    <th>Buyer ID</th>
+                    <th>Vendor Order</th>
+                    <th>Carrier</th>
+                    <th>Tracking Number</th>
+                    <th>Order Status</th>
+                    <th>Shipped Date</th>
+                    <th>Delivered Date</th>
+                    <th>Handoff Ref</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedHandoffs.map((h: any) => (
-                    <tr key={h.id}>
-                      <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 11 }}>
-                        {h.id?.slice(0, 8)}…
+                    <tr
+                      key={h.id}
+                      onClick={() => setSelectedHandoff(h)}
+                      style={{ cursor: 'pointer' }}
+                      title="Click to view detailed shipping information"
+                    >
+                      <td className="mono" style={{ color: 'var(--accent)', fontWeight: 600, fontSize: 12 }}>
+                        {h.buyer_order_number || '—'}
                       </td>
-                      <td className="mono" style={{ fontSize: 11 }}>
-                        {h.vendor_company_reference?.slice(0, 8)}…
+                      <td className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                        {h.buyer_id ? (h.buyer_id.length > 8 ? h.buyer_id.slice(0, 8) + '…' : h.buyer_id) : (h.company_scope_reference ? h.company_scope_reference.slice(0, 8) + '…' : '—')}
+                      </td>
+                      <td className="mono" style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>
+                        {h.vendor_order || h.vendor_order_number || '—'}
+                      </td>
+                      <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                        {h.shipping_carrier || '—'}
+                      </td>
+                      <td className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                        {h.shipping_tracking_number || h.tracking_number || '—'}
                       </td>
                       <td>
-                        <span className={`badge ${HANDOFF_STATUS[h.status] ?? 'badge-muted'}`}>{h.status}</span>
+                        <span className={`badge ${HANDOFF_STATUS[h.status] ?? 'badge-muted'}`}>
+                          {h.order_status || h.status}
+                        </span>
                       </td>
-                      <td>{h.created_at ? new Date(h.created_at).toLocaleDateString() : '—'}</td>
-                      <td>{h.updated_at ? new Date(h.updated_at).toLocaleDateString() : '—'}</td>
+                      <td style={{ fontSize: 12 }}>{h.shipped_date || '—'}</td>
+                      <td style={{ fontSize: 12 }}>{h.delivered_date || '—'}</td>
+                      <td className="mono" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                        {h.id?.slice(0, 8)}…
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1609,6 +1637,93 @@ export default function FulfillmentPage() {
               <button className="btn btn-primary" onClick={() => setSelectedLogForAuditHistory(null)}>
                 Close Audit Trail
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── SHIPPING INFORMATION DRAWER (SPECIFICATION COMPLIANT) ─────────── */}
+      {selectedHandoff && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(4, 6, 12, 0.7)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }} onClick={() => setSelectedHandoff(null)}>
+          <div
+            style={{ width: 560, maxWidth: '100%', height: '100%', background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)', padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: 16, marginBottom: 20 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Shipping Information</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Shipping Info Data Specification for Buyers
+                </div>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setSelectedHandoff(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>1. Buyer Order Number</div>
+                  <div className="mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginTop: 4 }}>
+                    {selectedHandoff.buyer_order_number || '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>2. Buyer ID</div>
+                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 4 }}>
+                    {selectedHandoff.buyer_id || selectedHandoff.company_scope_reference || '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>3. Vendor Order</div>
+                  <div className="mono" style={{ fontSize: 13, fontWeight: 550, color: 'var(--text-primary)', marginTop: 4 }}>
+                    {selectedHandoff.vendor_order || selectedHandoff.vendor_order_number || '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>4. Shipping Carrier</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', marginTop: 4 }}>
+                    {selectedHandoff.shipping_carrier || '—'}
+                  </div>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>5. Shipping Tracking Number</div>
+                  <div className="mono" style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 4, letterSpacing: '0.5px' }}>
+                    {selectedHandoff.shipping_tracking_number || selectedHandoff.tracking_number || '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>6. Order Status</div>
+                  <div style={{ marginTop: 4 }}>
+                    <span className={`badge ${HANDOFF_STATUS[selectedHandoff.status] ?? 'badge-muted'}`}>
+                      {selectedHandoff.order_status || selectedHandoff.status}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>7. Shipped Date</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 4 }}>
+                    {selectedHandoff.shipped_date || '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>8. Delivered Date</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 4 }}>
+                    {selectedHandoff.delivered_date || '—'}
+                  </div>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Handoff Reference</div>
+                  <div className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {selectedHandoff.id}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 'auto', paddingTop: 20, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setSelectedHandoff(null)}>Close</button>
             </div>
           </div>
         </div>
