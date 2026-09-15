@@ -378,6 +378,8 @@ class ExternalActionRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
     filterset_fields = ["source_module", "action_type"]
 
 class CompanyAPIKeySerializer(serializers.ModelSerializer):
+    company_scope_reference = serializers.UUIDField(required=False, allow_null=True)
+
     class Meta:
         model = CompanyAPIKey
         fields = [

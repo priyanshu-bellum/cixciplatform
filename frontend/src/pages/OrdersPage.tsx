@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Package, Plus, X, Calendar, User, ShoppingBag, Truck } from 'lucide-react'
+import { Package, Plus, X, Calendar, User, ShoppingBag, Truck, AlertCircle, CheckCircle2, FileText, Hash, Mail, MapPin } from 'lucide-react'
 import api from '../lib/apiClient'
 import Pagination, { usePagination } from '../components/Pagination'
 
@@ -19,9 +19,36 @@ const getImageUrl = (path: string | null) => {
   return `${host}${path}`
 }
 
+const DEFAULT_FORM_DATA = {
+  buyer_order_number: '',
+  buyer_id: '',
+  vendor_id: '',
+  order_date_time: new Date().toISOString().slice(0, 19),
+  first_name: '',
+  last_name: '',
+  email: '',
+  address1: '',
+  address2: '',
+  city: '',
+  state: '',
+  zip_code: '',
+  sku: '',
+  product_name: '',
+  vendor_color: '',
+  quantity: 1,
+  upc: '',
+}
+
 export default function OrdersPage() {
   const navigate = useNavigate()
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false)
+  const [inputMode, setInputMode] = useState<'form' | 'json'>('form')
+  const [formData, setFormData] = useState(DEFAULT_FORM_DATA)
+  const [rawJson, setRawJson] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [formSuccess, setFormSuccess] = useState<string | null>(null)
 
   // Fetch orders list
   const { data, isLoading, refetch: refetchOrders } = useQuery({
@@ -59,6 +86,74 @@ export default function OrdersPage() {
     enabled: !!selectedOrderId,
   })
 
+  const handleOpenCreateModal = () => {
+    setFormData({
+      ...DEFAULT_FORM_DATA,
+      buyer_order_number: `ORD-${Date.now().toString().slice(-6)}`,
+      order_date_time: new Date().toISOString().slice(0, 19),
+    })
+    setRawJson('')
+    setFormError(null)
+    setFormSuccess(null)
+    setShowNewOrderModal(true)
+  }
+
+  const handleCreateOrder = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormError(null)
+    setFormSuccess(null)
+    setIsSubmitting(true)
+
+    try {
+      let payload: any = {}
+      if (inputMode === 'json') {
+        try {
+          payload = JSON.parse(rawJson)
+        } catch (err: any) {
+          throw new Error('Invalid JSON payload: ' + err.message)
+        }
+      } else {
+        payload = {
+          ...formData,
+          quantity: Number(formData.quantity) || 1,
+        }
+        if (!payload.buyer_id) delete payload.buyer_id
+        if (!payload.vendor_id) delete payload.vendor_id
+      }
+
+      const res = await api.post('/routing/orders/', payload)
+      setFormSuccess('Order created successfully!')
+      refetchOrders()
+      setTimeout(() => {
+        setShowNewOrderModal(false)
+        setFormSuccess(null)
+        if (res.data?.id) {
+          setSelectedOrderId(res.data.id)
+        }
+      }, 700)
+    } catch (err: any) {
+      const respData = err.response?.data
+      let msg = err.message || 'Failed to create order.'
+      if (respData) {
+        const detail = respData.detail ?? respData
+        if (typeof detail === 'string') {
+          msg = detail
+        } else if (Array.isArray(detail)) {
+          msg = detail.join(' ')
+        } else if (typeof detail === 'object') {
+          const msgs: string[] = []
+          for (const [k, v] of Object.entries(detail)) {
+            msgs.push(`${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+          }
+          msg = msgs.join('; ')
+        }
+      }
+      setFormError(msg)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   return (
     <div>
       <style>{`
@@ -72,7 +167,7 @@ export default function OrdersPage() {
         .drawer-panel {
           position: fixed;
           top: 0; right: 0; bottom: 0;
-          width: 550px; max-width: 100%;
+          width: 580px; max-width: 100%;
           background: var(--bg-surface);
           border-left: 1px solid var(--border);
           z-index: 1001;
@@ -148,9 +243,11 @@ export default function OrdersPage() {
       <div className="page-header">
         <div>
           <div className="page-title">Orders</div>
-          <div className="page-sub">Buyer orders and vendor routing</div>
+          <div className="page-sub">Buyer orders and vendor routing specification</div>
         </div>
-        <button className="btn btn-primary"><Plus size={14} /> New Order</button>
+        <button className="btn btn-primary" onClick={handleOpenCreateModal}>
+          <Plus size={14} /> New Order
+        </button>
       </div>
 
       <div className="table-wrap">
@@ -163,6 +260,7 @@ export default function OrdersPage() {
             <thead>
               <tr>
                 <th>Order ID</th>
+                <th>Buyer Order #</th>
                 <th>Buyer</th>
                 <th>Placed</th>
                 <th>Status</th>
@@ -175,12 +273,17 @@ export default function OrdersPage() {
                   <td style={{ color: 'var(--accent)', fontWeight: 500 }} className="mono">
                     {o.id.slice(0, 8)}…
                   </td>
+                  <td className="mono" style={{ fontSize: 12, fontWeight: 550, color: 'var(--text-primary)' }}>
+                    {o.buyer_order_number || o.buyer_reference || '—'}
+                  </td>
                   <td>{o.buyer_name ?? '—'}</td>
-                  <td>{new Date(o.placed_at).toLocaleDateString()}</td>
+                  <td>{new Date(o.order_date_time || o.placed_at).toLocaleDateString()}</td>
                   <td>
                     <span className={`badge ${STATUS[o.status] ?? 'badge-muted'}`}>{o.status}</span>
                   </td>
-                  <td>{o.customer_name ?? '—'}</td>
+                  <td>
+                    {o.customer_name ?? (o.first_name ? `${o.first_name} ${o.last_name || ''}`.trim() : '—')}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -196,6 +299,298 @@ export default function OrdersPage() {
         onPageChange={setCurrentPage}
         itemName="orders"
       />
+
+      {/* ─── CREATE / INGEST BUYER ORDER MODAL (17 SPEC FIELDS) ────────────────── */}
+      {showNewOrderModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ width: 680, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 14, borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>New Buyer Order</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Ingest an order matching the 17-field Order Data Specification for Buyers
+                </div>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setShowNewOrderModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Mode Toggle */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${inputMode === 'form' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setInputMode('form')}
+              >
+                Form View
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${inputMode === 'json' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => {
+                  setInputMode('json')
+                  if (!rawJson) {
+                    setRawJson(JSON.stringify(formData, null, 2))
+                  }
+                }}
+              >
+                Raw JSON
+              </button>
+            </div>
+
+            {formError && (
+              <div style={{ background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 6, marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertCircle size={16} />
+                <span>{formError}</span>
+              </div>
+            )}
+
+            {formSuccess && (
+              <div style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: '1px solid #22c55e', padding: '10px 14px', borderRadius: 6, marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckCircle2 size={16} />
+                <span>{formSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateOrder} style={{ overflowY: 'auto', flex: 1, paddingRight: 4 }}>
+              {inputMode === 'json' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    Order Data JSON Payload (17 Fields)
+                  </label>
+                  <textarea
+                    rows={16}
+                    value={rawJson}
+                    onChange={(e) => setRawJson(e.target.value)}
+                    className="input mono"
+                    style={{ fontSize: 12, lineHeight: 1.4, resize: 'vertical' }}
+                    placeholder="Paste order JSON with vendor_id, first_name, last_name, email, address1, etc."
+                  />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  {/* Section 1: Order Identifiers */}
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Hash size={14} style={{ color: 'var(--accent)' }} /> 1. Order Identifiers
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Buyer Order Number *</label>
+                        <input
+                          type="text"
+                          required
+                          className="input"
+                          value={formData.buyer_order_number}
+                          onChange={e => setFormData({ ...formData, buyer_order_number: e.target.value })}
+                          placeholder="e.g. ORD-100234"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Buyer ID (Optional UUID)</label>
+                        <input
+                          type="text"
+                          className="input mono"
+                          value={formData.buyer_id}
+                          onChange={e => setFormData({ ...formData, buyer_id: e.target.value })}
+                          placeholder="Auto-resolved if omitted"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Order Date Time (UTC)</label>
+                        <input
+                          type="datetime-local"
+                          className="input"
+                          value={formData.order_date_time}
+                          onChange={e => setFormData({ ...formData, order_date_time: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 2: Shipping & Customer Information */}
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <MapPin size={14} style={{ color: 'var(--accent)' }} /> 2. Customer Shipping Information
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>First Name *</label>
+                        <input
+                          type="text"
+                          required
+                          className="input"
+                          value={formData.first_name}
+                          onChange={e => setFormData({ ...formData, first_name: e.target.value })}
+                          placeholder="e.g. Jane"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Last Name *</label>
+                        <input
+                          type="text"
+                          required
+                          className="input"
+                          value={formData.last_name}
+                          onChange={e => setFormData({ ...formData, last_name: e.target.value })}
+                          placeholder="e.g. Doe"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Email *</label>
+                        <input
+                          type="email"
+                          required
+                          className="input"
+                          value={formData.email}
+                          onChange={e => setFormData({ ...formData, email: e.target.value })}
+                          placeholder="e.g. jane.doe@example.com"
+                        />
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Address 1 *</label>
+                        <input
+                          type="text"
+                          required
+                          className="input"
+                          value={formData.address1}
+                          onChange={e => setFormData({ ...formData, address1: e.target.value })}
+                          placeholder="e.g. 100 Main St"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Address 2</label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={formData.address2}
+                          onChange={e => setFormData({ ...formData, address2: e.target.value })}
+                          placeholder="e.g. Suite 400"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>City *</label>
+                        <input
+                          type="text"
+                          required
+                          className="input"
+                          value={formData.city}
+                          onChange={e => setFormData({ ...formData, city: e.target.value })}
+                          placeholder="e.g. Austin"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>State *</label>
+                        <input
+                          type="text"
+                          required
+                          className="input"
+                          value={formData.state}
+                          onChange={e => setFormData({ ...formData, state: e.target.value })}
+                          placeholder="e.g. TX"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Zip Code *</label>
+                        <input
+                          type="text"
+                          required
+                          className="input"
+                          value={formData.zip_code}
+                          onChange={e => setFormData({ ...formData, zip_code: e.target.value })}
+                          placeholder="e.g. 78701"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Product Item & Vendor Details */}
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <ShoppingBag size={14} style={{ color: 'var(--accent)' }} /> 3. Product & Vendor Details
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Vendor ID (Optional UUID)</label>
+                        <input
+                          type="text"
+                          className="input mono"
+                          value={formData.vendor_id}
+                          onChange={e => setFormData({ ...formData, vendor_id: e.target.value })}
+                          placeholder="Vendor brand UUID"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Product Name *</label>
+                        <input
+                          type="text"
+                          required
+                          className="input"
+                          value={formData.product_name}
+                          onChange={e => setFormData({ ...formData, product_name: e.target.value })}
+                          placeholder="e.g. Ultra Grip Phone Case"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>SKU *</label>
+                        <input
+                          type="text"
+                          required
+                          className="input mono"
+                          value={formData.sku}
+                          onChange={e => setFormData({ ...formData, sku: e.target.value })}
+                          placeholder="e.g. SKU-1001"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Vendor Color</label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={formData.vendor_color}
+                          onChange={e => setFormData({ ...formData, vendor_color: e.target.value })}
+                          placeholder="e.g. Midnight Black"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Quantity *</label>
+                        <input
+                          type="number"
+                          min={1}
+                          required
+                          className="input"
+                          value={formData.quantity}
+                          onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                        />
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>UPC</label>
+                        <input
+                          type="text"
+                          className="input mono"
+                          value={formData.upc}
+                          onChange={e => setFormData({ ...formData, upc: e.target.value })}
+                          placeholder="e.g. 012345678905"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowNewOrderModal(false)} disabled={isSubmitting}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+                  {isSubmitting ? 'Creating Order...' : 'Submit Buyer Order'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Slide-over Order Details Drawer */}
       {selectedOrderId && (
@@ -226,29 +621,38 @@ export default function OrdersPage() {
                   </span>
                 </div>
                 <div className="detail-item">
-                  <span className="detail-label">Placed At</span>
+                  <span className="detail-label">Buyer Order Number</span>
+                  <span className="detail-value mono" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {orderDetail?.buyer_order_number || orderDetail?.buyer_reference || '—'}
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Order Date Time (UTC)</span>
                   <span className="detail-value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Calendar size={13} style={{ color: 'var(--text-muted)' }} />
-                    {orderDetail?.placed_at ? new Date(orderDetail.placed_at).toLocaleString() : '...'}
+                    {orderDetail?.order_date_time
+                      ? new Date(orderDetail.order_date_time).toLocaleString()
+                      : (orderDetail?.placed_at ? new Date(orderDetail.placed_at).toLocaleString() : '—')
+                    }
                   </span>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Buyer</span>
                   <span className="detail-value" style={{ fontWeight: 500 }}>
-                    {orderDetail?.buyer_name ?? '...'}
+                    {orderDetail?.buyer_name ?? '—'}
                   </span>
                 </div>
                 <div className="detail-item">
-                  <span className="detail-label">Buyer Reference</span>
+                  <span className="detail-label">Buyer ID</span>
                   <span className="detail-value mono" style={{ fontSize: 11 }}>
                     <User size={13} style={{ color: 'var(--text-muted)', marginRight: 6, verticalAlign: 'middle' }} />
-                    {orderDetail?.buyer_reference ?? '...'}
+                    {orderDetail?.buyer_id || orderDetail?.buyer_company_id || '—'}
                   </span>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Company Scope</span>
                   <span className="detail-value mono" style={{ fontSize: 11 }}>
-                    {orderDetail?.company_scope_reference ?? '...'}
+                    {orderDetail?.company_scope_reference ?? '—'}
                   </span>
                 </div>
               </div>
@@ -256,37 +660,42 @@ export default function OrdersPage() {
 
             {/* Customer Details Section */}
             <div className="drawer-section">
-              <div className="drawer-section-title"><User size={14} /> Customer Details</div>
+              <div className="drawer-section-title"><User size={14} /> Customer & Shipping Details</div>
               <div className="detail-card">
                 <div className="detail-item">
                   <span className="detail-label">First Name</span>
-                  <span className="detail-value">{orderDetail?.customer_details?.first_name || '—'}</span>
+                  <span className="detail-value">{orderDetail?.first_name || orderDetail?.customer_details?.first_name || '—'}</span>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Last Name</span>
-                  <span className="detail-value">{orderDetail?.customer_details?.last_name || '—'}</span>
+                  <span className="detail-value">{orderDetail?.last_name || orderDetail?.customer_details?.last_name || '—'}</span>
+                </div>
+                <div className="detail-item" style={{ gridColumn: '1 / -1' }}>
+                  <span className="detail-label">Email</span>
+                  <span className="detail-value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Mail size={13} style={{ color: 'var(--text-muted)' }} />
+                    {orderDetail?.email || orderDetail?.customer_details?.email || '—'}
+                  </span>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Address 1</span>
-                  <span className="detail-value">{orderDetail?.customer_details?.address1 || '—'}</span>
+                  <span className="detail-value">{orderDetail?.address1 || orderDetail?.customer_details?.address1 || '—'}</span>
                 </div>
-                {orderDetail?.customer_details?.address2 && (
-                  <div className="detail-item">
-                    <span className="detail-label">Address 2</span>
-                    <span className="detail-value">{orderDetail.customer_details.address2}</span>
-                  </div>
-                )}
+                <div className="detail-item">
+                  <span className="detail-label">Address 2</span>
+                  <span className="detail-value">{orderDetail?.address2 || orderDetail?.customer_details?.address2 || '—'}</span>
+                </div>
                 <div className="detail-item">
                   <span className="detail-label">City</span>
-                  <span className="detail-value">{orderDetail?.customer_details?.city || '—'}</span>
+                  <span className="detail-value">{orderDetail?.city || orderDetail?.customer_details?.city || '—'}</span>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">State</span>
-                  <span className="detail-value">{orderDetail?.customer_details?.state || '—'}</span>
+                  <span className="detail-value">{orderDetail?.state || orderDetail?.customer_details?.state || '—'}</span>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Zip Code</span>
-                  <span className="detail-value">{orderDetail?.customer_details?.zip_code || '—'}</span>
+                  <span className="detail-value mono">{orderDetail?.zip_code || orderDetail?.customer_details?.zip_code || '—'}</span>
                 </div>
               </div>
             </div>
@@ -304,6 +713,7 @@ export default function OrdersPage() {
                     <thead>
                       <tr>
                         <th>Product / SKU</th>
+                        <th>Vendor / Details</th>
                         <th style={{ textAlign: 'right' }}>Qty</th>
                         <th style={{ textAlign: 'right' }}>Price</th>
                         <th style={{ textAlign: 'right' }}>Total</th>
@@ -349,13 +759,18 @@ export default function OrdersPage() {
                                   {line.product_name}
                                 </div>
                                 <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                                  SKU: {line.sku} UPC: {line.upc ?? 'N/A'}
+                                  SKU: {line.sku} | UPC: {line.upc ?? 'N/A'}
                                 </div>
-                                {line.color && line.color !== 'N/A' && (
-                                  <div style={{ fontSize: 10, color: 'var(--accent)', marginTop: 2, fontWeight: 500 }}>
-                                    Color: {line.color}
-                                  </div>
-                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                              {(line.vendor_color || line.color) && (
+                                <div>Color: <span style={{ color: 'var(--accent)', fontWeight: 500 }}>{line.vendor_color || line.color}</span></div>
+                              )}
+                              <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                                Vendor: {line.vendor_id ? line.vendor_id.slice(0, 8) + '…' : '—'}
                               </div>
                             </div>
                           </td>
@@ -363,10 +778,10 @@ export default function OrdersPage() {
                             {line.quantity}
                           </td>
                           <td style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
-                            ${line.unit_price_snapshot.toFixed(2)}
+                            ${line.unit_price_snapshot != null ? Number(line.unit_price_snapshot).toFixed(2) : '0.00'}
                           </td>
                           <td style={{ textAlign: 'right', color: 'var(--text-primary)', fontWeight: 500 }}>
-                            ${line.line_total.toFixed(2)}
+                            ${line.line_total != null ? Number(line.line_total).toFixed(2) : '0.00'}
                           </td>
                         </tr>
                       ))}

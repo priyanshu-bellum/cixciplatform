@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings, ChevronLeft, ChevronRight, LayoutGrid, List, Eye, Image as ImageIcon } from 'lucide-react'
+import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings, ChevronLeft, ChevronRight, LayoutGrid, List, Eye, Image as ImageIcon, Truck } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import api from '../lib/apiClient'
@@ -5919,7 +5919,72 @@ export default function CatalogPage() {
                         <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.release_date}</div>
                       </div>
                     )}
+
+                    {selectedManageProduct.product_type && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Product Type</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, textTransform: 'capitalize' }}>{selectedManageProduct.product_type}</div>
+                      </div>
+                    )}
+
+                    {selectedManageProduct.selling_status && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Selling Status</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.selling_status}</div>
+                      </div>
+                    )}
+
+                    {selectedManageProduct.exported_date && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Exported Date</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.exported_date}</div>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Vendor Return Address (Sent once per vendor per buyer) */}
+                  {(selectedManageProduct.vendor_return_address1 || selectedManageProduct.vendor_return_address) && (
+                    <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginTop: 4 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Truck size={14} style={{ color: 'var(--accent)' }} /> Vendor Return Address
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                        Vendor return shipping information (sent once per vendor, per buyer in export response).
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px 12px', fontSize: 12 }}>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)' }}>Address 1:</span>{' '}
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {selectedManageProduct.vendor_return_address1 || selectedManageProduct.vendor_return_address?.address1 || '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)' }}>Address 2:</span>{' '}
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {selectedManageProduct.vendor_return_address2 || selectedManageProduct.vendor_return_address?.address2 || '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)' }}>City:</span>{' '}
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {selectedManageProduct.vendor_return_city || selectedManageProduct.vendor_return_address?.city || '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)' }}>State:</span>{' '}
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {selectedManageProduct.vendor_return_state || selectedManageProduct.vendor_return_address?.state || '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)' }}>Zip Code:</span>{' '}
+                          <span className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {selectedManageProduct.vendor_return_zip_code || selectedManageProduct.vendor_return_address?.zip_code || '—'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {/* Product Description */}
@@ -6019,19 +6084,36 @@ export default function CatalogPage() {
                 )}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {!activeCompatibilities || activeCompatibilities.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                      No target devices mapped.
-                    </div>
-                  ) : (
-                    activeCompatibilities.map((c: any) => {
+                  {(() => {
+                    const compatList = (activeCompatibilities && activeCompatibilities.length > 0)
+                      ? activeCompatibilities
+                      : (selectedManageProduct.device_compatibility || []).map((dc: any) => ({
+                          id: dc.device_id || dc.id || Math.random().toString(),
+                          device_reference: dc.device_id || dc.id,
+                          name: dc.name || dc.device_name,
+                          model_number: dc.model_number,
+                          is_excluded: false,
+                        }))
+
+                    if (!compatList || compatList.length === 0) {
+                      return (
+                        <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                          No target devices mapped.
+                        </div>
+                      )
+                    }
+
+                    return compatList.map((c: any) => {
                       const dev = devices.find((d: any) => d.id === c.device_reference)
-                      const deviceName = dev ? `${dev.manufacturer_name} ${dev.name}` : c.device_reference.slice(0, 8)
+                      const deviceName = c.name || (dev ? `${dev.manufacturer_name} ${dev.name}` : (c.device_reference ? c.device_reference.slice(0, 8) : 'Device'))
                       return (
                         <div key={c.id} style={{ display: 'flex', flexDirection: 'column', padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: c.is_excluded ? 'rgba(239, 68, 68, 0.05)' : 'var(--bg-elevated)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{deviceName}</span>
+                              {c.model_number && (
+                                <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>({c.model_number})</span>
+                              )}
                               {c.is_locked && (
                                 <span className="badge badge-amber" style={{ fontSize: 10, padding: '2px 6px' }}>Locked</span>
                               )}
@@ -6085,7 +6167,7 @@ export default function CatalogPage() {
                         </div>
                       )
                     })
-                  )}
+                  })()}
                 </div>
               </div>
             )}
