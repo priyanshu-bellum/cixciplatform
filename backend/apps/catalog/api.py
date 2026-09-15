@@ -163,28 +163,29 @@ class ProductListSerializer(ProductSerializerBase):
     primary_image_url = serializers.SerializerMethodField()
     buyer_wholesale_price = serializers.ReadOnlyField()
     is_tied_to_activity = serializers.ReadOnlyField()
+    device_compatibility = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
-            "id", "name", "sku", "brand", "product_type", "product_category",
-            "status", "selling_status", "primary_image_reference",
-            "vendor_company_reference", "vendor_name", "created_at",
-            "description", "vendor_wholesale_price_amount",
-            "vendor_wholesale_price_currency", "primary_image_url",
-            "buyer_wholesale_price", "is_tied_to_activity",
-            "upc", "launch_date", "release_date", "eol_date", "color", "system_color",
-            "msrp", "map_price", "sale_price", "recommended_accessory",
-            "inventory_level", "inventory_threshold", "length", "width", "height", "weight",
-            "warranty", "short_description", "promo_information",
-            "meta_title", "meta_description", "media_references",
-            "headphone_jack_compatibility", "bluetooth_compatibility",
-            "compatible_charging_interface", "wireless_charging_compatibility",
-            "storage_expansion_compatibility", "memory_capacity",
-            "compatible_watch_case_size", "compatibility_status",
+            "id", "name", "sku", "upc", "brand", "product_type", "product_category",
+            "status", "selling_status",
+            "vendor_company_reference", "vendor_name",
+            "description", "short_description", "promo_information",
+            "msrp", "map_price", "sale_price", "buyer_wholesale_price",
+            "vendor_wholesale_price_amount", "vendor_wholesale_price_currency",
+            "color", "system_color",
+            "launch_date", "release_date", "eol_date",
+            "inventory_level", "inventory_threshold",
+            "length", "width", "height", "weight",
+            "warranty",
+            "meta_title", "meta_description",
+            "primary_image_reference", "primary_image_url", "media_references",
+            "device_compatibility",
+            "recommended_accessory", "is_tied_to_activity",
             "vendor_map_pricing_enforced", "exported_date",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id"]
 
     def get_primary_image_url(self, obj):
         if obj.primary_image_reference:
@@ -197,22 +198,38 @@ class ProductListSerializer(ProductSerializerBase):
                     return f"{media_url}{asset.storage_key}"
             except Exception:
                 pass
-        # Fallback to external media_references URLs if available
         if isinstance(obj.media_references, list) and len(obj.media_references) > 0:
             return obj.media_references[0]
         return None
 
-    def to_representation(self, instance):
-        ret = super().to_representation(instance)
-        wc = ret.get("wireless_charging_compatibility")
-        if wc:
-            import re
-            parts = [p.strip() for p in re.split(r'[\+,;]', wc) if p.strip()]
-            case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2", "not compatible": "Not Compatible"}
-            norm = [case_map.get(p.lower(), p) for p in parts]
-            if norm:
-                ret["wireless_charging_compatibility"] = "+".join(norm)
-        return ret
+    def get_device_compatibility(self, obj):
+        """
+        Returns a list of compatible device names (Manufacturer + Device name)
+        resolved from ProductCompatibilityAssertion records for this product.
+        Internal compat signal fields (headphone_jack, bluetooth, etc.) are
+        intentionally excluded from buyer-facing responses.
+        """
+        try:
+            from apps.catalog.models import ProductCompatibilityAssertion
+            from apps.devices.models import Device
+            assertions = ProductCompatibilityAssertion.objects.filter(
+                product=obj,
+                is_compatible=True,
+                is_excluded=False,
+            ).values_list("device_reference", flat=True)
+            if not assertions:
+                return []
+            devices = Device.objects.filter(id__in=assertions).select_related("manufacturer")
+            return [
+                {
+                    "device_id": str(d.id),
+                    "name": f"{d.manufacturer.name} {d.name}",
+                    "model_number": d.model_number or "",
+                }
+                for d in devices
+            ]
+        except Exception:
+            return []
 
 
 class ProductDetailSerializer(ProductSerializerBase):
