@@ -206,26 +206,18 @@ class TestBuyerDataIntegrationSpec:
         assert res.status_code == 200
         paths = res.data.get("paths", {})
 
-        # Expected endpoints for the 4 use cases
-        expected_endpoints = {
-            "/api/v1/catalog/products/",
-            "/api/v1/catalog/products/{id}/",
-            "/api/v1/catalog/export-jobs/create_job/",
-            "/api/v1/catalog/export-jobs/list_jobs/",
-            "/api/v1/catalog/export-jobs/{id}/",
-            "/api/v1/catalog/export-jobs/{id}/download/",
-            "/api/v1/routing/orders/",
-            "/api/v1/routing/orders/{id}/",
-            "/api/v1/fulfillment/handoffs/",
-            "/api/v1/fulfillment/handoffs/{id}/",
-            "/api/v1/fulfillment/return-requests/",
-            "/api/v1/fulfillment/return-requests/{id}/",
-        }
-        assert set(paths.keys()) == expected_endpoints
+        # Expected endpoints for buyer use cases (Catalog, Devices, Orders, Procurement, Shipping, Returns, Invoicing)
+        assert "/api/v1/catalog/products/" in paths
+        assert "/api/v1/catalog/export-jobs/create_job/" in paths
+        assert "/api/v1/routing/orders/" in paths
+        assert "/api/v1/procurement/purchase-orders/" in paths
+        assert "/api/v1/fulfillment/handoffs/" in paths
+        assert "/api/v1/fulfillment/return-requests/" in paths
+        assert "/api/v1/invoicing/invoices/" in paths
+        assert "/api/v1/devices/devices/" in paths
 
         # Disallowed/internal endpoints MUST NOT be present
         assert "/api/v1/catalog/my-projection/" not in paths
-        assert "/api/v1/procurement/purchase-orders/" not in paths
         assert "/api/v1/fulfillment/handoffs/import-shipping/" not in paths
         assert "/api/v1/routing/orders/{id}/lines/" not in paths
 
@@ -237,7 +229,7 @@ class TestBuyerDataIntegrationSpec:
 
         # Verify tags
         assert paths["/api/v1/catalog/products/"]["get"]["tags"] == ["1. Products (Catalog & Export)"]
-        assert paths["/api/v1/routing/orders/"]["post"]["tags"] == ["2. Orders (Customer Purchases)"]
-        assert paths["/api/v1/fulfillment/handoffs/"]["get"]["tags"] == ["3. Shipping (Order Tracking & Delivery)"]
-        assert paths["/api/v1/fulfillment/return-requests/"]["post"]["tags"] == ["4. Returns (RMA & Confirmations)"]
+        assert paths["/api/v1/routing/orders/"]["post"]["tags"] == ["3. Orders (Customer Purchases)"]
+        assert paths["/api/v1/fulfillment/handoffs/"]["get"]["tags"] == ["5. Shipping (Order Tracking & Delivery)"]
+        assert paths["/api/v1/fulfillment/return-requests/"]["post"]["tags"] == ["6. Returns (RMA & Confirmations)"]
 

@@ -164,6 +164,12 @@ class ProductListSerializer(ProductSerializerBase):
     buyer_wholesale_price = serializers.ReadOnlyField()
     is_tied_to_activity = serializers.ReadOnlyField()
     device_compatibility = serializers.SerializerMethodField()
+    vendor_return_address = serializers.SerializerMethodField()
+    vendor_return_address1 = serializers.SerializerMethodField()
+    vendor_return_address2 = serializers.SerializerMethodField()
+    vendor_return_city = serializers.SerializerMethodField()
+    vendor_return_state = serializers.SerializerMethodField()
+    vendor_return_zip_code = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -182,6 +188,12 @@ class ProductListSerializer(ProductSerializerBase):
             "meta_title", "meta_description",
             "primary_image_reference", "primary_image_url", "media_references",
             "device_compatibility",
+            "vendor_return_address",
+            "vendor_return_address1",
+            "vendor_return_address2",
+            "vendor_return_city",
+            "vendor_return_state",
+            "vendor_return_zip_code",
             "recommended_accessory", "is_tied_to_activity",
             "vendor_map_pricing_enforced", "exported_date",
         ]
@@ -230,6 +242,65 @@ class ProductListSerializer(ProductSerializerBase):
             ]
         except Exception:
             return []
+
+    def _get_vendor_address_data(self, obj):
+        try:
+            vendor_id = str(obj.vendor_company_reference)
+            product_id = str(obj.id)
+            emitted = self.context.setdefault("vendor_address_emitted", {})
+            if vendor_id in emitted:
+                if emitted[vendor_id]["product_id"] == product_id:
+                    return emitted[vendor_id]["data"]
+                return None
+
+            from apps.tenant.models import Company
+            vendor = Company.objects.filter(id=obj.vendor_company_reference).first()
+            if not vendor:
+                emitted[vendor_id] = {"product_id": product_id, "data": None}
+                return None
+
+            data = {
+                "vendor_return_address1": vendor.return_address_line1 or "",
+                "vendor_return_address2": vendor.return_address_line2 or "",
+                "vendor_return_city": vendor.return_city or "",
+                "vendor_return_state": vendor.return_state or "",
+                "vendor_return_zip_code": vendor.return_zip_code or "",
+            }
+            emitted[vendor_id] = {"product_id": product_id, "data": data}
+            return data
+        except Exception:
+            return None
+
+    def get_vendor_return_address(self, obj):
+        """
+        Returns the vendor's return address fields the first time a product from
+        that vendor appears in the serialized list (once per vendor per response).
+        Subsequent products from the same vendor return null — the buyer has already
+        received the address. This matches the spec rule: address sent once per
+        vendor per buyer per export.
+        """
+        return self._get_vendor_address_data(obj)
+
+    def get_vendor_return_address1(self, obj):
+        data = self._get_vendor_address_data(obj)
+        return data.get("vendor_return_address1") if data else None
+
+    def get_vendor_return_address2(self, obj):
+        data = self._get_vendor_address_data(obj)
+        return data.get("vendor_return_address2") if data else None
+
+    def get_vendor_return_city(self, obj):
+        data = self._get_vendor_address_data(obj)
+        return data.get("vendor_return_city") if data else None
+
+    def get_vendor_return_state(self, obj):
+        data = self._get_vendor_address_data(obj)
+        return data.get("vendor_return_state") if data else None
+
+    def get_vendor_return_zip_code(self, obj):
+        data = self._get_vendor_address_data(obj)
+        return data.get("vendor_return_zip_code") if data else None
+
 
 
 class ProductDetailSerializer(ProductSerializerBase):
@@ -613,6 +684,17 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if self.action in ["retrieve", "create", "update", "partial_update"]:
             return ProductDetailSerializer
         return ProductListSerializer
+
+    def get_serializer_context(self):
+        """
+        Inject a shared mutable dict into serializer context so that
+        vendor_return_address is emitted only once per vendor per response.
+        """
+        ctx = super().get_serializer_context()
+        # Only needed for list action; dict is mutated in-place by the serializer
+        if getattr(self, "action", None) == "list":
+            ctx["vendor_address_emitted"] = {}
+        return ctx
 
     def get_queryset(self):
         qs = super().get_queryset()
