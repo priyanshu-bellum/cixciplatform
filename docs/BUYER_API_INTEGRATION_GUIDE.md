@@ -274,11 +274,30 @@ Retrieve specific return confirmation details and inspection outcome.
 | **1. Products** | `GET` | `/api/v1/catalog/export-jobs/list_jobs/` | List catalog export feeds |
 | **1. Products** | `GET` | `/api/v1/catalog/export-jobs/{id}/` | Check export feed generation status |
 | **1. Products** | `GET` | `/api/v1/catalog/export-jobs/{id}/download/` | Download exported product catalog file |
-| **2. Orders** | `POST` | `/api/v1/routing/orders/` | Submit customer purchase order to CIXCI |
-| **2. Orders** | `GET` | `/api/v1/routing/orders/` | List buyer purchase orders |
-| **2. Orders** | `GET` | `/api/v1/routing/orders/{id}/` | Get order details and current processing status |
-| **3. Shipping** | `GET` | `/api/v1/fulfillment/handoffs/` | List order tracking, carrier, and delivery status |
-| **3. Shipping** | `GET` | `/api/v1/fulfillment/handoffs/{id}/` | Get specific shipment tracking details |
-| **4. Returns** | `POST` | `/api/v1/fulfillment/return-requests/` | Submit customer return request |
-| **4. Returns** | `GET` | `/api/v1/fulfillment/return-requests/` | List returns with inspection & refund confirmation |
-| **4. Returns** | `GET` | `/api/v1/fulfillment/return-requests/{id}/` | Get return confirmation details |
+| **2. Devices** | `GET` | `/api/v1/devices/types/` | List device types |
+| **2. Devices** | `GET` | `/api/v1/devices/types/{id}/` | Get device type detail |
+| **2. Devices** | `GET` | `/api/v1/devices/manufacturers/` | List device manufacturers |
+| **2. Devices** | `GET` | `/api/v1/devices/manufacturers/{id}/` | Get manufacturer detail |
+| **2. Devices** | `GET` | `/api/v1/devices/devices/` | List devices in the reference catalog |
+| **2. Devices** | `GET` | `/api/v1/devices/devices/{id}/` | Get device detail and compatibility data |
+| **2. Devices** | `GET` | `/api/v1/devices/portfolio/` | List buyer device portfolio references |
+| **2. Devices** | `POST` | `/api/v1/devices/portfolio/` | Add a device to the buyer portfolio |
+| **2. Devices** | `GET` | `/api/v1/devices/portfolio/{id}/` | Get portfolio reference detail |
+| **2. Devices** | `PATCH` | `/api/v1/devices/portfolio/{id}/` | Update portfolio reference |
+| **3. Orders** | `POST` | `/api/v1/routing/orders/` | Submit customer purchase order to CIXCI |
+| **3. Orders** | `GET` | `/api/v1/routing/orders/` | List buyer purchase orders |
+| **3. Orders** | `GET` | `/api/v1/routing/orders/{id}/` | Get order details and current processing status |
+| **4. Procurement** | `POST` | `/api/v1/procurement/purchase-orders/` | Create a buyer purchase order |
+| **4. Procurement** | `GET` | `/api/v1/procurement/purchase-orders/` | List buyer purchase orders |
+| **4. Procurement** | `GET` | `/api/v1/procurement/purchase-orders/{id}/` | Get purchase order detail |
+| **4. Procurement** | `GET` | `/api/v1/procurement/purchase-orders/{id}/lines/` | Get purchase order line items |
+| **4. Procurement** | `POST` | `/api/v1/procurement/purchase-orders/{id}/approve/` | Approve a purchase order |
+| **5. Shipping** | `GET` | `/api/v1/fulfillment/handoffs/` | List order tracking, carrier, and delivery status |
+| **5. Shipping** | `GET` | `/api/v1/fulfillment/handoffs/{id}/` | Get specific shipment tracking details |
+| **6. Returns** | `POST` | `/api/v1/fulfillment/return-requests/` | Submit customer return request |
+| **6. Returns** | `GET` | `/api/v1/fulfillment/return-requests/` | List returns with inspection & refund confirmation |
+| **6. Returns** | `GET` | `/api/v1/fulfillment/return-requests/{id}/` | Get return confirmation details |
+| **7. Invoicing** | `GET` | `/api/v1/invoicing/invoices/` | List buyer-facing invoices |
+| **7. Invoicing** | `GET` | `/api/v1/invoicing/invoices/{id}/` | Get invoice detail |
+| **7. Invoicing** | `GET` | `/api/v1/invoicing/invoices/{id}/lines/` | Get invoice line items |
+| **7. Invoicing** | `GET` | `/api/v1/invoicing/invoices/{id}/adjustments/` | Get invoice adjustments |
