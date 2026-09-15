@@ -469,7 +469,7 @@ def trigger_vendor_export(vendor, trigger_type="SYSTEM", triggered_by=None, subo
             else:
                 triggered_by_role_snapshot = "User"
         else:
-            triggered_by_role_snapshot = "System Process"
+            triggered_by_role_snapshot = None
             system_process_name = "Scheduled Vendor Order Export"
             system_process_id = "scheduled_order_export"
             system_job_id = task_id or f"job_{window.id}"

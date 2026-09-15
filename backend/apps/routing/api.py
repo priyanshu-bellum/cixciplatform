@@ -1,6 +1,8 @@
 """Order Routing — Serializers + ViewSets + URLs"""
 import uuid
+import decimal
 import logging
+from django.utils import timezone
 from rest_framework import serializers, viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -58,12 +60,37 @@ class OrderSerializer(serializers.ModelSerializer):
     customer_name = serializers.SerializerMethodField()
     customer_details = serializers.SerializerMethodField()
 
+    # 17 Required fields from Order Data Specification for Buyers
+    vendor_id = serializers.SerializerMethodField()
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    address1 = serializers.SerializerMethodField()
+    address2 = serializers.SerializerMethodField()
+    city = serializers.SerializerMethodField()
+    state = serializers.SerializerMethodField()
+    zip_code = serializers.SerializerMethodField()
+    sku = serializers.SerializerMethodField()
+    product_name = serializers.SerializerMethodField()
+    vendor_color = serializers.SerializerMethodField()
+    quantity = serializers.SerializerMethodField()
+    upc = serializers.SerializerMethodField()
+    order_date_time = serializers.SerializerMethodField()
+    buyer_id = serializers.SerializerMethodField()
+    buyer_order_number = serializers.SerializerMethodField()
+    order_lines = serializers.SerializerMethodField()
+
     class Meta:
         model = Order
         fields = [
             "id", "company_scope_reference", "buyer_reference", "buyer_entity_reference",
             "status", "pricing_snapshot_references", "placed_at", "created_at",
             "buyer_name", "customer_name", "customer_details",
+            # Order Data Specification fields
+            "vendor_id", "first_name", "last_name", "email",
+            "address1", "address2", "city", "state", "zip_code",
+            "sku", "product_name", "vendor_color", "quantity", "upc",
+            "order_date_time", "buyer_id", "buyer_order_number", "order_lines",
         ]
         read_only_fields = ["id", "created_at", "placed_at"]
 
@@ -82,40 +109,58 @@ class OrderSerializer(serializers.ModelSerializer):
                 ret["status"] = "shipped"
         return ret
 
+    def _get_primary_suborder(self, obj):
+        request = self.context.get("request")
+        suborders = obj.routed_suborders.all()
+        if request and request.user and not getattr(request.user, "is_cixci_admin", False):
+            entity = getattr(request.user, "entity", None)
+            company = entity.company if entity else None
+            if company and getattr(company, "company_type", None) == "vendor":
+                suborders = suborders.filter(vendor_company_reference=company.id)
+        return suborders.first()
+
+    def _get_customer_shipping(self, obj):
+        sub = self._get_primary_suborder(obj)
+        if sub and isinstance(sub.routing_snapshot, dict):
+            return sub.routing_snapshot.get("customer_shipping") or {}
+        return {}
+
+    def _get_order_lines(self, obj):
+        sub = self._get_primary_suborder(obj)
+        if sub and isinstance(sub.routing_snapshot, dict) and sub.routing_snapshot.get("order_lines"):
+            return sub.routing_snapshot["order_lines"]
+        from apps.procurement.models import PurchaseOrderLine
+        from apps.catalog.models import Product
+        lines = PurchaseOrderLine.objects.filter(purchase_order_id=obj.id)
+        res = []
+        for l in lines:
+            prod = Product.objects.filter(id=l.product_reference).first()
+            vendor_id = str(prod.vendor_company_reference) if prod else (str(sub.vendor_company_reference) if sub else "")
+            res.append({
+                "vendor_id": vendor_id,
+                "sku": prod.sku if prod else "",
+                "product_name": prod.name if prod else "",
+                "vendor_color": prod.color if prod else "",
+                "quantity": l.quantity,
+                "upc": prod.upc if prod else "",
+            })
+        return res
+
     def get_buyer_name(self, obj):
         from apps.tenant.models import Company
         company = Company.objects.filter(id=obj.company_scope_reference).first()
         return company.name if company else "Unknown Buyer"
 
     def get_customer_name(self, obj):
-        request = self.context.get("request")
-        suborders = obj.routed_suborders.all()
-        if request and request.user and not request.user.is_cixci_admin:
-            entity = getattr(request.user, "entity", None)
-            company = entity.company if entity else None
-            if company and company.company_type == "vendor":
-                suborders = suborders.filter(vendor_company_reference=company.id)
-        
-        sub = suborders.first()
-        if sub and "customer_shipping" in sub.routing_snapshot:
-            cs = sub.routing_snapshot["customer_shipping"]
-            first_name = cs.get("customer_first_name", "") or cs.get("first_name", "")
-            last_name = cs.get("customer_last_name", "") or cs.get("last_name", "")
-            return f"{first_name} {last_name}".strip() or "N/A"
-        return "N/A"
+        cs = self._get_customer_shipping(obj)
+        first_name = cs.get("customer_first_name", "") or cs.get("first_name", "")
+        last_name = cs.get("customer_last_name", "") or cs.get("last_name", "")
+        full = f"{first_name} {last_name}".strip()
+        return full if full else "N/A"
 
     def get_customer_details(self, obj):
-        request = self.context.get("request")
-        suborders = obj.routed_suborders.all()
-        if request and request.user and not request.user.is_cixci_admin:
-            entity = getattr(request.user, "entity", None)
-            company = entity.company if entity else None
-            if company and company.company_type == "vendor":
-                suborders = suborders.filter(vendor_company_reference=company.id)
-        
-        sub = suborders.first()
-        if sub and "customer_shipping" in sub.routing_snapshot:
-            cs = sub.routing_snapshot["customer_shipping"]
+        cs = self._get_customer_shipping(obj)
+        if cs:
             return {
                 "first_name": cs.get("customer_first_name") or cs.get("first_name") or "",
                 "last_name": cs.get("customer_last_name") or cs.get("last_name") or "",
@@ -127,20 +172,287 @@ class OrderSerializer(serializers.ModelSerializer):
             }
         return None
 
+    def get_buyer_order_number(self, obj):
+        sub = self._get_primary_suborder(obj)
+        if sub and isinstance(sub.routing_snapshot, dict):
+            val = sub.routing_snapshot.get("buyer_order_number") or sub.routing_snapshot.get("po_number")
+            if val:
+                return str(val)
+        return str(obj.id)
+
+    def get_buyer_id(self, obj):
+        sub = self._get_primary_suborder(obj)
+        if sub and isinstance(sub.routing_snapshot, dict) and sub.routing_snapshot.get("buyer_id"):
+            return str(sub.routing_snapshot["buyer_id"])
+        return str(obj.company_scope_reference or obj.buyer_reference or "")
+
+    def get_order_date_time(self, obj):
+        dt = obj.placed_at or obj.created_at
+        return dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
+
+    def get_first_name(self, obj):
+        cs = self._get_customer_shipping(obj)
+        return cs.get("first_name") or cs.get("customer_first_name") or ""
+
+    def get_last_name(self, obj):
+        cs = self._get_customer_shipping(obj)
+        return cs.get("last_name") or cs.get("customer_last_name") or ""
+
+    def get_email(self, obj):
+        cs = self._get_customer_shipping(obj)
+        return cs.get("email") or cs.get("customer_email") or ""
+
+    def get_address1(self, obj):
+        cs = self._get_customer_shipping(obj)
+        return cs.get("address1") or cs.get("address_1") or ""
+
+    def get_address2(self, obj):
+        cs = self._get_customer_shipping(obj)
+        return cs.get("address2") or cs.get("address_2") or ""
+
+    def get_city(self, obj):
+        cs = self._get_customer_shipping(obj)
+        return cs.get("city") or ""
+
+    def get_state(self, obj):
+        cs = self._get_customer_shipping(obj)
+        return cs.get("state") or ""
+
+    def get_zip_code(self, obj):
+        cs = self._get_customer_shipping(obj)
+        return cs.get("zip_code") or cs.get("zip") or ""
+
+    def get_vendor_id(self, obj):
+        lines = self._get_order_lines(obj)
+        if lines:
+            return lines[0].get("vendor_id") or ""
+        sub = self._get_primary_suborder(obj)
+        return str(sub.vendor_company_reference) if sub else ""
+
+    def get_sku(self, obj):
+        lines = self._get_order_lines(obj)
+        return lines[0].get("sku", "") if lines else ""
+
+    def get_product_name(self, obj):
+        lines = self._get_order_lines(obj)
+        return lines[0].get("product_name", "") if lines else ""
+
+    def get_vendor_color(self, obj):
+        lines = self._get_order_lines(obj)
+        return lines[0].get("vendor_color", "") if lines else ""
+
+    def get_quantity(self, obj):
+        lines = self._get_order_lines(obj)
+        return lines[0].get("quantity", 1) if lines else 1
+
+    def get_upc(self, obj):
+        lines = self._get_order_lines(obj)
+        return lines[0].get("upc", "") if lines else ""
+
+    def get_order_lines(self, obj):
+        return self._get_order_lines(obj)
+
 
 class OrderCreateSerializer(serializers.ModelSerializer):
+    # 17 Required Fields from Order Data Specification for Buyers
+    vendor_id = serializers.CharField(required=False, allow_blank=True)
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    address1 = serializers.CharField(required=False, allow_blank=True)
+    address2 = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    city = serializers.CharField(required=False, allow_blank=True)
+    state = serializers.CharField(required=False, allow_blank=True)
+    zip_code = serializers.CharField(required=False, allow_blank=True)
+    sku = serializers.CharField(required=False, allow_blank=True)
+    product_name = serializers.CharField(required=False, allow_blank=True)
+    vendor_color = serializers.CharField(required=False, allow_blank=True)
+    quantity = serializers.IntegerField(required=False, default=1)
+    upc = serializers.CharField(required=False, allow_blank=True)
+    order_date_time = serializers.DateTimeField(required=False, allow_null=True)
+    buyer_id = serializers.CharField(required=False, allow_blank=True)
+    buyer_order_number = serializers.CharField(required=False, allow_blank=True)
+
+    order_lines = serializers.ListField(child=serializers.DictField(), required=False)
+
     class Meta:
         model = Order
-        fields = ["pricing_snapshot_references"]
+        fields = [
+            "pricing_snapshot_references",
+            "vendor_id", "first_name", "last_name", "email",
+            "address1", "address2", "city", "state", "zip_code",
+            "sku", "product_name", "vendor_color", "quantity", "upc",
+            "order_date_time", "buyer_id", "buyer_order_number", "order_lines",
+        ]
 
     def create(self, validated_data):
-        user = self.context["request"].user
-        return Order.objects.create(
-            company_scope_reference=user.entity.company_id,
-            buyer_reference=user.id,
-            buyer_entity_reference=user.entity_id,
-            **validated_data,
+        from apps.tenant.models import Company
+        from apps.catalog.models import Product
+        from apps.procurement.models import PurchaseOrder, PurchaseOrderLine
+
+        request = self.context.get("request")
+        user = request.user if request else None
+
+        # Resolve buyer company and entity
+        buyer_id_str = validated_data.pop("buyer_id", None)
+        buyer_company = None
+        if buyer_id_str:
+            buyer_company = Company.objects.filter(id=buyer_id_str).first()
+        if not buyer_company and user and getattr(user, "entity", None):
+            buyer_company = getattr(user.entity, "company", None)
+
+        company_scope_ref = buyer_company.id if buyer_company else (user.entity.company_id if user and getattr(user, "entity", None) else uuid.uuid4())
+        buyer_entity = buyer_company.entities.first() if buyer_company and hasattr(buyer_company, "entities") and buyer_company.entities.exists() else None
+        buyer_entity_ref = buyer_entity.id if buyer_entity else (user.entity_id if user and getattr(user, "entity_id", None) else company_scope_ref)
+        buyer_ref = user.id if user and not getattr(user, "is_anonymous", True) else company_scope_ref
+
+        # Extract shipping info
+        first_name = validated_data.pop("first_name", "")
+        last_name = validated_data.pop("last_name", "")
+        email = validated_data.pop("email", "")
+        address1 = validated_data.pop("address1", "")
+        address2 = validated_data.pop("address2", "") or ""
+        city = validated_data.pop("city", "")
+        state = validated_data.pop("state", "")
+        zip_code = validated_data.pop("zip_code", "")
+
+        # Fallback to alternate keys if provided in raw request data
+        req_data = request.data if request and hasattr(request, "data") and isinstance(request.data, dict) else {}
+        first_name = first_name or req_data.get("customer_first_name") or ""
+        last_name = last_name or req_data.get("customer_last_name") or ""
+        email = email or req_data.get("customer_email") or ""
+        address1 = address1 or req_data.get("shipping_address_line1") or req_data.get("address_1") or ""
+        address2 = address2 or req_data.get("shipping_address_line2") or req_data.get("address_2") or ""
+        city = city or req_data.get("shipping_city") or ""
+        state = state or req_data.get("shipping_state") or ""
+        zip_code = zip_code or req_data.get("shipping_postal_code") or req_data.get("zip") or ""
+
+        customer_shipping = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "customer_first_name": first_name,
+            "customer_last_name": last_name,
+            "email": email,
+            "customer_email": email,
+            "address1": address1,
+            "address_1": address1,
+            "address2": address2,
+            "address_2": address2,
+            "city": city,
+            "state": state,
+            "zip_code": zip_code,
+            "zip": zip_code,
+            "country": "US",
+        }
+
+        # Order metadata
+        buyer_order_number = validated_data.pop("buyer_order_number", "") or req_data.get("buyer_order_number", "")
+        order_date_time = validated_data.pop("order_date_time", None) or timezone.now()
+        pricing_snapshot_references = validated_data.pop("pricing_snapshot_references", {})
+
+        # Extract lines
+        order_lines = validated_data.pop("order_lines", None)
+        if not order_lines:
+            sku = validated_data.pop("sku", "") or req_data.get("sku", "")
+            upc = validated_data.pop("upc", "") or req_data.get("upc", "")
+            product_name = validated_data.pop("product_name", "") or req_data.get("product_name", "")
+            vendor_color = validated_data.pop("vendor_color", "") or req_data.get("vendor_color", "")
+            vendor_id = validated_data.pop("vendor_id", "") or req_data.get("vendor_id", "")
+            quantity = validated_data.pop("quantity", 1) or req_data.get("quantity", 1)
+            order_lines = [{
+                "vendor_id": vendor_id,
+                "sku": sku,
+                "product_name": product_name,
+                "vendor_color": vendor_color,
+                "quantity": quantity,
+                "upc": upc,
+            }]
+
+        order = Order.objects.create(
+            company_scope_reference=company_scope_ref,
+            buyer_reference=buyer_ref,
+            buyer_entity_reference=buyer_entity_ref,
+            status="placed",
+            pricing_snapshot_references=pricing_snapshot_references,
+            placed_at=order_date_time,
         )
+
+        # Group lines by vendor
+        vendor_grouped = {}
+        for line in order_lines:
+            sku = line.get("sku", "").strip() if line.get("sku") else ""
+            upc = line.get("upc", "").strip() if line.get("upc") else ""
+            prod = None
+            if sku:
+                prod = Product.objects.filter(sku=sku).first()
+            if not prod and upc:
+                prod = Product.objects.filter(upc=upc).first()
+            if prod:
+                line_vendor_id = line.get("vendor_id") or str(prod.vendor_company_reference)
+                if not line.get("product_name"):
+                    line["product_name"] = prod.name
+                if not line.get("vendor_color"):
+                    line["vendor_color"] = prod.color or ""
+                if not line.get("upc"):
+                    line["upc"] = prod.upc or ""
+                if not line.get("sku"):
+                    line["sku"] = prod.sku
+                line["product_reference"] = str(prod.id)
+            else:
+                line_vendor_id = line.get("vendor_id") or str(company_scope_ref)
+                line["product_reference"] = None
+            line["vendor_id"] = str(line_vendor_id)
+            vendor_grouped.setdefault(line_vendor_id, []).append(line)
+
+        # Create RoutedSuborder per vendor
+        for v_id, lines in vendor_grouped.items():
+            snap = {
+                "buyer_order_number": buyer_order_number,
+                "buyer_id": str(buyer_company.id if buyer_company else company_scope_ref),
+                "order_date_time": order_date_time.isoformat() if hasattr(order_date_time, "isoformat") else str(order_date_time),
+                "customer_shipping": customer_shipping,
+                "order_lines": lines,
+                "po_number": buyer_order_number or f"PO-{order.id}",
+            }
+            try:
+                v_uuid = uuid.UUID(str(v_id))
+            except Exception:
+                v_uuid = uuid.uuid4()
+
+            suborder = RoutedSuborder.objects.create(
+                order=order,
+                vendor_company_reference=v_uuid,
+                status="placed",
+                routing_snapshot=snap,
+            )
+
+            # Also create PurchaseOrder & lines for procurement cross-module compatibility
+            try:
+                po = PurchaseOrder.objects.create(
+                    id=order.id,
+                    company_scope_reference=company_scope_ref,
+                    buyer_reference=buyer_ref,
+                    vendor_company_reference=v_uuid,
+                    status="approved",
+                    po_number=buyer_order_number or f"PO-{order.id}",
+                    approved_at=order_date_time,
+                )
+                for l in lines:
+                    if l.get("product_reference"):
+                        PurchaseOrderLine.objects.create(
+                            purchase_order=po,
+                            product_reference=uuid.UUID(l["product_reference"]),
+                            quantity=int(l.get("quantity", 1)),
+                            unit_price_snapshot=decimal.Decimal("0.00"),
+                            line_total=decimal.Decimal("0.00"),
+                        )
+            except Exception:
+                pass
+
+        return order
+
+    def to_representation(self, instance):
+        return OrderSerializer(instance, context=self.context).data
 
 
 class RoutedSuborderSerializer(serializers.ModelSerializer):

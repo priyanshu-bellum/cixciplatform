@@ -233,3 +233,88 @@ class TestBuyerDataIntegrationSpec:
         assert paths["/api/v1/fulfillment/handoffs/"]["get"]["tags"] == ["5. Shipping (Order Tracking & Delivery)"]
         assert paths["/api/v1/fulfillment/return-requests/"]["post"]["tags"] == ["6. Returns (RMA & Confirmations)"]
 
+    def test_order_data_specification_fields_create_and_retrieve(self):
+        """Verify all 17 required fields from Order Data Specification for Buyers upon creation and retrieval."""
+        self.client.force_authenticate(user=self.buyer_user)
+
+        # Create a test product
+        prod = Product.objects.create(
+            sku="SPEC-SKU-999",
+            name="Super Armor Case",
+            upc="810099887766",
+            color="Matte Black",
+            vendor_company_reference=self.vendor_company.id,
+            company_scope_reference=self.vendor_company.id,
+            status=ProductStatus.ACTIVE,
+            launch_date=timezone.now().date(),
+        )
+
+        order_payload = {
+            "vendor_id": str(self.vendor_company.id),
+            "first_name": "Alexander",
+            "last_name": "Hamilton",
+            "email": "alex.hamilton@treasury.gov",
+            "address1": "55 Wall Street",
+            "address2": "Floor 3",
+            "city": "New York",
+            "state": "NY",
+            "zip_code": "10005",
+            "sku": "SPEC-SKU-999",
+            "product_name": "Super Armor Case",
+            "vendor_color": "Matte Black",
+            "quantity": 3,
+            "upc": "810099887766",
+            "order_date_time": "2026-09-16T01:30:00Z",
+            "buyer_id": str(self.buyer_company.id),
+            "buyer_order_number": "BUYER-SPEC-ORD-001",
+        }
+
+        # 1. Create order via POST /api/v1/routing/orders/
+        res_create = self.client.post("/api/v1/routing/orders/", order_payload, format="json")
+        assert res_create.status_code == 201, f"Expected 201 Created, got {res_create.status_code}: {res_create.content}"
+        created_data = res_create.data
+
+        # Verify all 17 fields in create response
+        assert created_data["vendor_id"] == str(self.vendor_company.id)
+        assert created_data["first_name"] == "Alexander"
+        assert created_data["last_name"] == "Hamilton"
+        assert created_data["email"] == "alex.hamilton@treasury.gov"
+        assert created_data["address1"] == "55 Wall Street"
+        assert created_data["address2"] == "Floor 3"
+        assert created_data["city"] == "New York"
+        assert created_data["state"] == "NY"
+        assert created_data["zip_code"] == "10005"
+        assert created_data["sku"] == "SPEC-SKU-999"
+        assert created_data["product_name"] == "Super Armor Case"
+        assert created_data["vendor_color"] == "Matte Black"
+        assert created_data["quantity"] == 3
+        assert created_data["upc"] == "810099887766"
+        assert "2026-09-16" in created_data["order_date_time"]
+        assert created_data["buyer_id"] == str(self.buyer_company.id)
+        assert created_data["buyer_order_number"] == "BUYER-SPEC-ORD-001"
+
+        # 2. Retrieve order via GET /api/v1/routing/orders/{id}/
+        order_id = created_data["id"]
+        res_get = self.client.get(f"/api/v1/routing/orders/{order_id}/")
+        assert res_get.status_code == 200
+        retrieved_data = res_get.data
+
+        assert retrieved_data["vendor_id"] == str(self.vendor_company.id)
+        assert retrieved_data["first_name"] == "Alexander"
+        assert retrieved_data["last_name"] == "Hamilton"
+        assert retrieved_data["email"] == "alex.hamilton@treasury.gov"
+        assert retrieved_data["address1"] == "55 Wall Street"
+        assert retrieved_data["address2"] == "Floor 3"
+        assert retrieved_data["city"] == "New York"
+        assert retrieved_data["state"] == "NY"
+        assert retrieved_data["zip_code"] == "10005"
+        assert retrieved_data["sku"] == "SPEC-SKU-999"
+        assert retrieved_data["product_name"] == "Super Armor Case"
+        assert retrieved_data["vendor_color"] == "Matte Black"
+        assert retrieved_data["quantity"] == 3
+        assert retrieved_data["upc"] == "810099887766"
+        assert "2026-09-16" in retrieved_data["order_date_time"]
+        assert retrieved_data["buyer_id"] == str(self.buyer_company.id)
+        assert retrieved_data["buyer_order_number"] == "BUYER-SPEC-ORD-001"
+
+
