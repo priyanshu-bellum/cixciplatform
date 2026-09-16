@@ -494,6 +494,8 @@ export default function CatalogPage() {
   }
 
   const [allProductsSelectedIds, setAllProductsSelectedIds] = useState<string[]>([])
+  // Track which product IDs a buyer has successfully exported (session-scoped)
+  const [exportedProductIds, setExportedProductIds] = useState<Set<string>>(new Set())
 
   // My Compatibility isolated filters state
   const [compatSearch, setCompatSearchState] = useState(searchParams.get('compatibility_search') || '')
@@ -2693,6 +2695,12 @@ export default function CatalogPage() {
       if (tab === 'products') {
         setAllProductsSelectedIds([])
       } else {
+        // Mark all exported products as "Product Added" for this buyer session
+        setExportedProductIds(prev => {
+          const next = new Set(prev)
+          exportIds.forEach((id: string) => next.add(id))
+          return next
+        })
         setMyCompatibilitySelectedIds([])
       }
       setShowExportModal(false)
@@ -2854,7 +2862,8 @@ export default function CatalogPage() {
     p: any,
     isSelected: boolean,
     onToggleSelect: () => void,
-    showCheckbox: boolean
+    showCheckbox: boolean,
+    showBuyerAddBtn: boolean = true
   ) => {
     if (isCixciAdmin || isVendor || isBuyer) {
       const primaryUrl = p.primary_image_url || ''
@@ -2948,15 +2957,17 @@ export default function CatalogPage() {
               )
             })()}
 
-            <div className="admin-spec-preview-tooltip">
-              <div className="spec-title">SPEC PREVIEW</div>
-              <div className="spec-grid">
-                <div className="spec-row"><span>Dim:</span> <strong>{p.length && p.width && p.height ? `${p.length}×${p.width}×${p.height} in` : 'Standard'}</strong></div>
-                <div className="spec-row"><span>Weight:</span> <strong>{p.weight ? `${p.weight} oz` : 'Standard'}</strong></div>
-                <div className="spec-row"><span>Warranty:</span> <strong>{p.warranty || '1 Year'}</strong></div>
-                <div className="spec-row"><span>Category:</span> <strong>{p.product_category || p.product_type || 'Accessory'}</strong></div>
+            {isCixciAdmin && (
+              <div className="admin-spec-preview-tooltip">
+                <div className="spec-title">SPEC PREVIEW</div>
+                <div className="spec-grid">
+                  <div className="spec-row"><span>Dim:</span> <strong>{p.length && p.width && p.height ? `${p.length}×${p.width}×${p.height} in` : 'Standard'}</strong></div>
+                  <div className="spec-row"><span>Weight:</span> <strong>{p.weight ? `${p.weight} oz` : 'Standard'}</strong></div>
+                  <div className="spec-row"><span>Warranty:</span> <strong>{p.warranty || '1 Year'}</strong></div>
+                  <div className="spec-row"><span>Category:</span> <strong>{p.product_category || p.product_type || 'Accessory'}</strong></div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="admin-angle-row">
@@ -3099,24 +3110,34 @@ export default function CatalogPage() {
               </div>
             </div>
 
-            {isBuyer && (
-              <div
-                className={`buyer-add-product-btn ${isSelected ? 'selected' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onToggleSelect()
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => {}}
-                  style={{ cursor: 'pointer', accentColor: '#38bdf8', width: 14, height: 14 }}
-                />
-                <span style={{ fontSize: 13, fontWeight: 600, color: isSelected ? '#38bdf8' : '#f1f5f9' }}>
-                  Add Product
-                </span>
-              </div>
+            {isBuyer && showBuyerAddBtn && (
+              exportedProductIds.has(String(p.id)) ? (
+                <div
+                  className="buyer-add-product-btn selected"
+                  style={{ opacity: 0.75, cursor: 'default' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#38bdf8' }}>✓ Product Added</span>
+                </div>
+              ) : (
+                <div
+                  className={`buyer-add-product-btn ${isSelected ? 'selected' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleSelect()
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => {}}
+                    style={{ cursor: 'pointer', accentColor: '#38bdf8', width: 14, height: 14 }}
+                  />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: isSelected ? '#38bdf8' : '#f1f5f9' }}>
+                    Add Product
+                  </span>
+                </div>
+              )
             )}
           </div>
         </div>
@@ -3845,9 +3866,6 @@ export default function CatalogPage() {
               <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
                 Product Catalog
               </div>
-              <div className="page-sub" style={{ fontSize: 13, color: '#94a3b8' }}>
-                Select listings to route into a management action. Hover a product image for a quick spec preview.
-              </div>
             </>
           ) : isBuyer ? (
             <>
@@ -3855,10 +3873,7 @@ export default function CatalogPage() {
                 PRODUCT CATALOG
               </div>
               <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
-                Buyer Product View
-              </div>
-              <div className="page-sub" style={{ fontSize: 13, color: '#94a3b8' }}>
-                Select listings to route into a management action. Hover a product image for a quick spec preview.
+                Product Catalog
               </div>
             </>
           ) : (
@@ -4091,7 +4106,8 @@ export default function CatalogPage() {
                         setAllProductsSelectedIds([...allProductsSelectedIds, p.id])
                       }
                     },
-                    true
+                    true,
+                    false  // hide Add Product on All Products tab for buyers
                   )
                 )}
               </div>
@@ -4452,7 +4468,8 @@ export default function CatalogPage() {
                               setMyCompatibilitySelectedIds([...myCompatibilitySelectedIds, p.id])
                             }
                           },
-                          true
+                          true,
+                          true  // show Add Product / Product Added on My Compatibility tab
                         )
                       )}
                     </div>
