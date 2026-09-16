@@ -3090,9 +3090,6 @@ export default function CatalogPage() {
             <div className="admin-status-row">
               <span className="admin-label">Product Status:</span>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                <span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`} style={{ fontSize: 9 }}>
-                  {p.status || '—'}
-                </span>
                 <span className={`admin-stock-badge ${stockBadgeClass}`}>
                   {stockText}
                 </span>
