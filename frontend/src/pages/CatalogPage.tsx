@@ -2867,30 +2867,28 @@ export default function CatalogPage() {
         return cleanRef !== cleanPrimary
       })
 
-      const inv = p.inventory_level !== undefined && p.inventory_level !== null ? Number(p.inventory_level) : null
-      let stockText = 'IN STOCK'
-      let stockBadgeClass = 'in-stock'
-      if (inv !== null) {
-        if (inv <= 0) {
-          stockText = `OUT OF STOCK (${inv})`
-          stockBadgeClass = 'out-of-stock'
-        } else if (inv <= 10) {
-          stockText = `LOW STOCK (${inv})`
-          stockBadgeClass = 'low-stock'
-        } else {
-          stockText = `IN STOCK (${inv})`
-          stockBadgeClass = 'in-stock'
-        }
-      } else if (p.status === 'out_of_stock') {
-        stockText = 'OUT OF STOCK (0)'
-        stockBadgeClass = 'out-of-stock'
-      } else if (p.status === 'inactive' || p.status === 'eol') {
-        stockText = p.status.toUpperCase()
-        stockBadgeClass = 'out-of-stock'
-      } else {
-        stockText = 'IN STOCK'
-        stockBadgeClass = 'in-stock'
+      // Map dropdown status values to human-readable labels and badge colors
+      const STATUS_LABEL: Record<string, string> = {
+        active: 'Active',
+        inactive: 'Inactive',
+        out_of_stock: 'Out of Stock',
+        eol: 'EOL',
+        draft: 'Draft',
+        pending_review: 'Pending Review',
+        archived: 'Archived',
       }
+      const STATUS_COLOR: Record<string, string> = {
+        active: 'in-stock',
+        inactive: 'out-of-stock',
+        out_of_stock: 'out-of-stock',
+        eol: 'out-of-stock',
+        draft: 'low-stock',
+        pending_review: 'low-stock',
+        archived: 'out-of-stock',
+      }
+      const statusLabel = STATUS_LABEL[p.status] ?? (p.status || '—')
+      const statusColor = STATUS_COLOR[p.status] ?? 'low-stock'
+      const inv = p.inventory_level !== undefined && p.inventory_level !== null ? Number(p.inventory_level) : null
 
       return (
         <div
@@ -3090,9 +3088,14 @@ export default function CatalogPage() {
             <div className="admin-status-row">
               <span className="admin-label">Product Status:</span>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                <span className={`admin-stock-badge ${stockBadgeClass}`}>
-                  {stockText}
+                <span className={`admin-stock-badge ${statusColor}`}>
+                  {statusLabel}
                 </span>
+                {inv !== null && (
+                  <span style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>
+                    Inventory: {inv}
+                  </span>
+                )}
               </div>
             </div>
 
