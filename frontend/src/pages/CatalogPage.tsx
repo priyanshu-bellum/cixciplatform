@@ -3825,19 +3825,10 @@ export default function CatalogPage() {
           filter: brightness(1.1);
         }
       `}</style>
-      <div className="page-header" style={isCixciAdmin ? { display: 'flex', justifyContent: 'flex-end', marginBottom: 16 } : undefined}>
-        {!isCixciAdmin && (
+      <div className="page-header" style={isCixciAdmin || isVendor ? { display: 'flex', justifyContent: 'flex-end', marginBottom: 16 } : undefined}>
+        {!isCixciAdmin && !isVendor && (
           <div>
-            {isVendor ? (
-              <>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
-                  PRODUCT CATALOG
-                </div>
-                <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
-                  Product Catalog
-                </div>
-              </>
-            ) : isBuyer ? (
+            {isBuyer ? (
               <>
                 <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
                   PRODUCT CATALOG
@@ -3988,7 +3979,7 @@ export default function CatalogPage() {
               </button>
             )}
 
-            {!isCixciAdmin && allProductsSelectedIds.length > 0 && (
+            {!isCixciAdmin && !isVendor && allProductsSelectedIds.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
                 <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                   {allProductsSelectedIds.length} selected
@@ -4077,7 +4068,7 @@ export default function CatalogPage() {
                         setAllProductsSelectedIds([...allProductsSelectedIds, p.id])
                       }
                     },
-                    !isCixciAdmin,
+                    !isCixciAdmin && !isVendor,
                     false  // hide Add Product on All Products tab for buyers
                   )
                 )}
@@ -4101,7 +4092,7 @@ export default function CatalogPage() {
                 <table>
                   <thead>
                     <tr>
-                      {!isBuyer && !isCixciAdmin && (
+                      {!isBuyer && !isCixciAdmin && !isVendor && (
                         <th style={{ width: 40, textAlign: 'center' }}>
                           <input
                             type="checkbox"
@@ -4148,7 +4139,7 @@ export default function CatalogPage() {
                         }}
                         style={{ cursor: 'pointer' }}
                       >
-                        {!isBuyer && !isCixciAdmin && (
+                        {!isBuyer && !isCixciAdmin && !isVendor && (
                           <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                             <input
                               type="checkbox"
