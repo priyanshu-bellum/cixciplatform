@@ -2907,6 +2907,15 @@ export default function CatalogPage() {
             border: isSelected ? '1px solid #20D1F2' : undefined,
             boxShadow: isSelected ? '0 0 16px rgba(32, 209, 242, 0.35)' : undefined,
           }}
+          onMouseLeave={() => {
+            if (hoveredCardImages[p.id]) {
+              setHoveredCardImages(prev => {
+                const next = { ...prev }
+                delete next[p.id]
+                return next
+              })
+            }
+          }}
           onClick={async () => {
             setSelectedManageProduct(p)
             setShowManageModal(true)
@@ -2916,23 +2925,6 @@ export default function CatalogPage() {
             } catch {}
           }}
         >
-          {isCixciAdmin && showCheckbox && (
-            <div
-              className="admin-card-checkbox"
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleSelect()
-              }}
-              title="Select listing"
-            >
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={() => {}}
-              />
-            </div>
-          )}
-
           {/* View Details hover badge – top-right corner */}
           <div className="admin-card-view-hint">
             <Eye size={11} /> View Details
@@ -2956,45 +2948,35 @@ export default function CatalogPage() {
                 </div>
               )
             })()}
-
-            {isCixciAdmin && (
-              <div className="admin-spec-preview-tooltip">
-                <div className="spec-title">SPEC PREVIEW</div>
-                <div className="spec-grid">
-                  <div className="spec-row"><span>Dim:</span> <strong>{p.length && p.width && p.height ? `${p.length}×${p.width}×${p.height} in` : 'Standard'}</strong></div>
-                  <div className="spec-row"><span>Weight:</span> <strong>{p.weight ? `${p.weight} oz` : 'Standard'}</strong></div>
-                  <div className="spec-row"><span>Warranty:</span> <strong>{p.warranty || '1 Year'}</strong></div>
-                  <div className="spec-row"><span>Category:</span> <strong>{p.product_category || p.product_type || 'Accessory'}</strong></div>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="admin-angle-row">
             {[0, 1, 2, 3].map((idx) => {
               const angleImg = additionalImages[idx]
-              const isActiveThumb = angleImg && (hoveredCardImages[p.id] || p.primary_image_url) === angleImg
+              if (!angleImg) {
+                return (
+                  <div
+                    key={idx}
+                    className="admin-angle-box empty"
+                    style={{ border: 'none', background: 'transparent' }}
+                  />
+                )
+              }
+              const isActiveThumb = (hoveredCardImages[p.id] || p.primary_image_url) === angleImg
               return (
                 <div
                   key={idx}
                   className={`admin-angle-box${isActiveThumb ? ' active-thumb' : ''}`}
-                  style={{ cursor: angleImg ? 'pointer' : 'default' }}
+                  style={{ cursor: 'pointer' }}
                   onMouseEnter={() => {
-                    if (angleImg) setHoveredCardImages(prev => ({ ...prev, [p.id]: angleImg }))
-                  }}
-                  onMouseLeave={() => {
-                    setHoveredCardImages(prev => { const next = { ...prev }; delete next[p.id]; return next })
+                    setHoveredCardImages(prev => ({ ...prev, [p.id]: angleImg }))
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (angleImg) setHoveredCardImages(prev => ({ ...prev, [p.id]: angleImg }))
+                    setHoveredCardImages(prev => ({ ...prev, [p.id]: angleImg }))
                   }}
                 >
-                  {angleImg ? (
-                    <img src={getImageUrl(angleImg)} alt={`Angle ${idx + 1}`} />
-                  ) : (
-                    <span>Angle</span>
-                  )}
+                  <img src={getImageUrl(angleImg)} alt={`Angle ${idx + 1}`} />
                 </div>
               )
             })}
@@ -3041,10 +3023,10 @@ export default function CatalogPage() {
                 style={{
                   background: getColorSwatchBg(p.color, p.system_color),
                   border: p.color?.toLowerCase()?.includes('white') || p.color?.toLowerCase()?.includes('clear') ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.3)',
-                  marginLeft: 2,
+                  marginLeft: 0,
                 }}
               />
-              <span className="admin-color-val" style={{ marginLeft: 4 }}>{p.color || '—'}</span>
+              <span className="admin-color-val" style={{ marginLeft: 2 }}>{p.color || '—'}</span>
             </div>
             <div className="admin-color-row">
               <span className="admin-label">System Color:</span>
@@ -3328,7 +3310,7 @@ export default function CatalogPage() {
           align-items: center;
           gap: 4px;
           backdrop-filter: blur(4px);
-          z-index: 3;
+          z-index: 10;
           pointer-events: none;
         }
         .admin-product-card:hover .admin-card-view-hint {
@@ -3588,7 +3570,6 @@ export default function CatalogPage() {
         .admin-color-row .admin-label {
           color: #64748b;
           font-size: 12px;
-          min-width: 56px;
         }
         .admin-color-swatch {
           width: 11px;
@@ -3844,45 +3825,35 @@ export default function CatalogPage() {
           filter: brightness(1.1);
         }
       `}</style>
-      <div className="page-header">
-        <div>
-          {isCixciAdmin ? (
-            <>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
-                PRODUCT CATALOG
-              </div>
-              <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
-                CIXCI Admin Product View
-              </div>
-              <div className="page-sub" style={{ fontSize: 13, color: '#94a3b8' }}>
-                Select listings to route into a management action. Hover a product image for a quick spec preview.
-              </div>
-            </>
-          ) : isVendor ? (
-            <>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
-                PRODUCT CATALOG
-              </div>
-              <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
-                Product Catalog
-              </div>
-            </>
-          ) : isBuyer ? (
-            <>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
-                PRODUCT CATALOG
-              </div>
-              <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
-                Product Catalog
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="page-title">Product Catalog</div>
-              <div className="page-sub">Accessories, compatibility projections, export governance</div>
-            </>
-          )}
-        </div>
+      <div className="page-header" style={isCixciAdmin ? { display: 'flex', justifyContent: 'flex-end', marginBottom: 16 } : undefined}>
+        {!isCixciAdmin && (
+          <div>
+            {isVendor ? (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
+                  PRODUCT CATALOG
+                </div>
+                <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
+                  Product Catalog
+                </div>
+              </>
+            ) : isBuyer ? (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
+                  PRODUCT CATALOG
+                </div>
+                <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
+                  Product Catalog
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="page-title">Product Catalog</div>
+                <div className="page-sub">Accessories, compatibility projections, export governance</div>
+              </>
+            )}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10 }}>
           {isCixciAdmin && (
             <button className="btn btn-secondary" onClick={() => { setManageField('system_color'); setShowDropdownManagerModal(true); }}>
@@ -4017,7 +3988,7 @@ export default function CatalogPage() {
               </button>
             )}
 
-            {allProductsSelectedIds.length > 0 && (
+            {!isCixciAdmin && allProductsSelectedIds.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
                 <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                   {allProductsSelectedIds.length} selected
@@ -4106,7 +4077,7 @@ export default function CatalogPage() {
                         setAllProductsSelectedIds([...allProductsSelectedIds, p.id])
                       }
                     },
-                    true,
+                    !isCixciAdmin,
                     false  // hide Add Product on All Products tab for buyers
                   )
                 )}
@@ -4130,7 +4101,7 @@ export default function CatalogPage() {
                 <table>
                   <thead>
                     <tr>
-                      {!isBuyer && (
+                      {!isBuyer && !isCixciAdmin && (
                         <th style={{ width: 40, textAlign: 'center' }}>
                           <input
                             type="checkbox"
@@ -4177,7 +4148,7 @@ export default function CatalogPage() {
                         }}
                         style={{ cursor: 'pointer' }}
                       >
-                        {!isBuyer && (
+                        {!isBuyer && !isCixciAdmin && (
                           <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                             <input
                               type="checkbox"
