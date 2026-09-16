@@ -3825,47 +3825,37 @@ export default function CatalogPage() {
           filter: brightness(1.1);
         }
       `}</style>
-      <div className="page-header" style={isCixciAdmin || isVendor ? { display: 'flex', justifyContent: 'flex-end', marginBottom: 16 } : undefined}>
-        {!isCixciAdmin && !isVendor && (
+      {(!isCixciAdmin && !isVendor && !isBuyer) ? (
+        <div className="page-header">
           <div>
-            {isBuyer ? (
+            <div className="page-title">Product Catalog</div>
+            <div className="page-sub">Accessories, compatibility projections, export governance</div>
+          </div>
+        </div>
+      ) : (isCixciAdmin || isVendor) ? (
+        <div className="page-header" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {isCixciAdmin && (
+              <button className="btn btn-secondary" onClick={() => { setManageField('system_color'); setShowDropdownManagerModal(true); }}>
+                <Settings size={14} style={{ marginRight: 6 }} /> Manage Dropdowns
+              </button>
+            )}
+            {isVendor && (
               <>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 4 }}>
-                  PRODUCT CATALOG
-                </div>
-                <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
-                  Product Catalog
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="page-title">Product Catalog</div>
-                <div className="page-sub">Accessories, compatibility projections, export governance</div>
+                <button className="btn btn-secondary" onClick={() => setShowBulkModal(true)}>
+                  <Upload size={14} /> Bulk Upload Catalog
+                </button>
+                <button className="btn btn-primary" onClick={() => {
+                  resetProductForm()
+                  setShowAddModal(true)
+                }}>
+                  <Plus size={14} /> Add Product
+                </button>
               </>
             )}
           </div>
-        )}
-        <div style={{ display: 'flex', gap: 10 }}>
-          {isCixciAdmin && (
-            <button className="btn btn-secondary" onClick={() => { setManageField('system_color'); setShowDropdownManagerModal(true); }}>
-              <Settings size={14} style={{ marginRight: 6 }} /> Manage Dropdowns
-            </button>
-          )}
-          {isVendor && (
-            <>
-              <button className="btn btn-secondary" onClick={() => setShowBulkModal(true)}>
-                <Upload size={14} /> Bulk Upload Catalog
-              </button>
-              <button className="btn btn-primary" onClick={() => {
-                resetProductForm()
-                setShowAddModal(true)
-              }}>
-                <Plus size={14} /> Add Product
-              </button>
-            </>
-          )}
         </div>
-      </div>
+      ) : null}
 
       <div className="tabs">
         <div className={`tab ${tab === 'products' ? 'active' : ''}`} onClick={() => setTab('products')}>
@@ -3979,7 +3969,7 @@ export default function CatalogPage() {
               </button>
             )}
 
-            {!isCixciAdmin && !isVendor && allProductsSelectedIds.length > 0 && (
+            {!isCixciAdmin && !isVendor && !isBuyer && allProductsSelectedIds.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
                 <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
                   {allProductsSelectedIds.length} selected
