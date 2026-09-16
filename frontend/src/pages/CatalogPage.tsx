@@ -4294,6 +4294,52 @@ export default function CatalogPage() {
                     </button>
                   )}
 
+                  {compatibleProducts.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-end', height: 38, marginLeft: myCompatibilitySelectedIds.length > 0 ? 0 : 'auto' }}>
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          cursor: 'pointer',
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: '#f1f5f9',
+                          userSelect: 'none',
+                          padding: '0 12px',
+                          height: 38,
+                          background: 'var(--bg-elevated)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          transition: 'all 0.15s ease',
+                        }}
+                        title="Select or deselect all compatible products across all pages"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={compatibleProducts.length > 0 && compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))}
+                          ref={(el) => {
+                            if (el) {
+                              const isAll = compatibleProducts.length > 0 && compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))
+                              const isSome = !isAll && compatibleProducts.some((p: any) => myCompatibilitySelectedIds.includes(p.id))
+                              el.indeterminate = isSome
+                            }
+                          }}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const allIds = compatibleProducts.map((p: any) => p.id)
+                              setMyCompatibilitySelectedIds(allIds)
+                            } else {
+                              setMyCompatibilitySelectedIds([])
+                            }
+                          }}
+                          style={{ cursor: 'pointer', accentColor: '#38bdf8', width: 14, height: 14 }}
+                        />
+                        <span>Select All</span>
+                      </label>
+                    </div>
+                  )}
+
                   {myCompatibilitySelectedIds.length > 0 && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
                       <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 550 }}>
@@ -4309,7 +4355,7 @@ export default function CatalogPage() {
                   )}
 
                   {/* View Mode Toggle Switch */}
-                  <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 3, marginLeft: myCompatibilitySelectedIds.length > 0 ? 0 : 'auto' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 3, marginLeft: 0 }}>
                     <button
                       type="button"
                       title="Grid View"
