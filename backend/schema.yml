@@ -16870,17 +16870,6 @@ components:
           type: string
         status:
           $ref: '#/components/schemas/Status920Enum'
-        selling_status:
-          $ref: '#/components/schemas/SellingStatusEnum'
-        vendor_wholesale_price_amount:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        vendor_wholesale_price_currency:
-          type: string
-          minLength: 1
-          maxLength: 3
         primary_image_reference:
           type: string
           format: uuid
@@ -16891,10 +16880,6 @@ components:
           nullable: true
           maxLength: 100
         launch_date:
-          type: string
-          format: date
-          nullable: true
-        release_date:
           type: string
           format: date
           nullable: true
@@ -16928,11 +16913,6 @@ components:
         recommended_accessory:
           type: boolean
         inventory_level:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        inventory_threshold:
           type: integer
           maximum: 2147483647
           minimum: -2147483648
@@ -16974,10 +16954,6 @@ components:
         meta_description:
           type: string
           nullable: true
-        compatibility_status:
-          type: string
-          minLength: 1
-          maxLength: 30
     PatchedPurchaseOrderRequest:
       type: object
       properties:
@@ -17416,12 +17392,6 @@ components:
         vendor_map_pricing_enforced:
           type: string
           readOnly: true
-        exported_date:
-          type: string
-          readOnly: true
-        vendor_name:
-          type: string
-          readOnly: true
         primary_image_url:
           type: string
           readOnly: true
@@ -17510,16 +17480,6 @@ components:
           type: string
         status:
           $ref: '#/components/schemas/Status920Enum'
-        selling_status:
-          $ref: '#/components/schemas/SellingStatusEnum'
-        vendor_wholesale_price_amount:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        vendor_wholesale_price_currency:
-          type: string
-          maxLength: 3
         primary_image_reference:
           type: string
           format: uuid
@@ -17530,10 +17490,6 @@ components:
           nullable: true
           maxLength: 100
         launch_date:
-          type: string
-          format: date
-          nullable: true
-        release_date:
           type: string
           format: date
           nullable: true
@@ -17567,11 +17523,6 @@ components:
         recommended_accessory:
           type: boolean
         inventory_level:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        inventory_threshold:
           type: integer
           maximum: 2147483647
           minimum: -2147483648
@@ -17613,13 +17564,9 @@ components:
         meta_description:
           type: string
           nullable: true
-        compatibility_status:
-          type: string
-          maxLength: 30
       required:
       - buyer_wholesale_price
       - company_scope_reference
-      - exported_date
       - id
       - is_tied_to_activity
       - name
@@ -17628,7 +17575,6 @@ components:
       - sku
       - vendor_company_reference
       - vendor_map_pricing_enforced
-      - vendor_name
     ProductDetailRequest:
       type: object
       properties:
@@ -17664,17 +17610,6 @@ components:
           type: string
         status:
           $ref: '#/components/schemas/Status920Enum'
-        selling_status:
-          $ref: '#/components/schemas/SellingStatusEnum'
-        vendor_wholesale_price_amount:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        vendor_wholesale_price_currency:
-          type: string
-          minLength: 1
-          maxLength: 3
         primary_image_reference:
           type: string
           format: uuid
@@ -17685,10 +17620,6 @@ components:
           nullable: true
           maxLength: 100
         launch_date:
-          type: string
-          format: date
-          nullable: true
-        release_date:
           type: string
           format: date
           nullable: true
@@ -17722,11 +17653,6 @@ components:
         recommended_accessory:
           type: boolean
         inventory_level:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        inventory_threshold:
           type: integer
           maximum: 2147483647
           minimum: -2147483648
@@ -17768,10 +17694,6 @@ components:
         meta_description:
           type: string
           nullable: true
-        compatibility_status:
-          type: string
-          minLength: 1
-          maxLength: 30
       required:
       - name
       - product_type
@@ -17803,8 +17725,6 @@ components:
           - $ref: '#/components/schemas/NullEnum'
         status:
           $ref: '#/components/schemas/Status920Enum'
-        selling_status:
-          $ref: '#/components/schemas/SellingStatusEnum'
         primary_image_reference:
           type: string
           format: uuid
@@ -17813,23 +17733,12 @@ components:
           type: string
           format: uuid
           description: Tenant Company vendor ID
-        vendor_name:
-          type: string
-          readOnly: true
         created_at:
           type: string
           format: date-time
           readOnly: true
         description:
           type: string
-        vendor_wholesale_price_amount:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        vendor_wholesale_price_currency:
-          type: string
-          maxLength: 3
         primary_image_url:
           type: string
           readOnly: true
@@ -17844,10 +17753,6 @@ components:
           nullable: true
           maxLength: 100
         launch_date:
-          type: string
-          format: date
-          nullable: true
-        release_date:
           type: string
           format: date
           nullable: true
@@ -17881,11 +17786,6 @@ components:
         recommended_accessory:
           type: boolean
         inventory_level:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        inventory_threshold:
           type: integer
           maximum: 2147483647
           minimum: -2147483648
@@ -17977,18 +17877,11 @@ components:
           type: string
           nullable: true
           description: Postal code of the vendor return address
-        compatibility_status:
-          type: string
-          maxLength: 30
         vendor_map_pricing_enforced:
-          type: string
-          readOnly: true
-        exported_date:
           type: string
           readOnly: true
       required:
       - buyer_wholesale_price
-      - exported_date
       - id
       - is_tied_to_activity
       - name
@@ -17997,7 +17890,6 @@ components:
       - sku
       - vendor_company_reference
       - vendor_map_pricing_enforced
-      - vendor_name
     ProductListRequest:
       type: object
       properties:
@@ -18022,8 +17914,6 @@ components:
           - $ref: '#/components/schemas/NullEnum'
         status:
           $ref: '#/components/schemas/Status920Enum'
-        selling_status:
-          $ref: '#/components/schemas/SellingStatusEnum'
         primary_image_reference:
           type: string
           format: uuid
@@ -18034,24 +17924,11 @@ components:
           description: Tenant Company vendor ID
         description:
           type: string
-        vendor_wholesale_price_amount:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        vendor_wholesale_price_currency:
-          type: string
-          minLength: 1
-          maxLength: 3
         upc:
           type: string
           nullable: true
           maxLength: 100
         launch_date:
-          type: string
-          format: date
-          nullable: true
-        release_date:
           type: string
           format: date
           nullable: true
@@ -18085,11 +17962,6 @@ components:
         recommended_accessory:
           type: boolean
         inventory_level:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        inventory_threshold:
           type: integer
           maximum: 2147483647
           minimum: -2147483648
@@ -18137,10 +18009,6 @@ components:
           items:
             type: string
           description: Device compatibility list
-        compatibility_status:
-          type: string
-          minLength: 1
-          maxLength: 30
       required:
       - name
       - product_type

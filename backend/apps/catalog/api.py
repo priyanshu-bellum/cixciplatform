@@ -110,6 +110,11 @@ class ProductSerializerBase(serializers.ModelSerializer):
             if not getattr(user, "is_cixci_admin", False):
                 ret.pop("vendor_wholesale_price_amount", None)
                 ret.pop("vendor_wholesale_price_currency", None)
+                ret.pop("vendor_name", None)
+                ret.pop("selling_status", None)
+                ret.pop("release_date", None)
+                ret.pop("inventory_threshold", None)
+                ret.pop("compatibility_status", None)
 
         return ret
 
@@ -175,14 +180,13 @@ class ProductListSerializer(ProductSerializerBase):
         model = Product
         fields = [
             "id", "name", "sku", "upc", "brand", "product_type", "product_category",
-            "status", "selling_status",
-            "vendor_company_reference", "vendor_name",
+            "status",
+            "vendor_company_reference",
             "description", "short_description", "promo_information",
             "msrp", "map_price", "sale_price", "buyer_wholesale_price",
-            "vendor_wholesale_price_amount", "vendor_wholesale_price_currency",
             "color", "system_color",
-            "launch_date", "release_date", "eol_date",
-            "inventory_level", "inventory_threshold",
+            "launch_date", "eol_date",
+            "inventory_level",
             "length", "width", "height", "weight",
             "warranty",
             "meta_title", "meta_description",
