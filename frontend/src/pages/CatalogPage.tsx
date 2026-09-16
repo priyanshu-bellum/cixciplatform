@@ -809,6 +809,8 @@ export default function CatalogPage() {
   const [auditHistory, setAuditHistory] = useState<any[]>([])
   const [isLoadingAudit, setIsLoadingAudit] = useState(false)
   const [isRecalculating, setIsRecalculating] = useState(false)
+  // Per-card hovered image state: maps product id -> current displayed image url
+  const [hoveredCardImages, setHoveredCardImages] = useState<Record<string, string>>({})
 
   // Bulk Upload state
   const [bulkFile, setBulkFile] = useState<File | null>(null)
@@ -2907,7 +2909,7 @@ export default function CatalogPage() {
             } catch {}
           }}
         >
-          {!isBuyer && showCheckbox && (
+          {isCixciAdmin && showCheckbox && (
             <div
               className="admin-card-checkbox"
               onClick={(e) => {
@@ -2924,6 +2926,11 @@ export default function CatalogPage() {
             </div>
           )}
 
+          {/* View Details hover badge – top-right corner */}
+          <div className="admin-card-view-hint">
+            <Eye size={11} /> View Details
+          </div>
+
           {p.recommended_accessory && (
             <div className="admin-recommended-badge">
               ★ RECOMMENDED
@@ -2931,14 +2938,17 @@ export default function CatalogPage() {
           )}
 
           <div className="admin-photo-container">
-            {p.primary_image_url ? (
-              <img src={getImageUrl(p.primary_image_url)} alt={p.name} className="admin-main-img" />
-            ) : (
-              <div className="admin-placeholder-photo">
-                <ImageIcon size={32} className="admin-placeholder-icon" />
-                <span className="admin-placeholder-text">Main product photo</span>
-              </div>
-            )}
+            {(() => {
+              const displayImg = hoveredCardImages[p.id] || p.primary_image_url
+              return displayImg ? (
+                <img src={getImageUrl(displayImg)} alt={p.name} className="admin-main-img" />
+              ) : (
+                <div className="admin-placeholder-photo">
+                  <ImageIcon size={32} className="admin-placeholder-icon" />
+                  <span className="admin-placeholder-text">Main product photo</span>
+                </div>
+              )
+            })()}
 
             <div className="admin-spec-preview-tooltip">
               <div className="spec-title">SPEC PREVIEW</div>
@@ -2954,8 +2964,23 @@ export default function CatalogPage() {
           <div className="admin-angle-row">
             {[0, 1, 2, 3].map((idx) => {
               const angleImg = additionalImages[idx]
+              const isActiveThumb = angleImg && (hoveredCardImages[p.id] || p.primary_image_url) === angleImg
               return (
-                <div key={idx} className="admin-angle-box">
+                <div
+                  key={idx}
+                  className={`admin-angle-box${isActiveThumb ? ' active-thumb' : ''}`}
+                  style={{ cursor: angleImg ? 'pointer' : 'default' }}
+                  onMouseEnter={() => {
+                    if (angleImg) setHoveredCardImages(prev => ({ ...prev, [p.id]: angleImg }))
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredCardImages(prev => { const next = { ...prev }; delete next[p.id]; return next })
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (angleImg) setHoveredCardImages(prev => ({ ...prev, [p.id]: angleImg }))
+                  }}
+                >
                   {angleImg ? (
                     <img src={getImageUrl(angleImg)} alt={`Angle ${idx + 1}`} />
                   ) : (
@@ -3007,9 +3032,10 @@ export default function CatalogPage() {
                 style={{
                   background: getColorSwatchBg(p.color, p.system_color),
                   border: p.color?.toLowerCase()?.includes('white') || p.color?.toLowerCase()?.includes('clear') ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.3)',
+                  marginLeft: 2,
                 }}
               />
-              <span className="admin-color-val">{p.color || '—'}</span>
+              <span className="admin-color-val" style={{ marginLeft: 4 }}>{p.color || '—'}</span>
             </div>
             <div className="admin-color-row">
               <span className="admin-label">System Color:</span>
@@ -3063,9 +3089,14 @@ export default function CatalogPage() {
 
             <div className="admin-status-row">
               <span className="admin-label">Product Status:</span>
-              <span className={`admin-stock-badge ${stockBadgeClass}`}>
-                {stockText}
-              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                <span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`} style={{ fontSize: 9 }}>
+                  {p.status || '—'}
+                </span>
+                <span className={`admin-stock-badge ${stockBadgeClass}`}>
+                  {stockText}
+                </span>
+              </div>
             </div>
 
             {isBuyer && (
@@ -3258,6 +3289,36 @@ export default function CatalogPage() {
           transform: translateY(-2px);
           border-color: #20D1F2;
           box-shadow: 0 6px 24px rgba(32, 209, 242, 0.15);
+        }
+        .admin-card-view-hint {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(15, 23, 42, 0.88);
+          border: 1px solid rgba(32, 209, 242, 0.35);
+          color: #20D1F2;
+          font-size: 10px;
+          font-weight: 600;
+          padding: 3px 8px;
+          border-radius: 99px;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          backdrop-filter: blur(4px);
+          z-index: 3;
+          pointer-events: none;
+        }
+        .admin-product-card:hover .admin-card-view-hint {
+          opacity: 1;
+        }
+        .admin-angle-box.active-thumb {
+          border-color: rgba(32, 209, 242, 0.6);
+          box-shadow: 0 0 6px rgba(32, 209, 242, 0.25);
+        }
+        .admin-angle-box:hover {
+          border-color: rgba(32, 209, 242, 0.4);
         }
         .admin-card-checkbox {
           position: absolute;
@@ -3506,7 +3567,7 @@ export default function CatalogPage() {
         .admin-color-row .admin-label {
           color: #64748b;
           font-size: 12px;
-          min-width: 82px;
+          min-width: 56px;
         }
         .admin-color-swatch {
           width: 11px;
@@ -3782,7 +3843,7 @@ export default function CatalogPage() {
                 PRODUCT CATALOG
               </div>
               <div className="page-title" style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 4 }}>
-                Vendor submission review
+                Product Catalog
               </div>
               <div className="page-sub" style={{ fontSize: 13, color: '#94a3b8' }}>
                 Select listings to route into a management action. Hover a product image for a quick spec preview.
