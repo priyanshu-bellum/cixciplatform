@@ -3406,50 +3406,6 @@ export default function CatalogPage() {
           color: #435b7d;
           font-weight: 500;
         }
-        .admin-spec-preview-tooltip {
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          background: rgba(6, 15, 30, 0.95);
-          backdrop-filter: blur(6px);
-          border-top: 1px solid rgba(56, 189, 248, 0.3);
-          padding: 8px 10px;
-          font-size: 10px;
-          color: #94a3b8;
-          transform: translateY(100%);
-          transition: transform 0.2s ease, opacity 0.2s ease;
-          opacity: 0;
-          pointer-events: none;
-        }
-        .admin-photo-container:hover .admin-spec-preview-tooltip {
-          transform: translateY(0);
-          opacity: 1;
-        }
-        .admin-spec-preview-tooltip .spec-title {
-          font-size: 9px;
-          font-weight: 700;
-          color: #38bdf8;
-          letter-spacing: 0.08em;
-          margin-bottom: 4px;
-        }
-        .admin-spec-preview-tooltip .spec-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 3px 6px;
-        }
-        .admin-spec-preview-tooltip .spec-row {
-          display: flex;
-          justify-content: space-between;
-          gap: 4px;
-        }
-        .admin-spec-preview-tooltip .spec-row span {
-          color: #64748b;
-        }
-        .admin-spec-preview-tooltip .spec-row strong {
-          color: #e2e8f0;
-          font-weight: 500;
-        }
         .admin-angle-row {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
