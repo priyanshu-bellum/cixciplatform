@@ -339,6 +339,7 @@ export function SettingsPage() {
   // Unsaved-changes tracking
   const [showConfirmCloseCreate, setShowConfirmCloseCreate] = useState(false)
   const [showConfirmCloseManage, setShowConfirmCloseManage] = useState(false)
+  const [isManageFormDirty, setIsManageFormDirty] = useState(false)
 
   const isCreateFormDirty = () => {
     return (
@@ -428,86 +429,17 @@ export function SettingsPage() {
     if (email && !editOrderDigestEmails.includes(email)) {
       setEditOrderDigestEmails([...editOrderDigestEmails, email])
       setEditNewDigestEmail('')
+      setIsManageFormDirty(true)
     }
   }
 
   const handleRemoveEditDigestEmail = (email: string) => {
     setEditOrderDigestEmails(editOrderDigestEmails.filter(e => e !== email))
+    setIsManageFormDirty(true)
   }
 
   const isEditFormDirty = () => {
-    if (!selectedCompany) return false
-    let meta: any = {}
-    try {
-      meta = selectedCompany.external_id ? JSON.parse(selectedCompany.external_id) : {}
-    } catch (_) {}
-
-    let origR1 = '', origR2 = '', origCity = '', origZip = '', origRegion = '', origCountry = ''
-    try {
-      if (selectedCompany.return_address && selectedCompany.return_address.startsWith('{')) {
-        const parsed = JSON.parse(selectedCompany.return_address)
-        origR1 = parsed.address_line1 || parsed.address1 || ''
-        origR2 = parsed.address_line2 || parsed.address2 || ''
-        origCity = parsed.city || ''
-        origRegion = parsed.region_code || parsed.region || ''
-        origZip = parsed.zip || ''
-        origCountry = parsed.country_code || parsed.country || ''
-      } else {
-        origR1 = selectedCompany.return_address || ''
-      }
-    } catch (_) {
-      origR1 = selectedCompany.return_address || ''
-    }
-
-    const channelsMatch = (
-      Array.isArray(editCompanyAllowedChannels) &&
-      Array.isArray(selectedCompany.allowed_channels) &&
-      editCompanyAllowedChannels.length === selectedCompany.allowed_channels.length &&
-      editCompanyAllowedChannels.every((x: string) => selectedCompany.allowed_channels.includes(x))
-    )
-
-    const digestEmailsMatch = (
-      Array.isArray(editOrderDigestEmails) &&
-      Array.isArray(selectedCompany.order_digest_emails) &&
-      editOrderDigestEmails.length === selectedCompany.order_digest_emails.length &&
-      editOrderDigestEmails.every((x: string) => selectedCompany.order_digest_emails.includes(x))
-    )
-
-    return (
-      editCompanyName !== (selectedCompany.name || '') ||
-      editCompanyDisplayName !== (selectedCompany.display_name || '') ||
-      editCompanyStatus !== (selectedCompany.status || '') ||
-      editCompanyWebsite !== (selectedCompany.website || '') ||
-      editCompanyEmailDomain !== (selectedCompany.business_email_domain || '') ||
-      editCompanyContactName !== (selectedCompany.primary_contact_name || '') ||
-      editCompanyContactEmail !== (selectedCompany.primary_contact_email || '') ||
-      editCompanyPhone !== (selectedCompany.phone_number || '') ||
-      editCompanyAddress1 !== (selectedCompany.address_line1 || '') ||
-      editCompanyAddress2 !== (selectedCompany.address_line2 || '') ||
-      editCompanyIsParent !== (selectedCompany.is_parent || false) ||
-      editCompanyParentId !== (selectedCompany.parent_company || '') ||
-      editCompanyCountry !== (selectedCompany.country_code || 'USA') ||
-      editCompanyRegion !== (selectedCompany.region_code || '') ||
-      editCompanyCity !== (meta.city || '') ||
-      editCompanyZip !== (meta.zip || '') ||
-      editBuyerType !== (meta.buyer_type || '') ||
-      editVendorType !== (meta.vendor_type || '') ||
-      editMapPricingEnforced !== (selectedCompany.map_pricing_enforced || false) ||
-      editIntegrationMode !== (meta.integration_mode || '') ||
-      editDailyEmailTime !== (meta.daily_email_time || '08:00') ||
-      editDailyEmailTime2 !== (meta.daily_email_time_2 || '') ||
-      editBuyerPricingMode !== ((selectedCompany.buyer_pricing_mode === 'default' ? 'standard' : selectedCompany.buyer_pricing_mode) || 'standard') ||
-      String(editCommissionPercentage) !== String(selectedCompany.commission_percentage !== null && selectedCompany.commission_percentage !== undefined ? selectedCompany.commission_percentage : '14.00') ||
-      editReturnAddress1 !== origR1 ||
-      editReturnAddress2 !== origR2 ||
-      editReturnCity !== origCity ||
-      editReturnZip !== origZip ||
-      editReturnRegion !== origRegion ||
-      editReturnCountry !== origCountry ||
-      !digestEmailsMatch ||
-      !channelsMatch ||
-      editLogoFile !== null
-    )
+    return isManageFormDirty
   }
 
   // Child Onboarding state
@@ -917,6 +849,8 @@ export function SettingsPage() {
         }),
       })
       setSelectedCompany(resp.data)
+      setEditLogoFile(null)
+      setIsManageFormDirty(false)
       refetchCompanies()
       setErrorMsg(null)
       toast.success('Company profile changes saved successfully!')
@@ -1323,6 +1257,8 @@ export function SettingsPage() {
                       <td>
                         <button className="btn btn-secondary btn-xs" onClick={() => {
                           setSelectedCompany(c)
+                          setIsManageFormDirty(false)
+                          setEditLogoFile(null)
                           setEditCompanyName(c.name || '')
                           setEditCompanyDisplayName(c.display_name || '')
                           setEditCompanyStatus(c.status || '')
@@ -2354,6 +2290,7 @@ export function SettingsPage() {
                   setShowCompanyDetailsModal(false)
                   setSelectedCompany(null)
                   setErrorMsg(null)
+                  setIsManageFormDirty(false)
                 }
               }}>Close</button>
             </div>
@@ -2369,7 +2306,7 @@ export function SettingsPage() {
               {/* Profile Editor */}
               <div>
                 <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--accent)' }}>Edit Profile</h4>
-                <form onSubmit={handleUpdateCompany}>
+                <form onSubmit={handleUpdateCompany} onChange={() => setIsManageFormDirty(true)}>
                   {/* Company / Buyer / Vendor sub-type */}
                   {(selectedCompany.company_type || '').toLowerCase() === 'buyer' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
@@ -2431,7 +2368,7 @@ export function SettingsPage() {
                       )}
                       <label style={{ cursor: 'pointer' }}>
                         <span className='btn btn-secondary btn-sm'><Upload size={12} /> Choose Logo</span>
-                        <input type='file' accept='image/*' style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEditLogoFile(f); setEditLogoPreview(URL.createObjectURL(f)) } }} />
+                        <input type='file' accept='image/*' style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEditLogoFile(f); setEditLogoPreview(URL.createObjectURL(f)); setIsManageFormDirty(true); } }} />
                       </label>
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG, JPG, WEBP or SVG</span>
                     </div>
@@ -2498,9 +2435,11 @@ export function SettingsPage() {
                         value={editCompanyAddress1}
                         onChange={val => {
                           setEditCompanyAddress1(val)
+                          setIsManageFormDirty(true)
                           if (editSameAsCompanyAddress) setEditReturnAddress1(val)
                         }}
                         onSelect={({ address1, city, state, zip, country }) => {
+                          setIsManageFormDirty(true)
                           setEditCompanyAddress1(address1)
                           setEditCompanyCity(city)
                           setEditCompanyRegion(state)
@@ -2592,6 +2531,7 @@ export function SettingsPage() {
                           value={editReturnAddress1}
                           onChange={val => {
                             setEditReturnAddress1(val)
+                            setIsManageFormDirty(true)
                             setEditSameAsCompanyAddress(false)
                           }}
                           onSelect={({ address1, city, state, zip, country }) => {
@@ -2601,6 +2541,7 @@ export function SettingsPage() {
                             setEditReturnZip(zip)
                             setEditReturnCountry(country)
                             setEditSameAsCompanyAddress(false)
+                            setIsManageFormDirty(true)
                           }}
                           className="input"
                           placeholder="Start typing return address…"
@@ -2660,6 +2601,7 @@ export function SettingsPage() {
                       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                         {(['api','manual'] as const).map(mode => (
                           <button key={mode} type='button' onClick={() => {
+                            setIsManageFormDirty(true)
                             if (editIntegrationMode === mode) {
                               if (mode === 'api') {
                                 setEditIntegrationMode('')
@@ -2683,11 +2625,11 @@ export function SettingsPage() {
                           <div className="card-grid card-grid-2">
                             <div className="form-group">
                               <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> First Send Time</label>
-                              <AmPmTimePicker value={editDailyEmailTime} onChange={setEditDailyEmailTime} />
+                              <AmPmTimePicker value={editDailyEmailTime} onChange={val => { setEditDailyEmailTime(val); setIsManageFormDirty(true); }} />
                             </div>
                             <div className="form-group">
                               <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></label>
-                              <AmPmTimePicker value={editDailyEmailTime2} onChange={setEditDailyEmailTime2} allowEmpty />
+                              <AmPmTimePicker value={editDailyEmailTime2} onChange={val => { setEditDailyEmailTime2(val); setIsManageFormDirty(true); }} allowEmpty />
                             </div>
                           </div>
                           <div className="form-group">
@@ -2976,7 +2918,7 @@ export function SettingsPage() {
                   </p>
                   <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
                     <button type='button' className="btn btn-secondary btn-sm" onClick={() => setShowConfirmCloseManage(false)}>No, Keep Editing</button>
-                    <button type='button' className="btn btn-danger btn-sm" style={{ background: 'var(--red)', borderColor: 'var(--red)', color: '#fff' }} onClick={() => { setShowCompanyDetailsModal(false); setSelectedCompany(null); setErrorMsg(null); setShowConfirmCloseManage(false) }}>Yes, Discard</button>
+                    <button type='button' className="btn btn-danger btn-sm" style={{ background: 'var(--red)', borderColor: 'var(--red)', color: '#fff' }} onClick={() => { setShowCompanyDetailsModal(false); setSelectedCompany(null); setErrorMsg(null); setShowConfirmCloseManage(false); setIsManageFormDirty(false); }}>Yes, Discard</button>
                   </div>
                 </div>
               </div>
