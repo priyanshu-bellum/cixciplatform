@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@cixci.com')
-  const [password, setPassword] = useState('password')
+  const location = useLocation()
+  const prefilled = (location.state as any)?.prefilledEmail
+  const [email, setEmail] = useState(prefilled || 'admin@cixci.com')
+  const [password, setPassword] = useState(prefilled ? '' : 'password')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const { login, loading } = useAuthStore()

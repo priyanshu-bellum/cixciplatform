@@ -155,12 +155,18 @@ class TestUserOnboardingAndConfirmation:
         mail.outbox = []
         send_onboarding_invite(user)
         assert len(mail.outbox) == 1
-        assert "Activate your CIXCI Account" in mail.outbox[0].subject
+        assert "Confirm your email address" in mail.outbox[0].subject
         assert token in mail.outbox[0].body
+        assert len(mail.outbox[0].alternatives) == 1
+        html_body, mime = mail.outbox[0].alternatives[0]
+        assert mime == "text/html"
+        assert "Confirm your email address" in html_body
+        assert "Confirm My Email" in html_body
+        assert token in html_body
 
     def test_confirm_email_endpoint(self):
-        from apps.tenant.models import Company, CompanyEntity, User
-        from apps.tenant.services import generate_onboarding_token
+        from apps.tenant.models import Company, CompanyEntity, User, UserInvitation, InvitationStatus
+        from apps.tenant.services import generate_onboarding_token, create_user_invitation
         from rest_framework.test import APIClient
 
         company = Company.objects.create(
@@ -178,15 +184,85 @@ class TestUserOnboardingAndConfirmation:
         token = generate_onboarding_token(user)
 
         client = APIClient()
-        # Verify invalid token returns 400
+
+        # 1. Test verify_token endpoint with valid token
+        res_verify = client.get(f"/api/v1/tenant/users/verify_token/?token={token}")
+        assert res_verify.status_code == 200
+        assert res_verify.data["valid"] is True
+        assert res_verify.data["email"] == "invitee2@test.com"
+        assert res_verify.data["first_name"] == "Invitee2"
+
+        # 2. Test verify_token endpoint with invalid token
+        res_invalid = client.get("/api/v1/tenant/users/verify_token/?token=bogus-token")
+        assert res_invalid.status_code == 400
+        assert res_invalid.data["valid"] is False
+
+        # 3. Verify invalid token returns 400 on confirm_email
         res = client.post("/api/v1/tenant/users/confirm_email/", {"token": "invalid", "password": "newpassword123"})
         assert res.status_code == 400
 
-        # Verify correct confirmation activates and updates password
+        # 4. Verify correct confirmation activates and updates password
         res = client.post("/api/v1/tenant/users/confirm_email/", {"token": token, "password": "newpassword123"})
         assert res.status_code == 200
         
         user.refresh_from_db()
         assert user.is_active is True
         assert user.check_password("newpassword123") is True
+
+    def test_user_invitation_confirm_email_flow(self):
+        from apps.tenant.models import Company, CompanyEntity, User, UserInvitation, InvitationStatus
+        from rest_framework.test import APIClient
+        from datetime import timedelta
+        from django.utils import timezone
+        import secrets
+
+        company = Company.objects.create(
+            name="Invite Corp", company_type="buyer", status="active", slug="invite-corp"
+        )
+        entity = CompanyEntity.objects.create(
+            name="Invite Entity", company=company, status="active"
+        )
+        admin = User.objects.create_superuser(
+            email="superadmin@cixci.com", password="adminpass123", first_name="Super", last_name="Admin"
+        )
+
+        inv_token = secrets.token_urlsafe(32)
+        invitation = UserInvitation.objects.create(
+            target_company=company,
+            target_entity=entity,
+            email="inviteduser@cixci.com",
+            first_name="Invited",
+            last_name="Member",
+            token=inv_token,
+            expires_at=timezone.now() + timedelta(days=7),
+            invited_by=admin,
+            status=InvitationStatus.PENDING
+        )
+
+        client = APIClient()
+
+        # 1. Verify token endpoint identifies invitation
+        res_verify = client.get(f"/api/v1/tenant/users/verify_token/?token={inv_token}")
+        assert res_verify.status_code == 200
+        assert res_verify.data["valid"] is True
+        assert res_verify.data["email"] == "inviteduser@cixci.com"
+        assert res_verify.data["first_name"] == "Invited"
+        assert res_verify.data["type"] == "invitation"
+
+        # 2. Confirm password activates user and marks invitation accepted
+        res_confirm = client.post("/api/v1/tenant/users/confirm_email/", {
+            "token": inv_token,
+            "password": "securememberpass123"
+        })
+        assert res_confirm.status_code == 200
+        assert res_confirm.data["success"] is True
+
+        # Check user is created and activated
+        user = User.objects.get(email="inviteduser@cixci.com")
+        assert user.is_active is True
+        assert user.check_password("securememberpass123") is True
+
+        # Check invitation status updated
+        invitation.refresh_from_db()
+        assert invitation.status == InvitationStatus.ACCEPTED
 

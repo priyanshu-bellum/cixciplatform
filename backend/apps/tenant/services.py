@@ -113,7 +113,7 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 "fulfillment.return.read",
                 "fulfillment.handoff.update",
             }
-            if company.company_type == "buyer" and capability_code in buyer_safe_caps:
+            if (company.company_type or "").lower() == "buyer" and capability_code in buyer_safe_caps:
                 if company_id and str(user.entity.company_id) != str(company_id):
                     logger.debug(
                         "check_access DENIED (buyer fallback): user %s company %s != requested %s",
@@ -142,7 +142,7 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 "devices.manufacturer.list",
                 "devices.manufacturer.read",
             }
-            if company.company_type == "vendor" and capability_code in vendor_safe_caps:
+            if (company.company_type or "").lower() == "vendor" and capability_code in vendor_safe_caps:
                 if company_id and str(user.entity.company_id) != str(company_id):
                     logger.debug(
                         "check_access DENIED (vendor fallback): user %s company %s != requested %s",
@@ -224,20 +224,6 @@ def log_tenant_audit(event_code: str, description: str, company_id, actor_id, so
         logger.error(f"Failed to log audit record for {event_code}: {e}")
 
 
-def send_onboarding_invite(user):
-    """Generates onboarding token and simulates sending an onboarding invite email to a user."""
-    from django.core.signing import TimestampSigner
-    signer = TimestampSigner()
-    token = signer.sign(str(user.id))
-    log_tenant_audit(
-        event_code="user.onboarding_invite_sent",
-        description=f"Sent onboarding invite email to {user.email}",
-        company_id=getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None),
-        actor_id=user.id,
-        source_record_type="User",
-        source_record_id=user.id
-    )
-    return token
 
 
 
@@ -272,7 +258,8 @@ def resolve_buyer_scope(user):
 
 # ─── Onboarding & Verification Services ───────────────────────────────────────
 from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.conf import settings
 
 def generate_onboarding_token(user) -> str:
@@ -289,38 +276,117 @@ def verify_onboarding_token(token: str, max_age: int = 259200) -> Optional[str]:
         logger.warning(f"Onboarding token verification failed: {e}")
         return None
 
-def send_onboarding_invite(user):
-    """Send onboarding invitation email with signed activation link."""
-    token = generate_onboarding_token(user)
+def send_onboarding_invite(user=None, invitation=None):
+    """
+    Send onboarding invitation email with signed activation link matching CIXCI email design.
+    Supports either a User instance or a UserInvitation instance.
+    """
+    if not user and not invitation:
+        raise ValueError("Either user or invitation must be provided to send_onboarding_invite.")
+
+    if invitation:
+        token = invitation.token
+        recipient_email = invitation.email
+        first_name = invitation.first_name or "there"
+        company_id = invitation.target_company_id
+        actor_id = invitation.invited_by_id if invitation.invited_by else None
+        record_type = "UserInvitation"
+        record_id = invitation.id
+    else:
+        token = generate_onboarding_token(user)
+        recipient_email = user.email
+        first_name = user.first_name or "there"
+        company_id = getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None)
+        actor_id = user.id
+        record_type = "User"
+        record_id = user.id
+
     frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
-    link = f"{frontend_url}/confirm-email?token={token}"
-    
-    subject = "Activate your CIXCI Account"
-    message = (
-        f"Hello {user.first_name or 'there'},\n\n"
-        f"You have been added as an admin on CIXCI. Please click the link below "
-        f"to confirm your email and set your password to log in:\n\n"
-        f"{link}\n\n"
-        f"This invitation link will expire in 3 days."
+    confirmation_url = f"{frontend_url}/confirm-email?token={token}"
+
+    subject = "Confirm your email address"
+
+    context = {
+        "first_name": first_name,
+        "confirmation_url": confirmation_url,
+        "year": timezone.now().year,
+    }
+
+    try:
+        html_content = render_to_string("emails/confirm_email.html", context)
+    except Exception as e:
+        logger.warning(f"Failed to render HTML email template: {e}")
+        html_content = None
+
+    plain_message = (
+        f"Confirm your email address\n\n"
+        f"Hi {first_name},\n\n"
+        f"Welcome to CIXCI — we're glad you're here.\n\n"
+        f"Before we dive in, we just need to confirm your email address to keep your account secure "
+        f"and make sure we're reaching the right inbox.\n\n"
+        f"Tap the button below or visit the link to confirm:\n"
+        f"{confirmation_url}\n\n"
+        f"Once confirmed, you'll be the first to hear about new drops, exclusive content, "
+        f"and more from the world of CIXCI.\n\n"
+        f"If you didn't sign up for this, feel free to ignore this email.\n\n"
+        f"See you soon,\n"
+        f"The CIXCI Team\n\n"
+        f"You're receiving this message because you have an account with CIXCI or requested to be notified about updates.\n"
+        f"All content © {timezone.now().year} CIXCI. All rights reserved."
     )
-    
-    send_mail(
-        subject,
-        message,
-        settings.DEFAULT_FROM_EMAIL,
-        [user.email],
-        fail_silently=False,
+
+    resend_key = getattr(settings, "RESEND_API_KEY", "")
+    sent_via_resend = False
+    if resend_key:
+        try:
+            import resend
+            resend.api_key = resend_key
+            params = {
+                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+                "to": [recipient_email],
+                "subject": subject,
+                "html": html_content or plain_message,
+                "text": plain_message,
+            }
+            res = resend.Emails.send(params)
+            logger.info("Onboarding email sent via Resend API to %s: %s", recipient_email, res)
+            sent_via_resend = True
+        except Exception as e:
+            logger.error(f"Failed sending onboarding email via Resend API: {e}, falling back to django email backend.")
+
+    if not sent_via_resend:
+        email_msg = EmailMultiAlternatives(
+            subject=subject,
+            body=plain_message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+            to=[recipient_email],
+        )
+        if html_content:
+            email_msg.attach_alternative(html_content, "text/html")
+
+        email_msg.send(fail_silently=False)
+
+    log_tenant_audit(
+        event_code="user.onboarding_invite_sent",
+        description=f"Sent onboarding email to {recipient_email}",
+        company_id=company_id,
+        actor_id=actor_id,
+        source_record_type=record_type,
+        source_record_id=record_id,
     )
+
+    return token
 
 
 def is_capability_allowed_for_company(capability_code: str, company_type: str, buyer_type: Optional[str] = None) -> bool:
     """Check if a capability is allowed to be assigned to a company based on its type."""
     from apps.tenant.models import CompanyType
     
-    if company_type == CompanyType.CIXCI_INTERNAL:
+    comp_type = (company_type or "").lower()
+    if comp_type in (CompanyType.CIXCI_INTERNAL, "cixci_internal"):
         return True
 
-    if company_type == CompanyType.VENDOR:
+    if comp_type in (CompanyType.VENDOR, "vendor"):
         # Vendor allowed patterns/prefixes
         allowed_prefixes = (
             "catalog.product.",
@@ -342,7 +408,7 @@ def is_capability_allowed_for_company(capability_code: str, company_type: str, b
         )
         return capability_code.startswith(allowed_prefixes)
 
-    if company_type == CompanyType.BUYER:
+    if comp_type in (CompanyType.BUYER, "buyer"):
         # Buyer allowed capabilities
         buyer_safe_caps = {
             "devices.portfolio.self_modify",
@@ -371,6 +437,11 @@ def is_capability_allowed_for_company(capability_code: str, company_type: str, b
             "procurement.po.list",
             "procurement.po.read",
             "procurement.po.update",
+            "company_user_management.read_users",
+            "company_user_management.manage_invitations",
+            "company_user_management.manage_user_access",
+            "company_user_management.manage_user_lifecycle",
+            "company_user_management.grant_company_admin",
         }
         if capability_code in buyer_safe_caps:
             return True
@@ -403,15 +474,16 @@ def assign_default_capabilities_for_company(company) -> None:
         except Exception:
             pass
 
+    comp_type = (company.company_type or "").lower()
     default_codes = []
-    if company.company_type == CompanyType.VENDOR:
+    if comp_type in (CompanyType.VENDOR, "vendor"):
         default_codes = [
             "catalog.product.create",
             "catalog.product.update",
             "catalog.product.delete",
             "catalog.product.manage_selling",
         ]
-    elif company.company_type == CompanyType.BUYER:
+    elif comp_type in (CompanyType.BUYER, "buyer"):
         # Every buyer gets self_modify by default
         default_codes = ["devices.portfolio.self_modify"]
         if buyer_type in ("mvno", "wireless_carrier"):
@@ -565,6 +637,11 @@ def create_user_invitation(actor, target_company, email, first_name, last_name, 
         invitation.assigned_capabilities.set(caps)
 
     log_tenant_audit("invitation.created", f"Created invitation for {email}", target_company.id, actor.id, source_record_type="UserInvitation", source_record_id=invitation.id)
+    try:
+        send_onboarding_invite(invitation=invitation)
+    except Exception as e:
+        logger.error(f"Failed sending onboarding email for invitation {invitation.id}: {e}")
+
     return invitation
 
 
@@ -581,6 +658,11 @@ def resend_user_invitation(actor, invitation_id):
     invitation.save()
 
     log_tenant_audit("invitation.resent", f"Resent invitation for {invitation.email}", invitation.target_company_id, actor.id, source_record_type="UserInvitation", source_record_id=invitation.id)
+    try:
+        send_onboarding_invite(invitation=invitation)
+    except Exception as e:
+        logger.error(f"Failed resending onboarding email for invitation {invitation.id}: {e}")
+
     return invitation
 
 

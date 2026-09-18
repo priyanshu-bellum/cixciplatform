@@ -115,6 +115,26 @@ def send_notification_email(
     Performs email transport execution on behalf of Notification Platform Service.
     """
     try:
+        resend_key = getattr(settings, "RESEND_API_KEY", "")
+        if resend_key:
+            import resend
+            resend.api_key = resend_key
+            params = {
+                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+                "to": [recipient_email],
+                "subject": subject,
+                "text": body,
+            }
+            res = resend.Emails.send(params)
+            msg_id = getattr(res, "id", "") or (res.get("id") if isinstance(res, dict) else "")
+            logger.info("Notification email sent via Resend to %s (id: %s)", recipient_email, msg_id)
+            return {
+                "success": True,
+                "provider": "resend",
+                "message_id": msg_id,
+                "recipient": recipient_email,
+            }
+
         sendgrid_key = getattr(settings, "SENDGRID_API_KEY", "")
         if sendgrid_key:
             import sendgrid

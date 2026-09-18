@@ -128,6 +128,8 @@ class TestCompanyUserManagement:
         data = setup_user_mgmt_data
         admin = data["buyer_admin"]
         company = data["buyer_company"]
+        from django.core import mail
+        mail.outbox = []
 
         # Create invitation
         inv = create_user_invitation(
@@ -140,6 +142,10 @@ class TestCompanyUserManagement:
         )
         assert inv.status == InvitationStatus.PENDING
         assert inv.expires_at > timezone.now()
+        assert len(mail.outbox) == 1
+        assert "Confirm your email address" in mail.outbox[0].subject
+        assert inv.token in mail.outbox[0].body
+        assert "newuser@buyer.com" in mail.outbox[0].to
 
         # Accept invitation
         user = accept_user_invitation(token=inv.token, password="NewPassword123!")
@@ -154,6 +160,7 @@ class TestCompanyUserManagement:
         assert membership.company == company
 
     def test_invitation_resend_token_rotation(self, setup_user_mgmt_data):
+        from django.core import mail
         data = setup_user_mgmt_data
         admin = data["buyer_admin"]
         company = data["buyer_company"]
@@ -167,9 +174,13 @@ class TestCompanyUserManagement:
         )
         old_token = inv.token
 
+        mail.outbox = []
         resent_inv = resend_user_invitation(actor=admin, invitation_id=inv.id)
         assert resent_inv.token != old_token
         assert resent_inv.status == InvitationStatus.PENDING
+        assert len(mail.outbox) == 1
+        assert resent_inv.token in mail.outbox[0].body
+        assert "resenduser@buyer.com" in mail.outbox[0].to
 
     def test_invitation_revocation(self, setup_user_mgmt_data):
         data = setup_user_mgmt_data

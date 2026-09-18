@@ -127,9 +127,10 @@ const getCapabilityInfo = (code: string) => {
 }
 
 const isCapabilityAllowedForCompany = (code: string, companyType: string, buyerType?: string): boolean => {
-  if (companyType === 'cixci_internal') return true;
+  const normType = (companyType || '').toLowerCase();
+  if (normType === 'cixci_internal') return true;
 
-  if (companyType === 'vendor') {
+  if (normType === 'vendor') {
     const allowedPrefixes = [
       'catalog.product.',
       'media.asset.',
@@ -137,11 +138,21 @@ const isCapabilityAllowedForCompany = (code: string, companyType: string, buyerT
       'analytics.summary.',
       'tenant.relationship.read',
       'tenant.relationship.list',
+      'devices.device.list',
+      'devices.device.read',
+      'devices.type.list',
+      'devices.type.read',
+      'devices.manufacturer.list',
+      'devices.manufacturer.read',
+      'fulfillment.return.',
+      'fulfillment.handoff.',
+      'routing.order.',
+      'routing.export.',
     ];
     return allowedPrefixes.some(pref => code.startsWith(pref));
   }
 
-  if (companyType === 'buyer') {
+  if (normType === 'buyer') {
     const buyerSafeCaps = new Set([
       'devices.portfolio.self_modify',
       'devices.device.list',
@@ -162,6 +173,18 @@ const isCapabilityAllowedForCompany = (code: string, companyType: string, buyerT
       'tenant.relationship.list',
       'tenant.relationship.read',
       'tenant.relationship.create',
+      'integration.connection.list',
+      'integration.connection.read',
+      'integration.connection.manage',
+      'procurement.po.create',
+      'procurement.po.list',
+      'procurement.po.read',
+      'procurement.po.update',
+      'company_user_management.read_users',
+      'company_user_management.manage_invitations',
+      'company_user_management.manage_user_access',
+      'company_user_management.manage_user_lifecycle',
+      'company_user_management.grant_company_admin',
     ]);
     if (buyerSafeCaps.has(code)) return true;
 
@@ -473,7 +496,7 @@ export function SettingsPage() {
       editIntegrationMode !== (meta.integration_mode || '') ||
       editDailyEmailTime !== (meta.daily_email_time || '08:00') ||
       editDailyEmailTime2 !== (meta.daily_email_time_2 || '') ||
-      editBuyerPricingMode !== (selectedCompany.buyer_pricing_mode || 'standard') ||
+      editBuyerPricingMode !== ((selectedCompany.buyer_pricing_mode === 'default' ? 'standard' : selectedCompany.buyer_pricing_mode) || 'standard') ||
       String(editCommissionPercentage) !== String(selectedCompany.commission_percentage !== null && selectedCompany.commission_percentage !== undefined ? selectedCompany.commission_percentage : '14.00') ||
       editReturnAddress1 !== origR1 ||
       editReturnAddress2 !== origR2 ||
@@ -525,7 +548,7 @@ export function SettingsPage() {
   const { data: allCapabilitiesData } = useQuery({
     queryKey: ['admin-capabilities'],
     queryFn: () => api.get('/tenant/capabilities/').then(r => r.data).catch(() => []),
-    enabled: isAdmin,
+    enabled: isAdmin || showCompanyDetailsModal,
   })
 
   const hasChildOnboardingCapability = user?.is_cixci_admin || (user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code?.startsWith('tenant.child_onboarding')))
@@ -870,10 +893,10 @@ export function SettingsPage() {
         region_code: editCompanyRegion,
         allowed_channels: editCompanyAllowedChannels,
         allow_personal_email_exception: editCompanyAllowPersonalEmailException,
-        map_pricing_enforced: selectedCompany.company_type === 'vendor' ? editMapPricingEnforced : false,
-        buyer_pricing_mode: editBuyerPricingMode,
+        map_pricing_enforced: (selectedCompany.company_type || '').toLowerCase() === 'vendor' ? editMapPricingEnforced : false,
+        buyer_pricing_mode: (editBuyerPricingMode === 'default' ? 'standard' : editBuyerPricingMode) || 'standard',
         commission_percentage: editBuyerPricingMode === 'custom' ? parseFloat(editCommissionPercentage) : (editBuyerPricingMode === 'no_commission' ? 0.00 : 14.00),
-        return_address: selectedCompany.company_type === 'vendor' ? JSON.stringify({
+        return_address: (selectedCompany.company_type || '').toLowerCase() === 'vendor' ? JSON.stringify({
           address_line1: editReturnAddress1 || '',
           address_line2: editReturnAddress2 || '',
           city: editReturnCity || '',
@@ -881,7 +904,7 @@ export function SettingsPage() {
           zip: editReturnZip || '',
           country_code: editReturnCountry || '',
         }) : '',
-        order_digest_emails: selectedCompany.company_type === 'vendor' && editIntegrationMode === 'manual' ? editOrderDigestEmails : [],
+        order_digest_emails: (selectedCompany.company_type || '').toLowerCase() === 'vendor' && editIntegrationMode === 'manual' ? editOrderDigestEmails : [],
         external_id: JSON.stringify({
           buyer_type: editBuyerType || null,
           vendor_type: editVendorType || null,
@@ -942,7 +965,7 @@ export function SettingsPage() {
   const [newExcEndDate, setNewExcEndDate] = useState('')
 
   useEffect(() => {
-    if (selectedCompany && selectedCompany.company_type === 'vendor') {
+    if (selectedCompany && (selectedCompany.company_type || '').toLowerCase() === 'vendor') {
       setMapExceptionsLoading(true)
       api.get(`/pricing/exceptions/?vendor_company_reference=${selectedCompany.id}`)
         .then(res => {
@@ -1261,7 +1284,7 @@ export function SettingsPage() {
                         )}
                       </td>
                       <td>
-                        <span className={`badge ${TYPE_BADGE[c.company_type] ?? 'badge-muted'}`}>
+                        <span className={`badge ${TYPE_BADGE[c.company_type?.toLowerCase()] ?? 'badge-muted'}`}>
                           {c.company_type?.replace(/_/g, ' ')}
                         </span>
                       </td>
@@ -1316,7 +1339,7 @@ export function SettingsPage() {
                           setEditCompanyRegion(c.region_code || '')
                           setEditCompanyAllowedChannels(c.allowed_channels || [])
                           setEditCompanyAllowPersonalEmailException(c.allow_personal_email_exception || false)
-                          setEditBuyerPricingMode(c.buyer_pricing_mode || 'standard')
+                          setEditBuyerPricingMode((c.buyer_pricing_mode === 'default' ? 'standard' : c.buyer_pricing_mode) || 'standard')
                           setEditCommissionPercentage(c.commission_percentage !== null && c.commission_percentage !== undefined ? String(c.commission_percentage) : '14.00')
                           setEditMapPricingEnforced(c.map_pricing_enforced || false)
                           let rAddr1 = ''
@@ -2348,7 +2371,7 @@ export function SettingsPage() {
                 <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--accent)' }}>Edit Profile</h4>
                 <form onSubmit={handleUpdateCompany}>
                   {/* Company / Buyer / Vendor sub-type */}
-                  {selectedCompany.company_type === 'buyer' && (
+                  {(selectedCompany.company_type || '').toLowerCase() === 'buyer' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
                       <div className="form-group">
                         <label className="label">Buyer Type</label>
@@ -2388,7 +2411,7 @@ export function SettingsPage() {
                       </div>
                     </div>
                   )}
-                  {selectedCompany.company_type === 'vendor' && (
+                  {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
                     <div className="form-group" style={{ marginBottom: 10 }}>
                       <label className="label">Vendor Type</label>
                       <select className="input" value={editVendorType} onChange={e => setEditVendorType(e.target.value)}>
@@ -2540,7 +2563,7 @@ export function SettingsPage() {
                     </div>
                   </div>
 
-                  {selectedCompany.company_type === 'vendor' && (
+                  {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
                     <div style={{ marginTop: 15, borderTop: '1px solid var(--border-light)', paddingTop: 15 }}>
                       <div className="form-group" style={{ marginBottom: 12 }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
@@ -2631,7 +2654,7 @@ export function SettingsPage() {
                   )}
 
                   {/* Vendor: Integration Mode */}
-                  {selectedCompany.company_type === 'vendor' && (
+                  {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
                     <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 12, marginTop: 8 }}>
                       <div className="label" style={{ marginBottom: 8 }}>Integration Mode</div>
                       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -2764,7 +2787,7 @@ export function SettingsPage() {
                       />
                       <strong>Allow personal email domain exception</strong>
                     </label>
-                    {selectedCompany.company_type === 'vendor' && (
+                    {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
                         <input
                           type="checkbox"
@@ -2818,18 +2841,23 @@ export function SettingsPage() {
                 <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--accent)' }}>Assign New Capability</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <select className="input" style={{ flex: 1 }} value={selectedCapabilityCode} onChange={e => setSelectedCapabilityCode(e.target.value)}>
-                      <option value="">Select one</option>
-                      {allCapabilitiesList
+                    {(() => {
+                      const availableCaps = allCapabilitiesList
                         .filter((cap: any) => !selectedCompany.capabilities?.some((c: any) => c.code === cap.code))
                         .filter((cap: any) => isCapabilityAllowedForCompany(cap.code, selectedCompany.company_type, editBuyerType))
-                        .map((cap: any) => {
-                          const info = getCapabilityInfo(cap.code)
-                          return (
-                            <option key={cap.id} value={cap.code}>{info.name}</option>
-                          )
-                        })}
-                    </select>
+
+                      return (
+                        <select className="input" style={{ flex: 1 }} value={selectedCapabilityCode} onChange={e => setSelectedCapabilityCode(e.target.value)}>
+                          <option value="">{availableCaps.length === 0 ? (allCapabilitiesList.length === 0 ? 'Loading capabilities...' : 'No additional capabilities available') : 'Select one'}</option>
+                          {availableCaps.map((cap: any) => {
+                            const info = getCapabilityInfo(cap.code)
+                            return (
+                              <option key={cap.id} value={cap.code}>{info.name}</option>
+                            )
+                          })}
+                        </select>
+                      )
+                    })()}
                     <button type="button" className="btn btn-primary" onClick={() => {
                       handleAssignCapability(selectedCapabilityCode)
                       setSelectedCapabilityCode('')
@@ -2850,7 +2878,7 @@ export function SettingsPage() {
                   )}
                 </div>
 
-                {selectedCompany.company_type === 'vendor' && (
+                {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
                   <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 20, marginTop: 20 }}>
                     <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
                       🏷️ MAP Pricing Exceptions
@@ -2892,7 +2920,7 @@ export function SettingsPage() {
                           <label className="label" style={{ fontSize: 11 }}>Buyer Company</label>
                           <select className="input" value={newExcBuyerId} onChange={e => setNewExcBuyerId(e.target.value)} style={{ padding: '6px 10px', fontSize: 12 }}>
                             <option value="">All Buyers (Global)</option>
-                            {companiesList.filter((c: any) => c.company_type === 'buyer').map((c: any) => (
+                            {companiesList.filter((c: any) => (c.company_type || '').toLowerCase() === 'buyer').map((c: any) => (
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                           </select>

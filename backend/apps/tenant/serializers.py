@@ -40,6 +40,18 @@ class CompanySerializer(serializers.ModelSerializer):
 
     allow_personal_email_exception = serializers.BooleanField(default=False, write_only=True, required=False)
 
+    def to_internal_value(self, data):
+        if hasattr(data, "copy"):
+            data = data.copy()
+        elif isinstance(data, dict):
+            data = dict(data)
+        if isinstance(data, dict):
+            if data.get("buyer_pricing_mode") in ("default", "", None):
+                data["buyer_pricing_mode"] = "standard"
+            if "company_type" in data and isinstance(data["company_type"], str):
+                data["company_type"] = data["company_type"].lower()
+        return super().to_internal_value(data)
+
     def validate_website(self, value):
         if value:
             if not (value.startswith("http://") or value.startswith("https://")):
@@ -126,10 +138,10 @@ class CompanySerializer(serializers.ModelSerializer):
                 )
 
             if self.instance:
-                active_user_exists = User.objects.filter(
-                    entity__company=self.instance,
-                    is_active=True
-                ).exists()
+                active_user_exists = (
+                    User.objects.filter(entity__company=self.instance, is_active=True).exists()
+                    or self.instance.user_memberships.filter(user__is_active=True, status="active").exists()
+                )
                 if not active_user_exists:
                     raise serializers.ValidationError(
                         "Company cannot be activated without an active, onboarded administrator."

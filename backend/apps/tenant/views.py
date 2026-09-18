@@ -207,6 +207,7 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "destroy": "tenant.user.delete",
         "me": None,  # Always allowed for authenticated user
         "confirm_email": None,
+        "verify_token": None,
     }
 
     def get_serializer_class(self):
@@ -233,9 +234,54 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], permission_classes=[AllowAny])
+    def verify_token(self, request):
+        """Pre-validates an onboarding or invitation token and returns recipient details."""
+        token = request.query_params.get("token")
+        if not token:
+            return Response({"valid": False, "error": "Activation token is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.tenant.services import verify_onboarding_token
+        from apps.tenant.models import UserInvitation, InvitationStatus
+        from django.utils import timezone
+
+        # 1. Check signed onboarding token
+        user_id = verify_onboarding_token(token)
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+                return Response({
+                    "valid": True,
+                    "email": user.email,
+                    "first_name": user.first_name or "",
+                    "type": "direct_user"
+                })
+            except User.DoesNotExist:
+                return Response({"valid": False, "error": "User does not exist."}, status=status.HTTP_404_NOT_FOUND)
+
+        # 2. Check UserInvitation token
+        inv = UserInvitation.objects.filter(token=token).first()
+        if inv:
+            if inv.status == InvitationStatus.REVOKED:
+                return Response({"valid": False, "error": "This invitation has been revoked."}, status=status.HTTP_400_BAD_REQUEST)
+            if inv.status == InvitationStatus.ACCEPTED:
+                return Response({"valid": False, "error": "This invitation has already been accepted. You can log in."}, status=status.HTTP_400_BAD_REQUEST)
+            if inv.expires_at <= timezone.now() or inv.status == InvitationStatus.EXPIRED:
+                return Response({"valid": False, "error": "This invitation link has expired. Please ask for a new invite."}, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({
+                "valid": True,
+                "email": inv.email,
+                "first_name": inv.first_name or "",
+                "company_name": inv.target_company.name if inv.target_company else "",
+                "type": "invitation"
+            })
+
+        return Response({"valid": False, "error": "Activation link is invalid or has expired."}, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=False, methods=["post"], permission_classes=[AllowAny])
     def confirm_email(self, request):
-        """Confirm email and set password using the signed onboarding token."""
+        """Confirm email and set password using either a signed onboarding token or a UserInvitation token."""
         token = request.data.get("token")
         password = request.data.get("password")
 
@@ -245,27 +291,55 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        from apps.tenant.services import verify_onboarding_token
+        if len(password) < 8:
+            return Response(
+                {"error": "Password must be at least 8 characters long."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from apps.tenant.services import verify_onboarding_token, accept_user_invitation
+        from apps.tenant.models import UserInvitation
+
+        # 1. Try signed onboarding token (direct user creation)
         user_id = verify_onboarding_token(token)
-        if not user_id:
-            return Response(
-                {"error": "Activation link is invalid or has expired."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return Response(
+                    {"error": "User does not exist."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            return Response(
-                {"error": "User does not exist."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            user.set_password(password)
+            user.is_active = True
+            user.save()
+            return Response({
+                "success": True,
+                "email": user.email,
+                "message": "Account activated successfully. You can now log in."
+            })
 
-        user.set_password(password)
-        user.is_active = True
-        user.save()
+        # 2. Try UserInvitation token
+        inv = UserInvitation.objects.filter(token=token).first()
+        if inv:
+            try:
+                user = accept_user_invitation(token, password)
+                return Response({
+                    "success": True,
+                    "email": user.email if user else inv.email,
+                    "message": "Account activated successfully. You can now log in."
+                })
+            except Exception as e:
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        return Response({"success": "Account activated successfully. You can now log in."})
+        return Response(
+            {"error": "Activation link is invalid or has expired."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     @action(detail=True, methods=["post"])
     def check_access(self, request, pk=None):

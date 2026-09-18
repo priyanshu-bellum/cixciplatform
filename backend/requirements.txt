@@ -24,6 +24,7 @@ google-cloud-storage==2.16.0
 
 # Email
 sendgrid==6.11.0
+resend==2.47.0
 
 # Utils
 python-decouple==3.8

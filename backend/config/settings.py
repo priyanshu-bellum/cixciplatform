@@ -221,8 +221,18 @@ else:
 
 # ─── Email ────────────────────────────────────────────────────────────────────
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@cixci.com")
-SENDGRID_API_KEY = config("SENDGRID_API_KEY", default="")
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+RESEND_API_KEY = config("RESEND_API_KEY", default="").strip()
+SENDGRID_API_KEY = config("SENDGRID_API_KEY", default="").strip()
+
+if RESEND_API_KEY:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = "smtp.resend.com"
+    EMAIL_PORT = 465
+    EMAIL_USE_SSL = True
+    EMAIL_HOST_USER = "resend"
+    EMAIL_HOST_PASSWORD = RESEND_API_KEY
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # ─── Internationalisation ─────────────────────────────────────────────────────
 LANGUAGE_CODE = "en-us"
