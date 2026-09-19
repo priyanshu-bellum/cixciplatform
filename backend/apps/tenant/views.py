@@ -212,6 +212,7 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "verify_reset_token": None,
         "reset_password": None,
         "unsubscribe": None,
+        "resubscribe": None,
     }
 
     def get_serializer_class(self):
@@ -301,7 +302,7 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        from apps.tenant.services import verify_onboarding_token, accept_user_invitation
+        from apps.tenant.services import verify_onboarding_token, accept_user_invitation, send_welcome_email
         from apps.tenant.models import UserInvitation
 
         # 1. Try signed onboarding token (direct user creation)
@@ -318,6 +319,11 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             user.set_password(password)
             user.is_active = True
             user.save()
+            try:
+                send_welcome_email(user)
+            except Exception as e:
+                logger.error(f"Error sending welcome email to {user.email}: {e}")
+
             return Response({
                 "success": True,
                 "email": user.email,
@@ -329,6 +335,12 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if inv:
             try:
                 user = accept_user_invitation(token, password)
+                if user:
+                    try:
+                        send_welcome_email(user)
+                    except Exception as e:
+                        logger.error(f"Error sending welcome email to {user.email}: {e}")
+
                 return Response({
                     "success": True,
                     "email": user.email if user else inv.email,
@@ -431,6 +443,26 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         return Response({
             "success": True,
             "message": f"Successfully unsubscribed {email}. Confirmation email sent."
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], permission_classes=[AllowAny])
+    def resubscribe(self, request):
+        """Send welcome back email upon resubscribing matching CIXCI design."""
+        email = (request.data.get("email") or "").strip().lower()
+        if not email:
+            return Response({"error": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.tenant.services import send_welcome_back_email
+        user = User.objects.filter(email__iexact=email).first()
+        first_name = user.first_name if user else (request.data.get("first_name") or "there")
+        try:
+            send_welcome_back_email(email=email, first_name=first_name, user=user)
+        except Exception as e:
+            logger.error(f"Error sending welcome back email to {email}: {e}")
+
+        return Response({
+            "success": True,
+            "message": f"Successfully resubscribed {email}. Welcome back email sent."
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])

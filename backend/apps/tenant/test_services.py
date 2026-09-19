@@ -362,4 +362,53 @@ class TestPasswordResetAndUnsubscribedFlows:
         assert res_unsub.status_code == 200
         assert res_unsub.data["success"] is True
 
+    def test_welcome_and_welcome_back_flows(self):
+        from apps.tenant.models import Company, CompanyEntity, User
+        from apps.tenant.services import send_welcome_email, send_welcome_back_email
+        from django.core import mail
+        from rest_framework.test import APIClient
+
+        company = Company.objects.create(name="Welcome Co", company_type="buyer", status="active", slug="welcome-co")
+        entity = CompanyEntity.objects.create(name="Welcome Entity", company=company, status="active")
+        user = User.objects.create_user(
+            email="newmember@cixci.com", password="password123", first_name="Taylor", entity=entity
+        )
+
+        # 1. Welcome email (post-confirmation)
+        mail.outbox = []
+        send_welcome_email(user)
+        assert len(mail.outbox) == 1
+        assert "Welcome to CIXCI !" in mail.outbox[0].subject
+        assert "officially part of the CIXCI community" in mail.outbox[0].body
+        assert "Browse CIXCI" in mail.outbox[0].body or "catalog" in mail.outbox[0].body
+
+        html_body, mime = mail.outbox[0].alternatives[0]
+        assert mime == "text/html"
+        assert "Welcome to CIXCI !" in html_body
+        assert "Browse CIXCI" in html_body
+        assert "support@cixci.com" in html_body
+        assert "The CIXCI Team" in html_body
+
+        # 2. Welcome back email (resubscribe)
+        mail.outbox = []
+        send_welcome_back_email(email="newmember@cixci.com", first_name="Taylor", user=user)
+        assert len(mail.outbox) == 1
+        assert "Welcome back to CIXCI !" in mail.outbox[0].subject
+        assert "welcome back to CIXCI" in mail.outbox[0].body
+        assert "Explore What’s New" in mail.outbox[0].body or "catalog" in mail.outbox[0].body
+
+        html_body, mime = mail.outbox[0].alternatives[0]
+        assert mime == "text/html"
+        assert "Welcome back to CIXCI !" in html_body
+        assert "Explore What’s New" in html_body
+        assert "support@cixci.com" in html_body
+        assert "The CIXCI Team" in html_body
+
+        # 3. API endpoint: resubscribe
+        client = APIClient()
+        res_resub = client.post("/api/v1/tenant/users/resubscribe/", {"email": "newmember@cixci.com"})
+        assert res_resub.status_code == 200
+        assert res_resub.data["success"] is True
+
+
 

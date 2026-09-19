@@ -592,6 +592,174 @@ def send_unsubscribed_email(email: str, first_name: str = "there", user=None, fe
     )
 
 
+def send_welcome_email(user, browse_url: Optional[str] = None):
+    """
+    Send welcome email after email confirmation matching CIXCI email design.
+    """
+    recipient_email = user.email
+    first_name = user.first_name or "there"
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    if not browse_url:
+        browse_url = f"{frontend_url}/catalog"
+
+    subject = "Welcome to CIXCI !"
+
+    context = {
+        "first_name": first_name,
+        "browse_url": browse_url,
+        "year": timezone.now().year,
+    }
+
+    try:
+        html_content = render_to_string("emails/welcome.html", context)
+    except Exception as e:
+        logger.warning(f"Failed to render HTML welcome template: {e}")
+        html_content = None
+
+    plain_message = (
+        f"Welcome to CIXCI !\n\n"
+        f"Hi {first_name},\n\n"
+        f"Thanks for confirming your email — you're officially part of the CIXCI community.\n\n"
+        f"Here's what to expect:\n"
+        f"· First looks at new drops\n"
+        f"· Exclusive content and offers\n"
+        f"· First looks at what we're building behind the scenes\n\n"
+        f"We're all about changing the way wireless carriers and accessory vendors do business!\n\n"
+        f"Take a look around - Browse CIXCI:\n{browse_url}\n\n"
+        f"If you ever have questions or just want to say hey, we’re one click away at support@cixci.com.\n\n"
+        f"Welcome again — let's build something different.\n\n"
+        f"The CIXCI Team\n\n"
+        f"You're receiving this message because you have an account with CIXCI or requested to be notified about updates.\n"
+        f"All content © {timezone.now().year} CIXCI. All rights reserved."
+    )
+
+    resend_key = getattr(settings, "RESEND_API_KEY", "")
+    sent_via_resend = False
+    if resend_key:
+        try:
+            import resend
+            resend.api_key = resend_key
+            params = {
+                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+                "to": [recipient_email],
+                "subject": subject,
+                "html": html_content or plain_message,
+                "text": plain_message,
+            }
+            res = resend.Emails.send(params)
+            logger.info("Welcome email sent via Resend API to %s: %s", recipient_email, res)
+            sent_via_resend = True
+        except Exception as e:
+            logger.error(f"Failed sending welcome email via Resend API: {e}, falling back to django email backend.")
+
+    if not sent_via_resend:
+        email_msg = EmailMultiAlternatives(
+            subject=subject,
+            body=plain_message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+            to=[recipient_email],
+        )
+        if html_content:
+            email_msg.attach_alternative(html_content, "text/html")
+        email_msg.send(fail_silently=False)
+
+    company_id = getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None)
+    log_tenant_audit(
+        event_code="user.welcome_email_sent",
+        description=f"Sent welcome email to {recipient_email}",
+        company_id=company_id,
+        actor_id=user.id,
+        source_record_type="User",
+        source_record_id=user.id,
+    )
+
+
+def send_welcome_back_email(email: str, first_name: str = "there", user=None, explore_url: Optional[str] = None):
+    """
+    Send welcome back email upon resubscribing matching CIXCI email design.
+    """
+    recipient_email = email
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    if not explore_url:
+        explore_url = f"{frontend_url}/catalog"
+
+    subject = "Welcome back to CIXCI !"
+
+    context = {
+        "first_name": first_name or "there",
+        "explore_url": explore_url,
+        "year": timezone.now().year,
+    }
+
+    try:
+        html_content = render_to_string("emails/welcome_back.html", context)
+    except Exception as e:
+        logger.warning(f"Failed to render HTML welcome_back template: {e}")
+        html_content = None
+
+    plain_message = (
+        f"Welcome back to CIXCI !\n\n"
+        f"Hi {first_name},\n\n"
+        f"We’re glad to see you again — welcome back to CIXCI.\n\n"
+        f"You’re officially back on the list, which means:\n"
+        f"· First looks at new drops\n"
+        f"· Exclusive content and offers\n"
+        f"· First looks at what we’re building behind the scenes\n\n"
+        f"We missed having you around. Let’s keep building something bold together.\n\n"
+        f"Explore What’s New:\n{explore_url}\n\n"
+        f"If you ever need anything, reach out to us at support@cixci.com. No bots, just humans who care.\n\n"
+        f"Talk soon,\n\n"
+        f"The CIXCI Team\n\n"
+        f"You're receiving this message because you have an account with CIXCI or requested to be notified about updates.\n"
+        f"All content © {timezone.now().year} CIXCI. All rights reserved."
+    )
+
+    resend_key = getattr(settings, "RESEND_API_KEY", "")
+    sent_via_resend = False
+    if resend_key:
+        try:
+            import resend
+            resend.api_key = resend_key
+            params = {
+                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+                "to": [recipient_email],
+                "subject": subject,
+                "html": html_content or plain_message,
+                "text": plain_message,
+            }
+            res = resend.Emails.send(params)
+            logger.info("Welcome back email sent via Resend API to %s: %s", recipient_email, res)
+            sent_via_resend = True
+        except Exception as e:
+            logger.error(f"Failed sending welcome back email via Resend API: {e}, falling back to django email backend.")
+
+    if not sent_via_resend:
+        email_msg = EmailMultiAlternatives(
+            subject=subject,
+            body=plain_message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+            to=[recipient_email],
+        )
+        if html_content:
+            email_msg.attach_alternative(html_content, "text/html")
+        email_msg.send(fail_silently=False)
+
+    company_id = None
+    user_id = None
+    if user:
+        user_id = user.id
+        company_id = getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None)
+
+    log_tenant_audit(
+        event_code="user.welcome_back_email_sent",
+        description=f"Sent welcome back email to {recipient_email}",
+        company_id=company_id,
+        actor_id=user_id,
+        source_record_type="User" if user_id else "Email",
+        source_record_id=user_id,
+    )
+
+
 def is_capability_allowed_for_company(capability_code: str, company_type: str, buyer_type: Optional[str] = None) -> bool:
     """Check if a capability is allowed to be assigned to a company based on its type."""
     from apps.tenant.models import CompanyType
