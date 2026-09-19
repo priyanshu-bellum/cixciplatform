@@ -502,7 +502,91 @@ def reset_user_password(token: str, new_password: str):
         source_record_type="User",
         source_record_id=user.id,
     )
+
+    try:
+        send_password_changed_email(user)
+    except Exception as e:
+        logger.error(f"Error sending password changed confirmation email to {user.email}: {e}")
+
     return user
+
+
+def send_password_changed_email(user, reset_url: Optional[str] = None):
+    """
+    Send password change confirmation email matching CIXCI email design.
+    """
+    recipient_email = user.email
+    first_name = user.first_name or "there"
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    if not reset_url:
+        reset_url = f"{frontend_url}/login"
+
+    subject = "Your password was successfully changed"
+
+    context = {
+        "first_name": first_name,
+        "reset_url": reset_url,
+        "year": timezone.now().year,
+    }
+
+    try:
+        html_content = render_to_string("emails/password_changed.html", context)
+    except Exception as e:
+        logger.warning(f"Failed to render HTML password_changed template: {e}")
+        html_content = None
+
+    plain_message = (
+        f"Your password was successfully changed\n\n"
+        f"Hi {first_name},\n\n"
+        f"Just a quick note to confirm that your CIXCI password was successfully changed.\n\n"
+        f"If you made this change, you're all set — no further action needed.\n\n"
+        f"If you didn't make this change, please reset your password immediately ({reset_url}) "
+        f"and contact us at support@cixci.com.\n\n"
+        f"Your security is our priority.\n\n"
+        f"The CIXCI Team\n\n"
+        f"You're receiving this message because you have an account with CIXCI or requested to be notified about updates.\n"
+        f"All content © {timezone.now().year} CIXCI. All rights reserved."
+    )
+
+    resend_key = getattr(settings, "RESEND_API_KEY", "")
+    sent_via_resend = False
+    if resend_key:
+        try:
+            import resend
+            resend.api_key = resend_key
+            params = {
+                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+                "to": [recipient_email],
+                "subject": subject,
+                "html": html_content or plain_message,
+                "text": plain_message,
+            }
+            res = resend.Emails.send(params)
+            logger.info("Password changed email sent via Resend API to %s: %s", recipient_email, res)
+            sent_via_resend = True
+        except Exception as e:
+            logger.error(f"Failed sending password changed email via Resend API: {e}, falling back to django email backend.")
+
+    if not sent_via_resend:
+        email_msg = EmailMultiAlternatives(
+            subject=subject,
+            body=plain_message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+            to=[recipient_email],
+        )
+        if html_content:
+            email_msg.attach_alternative(html_content, "text/html")
+        email_msg.send(fail_silently=False)
+
+    company_id = getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None)
+    log_tenant_audit(
+        event_code="user.password_changed_notification_sent",
+        description=f"Sent password changed confirmation email to {recipient_email}",
+        company_id=company_id,
+        actor_id=user.id,
+        source_record_type="User",
+        source_record_id=user.id,
+    )
 
 
 def send_unsubscribed_email(email: str, first_name: str = "there", user=None, feedback_url: str = None, resubscribe_url: str = None):

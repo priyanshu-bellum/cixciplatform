@@ -317,7 +317,8 @@ class TestPasswordResetAndUnsubscribedFlows:
         assert res_verify.data["email"] == "resetme@cixci.com"
         assert res_verify.data["first_name"] == "Alex"
 
-        # 5. API endpoint: reset_password
+        # 5. API endpoint: reset_password (which also dispatches password changed confirmation email)
+        mail.outbox = []
         res_reset = client.post("/api/v1/tenant/users/reset_password/", {
             "token": token,
             "password": "brandnewpassword999"
@@ -328,6 +329,17 @@ class TestPasswordResetAndUnsubscribedFlows:
         user.refresh_from_db()
         assert user.check_password("brandnewpassword999") is True
         assert user.check_password("oldpassword123") is False
+
+        # Verify confirmation email sent
+        assert len(mail.outbox) == 1
+        assert "Your password was successfully changed" in mail.outbox[0].subject
+        assert "confirm that your CIXCI password was successfully changed" in mail.outbox[0].body
+        assert "support@cixci.com" in mail.outbox[0].body
+        html_body, mime = mail.outbox[0].alternatives[0]
+        assert mime == "text/html"
+        assert "Your password was successfully changed" in html_body
+        assert "Your security is our priority" in html_body
+        assert "The CIXCI Team" in html_body
 
     def test_unsubscribed_email_flow(self):
         from apps.tenant.models import Company, CompanyEntity, User
