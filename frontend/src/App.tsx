@@ -23,6 +23,7 @@ import TelcoCellularPage from './pages/TelcoCellularPage'
 import CompanyUsersPage from './pages/CompanyUsersPage'
 import { SettingsPage } from './pages/StubPages'
 import ConfirmEmailPage from './pages/ConfirmEmailPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 
 const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } })
 
@@ -43,6 +44,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/confirm-email" element={<ConfirmEmailPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/" element={<RequireAuth><AppLayout /></RequireAuth>}>
             <Route index element={<DashboardPage />} />
             <Route path="devices" element={<DevicesPage />} />

@@ -378,6 +378,220 @@ def send_onboarding_invite(user=None, invitation=None):
     return token
 
 
+def generate_password_reset_token(user) -> str:
+    """Generate a signed password reset token containing the user's ID."""
+    signer = TimestampSigner(salt="password-reset")
+    return signer.sign(str(user.id))
+
+
+def verify_password_reset_token(token: str, max_age: int = 3600) -> Optional[str]:
+    """Verify signed password reset token. Expires in 60 minutes (3600 seconds)."""
+    signer = TimestampSigner(salt="password-reset")
+    try:
+        return signer.unsign(token, max_age=max_age)
+    except (SignatureExpired, BadSignature) as e:
+        logger.warning(f"Password reset token verification failed: {e}")
+        return None
+
+
+def send_password_reset_email(user):
+    """
+    Send password reset email with 60-minute expiry link matching CIXCI email design.
+    """
+    token = generate_password_reset_token(user)
+    recipient_email = user.email
+    first_name = user.first_name or "there"
+    company_id = getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None)
+
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    reset_url = f"{frontend_url}/reset-password?token={token}"
+
+    subject = "Reset your password"
+
+    context = {
+        "first_name": first_name,
+        "reset_url": reset_url,
+        "year": timezone.now().year,
+    }
+
+    try:
+        html_content = render_to_string("emails/reset_password.html", context)
+    except Exception as e:
+        logger.warning(f"Failed to render HTML reset_password template: {e}")
+        html_content = None
+
+    plain_message = (
+        f"Reset your password\n\n"
+        f"Hi {first_name},\n\n"
+        f"We received a request to reset your password. No worries — it happens.\n\n"
+        f"Click the button below or visit the link to create a new one:\n"
+        f"{reset_url}\n\n"
+        f"This link will expire in 60 minutes for your security.\n\n"
+        f"Didn't request this? Just ignore this email — your account is still safe and your password hasn't been changed.\n\n"
+        f"The CIXCI Team\n\n"
+        f"You're receiving this message because you have an account with CIXCI or requested to be notified about updates.\n"
+        f"All content © {timezone.now().year} CIXCI. All rights reserved."
+    )
+
+    resend_key = getattr(settings, "RESEND_API_KEY", "")
+    sent_via_resend = False
+    if resend_key:
+        try:
+            import resend
+            resend.api_key = resend_key
+            params = {
+                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+                "to": [recipient_email],
+                "subject": subject,
+                "html": html_content or plain_message,
+                "text": plain_message,
+            }
+            res = resend.Emails.send(params)
+            logger.info("Password reset email sent via Resend API to %s: %s", recipient_email, res)
+            sent_via_resend = True
+        except Exception as e:
+            logger.error(f"Failed sending password reset email via Resend API: {e}, falling back to django email backend.")
+
+    if not sent_via_resend:
+        email_msg = EmailMultiAlternatives(
+            subject=subject,
+            body=plain_message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+            to=[recipient_email],
+        )
+        if html_content:
+            email_msg.attach_alternative(html_content, "text/html")
+        email_msg.send(fail_silently=False)
+
+    log_tenant_audit(
+        event_code="user.password_reset_sent",
+        description=f"Sent password reset email to {recipient_email}",
+        company_id=company_id,
+        actor_id=user.id,
+        source_record_type="User",
+        source_record_id=user.id,
+    )
+
+    return token
+
+
+def reset_user_password(token: str, new_password: str):
+    """
+    Resets user's password using the signed 60-minute token.
+    """
+    user_id = verify_password_reset_token(token)
+    if not user_id:
+        raise ValidationError("INVALID_OR_EXPIRED_TOKEN: Password reset link is invalid or has expired.")
+
+    if len(new_password) < 8:
+        raise ValidationError("PASSWORD_TOO_SHORT: Password must be at least 8 characters long.")
+
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        raise ValidationError("USER_NOT_FOUND: User does not exist.")
+
+    user.set_password(new_password)
+    user.save()
+
+    company_id = getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None)
+    log_tenant_audit(
+        event_code="user.password_reset_completed",
+        description=f"Password reset completed for {user.email}",
+        company_id=company_id,
+        actor_id=user.id,
+        source_record_type="User",
+        source_record_id=user.id,
+    )
+    return user
+
+
+def send_unsubscribed_email(email: str, first_name: str = "there", user=None, feedback_url: str = None, resubscribe_url: str = None):
+    """
+    Send unsubscribe confirmation email matching CIXCI email design.
+    """
+    recipient_email = email
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    if not feedback_url:
+        feedback_url = f"{frontend_url}/feedback?email={recipient_email}"
+    if not resubscribe_url:
+        resubscribe_url = f"{frontend_url}/resubscribe?email={recipient_email}"
+
+    subject = "You’ve unsubscribed"
+
+    context = {
+        "first_name": first_name or "there",
+        "feedback_url": feedback_url,
+        "resubscribe_url": resubscribe_url,
+        "year": timezone.now().year,
+    }
+
+    try:
+        html_content = render_to_string("emails/unsubscribed.html", context)
+    except Exception as e:
+        logger.warning(f"Failed to render HTML unsubscribed template: {e}")
+        html_content = None
+
+    plain_message = (
+        f"You’ve unsubscribed\n\n"
+        f"Hi {first_name},\n\n"
+        f"You’ve been unsubscribed from CIXCI emails. No more drops, updates, or inside looks — unless you change your mind.\n\n"
+        f"We get it — inboxes get crowded. Just know you’re always welcome back.\n\n"
+        f"Before you go, mind telling us why?\n"
+        f"It’ll help us improve what we send (and how often).\n\n"
+        f"Share Feedback:\n{feedback_url}\n\n"
+        f"If this was a mistake or you ever want to reconnect, you can resubscribe here:\n{resubscribe_url}\n\n"
+        f"Thanks for being part of CIXCI’s story — even if just for a chapter.\n\n"
+        f"The CIXCI Team\n\n"
+        f"You're receiving this message because you have an account with CIXCI or requested to be notified about updates.\n"
+        f"All content © {timezone.now().year} CIXCI. All rights reserved."
+    )
+
+    resend_key = getattr(settings, "RESEND_API_KEY", "")
+    sent_via_resend = False
+    if resend_key:
+        try:
+            import resend
+            resend.api_key = resend_key
+            params = {
+                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+                "to": [recipient_email],
+                "subject": subject,
+                "html": html_content or plain_message,
+                "text": plain_message,
+            }
+            res = resend.Emails.send(params)
+            logger.info("Unsubscribed email sent via Resend API to %s: %s", recipient_email, res)
+            sent_via_resend = True
+        except Exception as e:
+            logger.error(f"Failed sending unsubscribed email via Resend API: {e}, falling back to django email backend.")
+
+    if not sent_via_resend:
+        email_msg = EmailMultiAlternatives(
+            subject=subject,
+            body=plain_message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
+            to=[recipient_email],
+        )
+        if html_content:
+            email_msg.attach_alternative(html_content, "text/html")
+        email_msg.send(fail_silently=False)
+
+    company_id = None
+    user_id = None
+    if user:
+        user_id = user.id
+        company_id = getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None)
+
+    log_tenant_audit(
+        event_code="user.unsubscribed_email_sent",
+        description=f"Sent unsubscribe confirmation email to {recipient_email}",
+        company_id=company_id,
+        actor_id=user_id,
+        source_record_type="User" if user_id else "Email",
+        source_record_id=user_id,
+    )
+
+
 def is_capability_allowed_for_company(capability_code: str, company_type: str, buyer_type: Optional[str] = None) -> bool:
     """Check if a capability is allowed to be assigned to a company based on its type."""
     from apps.tenant.models import CompanyType

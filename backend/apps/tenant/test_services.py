@@ -266,3 +266,100 @@ class TestUserOnboardingAndConfirmation:
         invitation.refresh_from_db()
         assert invitation.status == InvitationStatus.ACCEPTED
 
+
+@pytest.mark.django_db
+class TestPasswordResetAndUnsubscribedFlows:
+    def test_password_reset_flow(self):
+        from apps.tenant.models import Company, CompanyEntity, User
+        from apps.tenant.services import (
+            generate_password_reset_token,
+            verify_password_reset_token,
+            send_password_reset_email,
+            reset_user_password,
+        )
+        from django.core import mail
+        from rest_framework.test import APIClient
+
+        company = Company.objects.create(name="Reset Co", company_type="buyer", status="active", slug="reset-co")
+        entity = CompanyEntity.objects.create(name="Reset Entity", company=company, status="active")
+        user = User.objects.create_user(
+            email="resetme@cixci.com", password="oldpassword123", first_name="Alex", last_name="Mercer", entity=entity
+        )
+
+        # 1. Token generation & verification
+        token = generate_password_reset_token(user)
+        assert token is not None
+        assert verify_password_reset_token(token, max_age=3600) == str(user.id)
+
+        # 2. Email sending matching mockup
+        mail.outbox = []
+        send_password_reset_email(user)
+        assert len(mail.outbox) == 1
+        assert "Reset your password" in mail.outbox[0].subject
+        assert "60 minutes" in mail.outbox[0].body
+        assert "Reset My Password" in mail.outbox[0].body or "reset-password?token=" in mail.outbox[0].body
+        html_body, mime = mail.outbox[0].alternatives[0]
+        assert mime == "text/html"
+        assert "Reset your password" in html_body
+        assert "Reset My Password" in html_body
+        assert "60 minutes" in html_body
+        assert "The CIXCI Team" in html_body
+
+        # 3. API endpoint: request_password_reset
+        client = APIClient()
+        res_req = client.post("/api/v1/tenant/users/request_password_reset/", {"email": "resetme@cixci.com"})
+        assert res_req.status_code == 200
+
+        # 4. API endpoint: verify_reset_token
+        res_verify = client.get(f"/api/v1/tenant/users/verify_reset_token/?token={token}")
+        assert res_verify.status_code == 200
+        assert res_verify.data["valid"] is True
+        assert res_verify.data["email"] == "resetme@cixci.com"
+        assert res_verify.data["first_name"] == "Alex"
+
+        # 5. API endpoint: reset_password
+        res_reset = client.post("/api/v1/tenant/users/reset_password/", {
+            "token": token,
+            "password": "brandnewpassword999"
+        })
+        assert res_reset.status_code == 200
+        assert res_reset.data["success"] is True
+
+        user.refresh_from_db()
+        assert user.check_password("brandnewpassword999") is True
+        assert user.check_password("oldpassword123") is False
+
+    def test_unsubscribed_email_flow(self):
+        from apps.tenant.models import Company, CompanyEntity, User
+        from apps.tenant.services import send_unsubscribed_email
+        from django.core import mail
+        from rest_framework.test import APIClient
+
+        company = Company.objects.create(name="Unsub Co", company_type="buyer", status="active", slug="unsub-co")
+        entity = CompanyEntity.objects.create(name="Unsub Entity", company=company, status="active")
+        user = User.objects.create_user(
+            email="unsubscriber@cixci.com", password="password123", first_name="Jordan", entity=entity
+        )
+
+        mail.outbox = []
+        send_unsubscribed_email(email="unsubscriber@cixci.com", first_name="Jordan", user=user)
+        assert len(mail.outbox) == 1
+        assert "You’ve unsubscribed" in mail.outbox[0].subject
+        assert "No more drops, updates, or inside looks" in mail.outbox[0].body
+        assert "Share Feedback" in mail.outbox[0].body or "feedback?email=" in mail.outbox[0].body
+        assert "resubscribe here" in mail.outbox[0].body or "resubscribe?email=" in mail.outbox[0].body
+
+        html_body, mime = mail.outbox[0].alternatives[0]
+        assert mime == "text/html"
+        assert "You’ve unsubscribed" in html_body
+        assert "Share Feedback" in html_body
+        assert "resubscribe here" in html_body
+        assert "The CIXCI Team" in html_body
+
+        # API endpoint: unsubscribe
+        client = APIClient()
+        res_unsub = client.post("/api/v1/tenant/users/unsubscribe/", {"email": "unsubscriber@cixci.com"})
+        assert res_unsub.status_code == 200
+        assert res_unsub.data["success"] is True
+
+

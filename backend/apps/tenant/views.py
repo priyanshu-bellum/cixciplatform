@@ -208,6 +208,10 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "me": None,  # Always allowed for authenticated user
         "confirm_email": None,
         "verify_token": None,
+        "request_password_reset": None,
+        "verify_reset_token": None,
+        "reset_password": None,
+        "unsubscribe": None,
     }
 
     def get_serializer_class(self):
@@ -340,6 +344,94 @@ class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             {"error": "Activation link is invalid or has expired."},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    @action(detail=False, methods=["post"], permission_classes=[AllowAny])
+    def request_password_reset(self, request):
+        """Initiate password reset flow: generates 60-min signed link and sends email."""
+        email = (request.data.get("email") or "").strip().lower()
+        if not email:
+            return Response({"error": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if user and user.is_active:
+            from apps.tenant.services import send_password_reset_email
+            try:
+                send_password_reset_email(user)
+            except Exception as e:
+                logger.error(f"Error sending password reset email to {email}: {e}")
+
+        # Always return 200 to prevent user enumeration
+        return Response({
+            "detail": "If an active account exists for that email, a password reset link has been sent."
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get", "post"], permission_classes=[AllowAny])
+    def verify_reset_token(self, request):
+        """Verify that a password reset token is valid and unexpired (60-minute lifetime)."""
+        token = request.query_params.get("token") or request.data.get("token")
+        if not token:
+            return Response({"valid": False, "error": "Token is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.tenant.services import verify_password_reset_token
+        user_id = verify_password_reset_token(token, max_age=3600)
+        if not user_id:
+            return Response(
+                {"valid": False, "error": "Password reset link is invalid or has expired (links expire after 60 minutes)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = User.objects.filter(id=user_id).first()
+        if not user or not user.is_active:
+            return Response(
+                {"valid": False, "error": "Account is inactive or no longer exists."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response({
+            "valid": True,
+            "email": user.email,
+            "first_name": user.first_name or "",
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], permission_classes=[AllowAny])
+    def reset_password(self, request):
+        """Reset password using 60-minute signed token."""
+        token = request.data.get("token")
+        password = request.data.get("password")
+
+        if not token or not password:
+            return Response({"error": "Token and password are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.tenant.services import reset_user_password
+        try:
+            user = reset_user_password(token, password)
+            return Response({
+                "success": True,
+                "email": user.email,
+                "message": "Password has been successfully reset. You can now log in."
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["post"], permission_classes=[AllowAny])
+    def unsubscribe(self, request):
+        """Send unsubscribe confirmation email matching CIXCI design."""
+        email = (request.data.get("email") or "").strip().lower()
+        if not email:
+            return Response({"error": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.tenant.services import send_unsubscribed_email
+        user = User.objects.filter(email__iexact=email).first()
+        first_name = user.first_name if user else (request.data.get("first_name") or "there")
+        try:
+            send_unsubscribed_email(email=email, first_name=first_name, user=user)
+        except Exception as e:
+            logger.error(f"Error sending unsubscribed email to {email}: {e}")
+
+        return Response({
+            "success": True,
+            "message": f"Successfully unsubscribed {email}. Confirmation email sent."
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     def check_access(self, request, pk=None):
