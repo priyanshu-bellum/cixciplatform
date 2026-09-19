@@ -69,9 +69,41 @@ class Order(models.Model):
     pricing_snapshot_references = models.JSONField(default=dict,
         help_text="product_id → EffectivePriceSnapshot ID mapping")
 
+    order_id = models.CharField(
+        max_length=100, blank=True, null=True, unique=True, db_index=True,
+        help_text="Standard Order ID starting with 1000 + company slug"
+    )
+
     placed_at = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.order_id:
+            from apps.tenant.models import Company
+            import re
+            slug = "cixci"
+            if self.buyer_reference:
+                co = Company.objects.filter(id=self.buyer_reference).first()
+                if co and co.slug:
+                    slug = co.slug
+                elif co and co.name:
+                    from django.utils.text import slugify
+                    slug = slugify(co.name)
+            existing_order_ids = Order.objects.exclude(order_id__isnull=True).exclude(order_id="").values_list("order_id", flat=True)
+            max_num = 999
+            for oid in existing_order_ids:
+                m = re.match(r"^(\d+)", str(oid))
+                if m:
+                    try:
+                        val = int(m.group(1))
+                        if val > max_num:
+                            max_num = val
+                    except ValueError:
+                        pass
+            next_num = max_num + 1
+            self.order_id = f"{next_num}-{slug}"
+        super().save(*args, **kwargs)
 
     class Meta:
         db_table = "routing_order"

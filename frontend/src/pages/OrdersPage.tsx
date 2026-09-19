@@ -270,8 +270,8 @@ export default function OrdersPage() {
             <tbody>
               {paginatedOrders.map((o: any) => (
                 <tr key={o.id} onClick={() => setSelectedOrderId(o.id)} className="clickable-row">
-                  <td style={{ color: 'var(--accent)', fontWeight: 500 }} className="mono">
-                    {o.id.slice(0, 8)}…
+                  <td style={{ color: 'var(--accent)', fontWeight: 600 }} className="mono">
+                    {o.order_id || `${o.id.slice(0, 8)}…`}
                   </td>
                   <td className="mono" style={{ fontSize: 12, fontWeight: 550, color: 'var(--text-primary)' }}>
                     {o.buyer_order_number || o.buyer_reference || '—'}
@@ -601,7 +601,7 @@ export default function OrdersPage() {
             <div className="drawer-header">
               <div>
                 <div className="drawer-title">Order Routing Details</div>
-                <div className="drawer-subtitle">{selectedOrderId}</div>
+                <div className="drawer-subtitle">{orderDetail?.order_id ? `${orderDetail.order_id} • ${selectedOrderId}` : selectedOrderId}</div>
               </div>
               <button className="drawer-close" onClick={() => setSelectedOrderId(null)}>
                 <X size={18} />
@@ -612,6 +612,12 @@ export default function OrdersPage() {
             <div className="drawer-section">
               <div className="drawer-section-title"><Package size={14} /> Routing Metadata</div>
               <div className="detail-card">
+                <div className="detail-item">
+                  <span className="detail-label">Order ID</span>
+                  <span className="detail-value mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>
+                    {orderDetail?.order_id || '—'}
+                  </span>
+                </div>
                 <div className="detail-item">
                   <span className="detail-label">Status</span>
                   <span className="detail-value">

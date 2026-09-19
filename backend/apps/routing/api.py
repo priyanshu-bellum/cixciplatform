@@ -87,10 +87,12 @@ class OrderSerializer(serializers.ModelSerializer):
     delivered_date = serializers.SerializerMethodField()
     shipping_info = serializers.SerializerMethodField()
 
+    order_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = Order
         fields = [
-            "id", "company_scope_reference", "buyer_reference", "buyer_entity_reference",
+            "id", "order_id", "company_scope_reference", "buyer_reference", "buyer_entity_reference",
             "status", "pricing_snapshot_references", "placed_at", "created_at",
             "buyer_name", "customer_name", "customer_details",
             # Order Data Specification fields
@@ -106,6 +108,17 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
+        if not ret.get("order_id") and getattr(instance, "order_id", None):
+            ret["order_id"] = instance.order_id
+        elif not ret.get("order_id"):
+            # Fallback if unmigrated
+            co_slug = "cixci"
+            if instance.buyer_reference:
+                from apps.tenant.models import Company
+                co = Company.objects.filter(id=instance.buyer_reference).first()
+                if co and co.slug:
+                    co_slug = co.slug
+            ret["order_id"] = f"1000-{co_slug}"
         subs = list(instance.routed_suborders.all())
         if subs:
             all_delivered = all(s.status == "delivered" for s in subs)
