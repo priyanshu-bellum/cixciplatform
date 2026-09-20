@@ -192,6 +192,16 @@ class CompanyEntityViewSet(TenantScopedQuerysetMixin, CheckAccessMixin, viewsets
         "destroy": "tenant.entity.delete",
     }
 
+    def destroy(self, request, *args, **kwargs):
+        from django.db.models.deletion import ProtectedError
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {"error": "Cannot delete entity because users are still assigned to it. Reassign or delete users first."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class UserViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = User.objects.select_related("entity__company").prefetch_related("capabilities")

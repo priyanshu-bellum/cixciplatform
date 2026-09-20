@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
-import { Building, Building2, Users, Plus, ShieldCheck, AlertCircle, Upload, Clock } from 'lucide-react'
+import { Building, Building2, Users, Plus, ShieldCheck, AlertCircle, Upload, Clock, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/apiClient'
 import AddressAutocomplete from '../components/AddressAutocomplete'
@@ -890,6 +890,53 @@ export function SettingsPage() {
     }
   }
 
+  // ─── DELETE CONFIRMATION STATE ────────────────────────────────────────────────
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: 'company' | 'entity' | 'user'
+    id: string
+    label: string
+    subLabel?: string
+  } | null>(null)
+
+  const handleDeleteCompany = async (id: string) => {
+    try {
+      await api.delete(`/tenant/companies/${id}/`)
+      toast.success('Company deleted successfully.')
+      refetchCompanies()
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to delete company.'
+      toast.error(msg)
+    } finally {
+      setDeleteConfirm(null)
+    }
+  }
+
+  const handleDeleteEntity = async (id: string) => {
+    try {
+      await api.delete(`/tenant/entities/${id}/`)
+      toast.success('Entity deleted successfully.')
+      refetchEntities()
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to delete entity.'
+      toast.error(msg)
+    } finally {
+      setDeleteConfirm(null)
+    }
+  }
+
+  const handleDeleteUser = async (id: string) => {
+    try {
+      await api.delete(`/tenant/users/${id}/`)
+      toast.success('User deleted successfully.')
+      refetchUsers()
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to delete user.'
+      toast.error(msg)
+    } finally {
+      setDeleteConfirm(null)
+    }
+  }
+
   const [mapExceptions, setMapExceptions] = useState<any[]>([])
   const [mapExceptionsLoading, setMapExceptionsLoading] = useState(false)
   const [newExcSku, setNewExcSku] = useState('')
@@ -1357,6 +1404,25 @@ export function SettingsPage() {
                           }
                           setShowCompanyDetailsModal(true)
                         }}>Manage</button>
+                        <button
+                          className="btn btn-xs"
+                          disabled={c.company_type === 'cixci_internal'}
+                          title={c.company_type === 'cixci_internal' ? 'System companies cannot be deleted' : 'Delete company'}
+                          style={{
+                            background: c.company_type === 'cixci_internal' ? 'var(--bg-elevated)' : 'var(--red-dim)',
+                            color: c.company_type === 'cixci_internal' ? 'var(--text-muted)' : 'var(--red)',
+                            border: `1px solid ${c.company_type === 'cixci_internal' ? 'var(--border)' : 'var(--red)'}`,
+                            cursor: c.company_type === 'cixci_internal' ? 'not-allowed' : 'pointer',
+                            display: 'flex', alignItems: 'center', gap: 4
+                          }}
+                          onClick={() => {
+                            if (c.company_type !== 'cixci_internal') {
+                              setDeleteConfirm({ type: 'company', id: c.id, label: c.name, subLabel: c.company_type?.replace(/_/g, ' ') })
+                            }
+                          }}
+                        >
+                          <Trash2 size={12} /> Delete
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1395,20 +1461,45 @@ export function SettingsPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Entity Name</th><th>Parent Company</th><th>Status</th><th>Country</th>
+                    <th>Entity Name</th><th>Parent Company</th><th>Status</th><th>Country</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {entitiesList.map((e: any) => (
-                    <tr key={e.id}>
-                      <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{e.name}</td>
-                      <td>{e.company_name}</td>
-                      <td>
-                        <span className={`badge ${STATUS_BADGE[e.status] ?? 'badge-muted'}`}>{e.status}</span>
-                      </td>
-                      <td>{e.country_code || '—'}</td>
-                    </tr>
-                  ))}
+                  {entitiesList.map((e: any) => {
+                    const companySiblings = entitiesList.filter((x: any) => x.company === e.company || x.company_name === e.company_name)
+                    const isLastEntity = companySiblings.length <= 1
+                    return (
+                      <tr key={e.id}>
+                        <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{e.name}</td>
+                        <td>{e.company_name}</td>
+                        <td>
+                          <span className={`badge ${STATUS_BADGE[e.status] ?? 'badge-muted'}`}>{e.status}</span>
+                        </td>
+                        <td>{e.country_code || '—'}</td>
+                        <td>
+                          <button
+                            className="btn btn-xs"
+                            disabled={isLastEntity}
+                            title={isLastEntity ? 'Cannot delete the only entity of a company' : 'Delete entity'}
+                            style={{
+                              background: isLastEntity ? 'var(--bg-elevated)' : 'var(--red-dim)',
+                              color: isLastEntity ? 'var(--text-muted)' : 'var(--red)',
+                              border: `1px solid ${isLastEntity ? 'var(--border)' : 'var(--red)'}`,
+                              cursor: isLastEntity ? 'not-allowed' : 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 4
+                            }}
+                            onClick={() => {
+                              if (!isLastEntity) {
+                                setDeleteConfirm({ type: 'entity', id: e.id, label: e.name, subLabel: e.company_name })
+                              }
+                            }}
+                          >
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             )}
@@ -1444,30 +1535,123 @@ export function SettingsPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Name</th><th>Email</th><th>Company & Entity Scope</th><th>Access</th>
+                    <th>Name</th><th>Email</th><th>Company & Entity Scope</th><th>Access</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {usersList.map((u: any) => (
-                    <tr key={u.id}>
-                      <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{u.first_name} {u.last_name}</td>
-                      <td className="mono" style={{ fontSize: 12 }}>{u.email}</td>
-                      <td>
-                        <div>{u.company_name || 'System'}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{u.entity_name || 'CIXCI Scope'}</div>
-                      </td>
-                      <td>
-                        {u.is_cixci_admin ? (
-                          <span className="badge badge-purple" style={{ gap: '4px' }}><ShieldCheck size={10} /> CIXCI Admin</span>
-                        ) : (
-                          <span className="badge badge-blue">Org User</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {usersList.map((u: any) => {
+                    const isSelf = u.id === user?.id
+                    return (
+                      <tr key={u.id}>
+                        <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{u.first_name} {u.last_name}</td>
+                        <td className="mono" style={{ fontSize: 12 }}>{u.email}</td>
+                        <td>
+                          <div>{u.company_name || 'System'}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{u.entity_name || 'CIXCI Scope'}</div>
+                        </td>
+                        <td>
+                          {u.is_cixci_admin ? (
+                            <span className="badge badge-purple" style={{ gap: '4px' }}><ShieldCheck size={10} /> CIXCI Admin</span>
+                          ) : (
+                            <span className="badge badge-blue">Org User</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            className="btn btn-xs"
+                            disabled={isSelf}
+                            title={isSelf ? 'You cannot delete your own account' : 'Delete user'}
+                            style={{
+                              background: isSelf ? 'var(--bg-elevated)' : 'var(--red-dim)',
+                              color: isSelf ? 'var(--text-muted)' : 'var(--red)',
+                              border: `1px solid ${isSelf ? 'var(--border)' : 'var(--red)'}`,
+                              cursor: isSelf ? 'not-allowed' : 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 4
+                            }}
+                            onClick={() => {
+                              if (!isSelf) {
+                                setDeleteConfirm({
+                                  type: 'user',
+                                  id: u.id,
+                                  label: `${u.first_name} ${u.last_name}`.trim() || u.email,
+                                  subLabel: u.email
+                                })
+                              }
+                            }}
+                          >
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRM MODAL */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setDeleteConfirm(null) }}>
+          <div className="modal-content" style={{ width: 420 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%',
+                background: 'var(--red-dim)', border: '1px solid var(--red)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <Trash2 size={16} color="var(--red)" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
+                  Delete {deleteConfirm.type === 'company' ? 'Company' : deleteConfirm.type === 'entity' ? 'Entity' : 'User'}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>This action cannot be undone.</div>
+              </div>
+            </div>
+
+            <div style={{
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-light)',
+              borderRadius: 'var(--radius-sm)', padding: '12px 14px', marginBottom: 16
+            }}>
+              <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>{deleteConfirm.label}</div>
+              {deleteConfirm.subLabel && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>{deleteConfirm.subLabel}</div>
+              )}
+            </div>
+
+            <div style={{
+              fontSize: 12, color: 'var(--text-secondary)', lineHeight: '1.6',
+              background: 'var(--red-dim)', border: '1px solid var(--red)',
+              borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: 20
+            }}>
+              {deleteConfirm.type === 'company' && (
+                <span>⚠️ Deleting a company will fail if it still has <strong>entities or users</strong> attached. Remove those first, or the server will reject this request.</span>
+              )}
+              {deleteConfirm.type === 'entity' && (
+                <span>⚠️ Deleting an entity will fail if <strong>users are still assigned</strong> to it. Reassign or delete those users first.</span>
+              )}
+              {deleteConfirm.type === 'user' && (
+                <span>⚠️ This will <strong>permanently remove</strong> the user account and revoke all access. The last active company admin cannot be deleted.</span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              <button
+                className="btn btn-sm"
+                style={{ background: 'var(--red)', color: '#fff', border: '1px solid var(--red)', display: 'flex', alignItems: 'center', gap: 6 }}
+                onClick={() => {
+                  if (deleteConfirm.type === 'company') handleDeleteCompany(deleteConfirm.id)
+                  else if (deleteConfirm.type === 'entity') handleDeleteEntity(deleteConfirm.id)
+                  else handleDeleteUser(deleteConfirm.id)
+                }}
+              >
+                <Trash2 size={13} /> Delete permanently
+              </button>
+            </div>
           </div>
         </div>
       )}
