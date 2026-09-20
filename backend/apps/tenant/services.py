@@ -276,6 +276,71 @@ def verify_onboarding_token(token: str, max_age: int = 259200) -> Optional[str]:
         logger.warning(f"Onboarding token verification failed: {e}")
         return None
 
+def dispatch_email(recipient_email: str, subject: str, plain_message: str, html_content: Optional[str] = None) -> bool:
+    """
+    Centralized email dispatcher with direct Resend API support, unverified domain fallback, and Django backend fallback.
+    """
+    resend_key = getattr(settings, "RESEND_API_KEY", "")
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com")
+    sent_via_resend = False
+
+    if resend_key:
+        try:
+            import resend
+            resend.api_key = resend_key
+            params = {
+                "from": from_email,
+                "to": [recipient_email],
+                "subject": subject,
+                "html": html_content or plain_message,
+                "text": plain_message,
+            }
+            try:
+                res = resend.Emails.send(params)
+                logger.info("Email '%s' sent via Resend API to %s: %s", subject, recipient_email, res)
+                sent_via_resend = True
+            except Exception as resend_err:
+                err_str = str(resend_err).lower()
+                # If custom domain (e.g. cixci.com) is not verified yet in Resend, automatically fallback to Resend's test sender
+                if any(k in err_str for k in ["not verified", "domain", "validation_error"]):
+                    logger.warning(
+                        "Resend domain '%s' not verified. Retrying with 'CIXCI <onboarding@resend.dev>'. Error: %s",
+                        from_email, resend_err
+                    )
+                    params["from"] = "CIXCI <onboarding@resend.dev>"
+                    res = resend.Emails.send(params)
+                    logger.info("Email '%s' sent via Resend onboarding fallback to %s: %s", subject, recipient_email, res)
+                    sent_via_resend = True
+                else:
+                    raise resend_err
+        except Exception as e:
+            logger.error("Failed sending email via Resend API: %s. Falling back to Django EMAIL_BACKEND.", e)
+    else:
+        logger.warning(
+            "RESEND_API_KEY is not configured in settings. Email will be processed via Django EMAIL_BACKEND (%s).",
+            getattr(settings, "EMAIL_BACKEND", "console")
+        )
+
+    if not sent_via_resend:
+        try:
+            email_msg = EmailMultiAlternatives(
+                subject=subject,
+                body=plain_message,
+                from_email=from_email,
+                to=[recipient_email],
+            )
+            if html_content:
+                email_msg.attach_alternative(html_content, "text/html")
+            email_msg.send(fail_silently=False)
+            logger.info("Email '%s' sent via Django EMAIL_BACKEND to %s", subject, recipient_email)
+            return True
+        except Exception as e:
+            logger.error("Failed sending email via Django EMAIL_BACKEND: %s", e)
+            return False
+
+    return sent_via_resend
+
+
 def send_onboarding_invite(user=None, invitation=None):
     """
     Send onboarding invitation email with signed activation link matching CIXCI email design.
@@ -335,36 +400,12 @@ def send_onboarding_invite(user=None, invitation=None):
         f"All content © {timezone.now().year} CIXCI. All rights reserved."
     )
 
-    resend_key = getattr(settings, "RESEND_API_KEY", "")
-    sent_via_resend = False
-    if resend_key:
-        try:
-            import resend
-            resend.api_key = resend_key
-            params = {
-                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-                "to": [recipient_email],
-                "subject": subject,
-                "html": html_content or plain_message,
-                "text": plain_message,
-            }
-            res = resend.Emails.send(params)
-            logger.info("Onboarding email sent via Resend API to %s: %s", recipient_email, res)
-            sent_via_resend = True
-        except Exception as e:
-            logger.error(f"Failed sending onboarding email via Resend API: {e}, falling back to django email backend.")
-
-    if not sent_via_resend:
-        email_msg = EmailMultiAlternatives(
-            subject=subject,
-            body=plain_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-            to=[recipient_email],
-        )
-        if html_content:
-            email_msg.attach_alternative(html_content, "text/html")
-
-        email_msg.send(fail_silently=False)
+    dispatch_email(
+        recipient_email=recipient_email,
+        subject=subject,
+        plain_message=plain_message,
+        html_content=html_content,
+    )
 
     log_tenant_audit(
         event_code="user.onboarding_invite_sent",
@@ -433,35 +474,12 @@ def send_password_reset_email(user):
         f"All content © {timezone.now().year} CIXCI. All rights reserved."
     )
 
-    resend_key = getattr(settings, "RESEND_API_KEY", "")
-    sent_via_resend = False
-    if resend_key:
-        try:
-            import resend
-            resend.api_key = resend_key
-            params = {
-                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-                "to": [recipient_email],
-                "subject": subject,
-                "html": html_content or plain_message,
-                "text": plain_message,
-            }
-            res = resend.Emails.send(params)
-            logger.info("Password reset email sent via Resend API to %s: %s", recipient_email, res)
-            sent_via_resend = True
-        except Exception as e:
-            logger.error(f"Failed sending password reset email via Resend API: {e}, falling back to django email backend.")
-
-    if not sent_via_resend:
-        email_msg = EmailMultiAlternatives(
-            subject=subject,
-            body=plain_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-            to=[recipient_email],
-        )
-        if html_content:
-            email_msg.attach_alternative(html_content, "text/html")
-        email_msg.send(fail_silently=False)
+    dispatch_email(
+        recipient_email=recipient_email,
+        subject=subject,
+        plain_message=plain_message,
+        html_content=html_content,
+    )
 
     log_tenant_audit(
         event_code="user.password_reset_sent",
@@ -548,35 +566,12 @@ def send_password_changed_email(user, reset_url: Optional[str] = None):
         f"All content © {timezone.now().year} CIXCI. All rights reserved."
     )
 
-    resend_key = getattr(settings, "RESEND_API_KEY", "")
-    sent_via_resend = False
-    if resend_key:
-        try:
-            import resend
-            resend.api_key = resend_key
-            params = {
-                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-                "to": [recipient_email],
-                "subject": subject,
-                "html": html_content or plain_message,
-                "text": plain_message,
-            }
-            res = resend.Emails.send(params)
-            logger.info("Password changed email sent via Resend API to %s: %s", recipient_email, res)
-            sent_via_resend = True
-        except Exception as e:
-            logger.error(f"Failed sending password changed email via Resend API: {e}, falling back to django email backend.")
-
-    if not sent_via_resend:
-        email_msg = EmailMultiAlternatives(
-            subject=subject,
-            body=plain_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-            to=[recipient_email],
-        )
-        if html_content:
-            email_msg.attach_alternative(html_content, "text/html")
-        email_msg.send(fail_silently=False)
+    dispatch_email(
+        recipient_email=recipient_email,
+        subject=subject,
+        plain_message=plain_message,
+        html_content=html_content,
+    )
 
     company_id = getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None)
     log_tenant_audit(
@@ -630,35 +625,12 @@ def send_unsubscribed_email(email: str, first_name: str = "there", user=None, fe
         f"All content © {timezone.now().year} CIXCI. All rights reserved."
     )
 
-    resend_key = getattr(settings, "RESEND_API_KEY", "")
-    sent_via_resend = False
-    if resend_key:
-        try:
-            import resend
-            resend.api_key = resend_key
-            params = {
-                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-                "to": [recipient_email],
-                "subject": subject,
-                "html": html_content or plain_message,
-                "text": plain_message,
-            }
-            res = resend.Emails.send(params)
-            logger.info("Unsubscribed email sent via Resend API to %s: %s", recipient_email, res)
-            sent_via_resend = True
-        except Exception as e:
-            logger.error(f"Failed sending unsubscribed email via Resend API: {e}, falling back to django email backend.")
-
-    if not sent_via_resend:
-        email_msg = EmailMultiAlternatives(
-            subject=subject,
-            body=plain_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-            to=[recipient_email],
-        )
-        if html_content:
-            email_msg.attach_alternative(html_content, "text/html")
-        email_msg.send(fail_silently=False)
+    dispatch_email(
+        recipient_email=recipient_email,
+        subject=subject,
+        plain_message=plain_message,
+        html_content=html_content,
+    )
 
     company_id = None
     user_id = None
@@ -717,35 +689,12 @@ def send_welcome_email(user, browse_url: Optional[str] = None):
         f"All content © {timezone.now().year} CIXCI. All rights reserved."
     )
 
-    resend_key = getattr(settings, "RESEND_API_KEY", "")
-    sent_via_resend = False
-    if resend_key:
-        try:
-            import resend
-            resend.api_key = resend_key
-            params = {
-                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-                "to": [recipient_email],
-                "subject": subject,
-                "html": html_content or plain_message,
-                "text": plain_message,
-            }
-            res = resend.Emails.send(params)
-            logger.info("Welcome email sent via Resend API to %s: %s", recipient_email, res)
-            sent_via_resend = True
-        except Exception as e:
-            logger.error(f"Failed sending welcome email via Resend API: {e}, falling back to django email backend.")
-
-    if not sent_via_resend:
-        email_msg = EmailMultiAlternatives(
-            subject=subject,
-            body=plain_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-            to=[recipient_email],
-        )
-        if html_content:
-            email_msg.attach_alternative(html_content, "text/html")
-        email_msg.send(fail_silently=False)
+    dispatch_email(
+        recipient_email=recipient_email,
+        subject=subject,
+        plain_message=plain_message,
+        html_content=html_content,
+    )
 
     company_id = getattr(user, "company_id", None) or (user.entity.company_id if getattr(user, "entity", None) else None)
     log_tenant_audit(
@@ -798,35 +747,12 @@ def send_welcome_back_email(email: str, first_name: str = "there", user=None, ex
         f"All content © {timezone.now().year} CIXCI. All rights reserved."
     )
 
-    resend_key = getattr(settings, "RESEND_API_KEY", "")
-    sent_via_resend = False
-    if resend_key:
-        try:
-            import resend
-            resend.api_key = resend_key
-            params = {
-                "from": getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-                "to": [recipient_email],
-                "subject": subject,
-                "html": html_content or plain_message,
-                "text": plain_message,
-            }
-            res = resend.Emails.send(params)
-            logger.info("Welcome back email sent via Resend API to %s: %s", recipient_email, res)
-            sent_via_resend = True
-        except Exception as e:
-            logger.error(f"Failed sending welcome back email via Resend API: {e}, falling back to django email backend.")
-
-    if not sent_via_resend:
-        email_msg = EmailMultiAlternatives(
-            subject=subject,
-            body=plain_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@cixci.com"),
-            to=[recipient_email],
-        )
-        if html_content:
-            email_msg.attach_alternative(html_content, "text/html")
-        email_msg.send(fail_silently=False)
+    dispatch_email(
+        recipient_email=recipient_email,
+        subject=subject,
+        plain_message=plain_message,
+        html_content=html_content,
+    )
 
     company_id = None
     user_id = None

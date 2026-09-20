@@ -32,6 +32,8 @@ services:
       - FRONTEND_URL=${FRONTEND_URL}
       - USE_GCS=${USE_GCS}
       - GS_BUCKET_NAME=${GS_BUCKET_NAME}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@cixci.com}
     depends_on:
       - redis
     restart: always
@@ -55,6 +57,9 @@ services:
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
       - SECRET_KEY=${SECRET_KEY}
       - DEBUG=False
+      - FRONTEND_URL=${FRONTEND_URL}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@cixci.com}
     depends_on:
       - redis
     restart: always
