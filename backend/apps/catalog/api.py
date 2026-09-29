@@ -771,19 +771,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if getattr(self, "action", None) in ["list", "retrieve"] and company.company_type == "buyer":
             from apps.integration.models import CompanyAPIKey
             is_api_key_auth = isinstance(self.request.auth, CompanyAPIKey)
-            if is_api_key_auth:
-                from apps.catalog.models import BuyerProductExportSelectionSnapshot
-                exported_product_ids = BuyerProductExportSelectionSnapshot.objects.filter(
-                    export_job__company_scope_reference=company.id,
-                    export_job__status="completed"
-                ).values_list("product_ids", flat=True)
 
-                flat_exported_ids = []
-                for pid_list in exported_product_ids:
-                    if isinstance(pid_list, list):
-                        flat_exported_ids.extend(pid_list)
-
-                qs = qs.filter(id__in=flat_exported_ids)
+            # API key auth uses device portfolio compatibility (same as browser UI).
+            # The export-job gate is intentionally removed for API key auth so that
+            # integrations see the same 9 compatible products as the buyer sees in the UI.
 
             if getattr(self, "action", None) == "list":
                 device_id_param = self.request.query_params.get("device_id")
@@ -793,7 +784,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     active_flag=True
                 ).values_list("device_id", flat=True))
 
-                if not is_api_key_auth and not portfolio_device_ids:
+                if not portfolio_device_ids and not device_id_param:
+                    # No portfolio devices and no explicit device filter — nothing compatible
                     return Product.objects.none()
 
                 if device_id_param:
@@ -805,12 +797,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             return Product.objects.none()
                     except ValueError:
                         return Product.objects.none()
-                elif not is_api_key_auth:
-                    target_device_ids = portfolio_device_ids
                 else:
-                    target_device_ids = None
+                    target_device_ids = portfolio_device_ids
 
-                if target_device_ids is not None:
+                if target_device_ids:
                     compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
                         device_reference__in=target_device_ids,
                         is_compatible=True,
@@ -823,18 +813,28 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if not isinstance(buyer_regions, list):
             buyer_regions = [buyer_regions]
 
-        region_filter = Q()
-        for r in buyer_regions:
-            region_filter |= Q(approved_regions__icontains=f'"{r}"')
+        # Only apply region filter when the buyer has regions configured.
+        # If buyer has no approved_regions, skip vendor region exclusion so all
+        # active vendors are visible (avoids silently hiding everything).
+        if buyer_regions:
+            region_filter = Q()
+            for r in buyer_regions:
+                region_filter |= Q(approved_regions__icontains=f'"{r}"')
 
-        # Find existing vendor companies that are NOT active OR NOT in the buyer's approved regions
-        invisible_vendor_ids = Company.objects.filter(
-            company_type=CompanyType.VENDOR
-        ).exclude(
-            Q(status=CompanyStatus.ACTIVE) & region_filter
-        ).values_list("id", flat=True)
+            # Exclude vendors that are NOT active OR NOT in the buyer's approved regions
+            invisible_vendor_ids = Company.objects.filter(
+                company_type=CompanyType.VENDOR
+            ).exclude(
+                Q(status=CompanyStatus.ACTIVE) & region_filter
+            ).values_list("id", flat=True)
 
-        qs = qs.exclude(vendor_company_reference__in=invisible_vendor_ids)
+            qs = qs.exclude(vendor_company_reference__in=invisible_vendor_ids)
+        else:
+            # No region config on buyer — only exclude inactive vendors
+            inactive_vendor_ids = Company.objects.filter(
+                company_type=CompanyType.VENDOR
+            ).exclude(status=CompanyStatus.ACTIVE).values_list("id", flat=True)
+            qs = qs.exclude(vendor_company_reference__in=inactive_vendor_ids)
 
         # MAP Pricing buyer visibility exclusions
         from apps.pricing.models import MapException
