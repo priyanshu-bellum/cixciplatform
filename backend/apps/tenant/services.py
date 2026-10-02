@@ -829,6 +829,13 @@ def is_capability_allowed_for_company(capability_code: str, company_type: str, b
             "procurement.po.list",
             "procurement.po.read",
             "procurement.po.update",
+            # Fulfillment: buyers need to view handoffs and manage their returns
+            "fulfillment.handoff.list",
+            "fulfillment.handoff.read",
+            "fulfillment.return.list",
+            "fulfillment.return.read",
+            "fulfillment.return.create",
+            "fulfillment.return.update",
             "company_user_management.read_users",
             "company_user_management.manage_invitations",
             "company_user_management.manage_user_access",
