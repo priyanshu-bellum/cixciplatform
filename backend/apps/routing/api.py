@@ -111,14 +111,38 @@ class OrderSerializer(serializers.ModelSerializer):
         if not ret.get("order_id") and getattr(instance, "order_id", None):
             ret["order_id"] = instance.order_id
         elif not ret.get("order_id"):
-            # Fallback if unmigrated
+            # order_id is null (pre-migration record) — assign a real unique sequential ID
+            # and persist it so subsequent reads are consistent
+            import re
+            from apps.tenant.models import Company
             co_slug = "cixci"
             if instance.buyer_reference:
-                from apps.tenant.models import Company
                 co = Company.objects.filter(id=instance.buyer_reference).first()
                 if co and co.slug:
                     co_slug = co.slug
-            ret["order_id"] = f"1000-{co_slug}"
+                elif co and co.name:
+                    from django.utils.text import slugify
+                    co_slug = slugify(co.name)
+            existing_ids = Order.objects.exclude(order_id__isnull=True).exclude(order_id="").values_list("order_id", flat=True)
+            max_num = 999
+            for oid in existing_ids:
+                m = re.match(r"^(\d+)", str(oid))
+                if m:
+                    try:
+                        val = int(m.group(1))
+                        if val > max_num:
+                            max_num = val
+                    except ValueError:
+                        pass
+            next_num = max_num + 1
+            new_order_id = f"{next_num}-{co_slug}"
+            try:
+                instance.order_id = new_order_id
+                instance.save(update_fields=["order_id"])
+            except Exception:
+                pass
+            ret["order_id"] = new_order_id
+
         subs = list(instance.routed_suborders.all())
         if subs:
             all_delivered = all(s.status == "delivered" for s in subs)
