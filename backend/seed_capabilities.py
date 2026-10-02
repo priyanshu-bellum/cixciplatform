@@ -38,6 +38,16 @@ standard_caps = [
     "procurement.po.update", "procurement.po.approve", "procurement.po.manage",
     "launch.event.list", "launch.event.read", "launch.event.create",
     "launch.event.update", "launch.event.manage",
+    # Fulfillment & Returns — hardcoded to guarantee seeding even if dynamic discovery fails
+    "fulfillment.handoff.list", "fulfillment.handoff.read", "fulfillment.handoff.create",
+    "fulfillment.handoff.update", "fulfillment.handoff.manage",
+    "fulfillment.return.list", "fulfillment.return.read", "fulfillment.return.create",
+    "fulfillment.return.update", "fulfillment.return.manage",
+    "fulfillment.sla.read",
+    # Routing
+    "routing.order.list", "routing.order.read", "routing.order.create",
+    "routing.order.update", "routing.order.manage",
+    "routing.export.list", "routing.export.read",
 ]
 capabilities.update(standard_caps)
 

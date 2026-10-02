@@ -111,6 +111,19 @@ const CAPABILITY_INFO: Record<string, { name: string; desc: string }> = {
   'launch.event.create': { name: 'Trigger Event Run', desc: 'Allows triggering sync runs or automation flows manually.' },
   'launch.event.update': { name: 'Modify Event Options', desc: 'Allows editing scheduled event configs.' },
   'launch.event.manage': { name: 'Launch Settings Manager', desc: 'Allows scheduling launch cycles or managing automated actions.' },
+
+  // Fulfillment & Returns
+  'fulfillment.handoff.list': { name: 'List Fulfillment Handoffs', desc: 'Allows viewing the list of vendor fulfillment handoff records.' },
+  'fulfillment.handoff.read': { name: 'View Fulfillment Handoff Details', desc: 'Allows reading individual fulfillment handoff status and shipping info.' },
+  'fulfillment.handoff.create': { name: 'Create Fulfillment Handoff', desc: 'Allows creating new fulfillment handoff records.' },
+  'fulfillment.handoff.update': { name: 'Update Fulfillment Handoff', desc: 'Allows updating shipping status, tracking numbers, and carrier info.' },
+  'fulfillment.handoff.manage': { name: 'Manage Fulfillment Handoffs', desc: 'Allows full administration of fulfillment handoff records.' },
+  'fulfillment.return.list': { name: 'List Return Requests', desc: 'Allows viewing all return requests across orders.' },
+  'fulfillment.return.read': { name: 'View Return Request Details', desc: 'Allows reading individual return request records and status.' },
+  'fulfillment.return.create': { name: 'Create Return Request', desc: 'Allows submitting new return requests for fulfilled orders.' },
+  'fulfillment.return.update': { name: 'Update Return Request', desc: 'Allows updating return outcomes, received dates, and refund amounts.' },
+  'fulfillment.return.manage': { name: 'Manage Return Requests', desc: 'Allows full administration of return requests including deletion.' },
+  'fulfillment.sla.read': { name: 'View SLA Evaluations', desc: 'Allows reading vendor SLA evaluation records and outcomes.' },
 }
 
 const getCapabilityInfo = (code: string) => {
@@ -180,6 +193,11 @@ const isCapabilityAllowedForCompany = (code: string, companyType: string, buyerT
       'procurement.po.list',
       'procurement.po.read',
       'procurement.po.update',
+      'fulfillment.return.list',
+      'fulfillment.return.read',
+      'fulfillment.return.create',
+      'fulfillment.handoff.list',
+      'fulfillment.handoff.read',
       'company_user_management.read_users',
       'company_user_management.manage_invitations',
       'company_user_management.manage_user_access',
