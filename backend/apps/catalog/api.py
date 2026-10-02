@@ -181,9 +181,11 @@ class ProductListSerializer(ProductSerializerBase):
         fields = [
             "id", "name", "sku", "upc", "brand", "product_type", "product_category",
             "status",
-            "vendor_company_reference",
+            "vendor_company_reference", "vendor_name",
             "description", "short_description", "promo_information",
             "msrp", "map_price", "sale_price", "buyer_wholesale_price",
+            # Admin-only: stripped for non-admins in to_representation()
+            "vendor_wholesale_price_amount", "vendor_wholesale_price_currency",
             "color", "system_color",
             "launch_date", "eol_date",
             "inventory_level",

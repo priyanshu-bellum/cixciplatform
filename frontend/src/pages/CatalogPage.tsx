@@ -3051,11 +3051,11 @@ export default function CatalogPage() {
               </div>
             )}
 
-            {(isCixciAdmin || isVendor) && (
+            {(isCixciAdmin || isVendor) && p.vendor_wholesale_price_amount != null && (
               <div className="admin-price-row">
                 <span className="admin-label">Vendor Wholesale Price:</span>
                 <span className="admin-val">
-                  {formatCurrency(p.vendor_wholesale_price_amount ?? 0, p.vendor_wholesale_price_currency)}
+                  {formatCurrency(p.vendor_wholesale_price_amount, p.vendor_wholesale_price_currency)}
                 </span>
               </div>
             )}
@@ -5890,6 +5890,15 @@ export default function CatalogPage() {
                         }
                       </div>
                     </div>
+
+                    {isCixciAdmin && selectedManageProduct.vendor_wholesale_price_amount != null && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Vendor Wholesale Price</div>
+                        <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600, color: 'var(--accent)' }}>
+                          {formatCurrency(selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)}
+                        </div>
+                      </div>
+                    )}
 
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Product Category</div>
