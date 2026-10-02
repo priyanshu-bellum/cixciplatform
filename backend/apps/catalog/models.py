@@ -140,6 +140,17 @@ class Product(models.Model):
     compatible_watch_case_size = models.CharField(max_length=50, default="", blank=True)
     compatibility_status = models.CharField(max_length=30, default="incomplete")
 
+    # Universal device-type compatibility (e.g. ['phone', 'tablet', 'smartwatch'])
+    # Products listed here are auto-mapped to ALL active devices of those types,
+    # including future devices added to the catalog.
+    compatible_device_types = models.JSONField(
+        default=list, blank=True,
+        help_text=(
+            "Device-type codes this product universally supports (e.g. ['phone', 'tablet']). "
+            "Auto-mapped to every current and future device of those types."
+        )
+    )
+
     # Audit
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

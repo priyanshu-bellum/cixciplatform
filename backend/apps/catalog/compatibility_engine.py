@@ -329,27 +329,152 @@ def run_compatibility_automapping(product, actor_id=None, change_source="Auto-Ma
             product.compatibility_status = status
             Product.objects.filter(id=product.id).update(compatibility_status=status)
 
+def run_universal_device_type_mapping(product, actor_id=None, change_source="Universal Type Mapping"):
+    """
+    Maps a product to every active, non-retired, launched device whose device_type.code
+    is listed in product.compatible_device_types (e.g. ['phone', 'tablet', 'smartwatch']).
+
+    This is the auto-mapping counterpart for universal products that have no
+    device-specific or feature-based compatibility data.
+    Preserves locked/excluded/manual_assertion assertions.
+    New devices added to the catalog are picked up automatically via run_device_remapping().
+    """
+    device_type_codes = getattr(product, "compatible_device_types", None) or []
+    if not device_type_codes:
+        return
+
+    from django.db.models import Q
+    from django.utils import timezone
+    from apps.catalog.models import ProductCompatibilityAssertion
+
+    now_date = timezone.now().date()
+
+    # Normalise codes to lowercase for comparison
+    codes_lower = [str(c).strip().lower() for c in device_type_codes if c]
+    if not codes_lower:
+        return
+
+    # Find all eligible devices for those types
+    target_devices = list(Device.objects.filter(
+        device_type__code__in=codes_lower,
+        device_type__status="active",
+    ).exclude(
+        lifecycle_status="retired"
+    ).filter(
+        Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
+    ).select_related("device_type"))
+
+    matched_device_ids = {d.id for d in target_devices}
+    device_map = {d.id: d for d in target_devices}
+
+    with transaction.atomic():
+        existing = {
+            a.device_reference: a
+            for a in ProductCompatibilityAssertion.objects.filter(product=product)
+        }
+
+        to_create = []
+        to_update = []
+
+        for dev_id, dev in device_map.items():
+            assertion = existing.get(dev_id)
+            dev_type_name = dev.device_type.name if dev.device_type else "Device"
+            if assertion:
+                # Preserve locked / excluded / manual assertions
+                if assertion.is_locked or assertion.is_excluded or assertion.compatibility_basis in ["manual_assertion"]:
+                    continue
+                if not assertion.is_compatible or assertion.match_status != "Active":
+                    assertion.is_compatible = True
+                    assertion.match_status = "Active"
+                    assertion.compatibility_basis = "universal_device_type"
+                    assertion.device_status_at_mapping = dev.lifecycle_status
+                    assertion.device_launch_date_at_mapping = dev.launch_date
+                    assertion.match_source = change_source
+                    assertion.match_reason = (
+                        f"Universal device-type mapping: product supports all "
+                        f"{dev_type_name} devices."
+                    )
+                    to_update.append(assertion)
+            else:
+                to_create.append(
+                    ProductCompatibilityAssertion(
+                        product=product,
+                        device_reference=dev_id,
+                        is_compatible=True,
+                        compatibility_basis="universal_device_type",
+                        notes=f"Auto-mapped: universal product for {dev_type_name}.",
+                        vendor_company_reference=product.vendor_company_reference,
+                        sku=product.sku,
+                        device_status_at_mapping=dev.lifecycle_status,
+                        device_launch_date_at_mapping=dev.launch_date,
+                        match_source=change_source,
+                        match_reason=(
+                            f"Universal device-type mapping: product supports all "
+                            f"{dev_type_name} devices."
+                        ),
+                        match_status="Active",
+                    )
+                )
+
+        if to_create:
+            ProductCompatibilityAssertion.objects.bulk_create(to_create, batch_size=500)
+        if to_update:
+            ProductCompatibilityAssertion.objects.bulk_update(
+                to_update,
+                fields=[
+                    "is_compatible", "match_status", "compatibility_basis",
+                    "device_status_at_mapping", "device_launch_date_at_mapping",
+                    "match_source", "match_reason"
+                ],
+                batch_size=500
+            )
+
+        # Update compatibility_status
+        active_cnt = ProductCompatibilityAssertion.objects.filter(
+            product=product,
+            is_compatible=True,
+            is_excluded=False,
+            device_reference__in=list(matched_device_ids),
+        ).count()
+        status = "complete" if active_cnt >= 1 else "incomplete"
+        if product.compatibility_status != status:
+            product.compatibility_status = status
+            Product.objects.filter(id=product.id).update(compatibility_status=status)
+
+
 def run_device_remapping(device, actor_id=None, change_source="System Remap"):
     """
     Runs reverse compatibility matching when a device is created or updated.
     Checks all products in auto-mapped categories against this device.
+    Also picks up universal products whose compatible_device_types includes
+    this device's type code.
     """
     from apps.catalog.models import DynamicDropdownConfig
+    from django.db.models import Q
     from django.utils import timezone
-    
-    # Only active, non-explicit (feature_based/category_rule_based etc) categories
+
+    # 1. Feature-based auto-mapping (existing logic)
     active_configs = DynamicDropdownConfig.objects.filter(field_name="product_category", status="active").exclude(compatibility_mode="explicit")
     auto_mapped_categories = [cfg.value for cfg in active_configs]
     products = Product.objects.filter(product_category__in=auto_mapped_categories)
-    
+
     is_active_device = (device.device_type and device.device_type.status == 'active')
-    
+
+    now_date = timezone.now().date()
+    active_device_ids = list(Device.objects.filter(
+        device_type__status='active'
+    ).exclude(
+        lifecycle_status='retired'
+    ).filter(
+        Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
+    ).values_list('id', flat=True))
+
     with transaction.atomic():
         for product in products:
             is_compat = is_active_device and check_compatibility(product, device)
             # Find existing assertion for this product and device
             assertion = ProductCompatibilityAssertion.objects.filter(product=product, device_reference=device.id).first()
-            
+
             if is_compat:
                 if not assertion:
                     # Create assertion
@@ -392,18 +517,8 @@ def run_device_remapping(device, actor_id=None, change_source="System Remap"):
                         assertion.is_compatible = False
                         log_compatibility_change(assertion, prev_status, "Archived", actor_id=actor_id, change_source=change_source)
                         assertion.delete()
-                                    # Recalculate status for product using only active, launched, non-retired devices
-            from django.db.models import Q
-            from django.utils import timezone
-            now_date = timezone.now().date()
-            active_device_ids = Device.objects.filter(
-                device_type__status='active'
-            ).exclude(
-                lifecycle_status='retired'
-            ).filter(
-                Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
-            ).values_list('id', flat=True)
-            
+
+            # Recalculate status for product using only active, launched, non-retired devices
             cnt = ProductCompatibilityAssertion.objects.filter(
                 product=product,
                 is_compatible=True,
@@ -414,3 +529,53 @@ def run_device_remapping(device, actor_id=None, change_source="System Remap"):
             if product.compatibility_status != status:
                 product.compatibility_status = status
                 Product.objects.filter(id=product.id).update(compatibility_status=status)
+
+    # 2. Universal device-type mapping — pick up any product that universally
+    #    supports this device's type (e.g. compatible_device_types = ['phone'])
+    if is_active_device and device.device_type:
+        dev_type_code = (device.device_type.code or "").lower()
+        if dev_type_code:
+            universal_products = Product.objects.filter(
+                compatible_device_types__contains=dev_type_code
+            )
+            dev_type_name = device.device_type.name or "Device"
+            for product in universal_products:
+                existing = ProductCompatibilityAssertion.objects.filter(
+                    product=product, device_reference=device.id
+                ).first()
+                if existing:
+                    if existing.is_locked or existing.is_excluded or existing.compatibility_basis in ["manual_assertion"]:
+                        continue
+                    if not existing.is_compatible or existing.match_status != "Active":
+                        existing.is_compatible = True
+                        existing.match_status = "Active"
+                        existing.compatibility_basis = "universal_device_type"
+                        existing.device_status_at_mapping = device.lifecycle_status
+                        existing.device_launch_date_at_mapping = device.launch_date
+                        existing.match_source = change_source
+                        existing.match_reason = f"Universal device-type mapping: product supports all {dev_type_name} devices."
+                        existing.save(update_fields=[
+                            "is_compatible", "match_status", "compatibility_basis",
+                            "device_status_at_mapping", "device_launch_date_at_mapping",
+                            "match_source", "match_reason"
+                        ])
+                else:
+                    ProductCompatibilityAssertion.objects.create(
+                        product=product,
+                        device_reference=device.id,
+                        is_compatible=True,
+                        compatibility_basis="universal_device_type",
+                        notes=f"Auto-mapped: universal product for {dev_type_name}.",
+                        vendor_company_reference=product.vendor_company_reference,
+                        sku=product.sku,
+                        device_status_at_mapping=device.lifecycle_status,
+                        device_launch_date_at_mapping=device.launch_date,
+                        match_source=change_source,
+                        match_reason=f"Universal device-type mapping: product supports all {dev_type_name} devices.",
+                        match_status="Active",
+                    )
+                if product.compatibility_status != "complete":
+                    product.compatibility_status = "complete"
+                    Product.objects.filter(id=product.id).update(compatibility_status="complete")
+
+

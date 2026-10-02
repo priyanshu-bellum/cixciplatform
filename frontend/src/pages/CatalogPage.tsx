@@ -681,6 +681,7 @@ export default function CatalogPage() {
   const [compStorageExpansion, setCompStorageExpansion] = useState('')
   const [compMemoryCapacity, setCompMemoryCapacity] = useState('')
   const [compWatchCaseSize, setCompWatchCaseSize] = useState('')
+  const [compUniversalDeviceTypes, setCompUniversalDeviceTypes] = useState<string[]>([])
 
   // Manage / Edit product targets
   const [selectedManageProduct, setSelectedManageProduct] = useState<any>(null)
@@ -1112,7 +1113,8 @@ export default function CatalogPage() {
       compWirelessCharging.length > 0 ||
       compStorageExpansion !== '' ||
       compMemoryCapacity !== '' ||
-      compWatchCaseSize !== ''
+      compWatchCaseSize !== '' ||
+      compUniversalDeviceTypes.length > 0
     )
   }
 
@@ -1125,6 +1127,12 @@ export default function CatalogPage() {
       selectedDeviceIds.every((x: string) => activeCompatIds.includes(x))
     )
     const mediaList = editingProduct.media_references || []
+    const origUdt = editingProduct.compatible_device_types || []
+    const udtMatch = (
+      Array.isArray(compUniversalDeviceTypes) &&
+      compUniversalDeviceTypes.length === origUdt.length &&
+      compUniversalDeviceTypes.every((x: string) => origUdt.includes(x))
+    )
     return (
       prodName !== (editingProduct.name || '') ||
       prodSku !== (editingProduct.sku || '') ||
@@ -1162,6 +1170,7 @@ export default function CatalogPage() {
       prodMetaTitle !== (editingProduct.meta_title || '') ||
       prodMetaDescription !== (editingProduct.meta_description || '') ||
       !compatibilitiesMatch ||
+      !udtMatch ||
       selectedImageFile !== null ||
       prodPrimaryImageUrl !== (editingProduct.primary_image_url ? getImageUrl(editingProduct.primary_image_url) : '') ||
       uploadedZipImages.length > 0 ||
@@ -1237,6 +1246,7 @@ export default function CatalogPage() {
     setCompStorageExpansion('')
     setCompMemoryCapacity('')
     setCompWatchCaseSize('')
+    setCompUniversalDeviceTypes([])
     setFormError(null)
   }
 
@@ -2016,7 +2026,7 @@ export default function CatalogPage() {
       if (!prodWeight) { setFormError('Weight is required.'); return; }
       if (!prodDescription) { setFormError('Product Description is required.'); return; }
       if (prodType === 'accessory') {
-        if (selectedDeviceIds.length === 0) { setFormError('Device Compatibility is required. Select at least one device.'); return; }
+        if (selectedDeviceIds.length === 0 && compUniversalDeviceTypes.length === 0) { setFormError('Device Compatibility is required. Select at least one device or universal device type.'); return; }
         if (['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory)) {
           if (prodCategory === 'Headphones') {
             if (!compHeadphoneJack || !compBluetooth) { setFormError('Headphone Jack Compatibility and Bluetooth Compatibility are required.'); return; }
@@ -2108,6 +2118,7 @@ export default function CatalogPage() {
         storage_expansion_compatibility: compStorageExpansion || null,
         memory_capacity: compMemoryCapacity || null,
         compatible_watch_case_size: compWatchCaseSize || null,
+        compatible_device_types: compUniversalDeviceTypes,
       })
 
       const productId = prodRes.data.id
@@ -2162,7 +2173,7 @@ export default function CatalogPage() {
       if (!prodWeight) { setFormError('Weight is required.'); return; }
       if (!prodDescription) { setFormError('Product Description is required.'); return; }
       if (prodType === 'accessory') {
-        if (selectedDeviceIds.length === 0) { setFormError('Device Compatibility is required. Select at least one device.'); return; }
+        if (selectedDeviceIds.length === 0 && compUniversalDeviceTypes.length === 0) { setFormError('Device Compatibility is required. Select at least one device or universal device type.'); return; }
         if (['Headphones', 'Speakers', 'Chargers and Cables', 'Memory', 'Wearable Tech', 'Watch Accessories'].includes(prodCategory)) {
           if (prodCategory === 'Headphones') {
             if (!compHeadphoneJack || !compBluetooth) { setFormError('Headphone Jack Compatibility and Bluetooth Compatibility are required.'); return; }
@@ -2252,6 +2263,7 @@ export default function CatalogPage() {
         storage_expansion_compatibility: compStorageExpansion || null,
         memory_capacity: compMemoryCapacity || null,
         compatible_watch_case_size: compWatchCaseSize || null,
+        compatible_device_types: compUniversalDeviceTypes,
       })
       setSelectedManageProduct(editRes.data)
 
@@ -2812,6 +2824,7 @@ export default function CatalogPage() {
     setCompStorageExpansion(p.storage_expansion_compatibility || '')
     setCompMemoryCapacity(p.memory_capacity || '')
     setCompWatchCaseSize(p.compatible_watch_case_size || '')
+    setCompUniversalDeviceTypes(p.compatible_device_types || [])
 
     // Prefill active compatibilities
     const compatList = activeCompatibilities || []
@@ -4967,6 +4980,61 @@ export default function CatalogPage() {
                     </div>
                   )}
 
+                  {/* Universal Device Types selector */}
+                  <div style={{ gridColumn: '1 / -1', marginBottom: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 650, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Universal Device Types (Auto-map all devices of type)
+                      </span>
+                      {compUniversalDeviceTypes.length > 0 && (
+                        <span className="badge badge-accent" style={{ fontSize: 10, padding: '1px 6px' }}>Universal Active</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.4 }}>
+                      For universal accessories (e.g. tether straps, generic chargers). Automatically maps to all current and future devices of the selected types.
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {[
+                        { code: 'phone', label: '📱 All Phones', hint: '75+ models' },
+                        { code: 'tablet', label: '📱 All Tablets', hint: '27+ models' },
+                        { code: 'smartwatch', label: '⌚ All Smartwatches', hint: 'Smartwatch models' },
+                      ].map(({ code, label, hint }) => {
+                        const isSelected = compUniversalDeviceTypes.includes(code);
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setCompUniversalDeviceTypes(compUniversalDeviceTypes.filter(c => c !== code));
+                              } else {
+                                setCompUniversalDeviceTypes([...compUniversalDeviceTypes, code]);
+                              }
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '6px 12px',
+                              borderRadius: 6,
+                              fontSize: 12,
+                              fontWeight: 550,
+                              cursor: 'pointer',
+                              border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
+                              background: isSelected ? 'var(--accent-dim, rgba(59, 130, 246, 0.15))' : 'var(--bg-main)',
+                              color: isSelected ? 'var(--accent)' : 'var(--text-secondary)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <span>{label}</span>
+                            <span style={{ fontSize: 10, opacity: 0.75 }}>({hint})</span>
+                            {isSelected && <Check size={12} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <div style={{ gridColumn: '1 / -1', marginTop: 12, position: 'relative', zIndex: showDeviceDropdown ? 50 : 1 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
                       Device Compatibility *
@@ -5466,6 +5534,61 @@ export default function CatalogPage() {
                       {renderCategorySpecificCompatibility()}
                     </div>
                   )}
+
+                  {/* Universal Device Types selector */}
+                  <div style={{ gridColumn: '1 / -1', marginBottom: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 650, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Universal Device Types (Auto-map all devices of type)
+                      </span>
+                      {compUniversalDeviceTypes.length > 0 && (
+                        <span className="badge badge-accent" style={{ fontSize: 10, padding: '1px 6px' }}>Universal Active</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.4 }}>
+                      For universal accessories (e.g. tether straps, generic chargers). Automatically maps to all current and future devices of the selected types.
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {[
+                        { code: 'phone', label: '📱 All Phones', hint: '75+ models' },
+                        { code: 'tablet', label: '📱 All Tablets', hint: '27+ models' },
+                        { code: 'smartwatch', label: '⌚ All Smartwatches', hint: 'Smartwatch models' },
+                      ].map(({ code, label, hint }) => {
+                        const isSelected = compUniversalDeviceTypes.includes(code);
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setCompUniversalDeviceTypes(compUniversalDeviceTypes.filter(c => c !== code));
+                              } else {
+                                setCompUniversalDeviceTypes([...compUniversalDeviceTypes, code]);
+                              }
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '6px 12px',
+                              borderRadius: 6,
+                              fontSize: 12,
+                              fontWeight: 550,
+                              cursor: 'pointer',
+                              border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
+                              background: isSelected ? 'var(--accent-dim, rgba(59, 130, 246, 0.15))' : 'var(--bg-main)',
+                              color: isSelected ? 'var(--accent)' : 'var(--text-secondary)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <span>{label}</span>
+                            <span style={{ fontSize: 10, opacity: 0.75 }}>({hint})</span>
+                            {isSelected && <Check size={12} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
                   <div style={{ gridColumn: '1 / -1', marginTop: 12, position: 'relative', zIndex: showDeviceDropdown ? 50 : 1 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
@@ -5981,6 +6104,19 @@ export default function CatalogPage() {
                         <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.exported_date}</div>
                       </div>
                     )}
+
+                    {Array.isArray(selectedManageProduct.compatible_device_types) && selectedManageProduct.compatible_device_types.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Universal Device Types</div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                          {selectedManageProduct.compatible_device_types.map((typeCode: string) => (
+                            <span key={typeCode} className="badge badge-accent" style={{ textTransform: 'capitalize', fontSize: 11 }}>
+                              {typeCode}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Vendor Return Address (Sent once per vendor per buyer) */}
@@ -6092,6 +6228,20 @@ export default function CatalogPage() {
                       <RefreshCw size={13} className={isRecalculating ? 'spin' : ''} />
                       {isRecalculating ? 'Recalculating...' : 'Trigger Manual Recalculation'}
                     </button>
+                  </div>
+                )}
+
+                {/* Universal Product Mapping Banner */}
+                {Array.isArray(selectedManageProduct.compatible_device_types) && selectedManageProduct.compatible_device_types.length > 0 && (
+                  <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>⚡</span>
+                    <div>
+                      <strong>Universal Product Mapping Active:</strong> This product universally supports all{' '}
+                      <span style={{ textTransform: 'uppercase', fontWeight: 650, color: 'var(--accent)' }}>
+                        {selectedManageProduct.compatible_device_types.join(' & ')}
+                      </span>{' '}
+                      devices. All current models and any newly launched models added to CIXCI are mapped automatically.
+                    </div>
                   </div>
                 )}
 
@@ -6514,7 +6664,8 @@ export default function CatalogPage() {
                   • <strong>SKU</strong> (Required, unique)<br />
                   • <strong>Brand</strong>, <strong>Product Category</strong><br />
                   • <strong>Vendor Wholesale Price</strong>, <strong>MSRP</strong>, <strong>MAP Price</strong><br />
-                  • <strong>Device Compatibility</strong> (comma-separated)<br />
+                  • <strong>Device Compatibility</strong> (comma-separated specific devices)<br />
+                  • <strong>Universal Device Types</strong> (Phone, Tablet, Smartwatch — auto-maps to all current & future devices)<br />
                   • <strong>Dimensions (Length, Width, Height, Weight)</strong>
                 </div>
               </div>

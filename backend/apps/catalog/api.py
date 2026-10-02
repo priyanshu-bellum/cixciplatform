@@ -202,6 +202,7 @@ class ProductListSerializer(ProductSerializerBase):
             "vendor_return_zip_code",
             "recommended_accessory", "is_tied_to_activity",
             "vendor_map_pricing_enforced", "exported_date",
+            "compatible_device_types",
         ]
         read_only_fields = ["id"]
 
@@ -925,7 +926,13 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     pass
             else:
                 kwargs["company_scope_reference"] = "00000000-0000-0000-0000-000000000000"
-        serializer.save(**kwargs)
+        product = serializer.save(**kwargs)
+        if product.compatible_device_types:
+            try:
+                from apps.catalog.compatibility_engine import run_universal_device_type_mapping
+                run_universal_device_type_mapping(product, actor_id=getattr(user, "id", None), change_source="Product Form Create")
+            except Exception:
+                pass
 
     def perform_update(self, serializer):
         kwargs = {}
@@ -934,7 +941,13 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if user.entity.company.company_type == "vendor":
                 kwargs["brand"] = user.entity.company.name
                 kwargs["vendor_company_reference"] = user.entity.company.id
-        serializer.save(**kwargs)
+        product = serializer.save(**kwargs)
+        if product.compatible_device_types:
+            try:
+                from apps.catalog.compatibility_engine import run_universal_device_type_mapping
+                run_universal_device_type_mapping(product, actor_id=getattr(user, "id", None), change_source="Product Form Update")
+            except Exception:
+                pass
 
     @action(detail=True, methods=["post"])
     def set_selling_status(self, request, pk=None):
@@ -2078,8 +2091,98 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "recommended_correction": "Provide a descriptive text for the product."
                 })
 
+            # --- Universal Device Types ---
+            # Vendors write: "Phone", "Tablet", "Smartwatch" (comma or semicolon separated).
+            # These map to DeviceType.code values and the compatibility engine auto-maps
+            # the product to EVERY active device of those types — including future devices.
+            DEVICE_TYPE_ALIASES = {
+                "phone": "phone",
+                "phones": "phone",
+                "all phones": "phone",
+                "all phone": "phone",
+                "universal phone": "phone",
+                "universal phones": "phone",
+                "universal: phone": "phone",
+                "smartphone": "phone",
+                "smartphones": "phone",
+                "cell phone": "phone",
+                "mobile": "phone",
+                "tablet": "tablet",
+                "tablets": "tablet",
+                "all tablets": "tablet",
+                "all tablet": "tablet",
+                "universal tablet": "tablet",
+                "universal tablets": "tablet",
+                "universal: tablet": "tablet",
+                "ipad": "tablet",
+                "smartwatch": "smartwatch",
+                "smartwatches": "smartwatch",
+                "watch": "smartwatch",
+                "watches": "smartwatch",
+                "all smartwatches": "smartwatch",
+                "all watches": "smartwatch",
+                "universal watch": "smartwatch",
+                "universal smartwatch": "smartwatch",
+                "universal: smartwatch": "smartwatch",
+                "wearable": "smartwatch",
+                "laptop": "laptop",
+                "laptops": "laptop",
+            }
+
+            from apps.devices.models import DeviceType as DeviceTypeModel
+            active_device_types = DeviceTypeModel.objects.filter(status="active")
+            db_code_map = {dt.code.lower(): dt.code for dt in active_device_types}
+            db_name_map = {dt.name.lower(): dt.code for dt in active_device_types}
+
+            universal_device_types_raw = str(
+                row.get("universaldevicetypes") or
+                row.get("universaldevicetype") or
+                row.get("devicetypes") or
+                row.get("universalcompatibility") or
+                row.get("universaldevices") or
+                ""
+            ).strip()
+            row_universal_device_types = []  # will hold normalised code strings
+
+            if universal_device_types_raw:
+                import re as _re
+                raw_parts = [p.strip() for p in _re.split(r"[;,]", universal_device_types_raw) if p.strip()]
+                udt_errors = []
+                seen_codes = set()
+                for part in raw_parts:
+                    p_lower = part.lower()
+                    resolved_code = (
+                        DEVICE_TYPE_ALIASES.get(p_lower) or
+                        db_code_map.get(p_lower) or
+                        db_name_map.get(p_lower)
+                    )
+                    if not resolved_code:
+                        valid_options = ", ".join(
+                            sorted({v for v in DEVICE_TYPE_ALIASES.values()} | set(db_code_map.values()))
+                        )
+                        udt_errors.append(
+                            f"'{part}' is not a recognised device type. "
+                            f"Valid values: {valid_options}."
+                        )
+                    else:
+                        if resolved_code not in seen_codes:
+                            row_universal_device_types.append(resolved_code)
+                            seen_codes.add(resolved_code)
+
+                if udt_errors:
+                    row_errors.append({
+                        "row_number": row_num,
+                        "column_name": "Universal Device Types",
+                        "submitted_value": universal_device_types_raw,
+                        "validation_error": " | ".join(udt_errors),
+                        "recommended_correction": (
+                            "Use: Phone, Tablet, Smartwatch (comma or semicolon separated). "
+                            "These map all current and future devices of those types to this product."
+                        )
+                    })
+
             # --- Device Compatibility ---
-            comp_val = row.get("devicecompatibility") or row.get("compatibility") or ""
+            comp_val = row.get("devicecompatibility") or row.get("compatibility") or row.get("compatibilitynames") or ""
             normalized_comp = ""
             
             row_keys = set(row.keys())
@@ -2363,15 +2466,25 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     comp_errors.append(f"Invalid attribute '{p}' for Watch Accessories.")
                         
                         elif product_category not in ["Headphones", "Speakers", "Chargers and Cables", "Memory", "Wearable Tech", "Watch Accessories"]:
-                            # For standard categories, validate the device name itself
+                            # For standard categories, validate the device name itself or detect universal device types
                             if len(parts) == 1:
                                 p = parts[0]
-                                if p.strip().lower() not in FEATURE_KEYWORDS:
+                                pl = p.strip().lower()
+                                if pl in DEVICE_TYPE_ALIASES or pl in db_code_map or pl in db_name_map:
+                                    resolved_code = DEVICE_TYPE_ALIASES.get(pl) or db_code_map.get(pl) or db_name_map.get(pl)
+                                    if resolved_code and resolved_code not in row_universal_device_types:
+                                        row_universal_device_types.append(resolved_code)
+                                elif pl not in FEATURE_KEYWORDS:
                                     if not is_valid_device_name(p):
                                         comp_errors.append(f"Invalid device '{p}'.")
                             else:
                                 for p in parts:
                                     pl = p.strip().lower()
+                                    if pl in DEVICE_TYPE_ALIASES or pl in db_code_map or pl in db_name_map:
+                                        resolved_code = DEVICE_TYPE_ALIASES.get(pl) or db_code_map.get(pl) or db_name_map.get(pl)
+                                        if resolved_code and resolved_code not in row_universal_device_types:
+                                            row_universal_device_types.append(resolved_code)
+                                        continue
                                     if pl in FEATURE_KEYWORDS:
                                         continue
                                     from apps.devices.models import Device
@@ -2520,9 +2633,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 url_val = row.get(k)
                 if url_val and str(url_val).strip():
                     media_refs.append(str(url_val).strip())
-            
+
             if not media_refs:
                 should_stage = True
+
+
 
             # --- Product Type ---
             prod_type_raw = str(row.get("producttype") or "").strip().lower()
@@ -2958,8 +3073,16 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         product.compatible_watch_case_size = watch_val
                 elif mode == "hidden":
                     product.compatible_watch_case_size = "Not Compatible"
-                else:
-                    product.compatible_watch_case_size = watch_val or "Not Compatible"
+                # 8. Universal Device Types
+                if row_universal_device_types:
+                    if compatibility_update_type == "add":
+                        existing_udt = product.compatible_device_types or []
+                        product.compatible_device_types = sorted(list(set(existing_udt + row_universal_device_types)))
+                    elif compatibility_update_type == "remove":
+                        existing_udt = product.compatible_device_types or []
+                        product.compatible_device_types = [t for t in existing_udt if t not in row_universal_device_types]
+                    else:  # replace
+                        product.compatible_device_types = row_universal_device_types
                 
                 try:
                     product.save(actor_id=request.user.id)
@@ -3053,8 +3176,14 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     # Split by both semicolon and comma to ensure discrete device assertions
                     unified_normalized = normalized_comp.replace(",", ";")
                     dev_names = [d.strip() for d in unified_normalized.split(';') if d.strip()]
-                    # Filter out feature keywords — only keep actual device names
-                    dev_names = [d for d in dev_names if d.strip().lower() not in FEATURE_KEYWORDS]
+                    # Filter out feature keywords and universal device type names — only keep actual device names
+                    dev_names = [
+                        d for d in dev_names
+                        if d.strip().lower() not in FEATURE_KEYWORDS
+                        and d.strip().lower() not in DEVICE_TYPE_ALIASES
+                        and d.strip().lower() not in db_code_map
+                        and d.strip().lower() not in db_name_map
+                    ]
                     if compatibility_update_type == "remove":
                         for dev_name in dev_names:
                             matching_devices = match_devices_by_feature_string(dev_name)
@@ -3077,6 +3206,14 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     try:
                         from apps.catalog.compatibility_engine import run_compatibility_automapping
                         run_compatibility_automapping(product)
+                    except Exception:
+                        pass
+
+                # Recalculate universal device type mappings
+                if product.compatible_device_types:
+                    try:
+                        from apps.catalog.compatibility_engine import run_universal_device_type_mapping
+                        run_universal_device_type_mapping(product, actor_id=request.user.id, change_source="Bulk Import")
                     except Exception:
                         pass
 

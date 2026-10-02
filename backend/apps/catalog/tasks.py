@@ -194,6 +194,7 @@ def process_buyer_export_job(job_id):
                 "short_description": p.short_description or "",
                 "promotional_information": p.promo_information or "",
                 "map_price": str(p.map_price) if p.map_price is not None else "",
+                "universal_device_types": ", ".join(p.compatible_device_types or []) if getattr(p, "compatible_device_types", None) else "",
             }
 
         # Format output
@@ -205,7 +206,7 @@ def process_buyer_export_job(job_id):
             "vendor", "vendor_name", "product_name", "product_type", "product_category", "sku", "upc",
             "product_status", "selling_status", "launch_date", "release_date", "exported_date", "msrp", "buyer_wholesale_price",
             "vendor_wholesale_price_amount", "vendor_wholesale_price_currency",
-            "vendor_color", "system_color", "device_compatibility",
+            "vendor_color", "system_color", "device_compatibility", "universal_device_types",
             "product_description", "image_urls", "brand_warranty", "inventory_level", "inventory_threshold",
             "length", "width", "height", "weight",
             "meta_title", "meta_description",
