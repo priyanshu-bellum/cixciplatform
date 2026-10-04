@@ -144,6 +144,9 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             )
 
         company.capabilities.add(capability)
+        for u in User.objects.filter(entity__company=company):
+            u.capabilities.add(capability)
+
         from apps.tenant.services import log_tenant_audit
         log_tenant_audit(
             event_code="tenant.company.capability_assigned",
@@ -167,6 +170,9 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             return Response({"error": "Capability not found"}, status=status.HTTP_404_NOT_FOUND)
 
         company.capabilities.remove(capability)
+        for u in User.objects.filter(entity__company=company):
+            u.capabilities.remove(capability)
+
         from apps.tenant.services import log_tenant_audit
         log_tenant_audit(
             event_code="tenant.company.capability_removed",
@@ -864,6 +870,36 @@ class CompanyUserMembershipViewSet(viewsets.ModelViewSet):
             return Response(CompanyUserMembershipSerializer(mem).data)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"], url_path="assign-capability")
+    def assign_capability(self, request, pk=None):
+        mem = self.get_object()
+        capability_code = request.data.get("capability_code")
+        if not capability_code:
+            return Response({"error": "capability_code is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            capability = Capability.objects.get(code=capability_code)
+        except Capability.DoesNotExist:
+            return Response({"error": "Capability not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        mem.assigned_capabilities.add(capability)
+        mem.user.capabilities.add(capability)
+        return Response(CompanyUserMembershipSerializer(mem).data)
+
+    @action(detail=True, methods=["post"], url_path="remove-capability")
+    def remove_capability(self, request, pk=None):
+        mem = self.get_object()
+        capability_code = request.data.get("capability_code")
+        if not capability_code:
+            return Response({"error": "capability_code is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            capability = Capability.objects.get(code=capability_code)
+        except Capability.DoesNotExist:
+            return Response({"error": "Capability not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        mem.assigned_capabilities.remove(capability)
+        mem.user.capabilities.remove(capability)
+        return Response(CompanyUserMembershipSerializer(mem).data)
 
 
 

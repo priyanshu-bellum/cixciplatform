@@ -1016,16 +1016,6 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["status", "suborder_reference", "buyer_reference"]
 
-    def check_permissions(self, request):
-        super().check_permissions(request)
-        if self.action == "create":
-            user = request.user
-            if user and not getattr(user, "is_cixci_admin", False):
-                company = getattr(user, "company", None)
-                if company and getattr(company, "company_type", None) == "buyer":
-                    from rest_framework.exceptions import PermissionDenied
-                    raise PermissionDenied("Buyer users cannot create return requests directly.")
-
     def get_queryset(self):
         user = self.request.user
         qs = ReturnRequest.objects.all()

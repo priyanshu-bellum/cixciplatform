@@ -109,9 +109,12 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 "procurement.po.update",
                 "routing.order.list",
                 "routing.order.read",
+                "fulfillment.handoff.list",
+                "fulfillment.handoff.read",
+                "fulfillment.handoff.update",
                 "fulfillment.return.list",
                 "fulfillment.return.read",
-                "fulfillment.handoff.update",
+                "fulfillment.return.update",
             }
             if (company.company_type or "").lower() == "buyer" and capability_code in buyer_safe_caps:
                 if company_id and str(user.entity.company_id) != str(company_id):
@@ -157,17 +160,23 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                     return AccessResult(granted=False, reason="entity_scope_mismatch", actor_id=user.id, capability_code=capability_code)
                 return AccessResult(granted=True, reason="vendor_default_capability", actor_id=user.id, capability_code=capability_code)
 
+            # Check user and company capability assignment
+            from apps.tenant.models import CompanyUserMembership
+            from django.db.models import Q
 
-            # Check user capability first
-            has_user_cap = user.capabilities.filter(code=capability_code, is_active=True).exists()
-            if not has_user_cap:
+            has_user_direct_cap = user.capabilities.filter(code=capability_code, is_active=True).exists()
+            has_company_cap = company.capabilities.filter(code=capability_code, is_active=True).exists()
+            has_membership_cap = CompanyUserMembership.objects.filter(
+                user=user, company=company, status="active"
+            ).filter(
+                Q(is_company_admin=True) |
+                Q(assigned_capabilities__code=capability_code) |
+                Q(delegated_capabilities__code=capability_code)
+            ).exists()
+
+            if not (has_user_direct_cap or has_company_cap or has_membership_cap):
                 logger.debug("check_access DENIED: user %s lacks capability %s", user.id, capability_code)
                 return AccessResult(granted=False, reason="capability_missing", actor_id=user.id, capability_code=capability_code)
-
-            # Check company capability assignment
-            if not company.capabilities.filter(code=capability_code, is_active=True).exists():
-                logger.debug("check_access DENIED: company %s lacks capability %s", company.id, capability_code)
-                return AccessResult(granted=False, reason="company_capability_missing", actor_id=user.id, capability_code=capability_code)
 
         if not _entity_is_active(user):
             logger.debug("check_access DENIED: entity for user %s is not active", user.id)
