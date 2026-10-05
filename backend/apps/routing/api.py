@@ -699,6 +699,7 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
         "lines": "routing.order.read",
         "import_shipping": "routing.order.update",
         "manual_export": "routing.export.manage",
+        "update_shipping": "routing.order.update",
     }
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["status"]
@@ -795,6 +796,98 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
             })
             
         return Response(data)
+
+    @action(detail=True, methods=["patch"], url_path="update-shipping")
+    def update_shipping(self, request, pk=None):
+        """
+        Update customer shipping info on a placed order's routing snapshot.
+
+        Accepts a partial or full customer_shipping dict and merges it into
+        every suborder's routing_snapshot["customer_shipping"].  Only allowed
+        while the order is still in `placed` status so we never mutate an
+        order that is already being processed / exported.
+
+        Request body (all fields optional – only provided fields are updated):
+        {
+            "customer_first_name": "Jane",
+            "customer_last_name": "Doe",
+            "address_1": "456 Elm St",
+            "address_2": "",
+            "city": "Austin",
+            "state": "TX",
+            "zip": "78701",
+            "country": "US",
+            "email": "jane@example.com"
+        }
+        """
+        from apps.routing.models import RoutingStatus
+
+        order = self.get_object()
+
+        if order.status != RoutingStatus.PLACED:
+            return Response(
+                {"detail": f"Cannot update shipping on an order with status '{order.status}'. Only placed orders can be updated."},
+                status=400,
+            )
+
+        shipping_fields = [
+            "customer_first_name", "customer_last_name",
+            "first_name", "last_name",
+            "address_1", "address_2",
+            "city", "state", "zip", "zip_code",
+            "country", "email", "customer_email",
+        ]
+        incoming = {k: v for k, v in request.data.items() if k in shipping_fields}
+        if not incoming:
+            return Response(
+                {"detail": "No recognized shipping fields provided.", "accepted_fields": shipping_fields},
+                status=400,
+            )
+
+        # Normalize aliases so both key styles are kept in sync
+        if "first_name" in incoming and "customer_first_name" not in incoming:
+            incoming["customer_first_name"] = incoming["first_name"]
+        if "customer_first_name" in incoming and "first_name" not in incoming:
+            incoming["first_name"] = incoming["customer_first_name"]
+        if "last_name" in incoming and "customer_last_name" not in incoming:
+            incoming["customer_last_name"] = incoming["last_name"]
+        if "customer_last_name" in incoming and "last_name" not in incoming:
+            incoming["last_name"] = incoming["customer_last_name"]
+        if "zip_code" in incoming and "zip" not in incoming:
+            incoming["zip"] = incoming["zip_code"]
+        if "zip" in incoming and "zip_code" not in incoming:
+            incoming["zip_code"] = incoming["zip"]
+        if "email" in incoming and "customer_email" not in incoming:
+            incoming["customer_email"] = incoming["email"]
+        if "customer_email" in incoming and "email" not in incoming:
+            incoming["email"] = incoming["customer_email"]
+
+        suborders = order.routed_suborders.all()
+        if not suborders.exists():
+            return Response({"detail": "Order has no suborders to update."}, status=400)
+
+        updated_count = 0
+        for sub in suborders:
+            snap = sub.routing_snapshot if isinstance(sub.routing_snapshot, dict) else {}
+            existing_shipping = snap.get("customer_shipping") or {}
+            existing_shipping.update(incoming)
+            snap["customer_shipping"] = existing_shipping
+            sub.routing_snapshot = snap
+            sub.save(update_fields=["routing_snapshot"])
+            updated_count += 1
+
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.info(
+            "Shipping updated on order %s by user %s – %d suborder(s) patched.",
+            order.id, request.user, updated_count
+        )
+        return Response({
+            "detail": f"Shipping updated on {updated_count} suborder(s).",
+            "order_id": str(order.id),
+            "suborders_updated": updated_count,
+            "shipping": incoming,
+        })
 
     @action(detail=False, methods=["post"], url_path="manual-export")
     def manual_export(self, request):

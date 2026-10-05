@@ -446,3 +446,282 @@ class TestVendorExportValidation:
         }, format="json")
         assert response.status_code == 200
         assert "Manual export initiated successfully." in response.data["detail"]
+
+
+@pytest.mark.django_db
+class TestUpdateShippingEndpoint:
+    """
+    Tests for PATCH /api/v1/routing/orders/{id}/update-shipping/
+
+    Covers the bug reported in production where orders created without shipping
+    data cannot be exported until shipping is added retroactively.
+    """
+
+    @pytest.fixture
+    def setup(self, db):
+        buyer = Company.objects.create(
+            name="Shipping Test Buyer",
+            company_type=CompanyType.BUYER,
+            status=CompanyStatus.ACTIVE,
+            slug="shipping-test-buyer",
+        )
+        vendor = Company.objects.create(
+            name="Shipping Test Vendor",
+            company_type=CompanyType.VENDOR,
+            status=CompanyStatus.ACTIVE,
+            slug="shipping-test-vendor",
+        )
+        import json
+        vendor.external_id = json.dumps({"integration_mode": "manual"})
+        vendor.order_digest_emails = ["vendor@vendor.test"]
+        vendor.save()
+
+        product = Product.objects.create(
+            name="Ship Test Product",
+            sku="SHIP-SKU-001",
+            upc="111222333444",
+            product_type="accessory",
+            vendor_company_reference=vendor.id,
+            company_scope_reference=vendor.id,
+            msrp=10.0,
+            launch_date=timezone.now().date() - timezone.timedelta(days=1),
+            status=ProductStatus.ACTIVE,
+            compatibility_status="complete",
+        )
+
+        buyer_entity = CompanyEntity.objects.create(company=buyer, name="Buyer HQ")
+        buyer_user = User.objects.create_user(
+            email="buyer@ship.test",
+            entity=buyer_entity,
+            password="buyerpass",
+        )
+
+        po = PurchaseOrder.objects.create(
+            company_scope_reference=buyer.id,
+            buyer_reference=buyer_user.id,
+            vendor_company_reference=vendor.id,
+            status=POStatus.APPROVED,
+            po_number="PO-SHIP-001",
+        )
+        PurchaseOrderLine.objects.create(
+            purchase_order=po,
+            product_reference=product.id,
+            quantity=2,
+            unit_price_snapshot=10.0,
+            line_total=20.0,
+        )
+
+        order = Order.objects.create(
+            id=po.id,
+            company_scope_reference=buyer.id,
+            buyer_reference=buyer_user.id,
+            buyer_entity_reference=buyer_entity.id,
+            status=RoutingStatus.PLACED,
+        )
+
+        # Suborder intentionally created WITHOUT valid customer_shipping fields.
+        # We use an empty dict (not a missing key) to prevent the fallback default
+        # from kicking in so eligibility validation will correctly fail.
+        sub = RoutedSuborder.objects.create(
+            order=order,
+            vendor_company_reference=vendor.id,
+            status=RoutingStatus.PLACED,
+            routing_snapshot={
+                "po_number": "PO-SHIP-001",
+                # Use blank string values so the dict is truthy (prevents fallback default)
+                # but required field validation still fails due to empty strings.
+                "customer_shipping": {
+                    "customer_first_name": "",
+                    "customer_last_name": "",
+                    "address_1": "",
+                    "city": "",
+                    "state": "",
+                    "zip": "",
+                },
+            },
+        )
+
+        admin_user = User.objects.filter(is_superuser=True, is_active=True).first()
+        if not admin_user:
+            admin_user = User.objects.create_superuser(
+                email="admin@ship.test", password="adminpass"
+            )
+
+        return {
+            "buyer": buyer,
+            "vendor": vendor,
+            "product": product,
+            "order": order,
+            "sub": sub,
+            "buyer_entity": buyer_entity,
+            "admin_user": admin_user,
+        }
+
+    def _client(self, user):
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    # ── 1. Happy path: add shipping to an order that has none ─────────────────
+
+    def test_update_shipping_success(self, setup):
+        order = setup["order"]
+        sub = setup["sub"]
+        client = self._client(setup["admin_user"])
+
+        payload = {
+            "customer_first_name": "John",
+            "customer_last_name": "Doe",
+            "address_1": "123 Main St",
+            "city": "Austin",
+            "state": "TX",
+            "zip": "78701",
+            "country": "US",
+        }
+        response = client.patch(
+            f"/api/v1/routing/orders/{order.id}/update-shipping/",
+            payload,
+            format="json",
+        )
+        assert response.status_code == 200, response.data
+        assert response.data["suborders_updated"] == 1
+
+        sub.refresh_from_db()
+        shipping = sub.routing_snapshot["customer_shipping"]
+        assert shipping["customer_first_name"] == "John"
+        assert shipping["customer_last_name"] == "Doe"
+        assert shipping["address_1"] == "123 Main St"
+        assert shipping["city"] == "Austin"
+        assert shipping["zip"] == "78701"
+        # Aliases should also be populated
+        assert shipping["first_name"] == "John"
+        assert shipping["zip_code"] == "78701"
+
+    # ── 2. Guard: cannot update shipping on a non-placed order ────────────────
+
+    def test_update_shipping_blocked_on_non_placed_order(self, setup):
+        order = setup["order"]
+        client = self._client(setup["admin_user"])
+
+        order.status = RoutingStatus.PROCESSING
+        order.save(update_fields=["status"])
+
+        response = client.patch(
+            f"/api/v1/routing/orders/{order.id}/update-shipping/",
+            {"customer_first_name": "Jane"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "placed" in response.data["detail"].lower()
+
+    # ── 3. Rejection: no recognized shipping fields sent ──────────────────────
+
+    def test_update_shipping_rejects_unknown_fields(self, setup):
+        order = setup["order"]
+        client = self._client(setup["admin_user"])
+
+        response = client.patch(
+            f"/api/v1/routing/orders/{order.id}/update-shipping/",
+            {"some_random_field": "value"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "No recognized shipping fields" in response.data["detail"]
+        assert "accepted_fields" in response.data
+
+    # ── 4. Partial update: only provided fields are overwritten ───────────────
+
+    def test_update_shipping_is_additive(self, setup):
+        order = setup["order"]
+        sub = setup["sub"]
+        client = self._client(setup["admin_user"])
+
+        # Pre-populate with partial data
+        sub.routing_snapshot = {
+            "customer_shipping": {
+                "customer_first_name": "OrigFirst",
+                "customer_last_name": "OrigLast",
+            }
+        }
+        sub.save()
+
+        # Only update the first name
+        response = client.patch(
+            f"/api/v1/routing/orders/{order.id}/update-shipping/",
+            {"customer_first_name": "NewFirst"},
+            format="json",
+        )
+        assert response.status_code == 200
+
+        sub.refresh_from_db()
+        shipping = sub.routing_snapshot["customer_shipping"]
+        assert shipping["customer_first_name"] == "NewFirst"
+        # Last name must be preserved
+        assert shipping["customer_last_name"] == "OrigLast"
+
+    # ── 5. End-to-end: fix missing shipping → export succeeds ────────────────
+
+    def test_fix_shipping_then_export_succeeds(self, setup):
+        """
+        Reproduces the production bug: order created without shipping info
+        cannot be exported.  After calling update-shipping the export
+        preview shows the suborder as eligible.
+        """
+        order = setup["order"]
+        sub = setup["sub"]
+        buyer = setup["buyer"]
+        vendor = setup["vendor"]
+        product = setup["product"]
+        buyer_entity = setup["buyer_entity"]
+        client = self._client(setup["admin_user"])
+
+        # Set up compatibility projection & relationship so all other checks pass
+        BuyerScopedCompatibilityProjection.objects.create(
+            buyer_reference=buyer.id,
+            company_scope_reference=buyer.id,
+            buyer_entity_reference=buyer_entity.id,
+            portfolio_snapshot_reference=uuid.uuid4(),
+            compatible_product_ids=[str(product.id)],
+            last_recalculated_at=timezone.now(),
+        )
+        CompanyRelationship.objects.create(
+            buyer_company=buyer,
+            vendor_company=vendor,
+            status=RelationshipStatus.ACTIVE,
+        )
+
+        # Step 1: preview before shipping is present → ineligible
+        preview_before = client.post(
+            "/api/v1/routing/orders/manual-export/",
+            {"suborder_ids": [str(sub.id)]},
+            format="json",
+        )
+        assert preview_before.status_code == 200
+        assert preview_before.data["preview"]["ineligible_count"] == 1
+
+        # Step 2: add the missing shipping via update-shipping
+        fix_response = client.patch(
+            f"/api/v1/routing/orders/{order.id}/update-shipping/",
+            {
+                "customer_first_name": "John",
+                "customer_last_name": "Doe",
+                "address_1": "123 Main St",
+                "city": "Austin",
+                "state": "TX",
+                "zip": "78701",
+                "country": "US",
+            },
+            format="json",
+        )
+        assert fix_response.status_code == 200, fix_response.data
+
+        # Step 3: preview after shipping is present → eligible
+        preview_after = client.post(
+            "/api/v1/routing/orders/manual-export/",
+            {"suborder_ids": [str(sub.id)]},
+            format="json",
+        )
+        assert preview_after.status_code == 200
+        assert preview_after.data["preview"]["eligible_count"] == 1
+        assert preview_after.data["preview"]["ineligible_count"] == 0
