@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Package, Plus, X, Calendar, User, ShoppingBag, Truck, AlertCircle, CheckCircle2, FileText, Hash, Mail, MapPin } from 'lucide-react'
+import { Package, Plus, X, Calendar, User, ShoppingBag, Truck, AlertCircle, CheckCircle2, FileText, Hash, Mail, MapPin, Edit2 } from 'lucide-react'
 import api from '../lib/apiClient'
 import Pagination, { usePagination } from '../components/Pagination'
 
@@ -50,6 +50,24 @@ export default function OrdersPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [formSuccess, setFormSuccess] = useState<string | null>(null)
 
+  // Shipping Modal State
+  const [showShippingModal, setShowShippingModal] = useState(false)
+  const [shippingError, setShippingError] = useState<string | null>(null)
+  const [shippingSuccess, setShippingSuccess] = useState<string | null>(null)
+  const [isUpdatingShipping, setIsUpdatingShipping] = useState(false)
+  const [pendingExportSubId, setPendingExportSubId] = useState<string | null>(null)
+  const [shippingForm, setShippingForm] = useState({
+    customer_first_name: '',
+    customer_last_name: '',
+    email: '',
+    address_1: '',
+    address_2: '',
+    city: '',
+    state: '',
+    zip: '',
+    country: 'US',
+  })
+
   // Fetch orders list
   const { data, isLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['orders'],
@@ -66,7 +84,7 @@ export default function OrdersPage() {
   } = usePagination(orders, 50)
 
   // Fetch detail for selected order
-  const { data: orderDetail } = useQuery({
+  const { data: orderDetail, refetch: refetchOrderDetail } = useQuery({
     queryKey: ['order-detail', selectedOrderId],
     queryFn: () => api.get(`/routing/orders/${selectedOrderId}/`).then(r => r.data),
     enabled: !!selectedOrderId,
@@ -151,6 +169,117 @@ export default function OrdersPage() {
       setFormError(msg)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleOpenShippingModal = (errorContext?: string, autoRetrySubId?: string) => {
+    const cust = orderDetail?.customer_details || {}
+    const subCust = suborders?.[0]?.routing_snapshot?.customer_shipping || {}
+
+    setShippingForm({
+      customer_first_name: orderDetail?.first_name || cust.first_name || subCust.customer_first_name || subCust.first_name || '',
+      customer_last_name: orderDetail?.last_name || cust.last_name || subCust.customer_last_name || subCust.last_name || '',
+      email: orderDetail?.email || cust.email || subCust.email || subCust.customer_email || '',
+      address_1: orderDetail?.address1 || cust.address1 || subCust.address_1 || subCust.address1 || '',
+      address_2: orderDetail?.address2 || cust.address2 || subCust.address_2 || subCust.address2 || '',
+      city: orderDetail?.city || cust.city || subCust.city || '',
+      state: orderDetail?.state || cust.state || subCust.state || '',
+      zip: orderDetail?.zip_code || cust.zip_code || subCust.zip || subCust.zip_code || '',
+      country: subCust.country || 'US',
+    })
+    setShippingError(errorContext || null)
+    setShippingSuccess(null)
+    setPendingExportSubId(autoRetrySubId || null)
+    setShowShippingModal(true)
+  }
+
+  const handleSaveShipping = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedOrderId) return
+
+    setIsUpdatingShipping(true)
+    setShippingError(null)
+    setShippingSuccess(null)
+
+    try {
+      await api.patch(`/routing/orders/${selectedOrderId}/update-shipping/`, {
+        customer_first_name: shippingForm.customer_first_name,
+        customer_last_name: shippingForm.customer_last_name,
+        email: shippingForm.email,
+        address_1: shippingForm.address_1,
+        address_2: shippingForm.address_2,
+        city: shippingForm.city,
+        state: shippingForm.state,
+        zip: shippingForm.zip,
+        country: shippingForm.country,
+      })
+
+      await Promise.all([
+        refetchOrders(),
+        refetchOrderDetail(),
+        refetchSuborders(),
+      ])
+
+      if (pendingExportSubId) {
+        setShippingSuccess('Shipping updated! Retrying manual export...')
+        try {
+          await api.post('/routing/orders/manual-export/', {
+            suborder_ids: [pendingExportSubId],
+            confirm: true,
+          })
+          setShowShippingModal(false)
+          setPendingExportSubId(null)
+          alert('Shipping updated and manual export initiated successfully! Redirecting to Fulfillment Export Logs...')
+          navigate('/fulfillment?tab=exportLogs', { state: { tab: 'exportLogs' } })
+          return
+        } catch (exportErr: any) {
+          const exportErrDetail = exportErr.response?.data?.detail || 'Failed to auto-retry export after updating shipping.'
+          setShippingError(exportErrDetail)
+          setIsUpdatingShipping(false)
+          return
+        }
+      }
+
+      setShippingSuccess('Shipping details updated successfully!')
+      setTimeout(() => {
+        setShowShippingModal(false)
+      }, 800)
+    } catch (err: any) {
+      setShippingError(err.response?.data?.detail || 'Failed to update shipping information.')
+    } finally {
+      setIsUpdatingShipping(false)
+    }
+  }
+
+  const handleManualExport = async (subId: string) => {
+    if (!confirm('Manually export this suborder to the vendor?')) return
+
+    try {
+      await api.post('/routing/orders/manual-export/', { suborder_ids: [subId], confirm: true })
+      alert('Manual export initiated successfully! You will now be redirected to the "Export Logs" tab in the Fulfillment page to download the CSV.')
+      refetchOrders()
+      refetchOrderDetail()
+      refetchSuborders()
+      navigate('/fulfillment?tab=exportLogs', { state: { tab: 'exportLogs' } })
+    } catch (err: any) {
+      const errorDetail = err.response?.data?.detail || ''
+      const ineligibleSuborders = err.response?.data?.preview?.ineligible_suborders || []
+      const errorList = ineligibleSuborders.flatMap((item: any) => item.errors || [])
+
+      const isShippingIssue = errorDetail.toLowerCase().includes('ineligible') || 
+        errorList.some((msg: string) => /shipping|address|zip|city|state|customer/i.test(msg))
+
+      if (isShippingIssue) {
+        const reason = errorList.length > 0
+          ? errorList.join('; ')
+          : errorDetail || 'Missing required customer shipping information.'
+        handleOpenShippingModal(
+          `Export failed: ${reason}. Please supply the customer shipping details below to proceed.`,
+          subId
+        )
+      } else {
+        alert(errorDetail || 'Failed to trigger manual export.')
+      }
     }
   }
 
@@ -592,6 +721,161 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* ─── ADD / UPDATE SHIPPING MODAL ────────────────── */}
+      {showShippingModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1002 }}>
+          <div className="card" style={{ width: 560, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 24, boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 14, borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Truck size={18} style={{ color: 'var(--accent)' }} />
+                  {pendingExportSubId ? 'Add Shipping to Complete Export' : 'Update Customer Shipping'}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {pendingExportSubId
+                    ? 'This order requires valid customer shipping details before it can be exported to the vendor.'
+                    : 'Update the customer shipping address for this placed order.'}
+                </div>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setShowShippingModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {shippingError && (
+              <div style={{ background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 6, marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{shippingError}</span>
+              </div>
+            )}
+
+            {shippingSuccess && (
+              <div style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: '1px solid #22c55e', padding: '10px 14px', borderRadius: 6, marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckCircle2 size={16} style={{ flexShrink: 0 }} />
+                <span>{shippingSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveShipping} style={{ overflowY: 'auto', flex: 1, paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                <div>
+                  <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    className="input"
+                    value={shippingForm.customer_first_name}
+                    onChange={e => setShippingForm({ ...shippingForm, customer_first_name: e.target.value })}
+                    placeholder="e.g. Jane"
+                  />
+                </div>
+                <div>
+                  <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    className="input"
+                    value={shippingForm.customer_last_name}
+                    onChange={e => setShippingForm({ ...shippingForm, customer_last_name: e.target.value })}
+                    placeholder="e.g. Doe"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Email (Optional)</label>
+                <input
+                  type="email"
+                  className="input"
+                  value={shippingForm.email}
+                  onChange={e => setShippingForm({ ...shippingForm, email: e.target.value })}
+                  placeholder="e.g. jane.doe@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Address Line 1 *</label>
+                <input
+                  type="text"
+                  required
+                  className="input"
+                  value={shippingForm.address_1}
+                  onChange={e => setShippingForm({ ...shippingForm, address_1: e.target.value })}
+                  placeholder="e.g. 123 Main St"
+                />
+              </div>
+
+              <div>
+                <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Address Line 2</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={shippingForm.address_2}
+                  onChange={e => setShippingForm({ ...shippingForm, address_2: e.target.value })}
+                  placeholder="e.g. Suite 400"
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+                <div>
+                  <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>City *</label>
+                  <input
+                    type="text"
+                    required
+                    className="input"
+                    value={shippingForm.city}
+                    onChange={e => setShippingForm({ ...shippingForm, city: e.target.value })}
+                    placeholder="e.g. Austin"
+                  />
+                </div>
+                <div>
+                  <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>State *</label>
+                  <input
+                    type="text"
+                    required
+                    className="input"
+                    value={shippingForm.state}
+                    onChange={e => setShippingForm({ ...shippingForm, state: e.target.value })}
+                    placeholder="e.g. TX"
+                  />
+                </div>
+                <div>
+                  <label className="label" style={{ fontSize: 11, fontWeight: 600 }}>Zip Code *</label>
+                  <input
+                    type="text"
+                    required
+                    className="input"
+                    value={shippingForm.zip}
+                    onChange={e => setShippingForm({ ...shippingForm, zip: e.target.value })}
+                    placeholder="e.g. 78701"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={isUpdatingShipping}
+                  onClick={() => setShowShippingModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isUpdatingShipping}
+                >
+                  {isUpdatingShipping
+                    ? (pendingExportSubId ? 'Saving & Exporting...' : 'Saving...')
+                    : (pendingExportSubId ? 'Save & Export Now' : 'Save Shipping Details')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Slide-over Order Details Drawer */}
       {selectedOrderId && (
         <>
@@ -666,7 +950,20 @@ export default function OrdersPage() {
 
             {/* Customer Details Section */}
             <div className="drawer-section">
-              <div className="drawer-section-title"><User size={14} /> Customer & Shipping Details</div>
+              <div className="drawer-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <User size={14} /> Customer & Shipping Details
+                </span>
+                {orderDetail?.status === 'placed' && (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: 11, padding: '3px 8px', height: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}
+                    onClick={() => handleOpenShippingModal()}
+                  >
+                    <Edit2 size={12} /> Edit Shipping
+                  </button>
+                )}
+              </div>
               <div className="detail-card">
                 <div className="detail-item">
                   <span className="detail-label">First Name</span>
@@ -886,19 +1183,9 @@ export default function OrdersPage() {
                             {sub.status === 'placed' && (
                               <button
                                 className="btn btn-primary btn-sm"
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                   e.stopPropagation()
-                                  if (confirm('Manually export this suborder to the vendor?')) {
-                                    try {
-                                      await api.post('/routing/orders/manual-export/', { suborder_ids: [sub.id], confirm: true })
-                                      alert('Manual export initiated successfully! You will now be redirected to the "Export Logs" tab in the Fulfillment page to download the CSV.')
-                                      refetchOrders()
-                                      refetchSuborders()
-                                      navigate('/fulfillment?tab=exportLogs', { state: { tab: 'exportLogs' } })
-                                    } catch (err: any) {
-                                      alert(err.response?.data?.detail || 'Failed to trigger manual export.')
-                                    }
-                                  }
+                                  handleManualExport(sub.id)
                                 }}
                               >
                                 Manual Export
