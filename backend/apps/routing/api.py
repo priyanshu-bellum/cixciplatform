@@ -319,7 +319,7 @@ class OrderSerializer(serializers.ModelSerializer):
                 return str(sub.routing_snapshot.get("vendor_order"))
             if sub.routing_snapshot.get("vendor_order_number"):
                 return str(sub.routing_snapshot.get("vendor_order_number"))
-        return f"VO-{str(sub.id)[:8]}" if sub else ""
+        return ""
 
     def get_shipping_carrier(self, obj):
         h = self._get_handoff(obj)
@@ -382,6 +382,72 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "sku", "product_name", "vendor_color", "quantity", "upc",
             "order_date_time", "buyer_id", "buyer_order_number", "order_lines",
         ]
+
+    def validate(self, attrs):
+        req_data = self.context.get("request").data if self.context.get("request") and hasattr(self.context.get("request"), "data") and isinstance(self.context.get("request").data, dict) else {}
+
+        # 1. Customer shipping fields validation
+        first_name = (attrs.get("first_name") or req_data.get("first_name") or req_data.get("customer_first_name") or "").strip()
+        last_name = (attrs.get("last_name") or req_data.get("last_name") or req_data.get("customer_last_name") or "").strip()
+        address1 = (attrs.get("address1") or req_data.get("address1") or req_data.get("address_1") or req_data.get("shipping_address_line1") or "").strip()
+        city = (attrs.get("city") or req_data.get("city") or req_data.get("shipping_city") or "").strip()
+        state = (attrs.get("state") or req_data.get("state") or req_data.get("shipping_state") or "").strip()
+        zip_code = (attrs.get("zip_code") or req_data.get("zip_code") or req_data.get("zip") or req_data.get("shipping_postal_code") or "").strip()
+
+        errors = {}
+        if not first_name:
+            errors["first_name"] = ["Customer first name is required and cannot be blank."]
+        if not last_name:
+            errors["last_name"] = ["Customer last name is required and cannot be blank."]
+        if not address1:
+            errors["address1"] = ["Customer shipping address line 1 is required and cannot be blank."]
+        if not city:
+            errors["city"] = ["Customer shipping city is required and cannot be blank."]
+        if not state:
+            errors["state"] = ["Customer shipping state is required and cannot be blank."]
+        if not zip_code:
+            errors["zip_code"] = ["Customer shipping zip code is required and cannot be blank."]
+        elif not re.match(r"^\d{5}(-\d{4})?$", zip_code):
+            errors["zip_code"] = [f"Invalid US zip code format: '{zip_code}'."]
+
+        # 2. Buyer order number
+        buyer_order_number = (attrs.get("buyer_order_number") or req_data.get("buyer_order_number") or "").strip()
+        if not buyer_order_number:
+            errors["buyer_order_number"] = ["Buyer order number is required and cannot be blank."]
+
+        # 3. Product line items validation
+        order_lines = attrs.get("order_lines") or req_data.get("order_lines")
+        if order_lines and isinstance(order_lines, list):
+            if len(order_lines) == 0:
+                errors["order_lines"] = ["Order must contain at least one line item."]
+            else:
+                for idx, line in enumerate(order_lines):
+                    l_sku = (line.get("sku") or "").strip()
+                    l_upc = (line.get("upc") or "").strip()
+                    if not l_sku and not l_upc:
+                        errors[f"order_lines[{idx}]"] = ["Each line item must provide either a sku or upc."]
+                    try:
+                        qty = int(line.get("quantity", 1))
+                        if qty <= 0:
+                            errors[f"order_lines[{idx}].quantity"] = ["Quantity must be at least 1."]
+                    except (ValueError, TypeError):
+                        errors[f"order_lines[{idx}].quantity"] = ["Quantity must be a valid integer."]
+        else:
+            sku = (attrs.get("sku") or req_data.get("sku") or "").strip()
+            upc = (attrs.get("upc") or req_data.get("upc") or "").strip()
+            if not sku and not upc:
+                errors["sku"] = ["Product SKU or UPC is required."]
+            quantity = attrs.get("quantity") or req_data.get("quantity", 1)
+            try:
+                if int(quantity) <= 0:
+                    errors["quantity"] = ["Quantity must be at least 1."]
+            except (ValueError, TypeError):
+                errors["quantity"] = ["Quantity must be a valid integer."]
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return attrs
 
     def create(self, validated_data):
         from apps.tenant.models import Company

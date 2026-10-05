@@ -139,6 +139,26 @@ export default function OrdersPage() {
         if (!payload.vendor_id) delete payload.vendor_id
       }
 
+      // Client-side completeness guard
+      const fn = (payload.first_name || '').trim()
+      const ln = (payload.last_name || '').trim()
+      const a1 = (payload.address1 || payload.address_1 || '').trim()
+      const ci = (payload.city || '').trim()
+      const st = (payload.state || '').trim()
+      const zp = (payload.zip_code || payload.zip || '').trim()
+      const bon = (payload.buyer_order_number || '').trim()
+      const sku = (payload.sku || '').trim()
+      const upc = (payload.upc || '').trim()
+
+      if (!bon) throw new Error('Buyer Order Number is required.')
+      if (!fn) throw new Error('Customer First Name is required.')
+      if (!ln) throw new Error('Customer Last Name is required.')
+      if (!a1) throw new Error('Customer Shipping Address (Address Line 1) is required.')
+      if (!ci) throw new Error('Customer City is required.')
+      if (!st) throw new Error('Customer State is required.')
+      if (!zp) throw new Error('Customer Zip Code is required.')
+      if (!payload.order_lines && !sku && !upc) throw new Error('Order must include a valid Product SKU or UPC.')
+
       const res = await api.post('/routing/orders/', payload)
       setFormSuccess('Order created successfully!')
       refetchOrders()
@@ -1113,7 +1133,7 @@ export default function OrdersPage() {
                 <div className="detail-item">
                   <span className="detail-label">3. Vendor Order</span>
                   <span className="detail-value mono">
-                    {orderDetail?.vendor_order || (suborders && suborders[0]?.id ? 'VO-' + suborders[0].id.slice(0, 8) : '—')}
+                    {orderDetail?.vendor_order || '—'}
                   </span>
                 </div>
                 <div className="detail-item">

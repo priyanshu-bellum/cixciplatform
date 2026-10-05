@@ -326,5 +326,53 @@ class TestBuyerDataIntegrationSpec:
         assert "2026-09-16" in retrieved_data["order_date_time"]
         assert retrieved_data["buyer_id"] == str(self.buyer_company.id)
         assert retrieved_data["buyer_order_number"] == "BUYER-SPEC-ORD-001"
+        # Vendor order number must NOT be fake-synthesized by the platform
+        assert retrieved_data["vendor_order"] == ""
+
+    def test_incomplete_order_rejected_with_missing_fields(self):
+        """Platform must NOT accept incomplete orders missing shipping or identifiers."""
+        self.client.force_authenticate(user=self.buyer_user)
+
+        # 1. Missing first_name (like the user screenshot)
+        incomplete_payload = {
+            "last_name": "test",
+            "email": "ayumu.hirano@example.com",
+            "address1": "W 10th St NE",
+            "address2": "test",
+            "city": "Rome",
+            "state": "GA",
+            "zip_code": "30165",
+            "sku": "SPEC-SKU-999",
+            "buyer_order_number": "cixci-2-#1015",
+        }
+        res = self.client.post("/api/v1/routing/orders/", incomplete_payload, format="json")
+        assert res.status_code == 400
+        errors = res.data.get("detail", res.data)
+        assert "first_name" in errors
+
+        # 2. Missing buyer_order_number
+        payload2 = dict(incomplete_payload)
+        payload2["first_name"] = "Ayumu"
+        del payload2["buyer_order_number"]
+        res2 = self.client.post("/api/v1/routing/orders/", payload2, format="json")
+        assert res2.status_code == 400
+        errors2 = res2.data.get("detail", res2.data)
+        assert "buyer_order_number" in errors2
+
+        # 3. Missing address1, city, state, zip_code
+        payload3 = {
+            "first_name": "Ayumu",
+            "last_name": "Hirano",
+            "buyer_order_number": "ORD-123",
+            "sku": "SPEC-SKU-999",
+        }
+        res3 = self.client.post("/api/v1/routing/orders/", payload3, format="json")
+        assert res3.status_code == 400
+        errors3 = res3.data.get("detail", res3.data)
+        assert "address1" in errors3
+        assert "city" in errors3
+        assert "state" in errors3
+        assert "zip_code" in errors3
+
 
 

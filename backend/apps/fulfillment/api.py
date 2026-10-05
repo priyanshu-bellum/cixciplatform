@@ -84,8 +84,6 @@ class FulfillmentHandoffSerializer(serializers.ModelSerializer):
                     return str(sub.routing_snapshot.get("vendor_order"))
                 if sub.routing_snapshot.get("vendor_order_number"):
                     return str(sub.routing_snapshot.get("vendor_order_number"))
-            if sub and sub.id:
-                return f"VO-{str(sub.id)[:8]}"
         except Exception:
             pass
         return ""
