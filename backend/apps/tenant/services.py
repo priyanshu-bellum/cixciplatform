@@ -144,6 +144,14 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 "devices.type.read",
                 "devices.manufacturer.list",
                 "devices.manufacturer.read",
+                "fulfillment.handoff.list",
+                "fulfillment.handoff.read",
+                "fulfillment.handoff.update",
+                "fulfillment.return.list",
+                "fulfillment.return.read",
+                "fulfillment.return.update",
+                "routing.order.list",
+                "routing.order.read",
             }
             if (company.company_type or "").lower() == "vendor" and capability_code in vendor_safe_caps:
                 if company_id and str(user.entity.company_id) != str(company_id):

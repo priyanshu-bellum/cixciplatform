@@ -1020,14 +1020,22 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         is_admin = getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
-        if not is_admin and user.entity:
-            company = user.entity.company
-            if company.company_type == "vendor":
-                from apps.routing.models import RoutedSuborder
-                vendor_suborders = RoutedSuborder.objects.filter(vendor_company_reference=company.id).values_list("id", flat=True)
-                qs = qs.filter(suborder_reference__in=vendor_suborders)
-            elif company.company_type == "buyer":
-                qs = qs.filter(buyer_reference=company.id)
+        if not is_admin:
+            company = getattr(user, "company", None) or (getattr(user, "entity", None) and getattr(user.entity, "company", None))
+            if company:
+                if company.company_type == "vendor":
+                    from apps.routing.models import RoutedSuborder
+                    from apps.catalog.models import Product
+                    from django.db.models import Q
+                    vendor_suborders = list(RoutedSuborder.objects.filter(vendor_company_reference=company.id).values_list("id", flat=True))
+                    vendor_skus = list(Product.objects.filter(vendor_company_reference=company.id).values_list("sku", flat=True))
+
+                    filter_q = Q(suborder_reference__in=vendor_suborders)
+                    if vendor_skus:
+                        filter_q |= Q(sku__in=vendor_skus)
+                    qs = qs.filter(filter_q)
+                elif company.company_type == "buyer":
+                    qs = qs.filter(buyer_reference=company.id)
         return qs
 
     @action(detail=False, methods=["get"], url_path="export-csv")

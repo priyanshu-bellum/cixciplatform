@@ -67,9 +67,9 @@ export default function FulfillmentPage() {
     enabled: tab === 'exportLogs',
   })
 
-  const { data: returnsData, isLoading: rLoading, refetch: refetchReturns } = useQuery({
+  const { data: returnsData, isLoading: rLoading, refetch: refetchReturns, error: returnsError } = useQuery({
     queryKey: ['return-requests'],
-    queryFn: () => api.get('/fulfillment/return-requests/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/fulfillment/return-requests/', { params: { paginate: 'false' } }).then(r => r.data),
     enabled: tab === 'returns',
   })
 
@@ -854,6 +854,14 @@ export default function FulfillmentPage() {
           <div className="table-wrap">
             {rLoading ? (
               <div className="loading-overlay"><div className="spinner" /></div>
+            ) : returnsError ? (
+              <div className="empty-state" style={{ color: 'var(--danger, #ef4444)' }}>
+                <FileText size={40} />
+                <div>Failed to load return requests</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>
+                  {(returnsError as any)?.response?.data?.detail || (returnsError as any)?.message || 'An error occurred while loading return requests.'}
+                </div>
+              </div>
             ) : returnRequests.length === 0 ? (
               <div className="empty-state">
                 <FileText size={40} />
