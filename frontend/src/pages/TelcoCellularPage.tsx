@@ -2,25 +2,83 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Navigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
-import {
-  Smartphone,
-  ShoppingBag,
-  Search,
-  ShoppingCart,
-  Trash2,
-  Plus,
-  Minus,
-  Info,
-  SlidersHorizontal,
-  CheckCircle,
-  X,
-  Loader2,
-  AlertCircle,
-  Eye
-} from 'lucide-react'
 import api from '../lib/apiClient'
-import toast from 'react-hot-toast'
 import axios from 'axios'
+import { formatCurrency, formatDate, getImageUrl } from '../lib/formatters'
+import { useSnackbar } from '../components/feedback/SnackbarProvider'
+import StatusChip from '../components/data-display/StatusChip'
+import SearchBar from '../components/forms/SearchBar'
+import ConfirmDialog from '../components/feedback/ConfirmDialog'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import { MONO_FONT } from '../theme/typography'
+
+// MUI Components
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import Button from '@mui/material/Button'
+import IconButton from '@mui/material/IconButton'
+import Chip from '@mui/material/Chip'
+import TextField from '@mui/material/TextField'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Grid from '@mui/material/Grid'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import Drawer from '@mui/material/Drawer'
+import Tabs from '@mui/material/Tabs'
+import Tab from '@mui/material/Tab'
+import Slider from '@mui/material/Slider'
+import Badge from '@mui/material/Badge'
+import Fab from '@mui/material/Fab'
+import Tooltip from '@mui/material/Tooltip'
+import Divider from '@mui/material/Divider'
+import CircularProgress from '@mui/material/CircularProgress'
+import Alert from '@mui/material/Alert'
+import Collapse from '@mui/material/Collapse'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Paper from '@mui/material/Paper'
+import Stack from '@mui/material/Stack'
+import List from '@mui/material/List'
+import ListItemButton from '@mui/material/ListItemButton'
+import ListItemText from '@mui/material/ListItemText'
+
+// MUI Icons
+import SmartphoneIcon from '@mui/icons-material/Smartphone'
+import ShoppingBagIcon from '@mui/icons-material/ShoppingBag'
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
+import AddIcon from '@mui/icons-material/Add'
+import RemoveIcon from '@mui/icons-material/Remove'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
+import TuneIcon from '@mui/icons-material/Tune'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CloseIcon from '@mui/icons-material/Close'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import StarIcon from '@mui/icons-material/Star'
+import LocalOfferIcon from '@mui/icons-material/LocalOffer'
+
+/* ------------------------------------------------------------------ */
+/*  Telco brand colour used as accent across the storefront           */
+/* ------------------------------------------------------------------ */
+const TELCO_CYAN = '#20D1F2'
+const TELCO_DARK = '#0b0f19'
+const TELCO_PAPER = '#111827'
+const TELCO_BORDER = '#1f2d45'
+const TELCO_ELEVATED = '#1a2235'
 
 const telcoApi = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -39,9 +97,12 @@ interface CartItem {
   vendor_company_reference: string
 }
 
-
+/* ================================================================== */
+/*  OrderDetailsRow sub-component                                     */
+/* ================================================================== */
 function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns, returns, onReturnClick }: any) {
   const [isOpen, setIsOpen] = useState(false)
+  const { showSnackbar } = useSnackbar()
 
   const { data: suborders, isLoading: isSubsLoading, refetch: refetchSuborders } = useQuery({
     queryKey: ['order-suborders', order.id],
@@ -59,11 +120,11 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
     mutationFn: async ({ suborderId, sku, status }: { suborderId: string, sku: string, status: 'shipped' | 'delivered' }) => {
       const shippedDate = status === 'shipped' || status === 'delivered' ? '2026-08-01' : '';
       const deliveredDate = status === 'delivered' ? '2026-08-02' : '';
-      
+
       const csvHeader = 'Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date';
       const csvRow = `Jane,Doe,100 Telco Way,,San Jose,CA,95112,${suborderId},${sku},,,1,CONF123,UPS,1Z12345,${shippedDate},${deliveredDate}`;
       const csvContent = `${csvHeader}\n${csvRow}`;
-      
+
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const formData = new FormData();
       formData.append('file', blob, 'shipping_update.csv');
@@ -75,25 +136,15 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
       });
     },
     onSuccess: () => {
-      toast.success('Mock shipping status updated successfully!');
+      showSnackbar('Mock shipping status updated successfully!', 'success')
       refetchSuborders();
       refetchOrders();
     },
     onError: (err: any) => {
       const errMsg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to mock ship.';
-      toast.error(errMsg);
+      showSnackbar(errMsg, 'error')
     }
   })
-
-  const getSuborderStatusClass = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'shipped': return 'status-badge-shipped';
-      case 'delivered': return 'status-badge-delivered';
-      case 'processing': return 'status-badge-processing';
-      case 'placed': return 'status-badge-placed';
-      default: return 'status-badge-pending';
-    }
-  }
 
   const formatPlacedDate = (dateStr: string) => {
     if (!dateStr) return 'N/A';
@@ -107,44 +158,72 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
   }
 
   return (
-    <div className="order-card" style={{ marginBottom: 12 }}>
-      <div className="order-card-header" onClick={() => setIsOpen(!isOpen)}>
-        <div className="order-card-summary">
-          <div className="order-summary-item">
-            <span className="order-summary-label">Order Reference</span>
-            <span className="order-summary-value mono">{order.id.slice(0, 8).toUpperCase()}...</span>
-          </div>
-          <div className="order-summary-item">
-            <span className="order-summary-label">Placed At</span>
-            <span className="order-summary-value">{formatPlacedDate(order.placed_at || order.created_at)}</span>
-          </div>
-          <div className="order-summary-item">
-            <span className="order-summary-label">Overall Status</span>
-            <span className={`suborder-status ${getSuborderStatusClass(order.status)}`}>
-              {order.status?.replace(/_/g, ' ')}
-            </span>
-          </div>
-          <div className="order-summary-item">
-            <span className="order-summary-label">Buyer Name</span>
-            <span className="order-summary-value">{order.buyer_name}</span>
-          </div>
-        </div>
-        <div style={{ color: '#20D1F2', fontSize: 13, fontWeight: 600 }}>
-          {isOpen ? 'Collapse ▲' : 'Expand ▼'}
-        </div>
-      </div>
-
-      {isOpen && (
-        <div className="order-card-content">
-          {isSubsLoading || isLinesLoading ? (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-              <Loader2 className="spinner" size={16} />
-              <span>Loading order components...</span>
-            </div>
+    <Card
+      sx={{
+        mb: 1.5,
+        bgcolor: TELCO_PAPER,
+        borderColor: TELCO_BORDER,
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        '&:hover': { borderColor: TELCO_CYAN, boxShadow: `0 4px 20px rgba(32, 209, 242, 0.05)` },
+      }}
+    >
+      {/* Header */}
+      <Box
+        onClick={() => setIsOpen(!isOpen)}
+        sx={{
+          px: 2.5,
+          py: 2,
+          bgcolor: 'rgba(31, 45, 69, 0.2)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <Stack direction="row" spacing={3} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="overline" sx={{ color: 'text.disabled' }}>Order Reference</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: MONO_FONT }}>{order.id.slice(0, 8).toUpperCase()}...</Typography>
+          </Box>
+          <Box>
+            <Typography variant="overline" sx={{ color: 'text.disabled' }}>Placed At</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>{formatPlacedDate(order.placed_at || order.created_at)}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="overline" sx={{ color: 'text.disabled' }}>Overall Status</Typography>
+            <Box><StatusChip status={order.status || 'unknown'} /></Box>
+          </Box>
+          <Box>
+            <Typography variant="overline" sx={{ color: 'text.disabled' }}>Buyer Name</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>{order.buyer_name}</Typography>
+          </Box>
+        </Stack>
+        <Typography variant="body2" sx={{ color: TELCO_CYAN, fontWeight: 600 }}>
+          {isOpen ? (
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+              <span>Collapse</span><ExpandLessIcon fontSize="small" />
+            </Stack>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+              <span>Expand</span><ExpandMoreIcon fontSize="small" />
+            </Stack>
+          )}
+        </Typography>
+      </Box>
+
+      {/* Content */}
+      <Collapse in={isOpen}>
+        <Box sx={{ borderTop: `1px solid ${TELCO_BORDER}`, p: 2.5, bgcolor: 'rgba(17, 24, 39, 0.5)' }}>
+          {isSubsLoading || isLinesLoading ? (
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <CircularProgress size={16} sx={{ color: TELCO_CYAN }} />
+              <Typography variant="body2" color="text.secondary">Loading order components...</Typography>
+            </Stack>
+          ) : (
+            <Stack spacing={2}>
               {suborders?.length === 0 ? (
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No routed suborders for this order.</div>
+                <Typography variant="body2" color="text.secondary">No routed suborders for this order.</Typography>
               ) : (
                 suborders?.map((sub: any) => {
                   const suborderLines = lines?.filter((line: any) => {
@@ -153,19 +232,35 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
                   }) || [];
 
                   return (
-                    <div key={sub.id} className="suborder-section">
-                      <div className="suborder-header">
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <span className="suborder-title">Suborder {sub.id.slice(0, 8).toUpperCase()} (Vendor: {sub.vendor_company_reference.slice(0, 8)})</span>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    <Paper
+                      key={sub.id}
+                      variant="outlined"
+                      sx={{ bgcolor: '#0f172a', borderColor: '#1e293b', p: 2 }}
+                    >
+                      {/* Suborder header */}
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          mb: 1.5,
+                          borderBottom: '1px solid #1e293b',
+                          pb: 1,
+                        }}
+                      >
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: '#38bdf8' }}>
+                            Suborder {sub.id.slice(0, 8).toUpperCase()} (Vendor: {sub.vendor_company_reference.slice(0, 8)})
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
                             Fulfillment: {sub.fulfillment_channel || 'Standard'}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          </Typography>
+                        </Box>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                           {sub.status !== 'shipped' && sub.status !== 'delivered' && (
-                            <button
-                              className="btn btn-secondary"
-                              style={{ padding: '2px 8px', fontSize: 11 }}
+                            <Button
+                              variant="outlined"
+                              size="small"
                               disabled={mockShipMutation.isPending}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -175,14 +270,15 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
                                   status: 'shipped'
                                 });
                               }}
+                              sx={{ fontSize: 11, py: 0.25, px: 1 }}
                             >
                               Mock Ship
-                            </button>
+                            </Button>
                           )}
                           {sub.status === 'shipped' && (
-                            <button
-                              className="btn btn-secondary"
-                              style={{ padding: '2px 8px', fontSize: 11 }}
+                            <Button
+                              variant="outlined"
+                              size="small"
                               disabled={mockShipMutation.isPending}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -192,95 +288,115 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
                                   status: 'delivered'
                                 });
                               }}
+                              sx={{ fontSize: 11, py: 0.25, px: 1 }}
                             >
                               Mock Deliver
-                            </button>
+                            </Button>
                           )}
-                          <span className={`suborder-status ${getSuborderStatusClass(sub.status)}`}>
-                            {sub.status}
-                          </span>
-                        </div>
-                      </div>
+                          <StatusChip status={sub.status} />
+                        </Stack>
+                      </Box>
 
-                      <table className="lines-table">
-                        <thead>
-                          <tr>
-                            <th>Item Name</th>
-                            <th>SKU</th>
-                            <th>Quantity</th>
-                            <th>Unit Price</th>
-                            <th>Total</th>
-                            <th style={{ textAlign: 'right' }}>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {suborderLines.map((line: any) => {
-                            const existingReturn = returns?.find(
-                              (ret: any) => String(ret.suborder_reference) === String(sub.id) &&
-                                            (ret.sku === line.sku || (ret.sku && line.sku && String(ret.sku).trim().toUpperCase() === String(line.sku).trim().toUpperCase()))
-                            );
+                      {/* Lines table */}
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Item Name</TableCell>
+                              <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>SKU</TableCell>
+                              <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Quantity</TableCell>
+                              <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Unit Price</TableCell>
+                              <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Total</TableCell>
+                              <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b', textAlign: 'right' }}>Actions</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {suborderLines.map((line: any) => {
+                              const existingReturn = returns?.find(
+                                (ret: any) => String(ret.suborder_reference) === String(sub.id) &&
+                                              (ret.sku === line.sku || (ret.sku && line.sku && String(ret.sku).trim().toUpperCase() === String(line.sku).trim().toUpperCase()))
+                              );
 
-                            const isEligibleForReturn = sub.status === 'shipped' || sub.status === 'delivered';
-                            const retStatus = existingReturn?.status ? String(existingReturn.status) : '';
-                            const retStatusDisplay = retStatus ? retStatus.replace(/^return_/, '').replace(/_/g, ' ') : '';
+                              const isEligibleForReturn = sub.status === 'shipped' || sub.status === 'delivered';
+                              const retStatus = existingReturn?.status ? String(existingReturn.status) : '';
+                              const retStatusDisplay = retStatus ? retStatus.replace(/^return_/, '').replace(/_/g, ' ') : '';
 
-                            return (
-                              <tr key={line.id}>
-                                <td>
-                                  <div className="line-product-info">
-                                    <div className="line-product-img">
-                                      {line.primary_image_url ? (
-                                        <img src={line.primary_image_url} alt={line.product_name} />
-                                      ) : (
-                                        <ShoppingBag size={18} style={{ color: 'var(--text-muted)' }} />
-                                      )}
-                                    </div>
-                                    <span>{line.product_name}</span>
-                                  </div>
-                                </td>
-                                <td className="mono">{line.sku}</td>
-                                <td>{line.quantity}</td>
-                                <td>${line.unit_price_snapshot.toFixed(2)}</td>
-                                <td>${line.line_total.toFixed(2)}</td>
-                                <td style={{ textAlign: 'right' }}>
-                                  {existingReturn ? (
-                                    <span className={`return-badge ${retStatus.includes('refund') ? 'closed' : ''}`}>
-                                      Return: {retStatusDisplay} ({existingReturn.ran || 'Pending'})
-                                    </span>
-                                  ) : isEligibleForReturn ? (
-                                    <button
-                                      className="btn btn-secondary"
-                                      style={{ padding: '4px 10px', fontSize: 12, borderColor: '#20D1F2', color: '#20D1F2' }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onReturnClick(sub.id, line);
-                                      }}
-                                    >
-                                      Request Return
-                                    </button>
-                                  ) : (
-                                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                      Pending Shipping
-                                    </span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                              return (
+                                <TableRow key={line.id} sx={{ '&:last-child td': { borderBottom: 'none' } }}>
+                                  <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>
+                                    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                                      <Box
+                                        sx={{
+                                          width: 36, height: 36, borderRadius: 0.5,
+                                          bgcolor: '#1e293b', border: '1px solid #334155',
+                                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                          overflow: 'hidden', flexShrink: 0,
+                                        }}
+                                      >
+                                        {line.primary_image_url ? (
+                                          <Box component="img" src={line.primary_image_url} alt={line.product_name} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        ) : (
+                                          <ShoppingBagIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                                        )}
+                                      </Box>
+                                      <Typography variant="body2">{line.product_name}</Typography>
+                                    </Stack>
+                                  </TableCell>
+                                  <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1', fontFamily: MONO_FONT }}>{line.sku}</TableCell>
+                                  <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{line.quantity}</TableCell>
+                                  <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{formatCurrency(line.unit_price_snapshot)}</TableCell>
+                                  <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{formatCurrency(line.line_total)}</TableCell>
+                                  <TableCell sx={{ borderColor: '#1e293b', textAlign: 'right' }}>
+                                    {existingReturn ? (
+                                      <Chip
+                                        size="small"
+                                        label={`Return: ${retStatusDisplay} (${existingReturn.ran || 'Pending'})`}
+                                        sx={{
+                                          bgcolor: retStatus.includes('refund') ? 'rgba(34, 197, 94, 0.1)' : `rgba(32, 209, 242, 0.1)`,
+                                          color: retStatus.includes('refund') ? '#22c55e' : TELCO_CYAN,
+                                          border: `1px solid ${retStatus.includes('refund') ? 'rgba(34, 197, 94, 0.2)' : 'rgba(32, 209, 242, 0.2)'}`,
+                                          fontWeight: 600,
+                                        }}
+                                      />
+                                    ) : isEligibleForReturn ? (
+                                      <Button
+                                        variant="outlined"
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onReturnClick(sub.id, line);
+                                        }}
+                                        sx={{ fontSize: 12, borderColor: TELCO_CYAN, color: TELCO_CYAN, py: 0.5, px: 1.25 }}
+                                      >
+                                        Request Return
+                                      </Button>
+                                    ) : (
+                                      <Typography variant="caption" color="text.secondary">
+                                        Pending Shipping
+                                      </Typography>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
                   );
                 })
               )}
-            </div>
+            </Stack>
           )}
-        </div>
-      )}
-    </div>
+        </Box>
+      </Collapse>
+    </Card>
   )
 }
 
+/* ================================================================== */
+/*  Main Page Component                                                */
+/* ================================================================== */
 export default function TelcoCellularPage() {
   const { user } = useAuthStore()
 
@@ -289,6 +405,9 @@ export default function TelcoCellularPage() {
   }
 
   const queryClient = useQueryClient()
+  const { showSnackbar } = useSnackbar()
+  const { dialogProps, confirm } = useConfirmDialog()
+
   const [search, setSearch] = useState('')
   const [selectedDevice, setSelectedDevice] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -332,7 +451,7 @@ export default function TelcoCellularPage() {
   const returnMutation = useMutation({
     mutationFn: (payload: any) => telcoApi.post('/fulfillment/return-requests/', payload).then(r => r.data),
     onSuccess: () => {
-      toast.success('Return requested successfully!')
+      showSnackbar('Return requested successfully!', 'success')
       setReturnModalOpen(false)
       setReturnTarget(null)
       setReturnReason('')
@@ -342,7 +461,7 @@ export default function TelcoCellularPage() {
     },
     onError: (err: any) => {
       const errMsg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to submit return request.'
-      toast.error(errMsg)
+      showSnackbar(errMsg, 'error')
     }
   })
 
@@ -357,11 +476,11 @@ export default function TelcoCellularPage() {
       reason: returnReason,
     })
   }
-  
+
   // Fetch active portfolio devices for the compatibility filter
   const { data: portfolio, isLoading: isPortfolioLoading } = useQuery({
     queryKey: ['my-devices'],
-    queryFn: () => telcoApi.get('/devices/portfolio/my_devices/').then(r => r.data).catch(() => []),
+    queryFn: () => telcoApi.get('/devices/portfolio/my_devices/').then(r => r.data),
   })
 
   // Filter devices to only active ones
@@ -433,12 +552,20 @@ export default function TelcoCellularPage() {
         ]
       }
     })
-    toast.success(`${product.name} (${qtyToAdd}x) added to cart!`, { duration: 1500 })
+    showSnackbar(`${product.name} (${qtyToAdd}x) added to cart!`, 'success')
     setIsCartOpen(true)
   }
 
-  const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(item => item.id !== id))
+  const removeFromCart = async (id: string) => {
+    const confirmed = await confirm({
+      title: 'Remove Item',
+      message: 'Are you sure you want to remove this item from your cart?',
+      confirmLabel: 'Remove',
+      confirmColor: 'error',
+    })
+    if (confirmed) {
+      setCart(prev => prev.filter(item => item.id !== id))
+    }
   }
 
   const updateQty = (id: string, delta: number) => {
@@ -473,19 +600,19 @@ export default function TelcoCellularPage() {
       setCheckoutError(null)
       setCart([])
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
-      toast.success('Test Purchase Order submitted successfully!')
+      showSnackbar('Test Purchase Order submitted successfully!', 'success')
     },
     onError: (err: any) => {
       const errMsg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to place purchase order.'
       setCheckoutError(errMsg)
-      toast.error(errMsg, { duration: 5000 })
+      showSnackbar(errMsg, 'error')
     }
   })
 
   const handlePlaceOrder = () => {
     if (cart.length === 0) return
 
-    // Grouping by vendor — standard CIXCI orders require a primary vendor.
+    // Grouping by vendor -- standard CIXCI orders require a primary vendor.
     // We take the vendor of the first cart item as the target PO vendor.
     const primaryVendor = cart[0].vendor_company_reference
     const randomPoSuffix = Math.floor(100000 + Math.random() * 900000)
@@ -496,7 +623,7 @@ export default function TelcoCellularPage() {
       currency: 'USD',
       lines: cart.map(item => ({
         product_reference: item.id,
-        quantity: item.qty
+        quantity: item.qty,
       })),
       customer_shipping: {
         customer_first_name: firstName,
@@ -513,1269 +640,256 @@ export default function TelcoCellularPage() {
     checkoutMutation.mutate(payload)
   }
 
+  const cartItemCount = cart.reduce((sum, item) => sum + item.qty, 0)
+
   return (
-    <div className="telco-page-container">
-      {/* Dynamic styles to inject telcocellular design palette */}
-      <style>{`
-        .telco-page-container {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-          color: #f1f5f9;
-          font-family: 'Inter', sans-serif;
-          position: relative;
-          min-height: 100vh;
-          background-color: #0b0f19;
-          padding: 24px;
-          box-sizing: border-box;
-        }
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, minHeight: '100vh', bgcolor: TELCO_DARK, p: 3, boxSizing: 'border-box' }}>
 
-        /* ── Header Styling ── */
-        .telco-banner {
-          background: linear-gradient(135deg, #145C76 0%, #006488 50%, #0c4a60 100%);
-          border: 1px solid rgba(32, 209, 242, 0.25);
-          border-radius: 12px;
-          padding: 24px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          position: relative;
-          overflow: hidden;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        }
-        .telco-banner::after {
-          content: '';
-          position: absolute;
-          width: 200px;
-          height: 200px;
-          background: rgba(32, 209, 242, 0.15);
-          border-radius: 50%;
-          top: -50px;
-          right: -50px;
-          filter: blur(40px);
-        }
-        .telco-banner-left h1 {
-          font-size: 24px;
-          font-weight: 800;
-          color: #20D1F2;
-          margin: 0;
-          letter-spacing: -0.5px;
-          text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-        }
-        .telco-banner-left p {
-          color: #a5f3fc;
-          font-size: 13px;
-          margin-top: 4px;
-          max-width: 500px;
-          opacity: 0.9;
-        }
-
-        /* ── Layout grid ── */
-        .telco-content {
-          display: grid;
-          grid-template-columns: 280px 1fr;
-          gap: 20px;
-          align-items: start;
-        }
-
-        /* ── Sidebar Filters ── */
-        .telco-sidebar {
-          background: #111827;
-          border: 1px solid #1f2d45;
-          border-radius: 12px;
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-          position: sticky;
-          top: 20px;
-        }
-        .telco-sidebar-title {
-          font-size: 14px;
-          font-weight: 700;
-          color: #20D1F2;
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          border-bottom: 1px solid #1f2d45;
-          padding-bottom: 8px;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .telco-filter-group {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-        .telco-filter-label {
-          font-size: 12px;
-          font-weight: 600;
-          color: #94a3b8;
-        }
-        .telco-select {
-          background: #1a2235;
-          border: 1px solid #1f2d45;
-          border-radius: 6px;
-          padding: 8px 12px;
-          color: #f1f5f9;
-          font-size: 13px;
-          outline: none;
-          cursor: pointer;
-          transition: border-color 0.2s;
-        }
-        .telco-select:focus {
-          border-color: #20D1F2;
-        }
-        .telco-category-list {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-        .telco-category-item {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 8px 10px;
-          background: #1a2235;
-          border: 1px solid transparent;
-          border-radius: 6px;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .telco-category-item:hover {
-          background: #1e2a40;
-          border-color: rgba(32, 209, 242, 0.2);
-        }
-        .telco-category-item.active {
-          background: rgba(32, 209, 242, 0.1);
-          border-color: #20D1F2;
-          color: #20D1F2;
-          font-weight: 600;
-        }
-        .telco-slider-wrap {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-        .telco-slider-header {
-          display: flex;
-          justify-content: space-between;
-          font-size: 12px;
-          color: #94a3b8;
-        }
-        .telco-range {
-          width: 100%;
-          accent-color: #20D1F2;
-          cursor: pointer;
-        }
-
-        /* ── Product Grid ── */
-        .telco-grid-container {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-        .telco-search-wrap {
-          display: flex;
-          align-items: center;
-          background: #111827;
-          border: 1px solid #1f2d45;
-          border-radius: 8px;
-          padding: 8px 14px;
-          gap: 10px;
-        }
-        .telco-search-wrap input {
-          background: transparent;
-          border: none;
-          color: #f1f5f9;
-          font-size: 13px;
-          width: 100%;
-          outline: none;
-        }
-        .telco-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-          gap: 16px;
-        }
-
-        /* ── Product Cards ── */
-        .telco-card {
-          background: rgba(17, 24, 39, 0.6);
-          border: 1px solid rgba(32, 209, 242, 0.15);
-          border-radius: 10px;
-          padding: 14px;
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          position: relative;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          backdrop-filter: blur(10px);
-          cursor: pointer;
-          user-select: none;
-        }
-        .telco-card:hover {
-          transform: translateY(-4px);
-          border-color: #20D1F2;
-          box-shadow: 0 4px 20px rgba(32, 209, 242, 0.15);
-        }
-        .telco-card-view-hint {
-          position: absolute;
-          top: 10px;
-          right: 10px;
-          background: rgba(15, 23, 42, 0.85);
-          border: 1px solid rgba(32, 209, 242, 0.3);
-          color: #20D1F2;
-          font-size: 10px;
-          font-weight: 600;
-          padding: 3px 8px;
-          border-radius: 99px;
-          opacity: 0;
-          transition: opacity 0.2s ease;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          backdrop-filter: blur(4px);
-          z-index: 2;
-        }
-        .telco-card:hover .telco-card-view-hint {
-          opacity: 1;
-        }
-
-        /* ── Product Detail View Modal ── */
-        .telco-product-detail-modal {
-          width: 840px;
-          max-width: 95vw;
-          max-height: 92vh;
-          background: #0f172a;
-          border: 1px solid #20D1F2;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(32, 209, 242, 0.15);
-          border-radius: 14px;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-        }
-        .detail-modal-body {
-          padding: 24px;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-          gap: 24px;
-        }
-        .detail-top-grid {
-          display: grid;
-          grid-template-columns: 320px 1fr;
-          gap: 24px;
-        }
-        @media (max-width: 768px) {
-          .detail-top-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-        .detail-media-gallery {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .detail-main-img-wrap {
-          width: 100%;
-          height: 260px;
-          background: #090d16;
-          border: 1px solid #1f2d45;
-          border-radius: 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 16px;
-          position: relative;
-          overflow: hidden;
-        }
-        .detail-main-img-wrap img {
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-        }
-        .detail-thumbnails {
-          display: flex;
-          gap: 8px;
-          overflow-x: auto;
-          padding-bottom: 4px;
-        }
-        .detail-thumb {
-          width: 54px;
-          height: 54px;
-          border-radius: 6px;
-          background: #090d16;
-          border: 1px solid #1f2d45;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 4px;
-          flex-shrink: 0;
-          transition: all 0.2s;
-        }
-        .detail-thumb.active, .detail-thumb:hover {
-          border-color: #20D1F2;
-          box-shadow: 0 0 10px rgba(32, 209, 242, 0.3);
-        }
-        .detail-thumb img {
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-        }
-        .detail-info-pane {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-        }
-        .detail-brand-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 11px;
-          font-weight: 700;
-          color: #20D1F2;
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          background: rgba(32, 209, 242, 0.1);
-          padding: 4px 10px;
-          border-radius: 6px;
-          width: fit-content;
-          border: 1px solid rgba(32, 209, 242, 0.2);
-        }
-        .detail-product-title {
-          font-size: 18px;
-          font-weight: 800;
-          color: #f8fafc;
-          line-height: 1.3;
-          margin: 0;
-        }
-        .detail-sku-row {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          font-size: 12px;
-          color: #94a3b8;
-        }
-        .detail-price-card {
-          background: #111827;
-          border: 1px solid #1f2d45;
-          border-radius: 10px;
-          padding: 14px 18px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-        .detail-price-left {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-        .detail-price-main {
-          font-size: 24px;
-          font-weight: 800;
-          color: #20D1F2;
-        }
-        .detail-price-msrp {
-          font-size: 13px;
-          color: #64748b;
-          text-decoration: line-through;
-        }
-        .detail-save-tag {
-          background: rgba(34, 197, 94, 0.15);
-          color: #4ade80;
-          border: 1px solid rgba(34, 197, 94, 0.3);
-          font-size: 11px;
-          font-weight: 700;
-          padding: 3px 8px;
-          border-radius: 4px;
-        }
-        .detail-specs-quick {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-        }
-        .detail-quick-pill {
-          font-size: 11px;
-          color: #cbd5e1;
-          background: #1e293b;
-          border: 1px solid #334155;
-          padding: 4px 10px;
-          border-radius: 6px;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .detail-actions-row {
-          display: flex;
-          gap: 12px;
-          align-items: center;
-          margin-top: 6px;
-        }
-        .detail-qty-picker {
-          display: flex;
-          align-items: center;
-          background: #111827;
-          border: 1px solid #1f2d45;
-          border-radius: 8px;
-          height: 42px;
-          overflow: hidden;
-        }
-        .detail-qty-btn {
-          width: 36px;
-          height: 100%;
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: background 0.15s;
-        }
-        .detail-qty-btn:hover {
-          background: #1e293b;
-          color: #f1f5f9;
-        }
-        .detail-qty-input {
-          width: 44px;
-          text-align: center;
-          background: transparent;
-          border: none;
-          color: #f1f5f9;
-          font-weight: 700;
-          font-size: 14px;
-        }
-        .detail-tab-header {
-          display: flex;
-          border-bottom: 1px solid #1f2d45;
-          gap: 8px;
-          margin-top: 8px;
-        }
-        .detail-tab-btn {
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          padding: 10px 16px;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          border-bottom: 2px solid transparent;
-          transition: all 0.2s;
-        }
-        .detail-tab-btn:hover {
-          color: #20D1F2;
-        }
-        .detail-tab-btn.active {
-          color: #20D1F2;
-          border-bottom-color: #20D1F2;
-        }
-        .detail-tab-content {
-          background: #111827;
-          border: 1px solid #1f2d45;
-          border-radius: 10px;
-          padding: 18px;
-          font-size: 13px;
-          color: #cbd5e1;
-          line-height: 1.6;
-        }
-        .detail-specs-table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        .detail-specs-table tr {
-          border-bottom: 1px solid #1f2d45;
-        }
-        .detail-specs-table tr:last-child {
-          border-bottom: none;
-        }
-        .detail-specs-table td {
-          padding: 10px 12px;
-          font-size: 13px;
-        }
-        .detail-specs-table td.spec-key {
-          color: #94a3b8;
-          font-weight: 600;
-          width: 40%;
-        }
-        .detail-specs-table td.spec-val {
-          color: #f1f5f9;
-        }
-        .telco-card-badge {
-          position: absolute;
-          top: 10px;
-          left: 10px;
-          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-          color: #fff;
-          font-size: 9px;
-          font-weight: 700;
-          padding: 3px 6px;
-          border-radius: 4px;
-          text-transform: uppercase;
-          z-index: 2;
-        }
-        .telco-card-img-wrap {
-          height: 140px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #0f172a;
-          border-radius: 8px;
-          margin-bottom: 12px;
-          overflow: hidden;
-          border: 1px solid #1f2d45;
-        }
-        .telco-card-img-wrap img {
-          max-width: 90%;
-          max-height: 120px;
-          object-fit: contain;
-        }
-        .telco-card-name {
-          font-size: 13px;
-          font-weight: 700;
-          color: #f1f5f9;
-          line-height: 1.4;
-          margin-bottom: 4px;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-        .telco-card-sku {
-          font-size: 10px;
-          font-family: 'JetBrains Mono', monospace;
-          color: #64748b;
-          margin-bottom: 8px;
-        }
-        .telco-card-spec-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 4px;
-          margin-bottom: 12px;
-        }
-        .telco-card-spec-pill {
-          font-size: 9px;
-          font-weight: 600;
-          color: #94a3b8;
-          background: #1e293b;
-          padding: 2px 6px;
-          border-radius: 4px;
-          display: inline-flex;
-          align-items: center;
-          gap: 3px;
-          border: 1px solid #334155;
-        }
-        .telco-color-swatch {
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          border: 1px solid rgba(255,255,255,0.2);
-        }
-        .telco-card-footer {
-          margin-top: auto;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          border-top: 1px solid #1f2d45;
-          padding-top: 10px;
-        }
-        .telco-price-row {
-          display: flex;
-          align-items: baseline;
-          gap: 6px;
-        }
-        .telco-sale-price {
-          font-size: 16px;
-          font-weight: 800;
-          color: #20D1F2;
-        }
-        .telco-msrp-strike {
-          font-size: 11px;
-          color: #64748b;
-          text-decoration: line-through;
-        }
-        .telco-status-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          font-size: 11px;
-        }
-        .telco-status-active {
-          color: #22c55e;
-          font-weight: 600;
-        }
-        .telco-status-out {
-          color: #ef4444;
-          font-weight: 600;
-        }
-        .telco-card-btn {
-          width: 100%;
-          background: linear-gradient(135deg, #20D1F2 0%, #006488 100%);
-          color: #fff;
-          border: none;
-          border-radius: 6px;
-          padding: 8px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-        }
-        .telco-card-btn:hover {
-          filter: brightness(1.1);
-        }
-        .telco-card-btn:disabled {
-          background: #334155;
-          color: #64748b;
-          cursor: not-allowed;
-        }
-
-        /* ── Cart Drawer / Sidebar Panel ── */
-        .telco-cart-drawer {
-          position: fixed;
-          top: 0;
-          right: 0;
-          width: 380px;
-          height: 100vh;
-          background: #111827;
-          border-left: 1px solid #1f2d45;
-          box-shadow: -4px 0 30px rgba(0, 0, 0, 0.5);
-          z-index: 999;
-          display: flex;
-          flex-direction: column;
-          transform: translateX(100%);
-          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .telco-cart-drawer.open {
-          transform: translateX(0);
-        }
-        .telco-cart-header {
-          padding: 16px 20px;
-          border-bottom: 1px solid #1f2d45;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .telco-cart-header h2 {
-          font-size: 16px;
-          font-weight: 700;
-          color: #20D1F2;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin: 0;
-        }
-        .telco-cart-close {
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          cursor: pointer;
-          padding: 4px;
-        }
-        .telco-cart-close:hover {
-          color: #f1f5f9;
-        }
-        .telco-cart-items {
-          flex: 1;
-          overflow-y: auto;
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .telco-cart-item {
-          display: flex;
-          gap: 10px;
-          background: #1a2235;
-          border: 1px solid #1f2d45;
-          border-radius: 8px;
-          padding: 10px;
-          align-items: center;
-        }
-        .telco-cart-item-img {
-          width: 50px;
-          height: 50px;
-          background: #0f172a;
-          border-radius: 6px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          border: 1px solid #1f2d45;
-        }
-        .telco-cart-item-img img {
-          max-width: 90%;
-          max-height: 45px;
-          object-fit: contain;
-        }
-        .telco-cart-item-details {
-          flex: 1;
-        }
-        .telco-cart-item-name {
-          font-size: 12px;
-          font-weight: 600;
-          color: #f1f5f9;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-        .telco-cart-item-price {
-          font-size: 11px;
-          color: #20D1F2;
-          margin-top: 2px;
-          font-weight: 600;
-        }
-        .telco-cart-item-actions {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          gap: 6px;
-        }
-        .telco-qty-controls {
-          display: flex;
-          align-items: center;
-          background: #0f172a;
-          border: 1px solid #1f2d45;
-          border-radius: 4px;
-          overflow: hidden;
-        }
-        .telco-qty-btn {
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          cursor: pointer;
-          padding: 4px 8px;
-          font-size: 10px;
-        }
-        .telco-qty-btn:hover {
-          color: #f1f5f9;
-          background: #1e293b;
-        }
-        .telco-qty-val {
-          font-size: 11px;
-          font-weight: 600;
-          color: #f1f5f9;
-          padding: 0 4px;
-          min-width: 16px;
-          text-align: center;
-        }
-        .telco-cart-item-remove {
-          background: transparent;
-          border: none;
-          color: #64748b;
-          cursor: pointer;
-        }
-        .telco-cart-item-remove:hover {
-          color: #ef4444;
-        }
-        .telco-cart-footer {
-          border-top: 1px solid #1f2d45;
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          background: #0f172a;
-        }
-        .telco-summary-row {
-          display: flex;
-          justify-content: space-between;
-          font-size: 13px;
-          color: #94a3b8;
-        }
-        .telco-summary-row.total {
-          font-size: 15px;
-          font-weight: 700;
-          color: #20D1F2;
-          border-top: 1px solid #1f2d45;
-          padding-top: 8px;
-        }
-        .telco-checkout-btn {
-          width: 100%;
-          background: linear-gradient(135deg, #20D1F2 0%, #006488 100%);
-          color: #fff;
-          border: none;
-          border-radius: 6px;
-          padding: 12px;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.2s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-        }
-        .telco-checkout-btn:hover {
-          filter: brightness(1.1);
-        }
-
-        /* ── Checkout Dialog ── */
-        .telco-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100vw;
-          height: 100vh;
-          background: rgba(10, 13, 20, 0.8);
-          backdrop-filter: blur(4px);
-          z-index: 1000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .telco-modal {
-          background: #111827;
-          border: 1px solid #1f2d45;
-          border-radius: 12px;
-          width: 500px;
-          max-width: 90vw;
-          max-height: 85vh;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-        }
-        .telco-modal-header {
-          padding: 16px 20px;
-          border-bottom: 1px solid #1f2d45;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .telco-modal-header h3 {
-          font-size: 15px;
-          font-weight: 700;
-          color: #20D1F2;
-          margin: 0;
-        }
-        .telco-modal-content {
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-        .telco-modal-close {
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          cursor: pointer;
-        }
-        .telco-modal-close:hover {
-          color: #f1f5f9;
-        }
-
-        /* ── Floating Cart Trigger ── */
-        .telco-cart-trigger {
-          position: fixed;
-          bottom: 30px;
-          right: 30px;
-          width: 60px;
-          height: 60px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #20D1F2 0%, #006488 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 20px rgba(32, 209, 242, 0.4);
-          cursor: pointer;
-          z-index: 998;
-          transition: transform 0.2s;
-        }
-        .telco-cart-trigger:hover {
-          transform: scale(1.05);
-        }
-        .telco-cart-badge-count {
-          position: absolute;
-          top: -4px;
-          right: -4px;
-          background: #ef4444;
-          color: #fff;
-          font-size: 10px;
-          font-weight: 700;
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: 2px solid #111827;
-        }
-
-        /* ── Tabs Styling ── */
-        .telco-tabs-container {
-          display: flex;
-          border-bottom: 2px solid #1f2d45;
-          margin-bottom: 20px;
-          gap: 4px;
-        }
-        .telco-tab-button {
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          padding: 12px 24px;
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          position: relative;
-          transition: all 0.2s ease-in-out;
-          outline: none;
-        }
-        .telco-tab-button:hover {
-          color: #20D1F2;
-        }
-        .telco-tab-button.active {
-          color: #20D1F2;
-        }
-        .telco-tab-button.active::after {
-          content: '';
-          position: absolute;
-          bottom: -2px;
-          left: 0;
-          right: 0;
-          height: 2px;
-          background: #20D1F2;
-          box-shadow: 0 0 8px rgba(32, 209, 242, 0.8);
-        }
-
-        /* ── Orders Panel Styling ── */
-        .orders-panel {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          width: 100%;
-        }
-        .order-card {
-          background: #111827;
-          border: 1px solid #1f2d45;
-          border-radius: 12px;
-          overflow: hidden;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .order-card:hover {
-          border-color: #20D1F2;
-          box-shadow: 0 4px 20px rgba(32, 209, 242, 0.05);
-        }
-        .order-card-header {
-          padding: 16px 20px;
-          background: rgba(31, 45, 69, 0.2);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          cursor: pointer;
-          user-select: none;
-        }
-        .order-card-summary {
-          display: flex;
-          align-items: center;
-          gap: 24px;
-          flex-wrap: wrap;
-        }
-        .order-summary-item {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-        .order-summary-label {
-          font-size: 10px;
-          color: #64748b;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        .order-summary-value {
-          font-size: 13px;
-          font-weight: 600;
-          color: #f1f5f9;
-        }
-        .order-card-content {
-          border-top: 1px solid #1f2d45;
-          padding: 20px;
-          background: rgba(17, 24, 39, 0.5);
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-        .suborder-section {
-          background: #0f172a;
-          border: 1px solid #1e293b;
-          border-radius: 8px;
-          padding: 16px;
-          margin-bottom: 12px;
-        }
-        .suborder-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 12px;
-          border-bottom: 1px solid #1e293b;
-          padding-bottom: 8px;
-        }
-        .suborder-title {
-          font-size: 13px;
-          font-weight: 700;
-          color: #38bdf8;
-        }
-        .suborder-status {
-          font-size: 11px;
-          font-weight: 700;
-          text-transform: uppercase;
-          padding: 3px 8px;
-          border-radius: 9999px;
-        }
-        .status-badge-pending { background: rgba(234, 179, 8, 0.15); color: #facc15; }
-        .status-badge-processing { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
-        .status-badge-shipped { background: rgba(16, 185, 129, 0.15); color: #34d399; }
-        .status-badge-delivered { background: rgba(16, 185, 129, 0.25); color: #10b981; }
-        .status-badge-cancelled { background: rgba(239, 68, 68, 0.15); color: #f87171; }
-        .status-badge-placed { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
-        
-        .lines-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 13px;
-        }
-        .lines-table th {
-          text-align: left;
-          color: #64748b;
-          font-weight: 600;
-          padding: 8px 12px;
-          border-bottom: 1px solid #1e293b;
-        }
-        .lines-table td {
-          padding: 12px;
-          border-bottom: 1px solid #1e293b;
-          color: #cbd5e1;
-        }
-        .lines-table tr:last-child td {
-          border-bottom: none;
-        }
-        .line-product-info {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        .line-product-img {
-          width: 36px;
-          height: 36px;
-          border-radius: 4px;
-          background: #1e293b;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-          border: 1px solid #334155;
-        }
-        .line-product-img img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-        .return-badge {
-          display: inline-block;
-          font-size: 11px;
-          font-weight: 600;
-          padding: 4px 10px;
-          border-radius: 6px;
-          background: rgba(32, 209, 242, 0.1);
-          color: #20D1F2;
-          border: 1px solid rgba(32, 209, 242, 0.2);
-        }
-        .return-badge.closed {
-          background: rgba(34, 197, 94, 0.1);
-          color: #22c55e;
-          border-color: rgba(34, 197, 94, 0.2);
-        }
-        
-        .returns-panel {
-          background: #111827;
-          border: 1px solid #1f2d45;
-          border-radius: 12px;
-          padding: 24px;
-          width: 100%;
-          margin-top: 24px;
-        }
-        .returns-title {
-          font-size: 16px;
-          font-weight: 700;
-          color: #20D1F2;
-          margin-bottom: 16px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-      `}</style>
-
-      {/* Page Banner mimicking telcocellular.com/accessories.php header */}
-      <div className="telco-banner">
-        <div className="telco-banner-left">
-          <h1>Telco Cellular Accessories Store</h1>
-          <p>
+      {/* ── Page Banner ── */}
+      <Paper
+        elevation={0}
+        sx={{
+          background: 'linear-gradient(135deg, #145C76 0%, #006488 50%, #0c4a60 100%)',
+          border: `1px solid rgba(32, 209, 242, 0.25)`,
+          borderRadius: 1.5,
+          p: 3,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          position: 'relative',
+          overflow: 'hidden',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            width: 200,
+            height: 200,
+            background: 'rgba(32, 209, 242, 0.15)',
+            borderRadius: '50%',
+            top: -50,
+            right: -50,
+            filter: 'blur(40px)',
+          },
+        }}
+      >
+        <Box>
+          <Typography variant="h1" sx={{ color: TELCO_CYAN, fontSize: 24, fontWeight: 800, letterSpacing: -0.5, textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
+            Telco Cellular Accessories Store
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#a5f3fc', mt: 0.5, maxWidth: 500, opacity: 0.9 }}>
             Simulated MVNO Buyer Catalog integration. Browse and test procurement flows against your company's active device portfolio compatibilities.
-          </p>
-        </div>
-        <button className="btn btn-secondary" onClick={() => setIsCartOpen(true)} style={{ position: 'relative' }}>
-          <ShoppingCart size={16} />
-          View Cart
-          {cart.length > 0 && (
-            <span style={{
-              position: 'absolute',
-              top: '-8px',
-              right: '-8px',
-              background: '#ef4444',
-              color: '#fff',
-              fontSize: '10px',
-              padding: '2px 6px',
-              borderRadius: '99px',
-              fontWeight: 700
-            }}>
-              {cart.reduce((sum, item) => sum + item.qty, 0)}
-            </span>
-          )}
-        </button>
-      </div>
+          </Typography>
+        </Box>
+        <Badge badgeContent={cartItemCount} color="error" invisible={cartItemCount === 0}>
+          <Button
+            variant="outlined"
+            startIcon={<ShoppingCartIcon />}
+            onClick={() => setIsCartOpen(true)}
+            sx={{ borderColor: 'rgba(255,255,255,0.3)', color: '#fff', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.08)' } }}
+          >
+            View Cart
+          </Button>
+        </Badge>
+      </Paper>
 
-      {/* Tabs Menu */}
-      <div className="telco-tabs-container">
-        <button
-          className={`telco-tab-button ${activeTab === 'browse' ? 'active' : ''}`}
-          onClick={() => setActiveTab('browse')}
-        >
-          Browse Products
-        </button>
-        <button
-          className={`telco-tab-button ${activeTab === 'orders' ? 'active' : ''}`}
-          onClick={() => setActiveTab('orders')}
-        >
-          My Orders & Returns
-        </button>
-      </div>
+      {/* ── Tabs ── */}
+      <Tabs
+        value={activeTab}
+        onChange={(_, v) => setActiveTab(v)}
+        sx={{
+          borderBottom: `2px solid ${TELCO_BORDER}`,
+          '& .MuiTabs-indicator': { bgcolor: TELCO_CYAN, boxShadow: `0 0 8px ${TELCO_CYAN}` },
+          '& .MuiTab-root': { color: 'text.secondary', fontWeight: 600, fontSize: 14 },
+          '& .Mui-selected': { color: `${TELCO_CYAN} !important` },
+        }}
+      >
+        <Tab label="Browse Products" value="browse" />
+        <Tab label="My Orders & Returns" value="orders" />
+      </Tabs>
 
-      <div className="telco-content">
+      {/* ── Main Content Area ── */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: activeTab === 'browse' ? '280px 1fr' : '1fr', gap: 2.5, alignItems: 'start' }}>
+
         {activeTab === 'browse' ? (
           <>
-            {/* Left Sidebar Filter Panel */}
-            <aside className="telco-sidebar">
-              <div className="telco-sidebar-title">
-                <SlidersHorizontal size={14} />
-                Filter Products
-              </div>
+            {/* ── Left Sidebar Filter Panel ── */}
+            <Paper
+              variant="outlined"
+              sx={{
+                bgcolor: TELCO_PAPER,
+                borderColor: TELCO_BORDER,
+                borderRadius: 1.5,
+                p: 2.5,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2.5,
+                position: 'sticky',
+                top: 20,
+              }}
+            >
+              <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', borderBottom: `1px solid ${TELCO_BORDER}`, pb: 1 }}>
+                <TuneIcon sx={{ fontSize: 14, color: TELCO_CYAN }} />
+                <Typography variant="overline" sx={{ color: TELCO_CYAN, fontWeight: 700 }}>
+                  Filter Products
+                </Typography>
+              </Stack>
 
-              {/* Portfolio Compatibility Selector */}
-              <div className="telco-filter-group">
-                <label className="telco-filter-label">Device Compatibility</label>
+              {/* Device Compatibility Selector */}
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>
+                  Device Compatibility
+                </Typography>
                 {isPortfolioLoading ? (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading devices...</div>
+                  <Typography variant="caption" color="text.secondary">Loading devices...</Typography>
                 ) : activeDevices.length === 0 ? (
-                  <div style={{ fontSize: 12, color: 'var(--amber)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <AlertCircle size={14} />
-                    No devices in portfolio
-                  </div>
+                  <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                    <ErrorOutlineIcon sx={{ fontSize: 14, color: 'warning.main' }} />
+                    <Typography variant="caption" color="warning.main">No devices in portfolio</Typography>
+                  </Stack>
                 ) : (
-                  <select
-                    className="telco-select"
-                    value={selectedDevice}
-                    onChange={(e) => setSelectedDevice(e.target.value)}
-                  >
-                    <option value="">All Portfolio Devices</option>
-                    {activeDevices.map((d: any) => (
-                      <option key={d.device} value={d.device}>
-                        {d.device_name}
-                      </option>
-                    ))}
-                  </select>
+                  <FormControl fullWidth size="small">
+                    <Select
+                      value={selectedDevice}
+                      onChange={(e) => setSelectedDevice(e.target.value)}
+                      displayEmpty
+                      sx={{
+                        bgcolor: TELCO_ELEVATED,
+                        borderColor: TELCO_BORDER,
+                        color: '#f1f5f9',
+                        fontSize: 13,
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER },
+                        '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_CYAN },
+                      }}
+                    >
+                      <MenuItem value="">All Portfolio Devices</MenuItem>
+                      {activeDevices.map((d: any) => (
+                        <MenuItem key={d.device} value={d.device}>{d.device_name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 )}
-              </div>
+              </Box>
 
               {/* Category Filter list */}
-              <div className="telco-filter-group">
-                <label className="telco-filter-label">Category</label>
-                <div className="telco-category-list">
-                  <div
-                    className={`telco-category-item ${selectedCategory === '' ? 'active' : ''}`}
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>
+                  Category
+                </Typography>
+                <List dense disablePadding>
+                  <ListItemButton
+                    selected={selectedCategory === ''}
                     onClick={() => setSelectedCategory('')}
+                    sx={{
+                      borderRadius: 0.75,
+                      mb: 0.75,
+                      bgcolor: TELCO_ELEVATED,
+                      border: '1px solid transparent',
+                      '&.Mui-selected': { bgcolor: 'rgba(32, 209, 242, 0.1)', borderColor: TELCO_CYAN, color: TELCO_CYAN },
+                      '&:hover': { bgcolor: '#1e2a40', borderColor: 'rgba(32, 209, 242, 0.2)' },
+                    }}
                   >
-                    All Accessories
-                  </div>
+                    <ListItemText primary="All Accessories" slotProps={{ primary: { variant: 'body2', sx: { fontSize: 12 } } }} />
+                  </ListItemButton>
                   {categories.map(cat => (
-                    <div
+                    <ListItemButton
                       key={cat}
-                      className={`telco-category-item ${selectedCategory === cat ? 'active' : ''}`}
+                      selected={selectedCategory === cat}
                       onClick={() => setSelectedCategory(cat)}
+                      sx={{
+                        borderRadius: 0.75,
+                        mb: 0.75,
+                        bgcolor: TELCO_ELEVATED,
+                        border: '1px solid transparent',
+                        '&.Mui-selected': { bgcolor: 'rgba(32, 209, 242, 0.1)', borderColor: TELCO_CYAN, color: TELCO_CYAN, fontWeight: 600 },
+                        '&:hover': { bgcolor: '#1e2a40', borderColor: 'rgba(32, 209, 242, 0.2)' },
+                      }}
                     >
-                      {cat}
-                    </div>
+                      <ListItemText primary={cat} slotProps={{ primary: { variant: 'body2', sx: { fontSize: 12 } } }} />
+                    </ListItemButton>
                   ))}
-                </div>
-              </div>
+                </List>
+              </Box>
 
               {/* Price Range Filter */}
-              <div className="telco-filter-group">
-                <div className="telco-slider-header">
-                  <label className="telco-filter-label">Max Price</label>
-                  <span>${maxPrice}</span>
-                </div>
-                <input
-                  type="range"
-                  className="telco-range"
-                  min="0"
-                  max="250"
-                  step="5"
+              <Box>
+                <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>Max Price</Typography>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>{formatCurrency(maxPrice)}</Typography>
+                </Stack>
+                <Slider
                   value={maxPrice}
-                  onChange={(e) => setMaxPrice(Number(e.target.value))}
+                  min={0}
+                  max={250}
+                  step={5}
+                  onChange={(_, v) => setMaxPrice(v as number)}
+                  sx={{
+                    color: TELCO_CYAN,
+                    '& .MuiSlider-thumb': { width: 16, height: 16 },
+                    mt: 1,
+                  }}
                 />
-              </div>
-            </aside>
+              </Box>
+            </Paper>
 
-            {/* Right Main Grid */}
-            <div className="telco-grid-container">
+            {/* ── Right Main Grid ── */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {/* Search bar */}
-              <div className="telco-search-wrap">
-                <Search size={16} style={{ color: 'var(--text-muted)' }} />
-                <input
-                  placeholder="Search accessories by name, SKU or brand..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                {search && (
-                  <button
-                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
-                    onClick={() => setSearch('')}
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
+              <SearchBar
+                placeholder="Search accessories by name, SKU or brand..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                sx={{
+                  bgcolor: TELCO_PAPER,
+                  borderRadius: 1,
+                  '& .MuiOutlinedInput-root': { bgcolor: TELCO_PAPER, borderColor: TELCO_BORDER },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_CYAN },
+                }}
+                slotProps={{
+                  input: {
+                    endAdornment: search ? (
+                      <IconButton size="small" onClick={() => setSearch('')}>
+                        <CloseIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                      </IconButton>
+                    ) : undefined,
+                  },
+                }}
+              />
 
               {/* Catalog products grid */}
               {isAccessoriesLoading ? (
-                <div className="loading-overlay">
-                  <Loader2 className="spinner" />
-                  <span>Loading catalog...</span>
-                </div>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 8 }}>
+                  <CircularProgress sx={{ color: TELCO_CYAN }} />
+                  <Typography variant="body2" color="text.secondary">Loading catalog...</Typography>
+                </Box>
               ) : filteredAccessories.length === 0 ? (
-                <div className="empty-state card">
-                  <ShoppingBag size={40} />
-                  <div>No accessories match your current filters</div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 6, textAlign: 'center', bgcolor: TELCO_PAPER, borderColor: TELCO_BORDER }}
+                >
+                  <ShoppingBagIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
+                  <Typography variant="body1" sx={{ fontWeight: 600 }}>No accessories match your current filters</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                     Try relaxing your compatibility, search query or price filters.
-                  </p>
-                </div>
+                  </Typography>
+                </Paper>
               ) : (
-                <div className="telco-grid">
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                    gap: 2,
+                  }}
+                >
                   {filteredAccessories.map((product: any) => {
                     const srp = Number(product.msrp || 0)
                     const salePrice = Number(product.sale_price || 0)
                     const displayPrice = salePrice > 0 ? salePrice : srp
                     const hasPromo = product.promo_information && product.promo_information.trim() !== ''
                     const badgeText = hasPromo ? product.promo_information : (salePrice > 0 && salePrice < srp ? 'Sale' : '')
-                    
+
                     // Compatibility specs display
-                    const specs = []
+                    const specs: { type?: string; val?: string; label?: string }[] = []
                     if (product.color) specs.push({ type: 'color', val: product.color })
                     if (product.headphone_jack_compatibility === 'true') specs.push({ label: '3.5mm Jack' })
                     if (product.bluetooth_compatibility) specs.push({ label: `Bluetooth ${product.bluetooth_compatibility}` })
@@ -1783,103 +897,226 @@ export default function TelcoCellularPage() {
                     if (product.wireless_charging_compatibility === 'true') specs.push({ label: 'Wireless Charging' })
 
                     const isOutOfStock = product.status === 'out_of_stock' || product.inventory_level <= 0
-                    
+
                     return (
-                      <div
-                        className="telco-card"
+                      <Card
                         key={product.id}
+                        variant="outlined"
                         onClick={() => {
                           setSelectedProduct(product)
                           setDetailQty(1)
                           setDetailActiveTab('overview')
                           setActiveImageIndex(0)
                         }}
+                        sx={{
+                          bgcolor: 'rgba(17, 24, 39, 0.6)',
+                          borderColor: 'rgba(32, 209, 242, 0.15)',
+                          p: 1.75,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          height: '100%',
+                          position: 'relative',
+                          cursor: 'pointer',
+                          userSelect: 'none',
+                          backdropFilter: 'blur(10px)',
+                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                          '&:hover': {
+                            transform: 'translateY(-4px)',
+                            borderColor: TELCO_CYAN,
+                            boxShadow: `0 4px 20px rgba(32, 209, 242, 0.15)`,
+                          },
+                          '&:hover .view-hint': { opacity: 1 },
+                        }}
                       >
-                        {badgeText && <div className="telco-card-badge">{badgeText}</div>}
-                        <div className="telco-card-view-hint">
-                          <Eye size={12} /> View Specs
-                        </div>
-                        
-                        <div className="telco-card-img-wrap">
+                        {/* Promo badge */}
+                        {badgeText && (
+                          <Chip
+                            label={badgeText}
+                            size="small"
+                            sx={{
+                              position: 'absolute',
+                              top: 10,
+                              left: 10,
+                              zIndex: 2,
+                              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                              color: '#fff',
+                              fontSize: 9,
+                              fontWeight: 700,
+                              height: 20,
+                              textTransform: 'uppercase',
+                            }}
+                          />
+                        )}
+
+                        {/* View hint */}
+                        <Chip
+                          className="view-hint"
+                          icon={<VisibilityIcon sx={{ fontSize: '12px !important', color: `${TELCO_CYAN} !important` }} />}
+                          label="View Specs"
+                          size="small"
+                          sx={{
+                            position: 'absolute',
+                            top: 10,
+                            right: 10,
+                            zIndex: 2,
+                            bgcolor: 'rgba(15, 23, 42, 0.85)',
+                            border: '1px solid rgba(32, 209, 242, 0.3)',
+                            color: TELCO_CYAN,
+                            fontSize: 10,
+                            fontWeight: 600,
+                            height: 22,
+                            opacity: 0,
+                            transition: 'opacity 0.2s ease',
+                            backdropFilter: 'blur(4px)',
+                          }}
+                        />
+
+                        {/* Image */}
+                        <Box
+                          sx={{
+                            height: 140,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            bgcolor: '#0f172a',
+                            borderRadius: 1,
+                            mb: 1.5,
+                            overflow: 'hidden',
+                            border: `1px solid ${TELCO_BORDER}`,
+                          }}
+                        >
                           {product.primary_image_url ? (
-                            <img src={product.primary_image_url} alt={product.name} />
+                            <Box component="img" src={getImageUrl(product.primary_image_url)} alt={product.name} sx={{ maxWidth: '90%', maxHeight: 120, objectFit: 'contain' }} />
                           ) : (
-                            <ShoppingBag size={32} style={{ color: 'var(--text-muted)' }} />
+                            <ShoppingBagIcon sx={{ fontSize: 32, color: 'text.disabled' }} />
                           )}
-                        </div>
+                        </Box>
 
-                        <div className="telco-card-name" title={product.name}>
-                          {product.name}
-                        </div>
-                        <div className="telco-card-sku">SKU: {product.sku}</div>
+                        <Tooltip title={product.name} placement="top">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 700,
+                              lineHeight: 1.4,
+                              mb: 0.5,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {product.name}
+                          </Typography>
+                        </Tooltip>
 
-                        <div className="telco-card-spec-row">
+                        <Typography variant="caption" sx={{ fontFamily: MONO_FONT, color: 'text.disabled', mb: 1 }}>
+                          SKU: {product.sku}
+                        </Typography>
+
+                        {/* Spec pills */}
+                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', mb: 1.5 }}>
                           {specs.map((s, idx) => (
-                            <span className="telco-card-spec-pill" key={idx}>
-                              {s.type === 'color' && (
-                                <span className="telco-color-swatch" style={{ background: s.val.toLowerCase() }} />
-                              )}
-                              {s.label || s.val}
-                            </span>
+                            <Chip
+                              key={idx}
+                              size="small"
+                              label={
+                                <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                                  {s.type === 'color' && (
+                                    <Box
+                                      sx={{
+                                        width: 8, height: 8, borderRadius: '50%',
+                                        bgcolor: s.val?.toLowerCase(),
+                                        border: '1px solid rgba(255,255,255,0.2)',
+                                      }}
+                                    />
+                                  )}
+                                  <span>{s.label || s.val}</span>
+                                </Stack>
+                              }
+                              sx={{
+                                fontSize: 9,
+                                fontWeight: 600,
+                                height: 20,
+                                color: 'text.secondary',
+                                bgcolor: '#1e293b',
+                                border: '1px solid #334155',
+                              }}
+                            />
                           ))}
-                        </div>
+                        </Stack>
 
-                        <div className="telco-card-footer">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div className="telco-price-row">
-                              <span className="telco-sale-price">${displayPrice.toFixed(2)}</span>
+                        {/* Footer */}
+                        <Box sx={{ mt: 'auto', borderTop: `1px solid ${TELCO_BORDER}`, pt: 1.25, display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'baseline' }}>
+                              <Typography sx={{ fontSize: 16, fontWeight: 800, color: TELCO_CYAN }}>
+                                {formatCurrency(displayPrice)}
+                              </Typography>
                               {salePrice > 0 && salePrice < srp && (
-                                <span className="telco-msrp-strike">${srp.toFixed(2)}</span>
+                                <Typography sx={{ fontSize: 11, color: 'text.disabled', textDecoration: 'line-through' }}>
+                                  {formatCurrency(srp)}
+                                </Typography>
                               )}
-                            </div>
-                            <div className="telco-status-row">
-                              {isOutOfStock ? (
-                                <span className="telco-status-out">Out of Stock</span>
-                              ) : (
-                                <span className="telco-status-active">Active ({product.inventory_level || 0})</span>
-                              )}
-                            </div>
-                          </div>
+                            </Stack>
+                            {isOutOfStock ? (
+                              <Typography sx={{ fontSize: 11, fontWeight: 600, color: 'error.main' }}>Out of Stock</Typography>
+                            ) : (
+                              <Typography sx={{ fontSize: 11, fontWeight: 600, color: 'success.main' }}>Active ({product.inventory_level || 0})</Typography>
+                            )}
+                          </Box>
 
-                          <button
-                            className="telco-card-btn"
+                          <Button
+                            variant="contained"
+                            fullWidth
                             disabled={isOutOfStock}
                             onClick={(e) => {
                               e.stopPropagation()
                               addToCart(product)
                             }}
+                            sx={{
+                              background: isOutOfStock ? undefined : `linear-gradient(135deg, ${TELCO_CYAN} 0%, #006488 100%)`,
+                              color: '#fff',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              gap: 0.75,
+                              '&:hover': { filter: 'brightness(1.1)' },
+                              '&.Mui-disabled': { bgcolor: '#334155', color: '#64748b' },
+                            }}
                           >
                             {isOutOfStock ? 'Unavailable' : 'Add to Cart'}
-                          </button>
-                        </div>
-                      </div>
+                          </Button>
+                        </Box>
+                      </Card>
                     )
                   })}
-                </div>
+                </Box>
               )}
-            </div>
+            </Box>
           </>
         ) : (
-          <div style={{ gridColumn: 'span 2', width: '100%' }}>
-            <div className="orders-panel">
-              <div className="returns-title" style={{ fontSize: 18, marginBottom: 8 }}>
-                <ShoppingBag size={20} />
-                Your Purchase Orders
-              </div>
+          /* ── Orders & Returns Tab ── */
+          <Box sx={{ gridColumn: 'span 1', width: '100%' }}>
+            <Box>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                <ShoppingBagIcon sx={{ fontSize: 20, color: TELCO_CYAN }} />
+                <Typography variant="h3" sx={{ color: TELCO_CYAN }}>
+                  Your Purchase Orders
+                </Typography>
+              </Stack>
 
               {isOrdersLoading ? (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '24px 0' }}>
-                  <Loader2 className="spinner" />
-                  <span>Loading your orders...</span>
-                </div>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', py: 3 }}>
+                  <CircularProgress size={20} sx={{ color: TELCO_CYAN }} />
+                  <Typography variant="body2" color="text.secondary">Loading your orders...</Typography>
+                </Stack>
               ) : !orders || orders.length === 0 ? (
-                <div className="empty-state card" style={{ padding: 40, textAlign: 'center' }}>
-                  <ShoppingBag size={40} />
-                  <div>No purchase orders found</div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                <Paper variant="outlined" sx={{ p: 5, textAlign: 'center', bgcolor: TELCO_PAPER, borderColor: TELCO_BORDER }}>
+                  <ShoppingBagIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
+                  <Typography variant="body1" sx={{ fontWeight: 600 }}>No purchase orders found</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                     Place an order using the accessory shop to see it here!
-                  </p>
-                </div>
+                  </Typography>
+                </Paper>
               ) : (
                 orders.map((order: any) => (
                   <OrderDetailsRow
@@ -1898,38 +1135,44 @@ export default function TelcoCellularPage() {
                   />
                 ))
               )}
-            </div>
+            </Box>
 
             {/* Returns Tracking Section */}
-            <div className="returns-panel">
-              <div className="returns-title">
-                <CheckCircle size={18} />
-                Return Requests History
-              </div>
+            <Paper
+              variant="outlined"
+              sx={{ bgcolor: TELCO_PAPER, borderColor: TELCO_BORDER, borderRadius: 1.5, p: 3, width: '100%', mt: 3 }}
+            >
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
+                <CheckCircleIcon sx={{ fontSize: 18, color: TELCO_CYAN }} />
+                <Typography variant="h4" sx={{ color: TELCO_CYAN, fontWeight: 700 }}>
+                  Return Requests History
+                </Typography>
+              </Stack>
+
               {isReturnsLoading ? (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                  <Loader2 className="spinner" size={16} />
-                  <span>Loading return history...</span>
-                </div>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                  <CircularProgress size={16} sx={{ color: TELCO_CYAN }} />
+                  <Typography variant="body2" color="text.secondary">Loading return history...</Typography>
+                </Stack>
               ) : !returns || returns.length === 0 ? (
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '12px 0' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ py: 1.5 }}>
                   No return requests submitted yet.
-                </div>
+                </Typography>
               ) : (
-                <div className="table-wrap">
-                  <table className="lines-table">
-                    <thead>
-                      <tr>
-                        <th>RAN</th>
-                        <th>Suborder ID</th>
-                        <th>SKU</th>
-                        <th>Quantity</th>
-                        <th>Reason</th>
-                        <th>Status</th>
-                        <th>Requested Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>RAN</TableCell>
+                        <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Suborder ID</TableCell>
+                        <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>SKU</TableCell>
+                        <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Quantity</TableCell>
+                        <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Reason</TableCell>
+                        <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Status</TableCell>
+                        <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Requested Date</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
                       {returns.map((ret: any) => {
                         const subRefStr = ret.suborder_reference ? String(ret.suborder_reference) : ''
                         const subRefDisplay = subRefStr ? `${subRefStr.slice(0, 8)}...` : 'N/A'
@@ -1938,420 +1181,532 @@ export default function TelcoCellularPage() {
                         const displayQty = ret.return_quantity ?? ret.quantity ?? 1
 
                         return (
-                          <tr key={ret.id || Math.random()}>
-                            <td className="mono" style={{ color: '#20D1F2', fontWeight: 600 }}>{ret.ran || 'N/A'}</td>
-                            <td className="mono">{subRefDisplay}</td>
-                            <td className="mono">{ret.sku || 'N/A'}</td>
-                            <td>{displayQty}</td>
-                            <td>{ret.reason || 'N/A'}</td>
-                            <td>
-                              <span className={`suborder-status ${rawStatus.includes('refund') ? 'status-badge-delivered' : 'status-badge-pending'}`}>
-                                {statusDisplay}
-                              </span>
-                            </td>
-                            <td>{ret.created_at ? new Date(ret.created_at).toLocaleDateString() : new Date().toLocaleDateString()}</td>
-                          </tr>
+                          <TableRow key={ret.id || Math.random()} sx={{ '&:last-child td': { borderBottom: 'none' } }}>
+                            <TableCell sx={{ borderColor: '#1e293b', color: TELCO_CYAN, fontWeight: 600, fontFamily: MONO_FONT }}>{ret.ran || 'N/A'}</TableCell>
+                            <TableCell sx={{ borderColor: '#1e293b', fontFamily: MONO_FONT, color: '#cbd5e1' }}>{subRefDisplay}</TableCell>
+                            <TableCell sx={{ borderColor: '#1e293b', fontFamily: MONO_FONT, color: '#cbd5e1' }}>{ret.sku || 'N/A'}</TableCell>
+                            <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{displayQty}</TableCell>
+                            <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{ret.reason || 'N/A'}</TableCell>
+                            <TableCell sx={{ borderColor: '#1e293b' }}>
+                              <StatusChip status={rawStatus.includes('refund') ? 'completed' : 'pending'} label={statusDisplay} />
+                            </TableCell>
+                            <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>
+                              {formatDate(ret.created_at || new Date().toISOString())}
+                            </TableCell>
+                          </TableRow>
                         )
                       })}
-                    </tbody>
-                  </table>
-                </div>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               )}
-            </div>
-          </div>
+            </Paper>
+          </Box>
         )}
-      </div>
+      </Box>
 
-      {/* Return Request Modal */}
-      {returnModalOpen && returnTarget && (
-        <div className="telco-overlay" onClick={() => setReturnModalOpen(false)}>
-          <div className="telco-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
-            <div className="telco-modal-header">
-              <h3>Submit Return Request</h3>
-              <button className="telco-modal-close" onClick={() => setReturnModalOpen(false)}>
-                <X size={16} />
-              </button>
-            </div>
-            <div className="telco-modal-content" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                You are requesting a return for item <strong style={{ color: '#20D1F2' }}>{returnTarget.line.product_name}</strong>.
-              </div>
+      {/* ── Return Request Modal ── */}
+      <Dialog
+        open={returnModalOpen && !!returnTarget}
+        onClose={() => setReturnModalOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { bgcolor: TELCO_PAPER, borderColor: TELCO_BORDER, border: `1px solid ${TELCO_BORDER}` } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: TELCO_CYAN, fontWeight: 700 }}>
+          Submit Return Request
+          <IconButton size="small" onClick={() => setReturnModalOpen(false)} sx={{ color: 'text.secondary' }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.75, pt: '8px !important' }}>
+          {returnTarget && (
+            <>
+              <Typography variant="body2" color="text.secondary">
+                You are requesting a return for item <Typography component="span" sx={{ color: TELCO_CYAN, fontWeight: 600 }}>{returnTarget.line.product_name}</Typography>.
+              </Typography>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>SKU</span>
-                  <span className="mono" style={{ fontSize: 13 }}>{returnTarget.line.sku}</span>
-                </div>
-                <div>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Ordered Qty</span>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{returnTarget.line.quantity}</span>
-                </div>
-              </div>
+              <Grid container spacing={1.5}>
+                <Grid size={6}>
+                  <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 0.5 }}>SKU</Typography>
+                  <Typography variant="body2" sx={{ fontFamily: MONO_FONT }}>{returnTarget.line.sku}</Typography>
+                </Grid>
+                <Grid size={6}>
+                  <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 0.5 }}>Ordered Qty</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{returnTarget.line.quantity}</Typography>
+                </Grid>
+              </Grid>
 
-              <div>
-                <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Return Quantity</label>
-                <input
-                  type="number"
-                  min="1"
-                  max={returnTarget.line.quantity}
-                  className="telco-select"
-                  style={{ width: '100%', boxSizing: 'border-box' }}
-                  value={returnQty}
-                  onChange={e => setReturnQty(Math.min(returnTarget.line.quantity, Math.max(1, Number(e.target.value))))}
-                />
-              </div>
+              <TextField
+                label="Return Quantity"
+                type="number"
+                size="small"
+                fullWidth
+                slotProps={{ htmlInput: { min: 1, max: returnTarget.line.quantity } }}
+                value={returnQty}
+                onChange={e => setReturnQty(Math.min(returnTarget.line.quantity, Math.max(1, Number(e.target.value))))}
+                sx={{
+                  '& .MuiOutlinedInput-root': { bgcolor: TELCO_ELEVATED },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER },
+                }}
+              />
 
-              <div>
-                <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Reason for Return</label>
-                <textarea
-                  className="telco-select"
-                  style={{ width: '100%', minHeight: 80, padding: 8, boxSizing: 'border-box', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, color: '#f1f5f9', fontFamily: 'inherit', fontSize: 13 }}
-                  placeholder="Describe why you want to return this product..."
-                  value={returnReason}
-                  onChange={e => setReturnReason(e.target.value)}
-                />
-              </div>
+              <TextField
+                label="Reason for Return"
+                multiline
+                minRows={3}
+                fullWidth
+                placeholder="Describe why you want to return this product..."
+                value={returnReason}
+                onChange={e => setReturnReason(e.target.value)}
+                sx={{
+                  '& .MuiOutlinedInput-root': { bgcolor: TELCO_ELEVATED },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER },
+                }}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setReturnModalOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={returnMutation.isPending}
+            onClick={handleRequestReturn}
+            startIcon={returnMutation.isPending ? <CircularProgress size={14} color="inherit" /> : undefined}
+            sx={{
+              background: `linear-gradient(135deg, ${TELCO_CYAN} 0%, #006488 100%)`,
+              color: '#fff',
+              '&:hover': { filter: 'brightness(1.1)' },
+            }}
+          >
+            {returnMutation.isPending ? 'Submitting request...' : 'Submit Return Request'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-              <button
-                className="telco-checkout-btn"
-                style={{ marginTop: 8 }}
-                disabled={returnMutation.isPending}
-                onClick={handleRequestReturn}
-              >
-                {returnMutation.isPending ? (
-                  <>
-                    <Loader2 className="spinner" size={14} />
-                    Submitting request...
-                  </>
-                ) : (
-                  'Submit Return Request'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Floating Cart Trigger Button */}
+      {/* ── Floating Cart FAB ── */}
       {cart.length > 0 && (
-        <div className="telco-cart-trigger" onClick={() => setIsCartOpen(true)}>
-          <ShoppingCart size={24} style={{ color: '#fff' }} />
-          <span className="telco-cart-badge-count">
-            {cart.reduce((sum, item) => sum + item.qty, 0)}
-          </span>
-        </div>
+        <Fab
+          onClick={() => setIsCartOpen(true)}
+          sx={{
+            position: 'fixed',
+            bottom: 30,
+            right: 30,
+            background: `linear-gradient(135deg, ${TELCO_CYAN} 0%, #006488 100%)`,
+            boxShadow: `0 4px 20px rgba(32, 209, 242, 0.4)`,
+            '&:hover': { transform: 'scale(1.05)' },
+            zIndex: 998,
+          }}
+        >
+          <Badge badgeContent={cartItemCount} color="error">
+            <ShoppingCartIcon sx={{ color: '#fff' }} />
+          </Badge>
+        </Fab>
       )}
 
-      {/* Cart Drawer Sliding Panel */}
-      <div className={`telco-cart-drawer ${isCartOpen ? 'open' : ''}`}>
-        <div className="telco-cart-header">
-          <h2>
-            <ShoppingCart size={18} />
-            Your Cart
-          </h2>
-          <button className="telco-cart-close" onClick={() => setIsCartOpen(false)}>
-            <X size={20} />
-          </button>
-        </div>
+      {/* ── Cart Drawer ── */}
+      <Drawer
+        anchor="right"
+        open={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        slotProps={{ paper: { sx: { width: 380, bgcolor: TELCO_PAPER, borderLeft: `1px solid ${TELCO_BORDER}` } } }}
+      >
+        {/* Cart Header */}
+        <Box sx={{ px: 2.5, py: 2, borderBottom: `1px solid ${TELCO_BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <ShoppingCartIcon sx={{ fontSize: 18, color: TELCO_CYAN }} />
+            <Typography variant="h4" sx={{ color: TELCO_CYAN, fontWeight: 700 }}>Your Cart</Typography>
+          </Stack>
+          <IconButton size="small" onClick={() => setIsCartOpen(false)} sx={{ color: 'text.secondary' }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
 
-        <div className="telco-cart-items">
+        {/* Cart Items */}
+        <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {cart.length === 0 ? (
-            <div className="empty-state" style={{ height: '100%' }}>
-              <ShoppingCart size={32} />
-              <div>Your cart is empty</div>
-              <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Browse accessories and add them here to test procurement.</p>
-            </div>
+            <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+              <ShoppingCartIcon sx={{ fontSize: 32, color: 'text.disabled' }} />
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>Your cart is empty</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Browse accessories and add them here to test procurement.
+              </Typography>
+            </Box>
           ) : (
             cart.map(item => (
-              <div className="telco-cart-item" key={item.id}>
-                <div className="telco-cart-item-img">
+              <Paper
+                key={item.id}
+                variant="outlined"
+                sx={{
+                  display: 'flex',
+                  gap: 1.25,
+                  bgcolor: TELCO_ELEVATED,
+                  borderColor: TELCO_BORDER,
+                  p: 1.25,
+                  alignItems: 'center',
+                }}
+              >
+                {/* Item image */}
+                <Box
+                  sx={{
+                    width: 50, height: 50, bgcolor: '#0f172a',
+                    borderRadius: 0.75, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', flexShrink: 0,
+                    border: `1px solid ${TELCO_BORDER}`,
+                  }}
+                >
                   {item.primary_image_url ? (
-                    <img src={item.primary_image_url} alt={item.name} />
+                    <Box component="img" src={getImageUrl(item.primary_image_url)} alt={item.name} sx={{ maxWidth: '90%', maxHeight: 45, objectFit: 'contain' }} />
                   ) : (
-                    <ShoppingBag size={20} style={{ color: 'var(--text-muted)' }} />
+                    <ShoppingBagIcon sx={{ fontSize: 20, color: 'text.disabled' }} />
                   )}
-                </div>
-                <div className="telco-cart-item-details">
-                  <div className="telco-cart-item-name" title={item.name}>{item.name}</div>
-                  <div className="telco-cart-item-price">${(item.price * item.qty).toFixed(2)}</div>
-                </div>
-                <div className="telco-cart-item-actions">
-                  <div className="telco-qty-controls">
-                    <button className="telco-qty-btn" onClick={() => updateQty(item.id, -1)}><Minus size={10} /></button>
-                    <span className="telco-qty-val">{item.qty}</span>
-                    <button className="telco-qty-btn" onClick={() => updateQty(item.id, 1)}><Plus size={10} /></button>
-                  </div>
-                  <button className="telco-cart-item-remove" onClick={() => removeFromCart(item.id)}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
+                </Box>
+
+                {/* Item details */}
+                <Box sx={{ flex: 1 }}>
+                  <Tooltip title={item.name}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: 600,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        fontSize: 12,
+                      }}
+                    >
+                      {item.name}
+                    </Typography>
+                  </Tooltip>
+                  <Typography variant="caption" sx={{ color: TELCO_CYAN, fontWeight: 600 }}>
+                    {formatCurrency(item.price * item.qty)}
+                  </Typography>
+                </Box>
+
+                {/* Qty controls & remove */}
+                <Stack spacing={0.75} sx={{ alignItems: 'flex-end' }}>
+                  <Stack direction="row" sx={{ alignItems: 'center', bgcolor: '#0f172a', border: `1px solid ${TELCO_BORDER}`, borderRadius: 0.5, overflow: 'hidden' }}>
+                    <IconButton size="small" onClick={() => updateQty(item.id, -1)} sx={{ borderRadius: 0, width: 28, height: 28, color: 'text.secondary' }}>
+                      <RemoveIcon sx={{ fontSize: 12 }} />
+                    </IconButton>
+                    <Typography variant="body2" sx={{ fontWeight: 600, px: 0.5, minWidth: 16, textAlign: 'center', fontSize: 11 }}>
+                      {item.qty}
+                    </Typography>
+                    <IconButton size="small" onClick={() => updateQty(item.id, 1)} sx={{ borderRadius: 0, width: 28, height: 28, color: 'text.secondary' }}>
+                      <AddIcon sx={{ fontSize: 12 }} />
+                    </IconButton>
+                  </Stack>
+                  <IconButton size="small" onClick={() => removeFromCart(item.id)} sx={{ color: 'text.disabled', '&:hover': { color: 'error.main' } }}>
+                    <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </Stack>
+              </Paper>
             ))
           )}
-        </div>
+        </Box>
 
+        {/* Cart Footer */}
         {cart.length > 0 && (
-          <div className="telco-cart-footer">
-            <div className="telco-summary-row">
-              <span>Subtotal</span>
-              <span>${cartSubtotal.toFixed(2)}</span>
-            </div>
-            <div className="telco-summary-row">
-              <span>Estimated Tax (7.25%)</span>
-              <span>${cartTax.toFixed(2)}</span>
-            </div>
-            <div className="telco-summary-row total">
-              <span>Total</span>
-              <span>${cartTotal.toFixed(2)}</span>
-            </div>
+          <Box sx={{ borderTop: `1px solid ${TELCO_BORDER}`, p: 2.5, bgcolor: '#0f172a', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+              <Typography variant="body2" color="text.secondary">Subtotal</Typography>
+              <Typography variant="body2" color="text.secondary">{formatCurrency(cartSubtotal)}</Typography>
+            </Stack>
+            <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+              <Typography variant="body2" color="text.secondary">Estimated Tax (7.25%)</Typography>
+              <Typography variant="body2" color="text.secondary">{formatCurrency(cartTax)}</Typography>
+            </Stack>
+            <Divider sx={{ borderColor: TELCO_BORDER }} />
+            <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+              <Typography variant="body1" sx={{ fontWeight: 700, color: TELCO_CYAN }}>Total</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700, color: TELCO_CYAN }}>{formatCurrency(cartTotal)}</Typography>
+            </Stack>
 
-            <button
-              className="telco-checkout-btn"
+            <Button
+              variant="contained"
+              fullWidth
               disabled={checkoutMutation.isPending}
               onClick={() => {
                 setIsCartOpen(false)
                 setCheckoutError(null)
                 setIsCheckoutOpen(true)
               }}
+              sx={{
+                background: `linear-gradient(135deg, ${TELCO_CYAN} 0%, #006488 100%)`,
+                color: '#fff',
+                fontWeight: 700,
+                py: 1.5,
+                '&:hover': { filter: 'brightness(1.1)' },
+              }}
             >
               Proceed to Test Checkout
-            </button>
-          </div>
+            </Button>
+          </Box>
         )}
-      </div>
+      </Drawer>
 
-      {/* Checkout/Order confirmation modal */}
-      {isCheckoutOpen && (
-        <div className="telco-overlay" onClick={() => setIsCheckoutOpen(false)}>
-          <div className="telco-modal" onClick={e => e.stopPropagation()}>
-            <div className="telco-modal-header">
-              <h3>Confirm Test Purchase Order</h3>
-              <button className="telco-modal-close" onClick={() => setIsCheckoutOpen(false)}>
-                <X size={16} />
-              </button>
-            </div>
+      {/* ── Checkout Dialog ── */}
+      <Dialog
+        open={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{ paper: { sx: { bgcolor: TELCO_PAPER, borderColor: TELCO_BORDER, border: `1px solid ${TELCO_BORDER}` } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: TELCO_CYAN, fontWeight: 700 }}>
+          Confirm Test Purchase Order
+          <IconButton size="small" onClick={() => setIsCheckoutOpen(false)} sx={{ color: 'text.secondary' }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
 
-            <div className="telco-modal-content">
-              {checkoutResult ? (
-                // Success State
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', textAlign: 'center', padding: '10px 0' }}>
-                  <CheckCircle size={44} style={{ color: '#22c55e' }} />
-                  <h4 style={{ color: '#f1f5f9', fontWeight: 700 }}>Order Submitted Successfully!</h4>
-                  <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    Your simulated order has been registered as a Purchase Order in the CIXCI coordination layer.
-                  </p>
-                  
-                  <div className="table-wrap" style={{ width: '100%', padding: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 8 }}>
-                      <span style={{ color: 'var(--text-muted)' }}>PO Number:</span>
-                      <strong className="mono" style={{ color: '#20D1F2' }}>{checkoutResult.po_number}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 8 }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Order ID:</span>
-                      <span className="mono">{checkoutResult.id}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 8 }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Status:</span>
-                      <span className="badge badge-amber">{checkoutResult.status?.replace(/_/g, ' ')}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Total Amount:</span>
-                      <strong>${Number(checkoutResult.total_amount).toFixed(2)}</strong>
-                    </div>
-                  </div>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
+          {checkoutResult ? (
+            /* ── Success State ── */
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75, alignItems: 'center', textAlign: 'center', py: 1.25 }}>
+              <CheckCircleIcon sx={{ fontSize: 44, color: 'success.main' }} />
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>Order Submitted Successfully!</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Your simulated order has been registered as a Purchase Order in the CIXCI coordination layer.
+              </Typography>
 
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      setIsCheckoutOpen(false)
-                      setCheckoutResult(null)
-                    }}
-                    style={{ marginTop: 10 }}
-                  >
-                    Continue Shopping
-                  </button>
-                </div>
-              ) : (
-                // Checkout confirmation state
-                <>
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    You are placing a simulated procurement Purchase Order for testing purposes.
-                  </div>
+              <Paper variant="outlined" sx={{ width: '100%', p: 1.5, bgcolor: TELCO_ELEVATED, borderColor: TELCO_BORDER }}>
+                <Stack spacing={1}>
+                  <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">PO Number:</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700, fontFamily: MONO_FONT, color: TELCO_CYAN }}>{checkoutResult.po_number}</Typography>
+                  </Stack>
+                  <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">Order ID:</Typography>
+                    <Typography variant="body2" sx={{ fontFamily: MONO_FONT }}>{checkoutResult.id}</Typography>
+                  </Stack>
+                  <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">Status:</Typography>
+                    <StatusChip status={checkoutResult.status || 'pending'} />
+                  </Stack>
+                  <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">Total Amount:</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatCurrency(checkoutResult.total_amount)}</Typography>
+                  </Stack>
+                </Stack>
+              </Paper>
 
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                    background: 'var(--bg-elevated)',
-                    padding: 12,
-                    borderRadius: 'var(--radius)',
-                    border: '1px solid var(--border)',
-                    marginTop: 10
-                  }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
-                      Shipping Address (Test Customer)
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <div>
-                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>First Name</label>
-                        <input
-                          className="telco-select"
-                          style={{ width: '100%', boxSizing: 'border-box' }}
-                          value={firstName}
-                          onChange={e => setFirstName(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Last Name</label>
-                        <input
-                          className="telco-select"
-                          style={{ width: '100%', boxSizing: 'border-box' }}
-                          value={lastName}
-                          onChange={e => setLastName(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Address Line 1</label>
-                      <input
-                        className="telco-select"
-                        style={{ width: '100%', boxSizing: 'border-box' }}
-                        value={address1}
-                        onChange={e => setAddress1(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Address Line 2 (Opt)</label>
-                      <input
-                        className="telco-select"
-                        style={{ width: '100%', boxSizing: 'border-box' }}
-                        value={address2}
-                        onChange={e => setAddress2(e.target.value)}
-                      />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px', gap: 8 }}>
-                      <div>
-                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>City</label>
-                        <input
-                          className="telco-select"
-                          style={{ width: '100%', boxSizing: 'border-box' }}
-                          value={city}
-                          onChange={e => setCity(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>State</label>
-                        <input
-                          className="telco-select"
-                          style={{ width: '100%', boxSizing: 'border-box' }}
-                          value={state}
-                          onChange={e => setState(e.target.value.toUpperCase())}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Zip Code</label>
-                        <input
-                          className="telco-select"
-                          style={{ width: '100%', boxSizing: 'border-box' }}
-                          value={zipCode}
-                          onChange={e => setZipCode(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setIsCheckoutOpen(false)
+                  setCheckoutResult(null)
+                }}
+                sx={{ mt: 1.25 }}
+              >
+                Continue Shopping
+              </Button>
+            </Box>
+          ) : (
+            /* ── Checkout Confirmation State ── */
+            <>
+              <Typography variant="body2" color="text.secondary">
+                You are placing a simulated procurement Purchase Order for testing purposes.
+              </Typography>
 
-                  {checkoutError && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8 }}>
-                      <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
-                      <span style={{ fontSize: 12, color: '#fca5a5' }}>{checkoutError}</span>
-                    </div>
-                  )}
-                  
-                  <div className="table-wrap" style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Item</th>
-                          <th>Qty</th>
-                          <th style={{ textAlign: 'right' }}>Price</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cart.map(item => (
-                          <tr key={item.id}>
-                            <td style={{ fontSize: 12 }}>{item.name}</td>
-                            <td>{item.qty}</td>
-                            <td style={{ textAlign: 'right', fontSize: 12 }}>${(item.price * item.qty).toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+              <Paper variant="outlined" sx={{ bgcolor: TELCO_ELEVATED, borderColor: TELCO_BORDER, p: 1.5, mt: 1.25 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, borderBottom: `1px solid ${TELCO_BORDER}`, pb: 0.75, mb: 1.25 }}>
+                  Shipping Address (Test Customer)
+                </Typography>
+                <Grid container spacing={1}>
+                  <Grid size={6}>
+                    <TextField
+                      label="First Name"
+                      size="small"
+                      fullWidth
+                      value={firstName}
+                      onChange={e => setFirstName(e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { bgcolor: TELCO_ELEVATED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER } }}
+                    />
+                  </Grid>
+                  <Grid size={6}>
+                    <TextField
+                      label="Last Name"
+                      size="small"
+                      fullWidth
+                      value={lastName}
+                      onChange={e => setLastName(e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { bgcolor: TELCO_ELEVATED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER } }}
+                    />
+                  </Grid>
+                  <Grid size={12}>
+                    <TextField
+                      label="Address Line 1"
+                      size="small"
+                      fullWidth
+                      value={address1}
+                      onChange={e => setAddress1(e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { bgcolor: TELCO_ELEVATED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER } }}
+                    />
+                  </Grid>
+                  <Grid size={12}>
+                    <TextField
+                      label="Address Line 2 (Opt)"
+                      size="small"
+                      fullWidth
+                      value={address2}
+                      onChange={e => setAddress2(e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { bgcolor: TELCO_ELEVATED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER } }}
+                    />
+                  </Grid>
+                  <Grid size={6}>
+                    <TextField
+                      label="City"
+                      size="small"
+                      fullWidth
+                      value={city}
+                      onChange={e => setCity(e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { bgcolor: TELCO_ELEVATED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER } }}
+                    />
+                  </Grid>
+                  <Grid size={3}>
+                    <TextField
+                      label="State"
+                      size="small"
+                      fullWidth
+                      value={state}
+                      onChange={e => setState(e.target.value.toUpperCase())}
+                      sx={{ '& .MuiOutlinedInput-root': { bgcolor: TELCO_ELEVATED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER } }}
+                    />
+                  </Grid>
+                  <Grid size={3}>
+                    <TextField
+                      label="Zip Code"
+                      size="small"
+                      fullWidth
+                      value={zipCode}
+                      onChange={e => setZipCode(e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { bgcolor: TELCO_ELEVATED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: TELCO_BORDER } }}
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
 
-                  <div className="divider" style={{ margin: '4px 0' }} />
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Subtotal:</span>
-                      <span>${cartSubtotal.toFixed(2)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Estimated Tax (7.25%):</span>
-                      <span>${cartTax.toFixed(2)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#20D1F2' }}>
-                      <span>Total:</span>
-                      <span>${cartTotal.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    className="telco-checkout-btn"
-                    disabled={checkoutMutation.isPending}
-                    onClick={() => {
-                      setCheckoutError(null)
-                      handlePlaceOrder()
-                    }}
-                    style={{ marginTop: 10 }}
-                  >
-                    {checkoutMutation.isPending ? (
-                      <>
-                        <Loader2 className="spinner" style={{ width: 14, height: 14 }} />
-                        Submitting PO...
-                      </>
-                    ) : (
-                      'Confirm & Place Order'
-                    )}
-                  </button>
-                </>
+              {checkoutError && (
+                <Alert severity="error" variant="outlined" icon={<ErrorOutlineIcon />} sx={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+                  {checkoutError}
+                </Alert>
               )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Product Details Modal */}
-      {selectedProduct && (
-        <div className="telco-overlay" style={{ zIndex: 1050 }} onClick={() => setSelectedProduct(null)}>
-          <div className="telco-modal telco-product-detail-modal" onClick={e => e.stopPropagation()}>
-            <div className="telco-modal-header" style={{ padding: '16px 24px', borderBottom: '1px solid #1f2d45' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ShoppingBag size={20} style={{ color: '#20D1F2' }} />
-                <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc', margin: 0 }}>Product Specifications & Details</h3>
-                  <span style={{ fontSize: 11, color: '#64748b' }}>Catalog Reference ID #{String(selectedProduct.id).slice(0, 8)}</span>
-                </div>
-              </div>
-              <button className="telco-modal-close" onClick={() => setSelectedProduct(null)}>
-                <X size={20} />
-              </button>
-            </div>
+              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 200, bgcolor: TELCO_ELEVATED, borderColor: TELCO_BORDER }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ bgcolor: TELCO_PAPER, borderColor: TELCO_BORDER }}>Item</TableCell>
+                      <TableCell sx={{ bgcolor: TELCO_PAPER, borderColor: TELCO_BORDER }}>Qty</TableCell>
+                      <TableCell sx={{ bgcolor: TELCO_PAPER, borderColor: TELCO_BORDER, textAlign: 'right' }}>Price</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {cart.map(item => (
+                      <TableRow key={item.id}>
+                        <TableCell sx={{ borderColor: TELCO_BORDER, fontSize: 12 }}>{item.name}</TableCell>
+                        <TableCell sx={{ borderColor: TELCO_BORDER }}>{item.qty}</TableCell>
+                        <TableCell sx={{ borderColor: TELCO_BORDER, textAlign: 'right', fontSize: 12 }}>{formatCurrency(item.price * item.qty)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
 
-            <div className="detail-modal-body">
+              <Divider sx={{ borderColor: TELCO_BORDER }} />
+
+              <Stack spacing={0.75}>
+                <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">Subtotal:</Typography>
+                  <Typography variant="body2">{formatCurrency(cartSubtotal)}</Typography>
+                </Stack>
+                <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">Estimated Tax (7.25%):</Typography>
+                  <Typography variant="body2">{formatCurrency(cartTax)}</Typography>
+                </Stack>
+                <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                  <Typography variant="body1" sx={{ fontWeight: 700, color: TELCO_CYAN }}>Total:</Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 700, color: TELCO_CYAN }}>{formatCurrency(cartTotal)}</Typography>
+                </Stack>
+              </Stack>
+            </>
+          )}
+        </DialogContent>
+
+        {!checkoutResult && (
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setIsCheckoutOpen(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              disabled={checkoutMutation.isPending}
+              onClick={() => {
+                setCheckoutError(null)
+                handlePlaceOrder()
+              }}
+              startIcon={checkoutMutation.isPending ? <CircularProgress size={14} color="inherit" /> : undefined}
+              sx={{
+                background: `linear-gradient(135deg, ${TELCO_CYAN} 0%, #006488 100%)`,
+                color: '#fff',
+                fontWeight: 700,
+                '&:hover': { filter: 'brightness(1.1)' },
+              }}
+            >
+              {checkoutMutation.isPending ? 'Submitting PO...' : 'Confirm & Place Order'}
+            </Button>
+          </DialogActions>
+        )}
+      </Dialog>
+
+      {/* ── Product Details Dialog ── */}
+      <Dialog
+        open={!!selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+        maxWidth="md"
+        fullWidth
+        slotProps={{ paper: { sx: { bgcolor: '#0f172a', border: `1px solid ${TELCO_CYAN}`, boxShadow: `0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(32, 209, 242, 0.15)`, maxHeight: '92vh' } } }}
+      >
+        {selectedProduct && (
+          <>
+            <DialogTitle
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                px: 3,
+                py: 2,
+                borderBottom: `1px solid ${TELCO_BORDER}`,
+              }}
+            >
+              <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
+                <ShoppingBagIcon sx={{ fontSize: 20, color: TELCO_CYAN }} />
+                <Box>
+                  <Typography variant="h4" sx={{ color: '#f8fafc', fontWeight: 700, fontSize: 16 }}>
+                    Product Specifications & Details
+                  </Typography>
+                  <Typography variant="caption" color="text.disabled">
+                    Catalog Reference ID #{String(selectedProduct.id).slice(0, 8)}
+                  </Typography>
+                </Box>
+              </Stack>
+              <IconButton size="small" onClick={() => setSelectedProduct(null)} sx={{ color: 'text.secondary' }}>
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
+
+            <DialogContent sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
               {/* Top Grid: Media Gallery & Key Info */}
-              <div className="detail-top-grid">
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '320px 1fr' },
+                  gap: 3,
+                }}
+              >
                 {/* Left Media Gallery */}
-                <div className="detail-media-gallery">
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                   {(() => {
                     const allImages = [
                       selectedProduct.primary_image_url,
@@ -2362,54 +1717,120 @@ export default function TelcoCellularPage() {
 
                     return (
                       <>
-                        <div className="detail-main-img-wrap">
+                        <Box
+                          sx={{
+                            width: '100%',
+                            height: 260,
+                            bgcolor: '#090d16',
+                            border: `1px solid ${TELCO_BORDER}`,
+                            borderRadius: 1.25,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            p: 2,
+                            overflow: 'hidden',
+                          }}
+                        >
                           {currentImg ? (
-                            <img src={currentImg} alt={selectedProduct.name} />
+                            <Box component="img" src={getImageUrl(currentImg)} alt={selectedProduct.name} sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                           ) : (
-                            <ShoppingBag size={72} style={{ color: '#334155' }} />
+                            <ShoppingBagIcon sx={{ fontSize: 72, color: '#334155' }} />
                           )}
-                        </div>
+                        </Box>
 
                         {allImages.length > 1 && (
-                          <div className="detail-thumbnails">
+                          <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5 }}>
                             {allImages.map((img, idx) => (
-                              <div
+                              <Box
                                 key={idx}
-                                className={`detail-thumb ${activeImageIndex === idx ? 'active' : ''}`}
                                 onClick={() => setActiveImageIndex(idx)}
+                                sx={{
+                                  width: 54,
+                                  height: 54,
+                                  borderRadius: 0.75,
+                                  bgcolor: '#090d16',
+                                  border: `1px solid ${activeImageIndex === idx ? TELCO_CYAN : TELCO_BORDER}`,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  p: 0.5,
+                                  flexShrink: 0,
+                                  transition: 'all 0.2s',
+                                  boxShadow: activeImageIndex === idx ? `0 0 10px rgba(32, 209, 242, 0.3)` : 'none',
+                                  '&:hover': { borderColor: TELCO_CYAN, boxShadow: `0 0 10px rgba(32, 209, 242, 0.3)` },
+                                }}
                               >
-                                <img src={img} alt={`Thumb ${idx}`} />
-                              </div>
+                                <Box component="img" src={getImageUrl(img)} alt={`Thumb ${idx}`} sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                              </Box>
                             ))}
-                          </div>
+                          </Stack>
                         )}
                       </>
                     )
                   })()}
-                </div>
+                </Box>
 
                 {/* Right Key Information & Purchase Pane */}
-                <div className="detail-info-pane">
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75 }}>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
                     {selectedProduct.brand && (
-                      <div className="detail-brand-badge">{selectedProduct.brand}</div>
+                      <Chip
+                        label={selectedProduct.brand}
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(32, 209, 242, 0.1)',
+                          color: TELCO_CYAN,
+                          border: '1px solid rgba(32, 209, 242, 0.2)',
+                          fontWeight: 700,
+                          fontSize: 11,
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.8,
+                        }}
+                      />
                     )}
                     {selectedProduct.product_category && (
-                      <span className="telco-card-spec-pill" style={{ borderColor: '#20D1F2', color: '#20D1F2' }}>
-                        {selectedProduct.product_category}
-                      </span>
+                      <Chip
+                        label={selectedProduct.product_category}
+                        size="small"
+                        sx={{
+                          bgcolor: 'transparent',
+                          border: `1px solid ${TELCO_CYAN}`,
+                          color: TELCO_CYAN,
+                          fontSize: 11,
+                        }}
+                      />
                     )}
                     {selectedProduct.recommended_accessory && (
-                      <span className="telco-card-badge" style={{ position: 'static' }}>★ Recommended</span>
+                      <Chip
+                        icon={<StarIcon sx={{ fontSize: '14px !important', color: '#fff !important' }} />}
+                        label="Recommended"
+                        size="small"
+                        sx={{
+                          background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                          color: '#fff',
+                          fontSize: 9,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                        }}
+                      />
                     )}
-                  </div>
+                  </Stack>
 
-                  <h2 className="detail-product-title">{selectedProduct.name}</h2>
+                  <Typography variant="h2" sx={{ fontSize: 18, fontWeight: 800, color: '#f8fafc', lineHeight: 1.3 }}>
+                    {selectedProduct.name}
+                  </Typography>
 
-                  <div className="detail-sku-row">
-                    <span>SKU: <strong className="mono" style={{ color: '#f1f5f9' }}>{selectedProduct.sku}</strong></span>
-                    {selectedProduct.upc && <span>UPC: <strong className="mono" style={{ color: '#f1f5f9' }}>{selectedProduct.upc}</strong></span>}
-                  </div>
+                  <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      SKU: <Typography component="span" sx={{ fontFamily: MONO_FONT, fontWeight: 600, color: '#f1f5f9' }}>{selectedProduct.sku}</Typography>
+                    </Typography>
+                    {selectedProduct.upc && (
+                      <Typography variant="body2" color="text.secondary">
+                        UPC: <Typography component="span" sx={{ fontFamily: MONO_FONT, fontWeight: 600, color: '#f1f5f9' }}>{selectedProduct.upc}</Typography>
+                      </Typography>
+                    )}
+                  </Stack>
 
                   {/* Price Box */}
                   {(() => {
@@ -2422,319 +1843,332 @@ export default function TelcoCellularPage() {
 
                     return (
                       <>
-                        <div className="detail-price-card">
-                          <div className="detail-price-left">
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                              <span className="detail-price-main">${displayPrice.toFixed(2)}</span>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            bgcolor: TELCO_PAPER,
+                            borderColor: TELCO_BORDER,
+                            borderRadius: 1.25,
+                            px: 2.25,
+                            py: 1.75,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <Box>
+                            <Stack direction="row" spacing={1.25} sx={{ alignItems: 'baseline' }}>
+                              <Typography sx={{ fontSize: 24, fontWeight: 800, color: TELCO_CYAN }}>
+                                {formatCurrency(displayPrice)}
+                              </Typography>
                               {salePrice > 0 && srp > salePrice && (
-                                <span className="detail-price-msrp">${srp.toFixed(2)}</span>
+                                <Typography sx={{ fontSize: 13, color: 'text.disabled', textDecoration: 'line-through' }}>
+                                  {formatCurrency(srp)}
+                                </Typography>
                               )}
-                            </div>
-                            <span style={{ fontSize: 11, color: '#64748b' }}>Unit Price (USD)</span>
-                          </div>
+                            </Stack>
+                            <Typography variant="caption" color="text.disabled">Unit Price (USD)</Typography>
+                          </Box>
 
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                          <Stack spacing={0.5} sx={{ alignItems: 'flex-end' }}>
                             {savings > 0 && (
-                              <div className="detail-save-tag">
-                                Save ${savings.toFixed(2)} ({savingsPct}% OFF)
-                              </div>
+                              <Chip
+                                label={`Save ${formatCurrency(savings)} (${savingsPct}% OFF)`}
+                                size="small"
+                                sx={{
+                                  bgcolor: 'rgba(34, 197, 94, 0.15)',
+                                  color: '#4ade80',
+                                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                                  fontWeight: 700,
+                                  fontSize: 11,
+                                }}
+                              />
                             )}
-                            <div>
-                              {isOutOfStock ? (
-                                <span className="telco-status-out">Out of Stock</span>
-                              ) : (
-                                <span className="telco-status-active" style={{ fontSize: 12 }}>
-                                  ✓ In Stock ({selectedProduct.inventory_level || 0} units available)
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                            {isOutOfStock ? (
+                              <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'error.main' }}>Out of Stock</Typography>
+                            ) : (
+                              <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                                <CheckCircleIcon sx={{ fontSize: 14, color: 'success.main' }} />
+                                <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'success.main' }}>
+                                  In Stock ({selectedProduct.inventory_level || 0} units available)
+                                </Typography>
+                              </Stack>
+                            )}
+                          </Stack>
+                        </Paper>
 
                         {/* Quick specs pills */}
-                        <div className="detail-specs-quick">
+                        <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
                           {selectedProduct.color && (
-                            <span className="detail-quick-pill">
-                              <span className="telco-color-swatch" style={{ background: selectedProduct.color.toLowerCase() }} />
-                              Color: {selectedProduct.color}
-                            </span>
+                            <Chip
+                              size="small"
+                              label={
+                                <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: selectedProduct.color.toLowerCase(), border: '1px solid rgba(255,255,255,0.2)' }} />
+                                  <span>Color: {selectedProduct.color}</span>
+                                </Stack>
+                              }
+                              sx={{ bgcolor: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', fontSize: 11 }}
+                            />
                           )}
                           {selectedProduct.bluetooth_compatibility && (
-                            <span className="detail-quick-pill">Bluetooth {selectedProduct.bluetooth_compatibility}</span>
+                            <Chip size="small" label={`Bluetooth ${selectedProduct.bluetooth_compatibility}`} sx={{ bgcolor: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', fontSize: 11 }} />
                           )}
                           {selectedProduct.compatible_charging_interface && (
-                            <span className="detail-quick-pill">Charging: {selectedProduct.compatible_charging_interface}</span>
+                            <Chip size="small" label={`Charging: ${selectedProduct.compatible_charging_interface}`} sx={{ bgcolor: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', fontSize: 11 }} />
                           )}
                           {selectedProduct.wireless_charging_compatibility === 'true' && (
-                            <span className="detail-quick-pill">Wireless Charging Ready</span>
+                            <Chip size="small" label="Wireless Charging Ready" sx={{ bgcolor: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', fontSize: 11 }} />
                           )}
                           {selectedProduct.headphone_jack_compatibility === 'true' && (
-                            <span className="detail-quick-pill">3.5mm Headphone Jack</span>
+                            <Chip size="small" label="3.5mm Headphone Jack" sx={{ bgcolor: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', fontSize: 11 }} />
                           )}
-                        </div>
+                        </Stack>
 
                         {/* Quantity & Cart Action Row */}
-                        <div className="detail-actions-row">
-                          <div className="detail-qty-picker">
-                            <button
-                              className="detail-qty-btn"
+                        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mt: 0.75 }}>
+                          <Stack
+                            direction="row"
+                            sx={{
+                              alignItems: 'center',
+                              bgcolor: TELCO_PAPER,
+                              border: `1px solid ${TELCO_BORDER}`,
+                              borderRadius: 1,
+                              height: 42,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <IconButton
                               onClick={() => setDetailQty(q => Math.max(1, q - 1))}
+                              sx={{ borderRadius: 0, width: 36, height: '100%', color: 'text.secondary', '&:hover': { bgcolor: '#1e293b', color: '#f1f5f9' } }}
                             >
-                              <Minus size={14} />
-                            </button>
-                            <input
-                              className="detail-qty-input"
-                              value={detailQty}
-                              readOnly
-                            />
-                            <button
-                              className="detail-qty-btn"
+                              <RemoveIcon sx={{ fontSize: 14 }} />
+                            </IconButton>
+                            <Typography sx={{ width: 44, textAlign: 'center', fontWeight: 700, fontSize: 14 }}>
+                              {detailQty}
+                            </Typography>
+                            <IconButton
                               onClick={() => setDetailQty(q => q + 1)}
+                              sx={{ borderRadius: 0, width: 36, height: '100%', color: 'text.secondary', '&:hover': { bgcolor: '#1e293b', color: '#f1f5f9' } }}
                             >
-                              <Plus size={14} />
-                            </button>
-                          </div>
+                              <AddIcon sx={{ fontSize: 14 }} />
+                            </IconButton>
+                          </Stack>
 
-                          <button
-                            className="telco-checkout-btn"
-                            style={{ flex: 1, padding: '12px 20px', height: 42 }}
+                          <Button
+                            variant="contained"
+                            startIcon={<ShoppingCartIcon sx={{ fontSize: 16 }} />}
                             disabled={isOutOfStock}
                             onClick={() => {
                               addToCart(selectedProduct, detailQty)
                             }}
+                            sx={{
+                              flex: 1,
+                              height: 42,
+                              background: `linear-gradient(135deg, ${TELCO_CYAN} 0%, #006488 100%)`,
+                              color: '#fff',
+                              fontWeight: 700,
+                              '&:hover': { filter: 'brightness(1.1)' },
+                            }}
                           >
-                            <ShoppingCart size={16} />
                             Add {detailQty} to Cart
-                          </button>
+                          </Button>
 
-                          <button
-                            className="btn btn-secondary"
-                            style={{ height: 42, padding: '0 18px', borderColor: '#20D1F2', color: '#20D1F2', fontWeight: 600 }}
+                          <Button
+                            variant="outlined"
                             disabled={isOutOfStock}
                             onClick={() => {
                               addToCart(selectedProduct, detailQty)
                               setSelectedProduct(null)
                               setIsCheckoutOpen(true)
                             }}
+                            sx={{
+                              height: 42,
+                              px: 2.25,
+                              borderColor: TELCO_CYAN,
+                              color: TELCO_CYAN,
+                              fontWeight: 600,
+                              '&:hover': { borderColor: TELCO_CYAN, bgcolor: 'rgba(32, 209, 242, 0.08)' },
+                            }}
                           >
                             Buy Now
-                          </button>
-                        </div>
+                          </Button>
+                        </Stack>
                       </>
                     )
                   })()}
-                </div>
-              </div>
+                </Box>
+              </Box>
 
               {/* Bottom Section: Tabs for Overview, Specs, Compatibility */}
-              <div>
-                <div className="detail-tab-header">
-                  <button
-                    className={`detail-tab-btn ${detailActiveTab === 'overview' ? 'active' : ''}`}
-                    onClick={() => setDetailActiveTab('overview')}
-                  >
-                    Overview & Description
-                  </button>
-                  <button
-                    className={`detail-tab-btn ${detailActiveTab === 'specs' ? 'active' : ''}`}
-                    onClick={() => setDetailActiveTab('specs')}
-                  >
-                    Technical Specifications
-                  </button>
-                  <button
-                    className={`detail-tab-btn ${detailActiveTab === 'compatibility' ? 'active' : ''}`}
-                    onClick={() => setDetailActiveTab('compatibility')}
-                  >
-                    Device Compatibility ({activeDevices.length})
-                  </button>
-                </div>
+              <Box>
+                <Tabs
+                  value={detailActiveTab}
+                  onChange={(_, v) => setDetailActiveTab(v)}
+                  sx={{
+                    borderBottom: `1px solid ${TELCO_BORDER}`,
+                    mt: 1,
+                    '& .MuiTabs-indicator': { bgcolor: TELCO_CYAN },
+                    '& .MuiTab-root': { color: 'text.secondary', fontWeight: 600, fontSize: 13 },
+                    '& .Mui-selected': { color: `${TELCO_CYAN} !important` },
+                  }}
+                >
+                  <Tab label="Overview & Description" value="overview" />
+                  <Tab label="Technical Specifications" value="specs" />
+                  <Tab label={`Device Compatibility (${activeDevices.length})`} value="compatibility" />
+                </Tabs>
 
-                <div className="detail-tab-content">
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    bgcolor: TELCO_PAPER,
+                    borderColor: TELCO_BORDER,
+                    borderRadius: 1.25,
+                    p: 2.25,
+                    mt: -0.125,
+                    borderTopLeftRadius: 0,
+                    borderTopRightRadius: 0,
+                  }}
+                >
                   {detailActiveTab === 'overview' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <Stack spacing={1.75}>
                       {selectedProduct.short_description && (
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9', borderLeft: '3px solid #20D1F2', paddingLeft: 12 }}>
+                        <Typography variant="body1" sx={{ fontWeight: 600, borderLeft: `3px solid ${TELCO_CYAN}`, pl: 1.5 }}>
                           {selectedProduct.short_description}
-                        </div>
+                        </Typography>
                       )}
 
-                      <div>
-                        <h4 style={{ color: '#f8fafc', fontSize: 14, fontWeight: 700, margin: '0 0 6px 0' }}>Product Description</h4>
-                        <p style={{ margin: 0, color: '#94a3b8', whiteSpace: 'pre-line' }}>
+                      <Box>
+                        <Typography variant="h5" sx={{ mb: 0.75 }}>Product Description</Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'pre-line', lineHeight: 1.6 }}>
                           {selectedProduct.description || 'No detailed description provided for this catalog item.'}
-                        </p>
-                      </div>
+                        </Typography>
+                      </Box>
 
                       {selectedProduct.promo_information && (
-                        <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: 8, padding: 12 }}>
-                          <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: 12, marginBottom: 2 }}>Promotional Offer</div>
-                          <div style={{ color: '#fbbf24', fontSize: 13 }}>{selectedProduct.promo_information}</div>
-                        </div>
+                        <Alert
+                          severity="warning"
+                          variant="outlined"
+                          icon={<LocalOfferIcon />}
+                          sx={{ borderColor: 'rgba(245, 158, 11, 0.3)', bgcolor: 'rgba(245, 158, 11, 0.1)' }}
+                        >
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: '#f59e0b', fontSize: 12, mb: 0.25 }}>Promotional Offer</Typography>
+                          <Typography variant="body2" sx={{ color: '#fbbf24' }}>{selectedProduct.promo_information}</Typography>
+                        </Alert>
                       )}
 
                       {selectedProduct.warranty && (
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#94a3b8' }}>
-                          <Info size={14} style={{ color: '#20D1F2' }} />
-                          <span>Warranty: <strong style={{ color: '#f1f5f9' }}>{selectedProduct.warranty}</strong></span>
-                        </div>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                          <InfoOutlinedIcon sx={{ fontSize: 14, color: TELCO_CYAN }} />
+                          <Typography variant="body2" color="text.secondary">
+                            Warranty: <Typography component="span" sx={{ fontWeight: 600 }}>{selectedProduct.warranty}</Typography>
+                          </Typography>
+                        </Stack>
                       )}
-                    </div>
+                    </Stack>
                   )}
 
                   {detailActiveTab === 'specs' && (
-                    <table className="detail-specs-table">
-                      <tbody>
-                        <tr>
-                          <td className="spec-key">Product Name</td>
-                          <td className="spec-val" style={{ fontWeight: 600 }}>{selectedProduct.name}</td>
-                        </tr>
-                        <tr>
-                          <td className="spec-key">Brand</td>
-                          <td className="spec-val">{selectedProduct.brand || 'Generic / Unbranded'}</td>
-                        </tr>
-                        <tr>
-                          <td className="spec-key">Category</td>
-                          <td className="spec-val">{selectedProduct.product_category || 'N/A'}</td>
-                        </tr>
-                        <tr>
-                          <td className="spec-key">Product Type</td>
-                          <td className="spec-val">{selectedProduct.product_type || 'Accessory'}</td>
-                        </tr>
-                        <tr>
-                          <td className="spec-key">SKU Code</td>
-                          <td className="spec-val mono">{selectedProduct.sku}</td>
-                        </tr>
-                        {selectedProduct.upc && (
-                          <tr>
-                            <td className="spec-key">UPC Code</td>
-                            <td className="spec-val mono">{selectedProduct.upc}</td>
-                          </tr>
-                        )}
-                        {selectedProduct.color && (
-                          <tr>
-                            <td className="spec-key">Color</td>
-                            <td className="spec-val">{selectedProduct.color} {selectedProduct.system_color ? `(${selectedProduct.system_color})` : ''}</td>
-                          </tr>
-                        )}
-                        {selectedProduct.bluetooth_compatibility && (
-                          <tr>
-                            <td className="spec-key">Bluetooth Version</td>
-                            <td className="spec-val">{selectedProduct.bluetooth_compatibility}</td>
-                          </tr>
-                        )}
-                        {selectedProduct.compatible_charging_interface && (
-                          <tr>
-                            <td className="spec-key">Charging Interface</td>
-                            <td className="spec-val">{selectedProduct.compatible_charging_interface}</td>
-                          </tr>
-                        )}
-                        {selectedProduct.wireless_charging_compatibility && (
-                          <tr>
-                            <td className="spec-key">Wireless Charging</td>
-                            <td className="spec-val">{selectedProduct.wireless_charging_compatibility === 'true' ? 'Supported' : selectedProduct.wireless_charging_compatibility}</td>
-                          </tr>
-                        )}
-                        {selectedProduct.headphone_jack_compatibility && (
-                          <tr>
-                            <td className="spec-key">3.5mm Audio Jack</td>
-                            <td className="spec-val">{selectedProduct.headphone_jack_compatibility === 'true' ? 'Yes' : selectedProduct.headphone_jack_compatibility}</td>
-                          </tr>
-                        )}
-                        {selectedProduct.memory_capacity && (
-                          <tr>
-                            <td className="spec-key">Memory / Storage Capacity</td>
-                            <td className="spec-val">{selectedProduct.memory_capacity}</td>
-                          </tr>
-                        )}
-                        {selectedProduct.storage_expansion_compatibility && (
-                          <tr>
-                            <td className="spec-key">Storage Expansion</td>
-                            <td className="spec-val">{selectedProduct.storage_expansion_compatibility}</td>
-                          </tr>
-                        )}
-                        {selectedProduct.compatible_watch_case_size && (
-                          <tr>
-                            <td className="spec-key">Watch Case Size</td>
-                            <td className="spec-val">{selectedProduct.compatible_watch_case_size}</td>
-                          </tr>
-                        )}
-                        {(selectedProduct.length || selectedProduct.width || selectedProduct.height) && (
-                          <tr>
-                            <td className="spec-key">Dimensions (L × W × H)</td>
-                            <td className="spec-val">{selectedProduct.length || 0} × {selectedProduct.width || 0} × {selectedProduct.height || 0} inches</td>
-                          </tr>
-                        )}
-                        {selectedProduct.weight && (
-                          <tr>
-                            <td className="spec-key">Weight</td>
-                            <td className="spec-val">{selectedProduct.weight} oz</td>
-                          </tr>
-                        )}
-                        {selectedProduct.map_price && (
-                          <tr>
-                            <td className="spec-key">MAP Price</td>
-                            <td className="spec-val">${Number(selectedProduct.map_price).toFixed(2)}</td>
-                          </tr>
-                        )}
-                        {selectedProduct.warranty && (
-                          <tr>
-                            <td className="spec-key">Manufacturer Warranty</td>
-                            <td className="spec-val">{selectedProduct.warranty}</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableBody>
+                          {[
+                            { key: 'Product Name', val: selectedProduct.name, bold: true },
+                            { key: 'Brand', val: selectedProduct.brand || 'Generic / Unbranded' },
+                            { key: 'Category', val: selectedProduct.product_category || 'N/A' },
+                            { key: 'Product Type', val: selectedProduct.product_type || 'Accessory' },
+                            { key: 'SKU Code', val: selectedProduct.sku, mono: true },
+                            selectedProduct.upc ? { key: 'UPC Code', val: selectedProduct.upc, mono: true } : null,
+                            selectedProduct.color ? { key: 'Color', val: `${selectedProduct.color}${selectedProduct.system_color ? ` (${selectedProduct.system_color})` : ''}` } : null,
+                            selectedProduct.bluetooth_compatibility ? { key: 'Bluetooth Version', val: selectedProduct.bluetooth_compatibility } : null,
+                            selectedProduct.compatible_charging_interface ? { key: 'Charging Interface', val: selectedProduct.compatible_charging_interface } : null,
+                            selectedProduct.wireless_charging_compatibility ? { key: 'Wireless Charging', val: selectedProduct.wireless_charging_compatibility === 'true' ? 'Supported' : selectedProduct.wireless_charging_compatibility } : null,
+                            selectedProduct.headphone_jack_compatibility ? { key: '3.5mm Audio Jack', val: selectedProduct.headphone_jack_compatibility === 'true' ? 'Yes' : selectedProduct.headphone_jack_compatibility } : null,
+                            selectedProduct.memory_capacity ? { key: 'Memory / Storage Capacity', val: selectedProduct.memory_capacity } : null,
+                            selectedProduct.storage_expansion_compatibility ? { key: 'Storage Expansion', val: selectedProduct.storage_expansion_compatibility } : null,
+                            selectedProduct.compatible_watch_case_size ? { key: 'Watch Case Size', val: selectedProduct.compatible_watch_case_size } : null,
+                            (selectedProduct.length || selectedProduct.width || selectedProduct.height) ? { key: 'Dimensions (L x W x H)', val: `${selectedProduct.length || 0} x ${selectedProduct.width || 0} x ${selectedProduct.height || 0} inches` } : null,
+                            selectedProduct.weight ? { key: 'Weight', val: `${selectedProduct.weight} oz` } : null,
+                            selectedProduct.map_price ? { key: 'MAP Price', val: formatCurrency(selectedProduct.map_price) } : null,
+                            selectedProduct.warranty ? { key: 'Manufacturer Warranty', val: selectedProduct.warranty } : null,
+                          ].filter(Boolean).map((row: any, idx) => (
+                            <TableRow key={idx} sx={{ '&:last-child td': { borderBottom: 'none' } }}>
+                              <TableCell sx={{ color: 'text.secondary', fontWeight: 600, width: '40%', borderColor: TELCO_BORDER }}>
+                                {row.key}
+                              </TableCell>
+                              <TableCell sx={{ color: '#f1f5f9', borderColor: TELCO_BORDER, fontWeight: row.bold ? 600 : 400, fontFamily: row.mono ? MONO_FONT : undefined }}>
+                                {row.val}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   )}
 
                   {detailActiveTab === 'compatibility' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                        The list below indicates devices in your company's active device portfolio compatible with <strong style={{ color: '#20D1F2' }}>{selectedProduct.name}</strong> based on hardware interfaces, device model matching, and vendor compatibility assertions.
-                      </div>
+                    <Stack spacing={1.5}>
+                      <Typography variant="body2" color="text.secondary">
+                        The list below indicates devices in your company's active device portfolio compatible with <Typography component="span" sx={{ color: TELCO_CYAN, fontWeight: 600 }}>{selectedProduct.name}</Typography> based on hardware interfaces, device model matching, and vendor compatibility assertions.
+                      </Typography>
 
                       {activeDevices.length === 0 ? (
-                        <div style={{ padding: 16, textAlign: 'center', background: '#090d16', borderRadius: 8, color: '#64748b' }}>
-                          No active devices found in your company portfolio.
-                        </div>
+                        <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: '#090d16', borderColor: TELCO_BORDER }}>
+                          <Typography variant="body2" color="text.disabled">
+                            No active devices found in your company portfolio.
+                          </Typography>
+                        </Paper>
                       ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginTop: 6 }}>
+                        <Box
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                            gap: 1.25,
+                            mt: 0.75,
+                          }}
+                        >
                           {activeDevices.map((d: any) => {
                             const isSelectedDevice = selectedDevice && String(d.device) === String(selectedDevice)
                             const isMatchName = selectedProduct.name.toLowerCase().includes(d.device_name?.toLowerCase() || '')
+                            const isHighlighted = isSelectedDevice || isMatchName
 
                             return (
-                              <div
+                              <Paper
                                 key={d.device}
-                                style={{
-                                  background: '#090d16',
-                                  border: isSelectedDevice || isMatchName ? '1px solid #20D1F2' : '1px solid #1f2d45',
-                                  borderRadius: 8,
-                                  padding: 10,
+                                variant="outlined"
+                                sx={{
+                                  bgcolor: '#090d16',
+                                  borderColor: isHighlighted ? TELCO_CYAN : TELCO_BORDER,
+                                  p: 1.25,
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: 10
+                                  gap: 1.25,
                                 }}
                               >
-                                <Smartphone size={20} style={{ color: isSelectedDevice || isMatchName ? '#20D1F2' : '#64748b' }} />
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                  <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>{d.device_name}</span>
-                                  <span style={{ fontSize: 10, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 3 }}>
-                                    <CheckCircle size={10} /> Compatible
-                                  </span>
-                                </div>
-                              </div>
+                                <SmartphoneIcon sx={{ fontSize: 20, color: isHighlighted ? TELCO_CYAN : 'text.disabled' }} />
+                                <Box>
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{d.device_name}</Typography>
+                                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                                    <CheckCircleIcon sx={{ fontSize: 10, color: 'success.main' }} />
+                                    <Typography variant="caption" sx={{ color: 'success.main' }}>Compatible</Typography>
+                                  </Stack>
+                                </Box>
+                              </Paper>
                             )
                           })}
-                        </div>
+                        </Box>
                       )}
-                    </div>
+                    </Stack>
                   )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+                </Paper>
+              </Box>
+            </DialogContent>
+          </>
+        )}
+      </Dialog>
+
+      {/* ── Confirm Dialog for cart item removal etc. ── */}
+      <ConfirmDialog {...dialogProps} />
+    </Box>
   )
 }

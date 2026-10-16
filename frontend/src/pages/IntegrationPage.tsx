@@ -1,26 +1,56 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Plug, Webhook, ArrowDownToLine, Key, Copy, Check, Trash2, X, AlertCircle } from 'lucide-react'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
+import Alert from '@mui/material/Alert'
+import IconButton from '@mui/material/IconButton'
+import Tooltip from '@mui/material/Tooltip'
+import CircularProgress from '@mui/material/CircularProgress'
+import PowerOutlinedIcon from '@mui/icons-material/PowerOutlined'
+import WebhookIcon from '@mui/icons-material/Webhook'
+import CallReceivedIcon from '@mui/icons-material/CallReceived'
+import VpnKeyOutlinedIcon from '@mui/icons-material/VpnKeyOutlined'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import CheckIcon from '@mui/icons-material/Check'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
+import CloseIcon from '@mui/icons-material/Close'
 import api from '../lib/apiClient'
+import PageHeader from '../components/layout/PageHeader'
+import DataTable, { type Column } from '../components/data-display/DataTable'
+import StatusChip from '../components/data-display/StatusChip'
+import { formatDate, formatETDate } from '../lib/formatters'
+import { useSnackbar } from '../components/feedback/SnackbarProvider'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import ConfirmDialog from '../components/feedback/ConfirmDialog'
 
-const CONN_STATUS: Record<string, string> = {
-  draft: 'badge-muted', active: 'badge-green', suspended: 'badge-amber', retired: 'badge-red',
+/* ── connector type chip colour mapping ── */
+const CONNECTOR_COLOR: Record<string, 'success' | 'info' | 'secondary' | 'default'> = {
+  quickbooks: 'success',
+  sftp: 'info',
+  rest_api: 'info',
+  webhook: 'secondary',
+  email: 'default',
+  manual: 'default',
+  csv: 'default',
 }
 
-const DELIVERY_STATUS: Record<string, string> = {
-  pending: 'badge-muted', in_flight: 'badge-blue', delivered: 'badge-green',
-  failed: 'badge-red', retrying: 'badge-amber', superseded: 'badge-muted',
-}
-
-const CONNECTOR_BADGE: Record<string, string> = {
-  quickbooks: 'badge-green', sftp: 'badge-blue', rest_api: 'badge-blue',
-  webhook: 'badge-purple', email: 'badge-muted', manual: 'badge-muted', csv: 'badge-muted',
-}
+type TabValue = 'connections' | 'webhooks' | 'inbound' | 'api-keys'
 
 export default function IntegrationPage() {
-  const [tab, setTab] = useState<'connections' | 'webhooks' | 'inbound' | 'api-keys'>('connections')
+  const [tab, setTab] = useState<TabValue>('connections')
+  const { showSnackbar } = useSnackbar()
+  const { confirm, dialogProps } = useConfirmDialog()
 
-  // API Key creation/modal state
+  // API Key creation / modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [keyLabel, setKeyLabel] = useState('')
   const [generatedKey, setGeneratedKey] = useState<string | null>(null)
@@ -28,30 +58,27 @@ export default function IntegrationPage() {
   const [isCreatingKey, setIsCreatingKey] = useState(false)
   const [modalError, setModalError] = useState('')
 
+  /* ── queries ── */
   const { data: connData, isLoading: cLoading } = useQuery({
     queryKey: ['integration-connections'],
-    queryFn: () =>
-      api.get('/integration/connections/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/integration/connections/').then(r => r.data),
   })
 
   const { data: whData, isLoading: wLoading } = useQuery({
     queryKey: ['integration-webhooks'],
-    queryFn: () =>
-      api.get('/integration/webhook-deliveries/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/integration/webhooks/').then(r => r.data),
     enabled: tab === 'webhooks',
   })
 
   const { data: inbData, isLoading: iLoading } = useQuery({
     queryKey: ['integration-inbound'],
-    queryFn: () =>
-      api.get('/integration/inbound-receipts/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/integration/inbound-webhooks/').then(r => r.data),
     enabled: tab === 'inbound',
   })
 
   const { data: keysData, isLoading: kLoading, refetch: refetchKeys } = useQuery({
     queryKey: ['integration-api-keys'],
-    queryFn: () =>
-      api.get('/integration/api-keys/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/integration/api-keys/').then(r => r.data),
     enabled: tab === 'api-keys',
   })
 
@@ -60,6 +87,7 @@ export default function IntegrationPage() {
   const inbound = inbData?.results ?? (Array.isArray(inbData) ? inbData : [])
   const apiKeys = keysData?.results ?? (Array.isArray(keysData) ? keysData : [])
 
+  /* ── handlers ── */
   const handleGenerateKey = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!keyLabel.trim()) return
@@ -80,16 +108,25 @@ export default function IntegrationPage() {
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
     setCopiedKeyId(id)
+    showSnackbar('Copied to clipboard', 'success')
     setTimeout(() => setCopiedKeyId(null), 2000)
   }
 
   const handleRevokeKey = async (id: string) => {
-    if (!confirm('Are you sure you want to revoke this API key? External integrations using this key will immediately fail.')) return
+    const confirmed = await confirm({
+      title: 'Revoke API Key',
+      message: 'Are you sure you want to revoke this API key? External integrations using this key will immediately fail.',
+      confirmLabel: 'Revoke',
+      confirmColor: 'error',
+    })
+    if (!confirmed) return
     try {
       await api.delete(`/integration/api-keys/${id}/`)
       refetchKeys()
+      showSnackbar('API key revoked', 'success')
     } catch (err) {
       console.error(err)
+      showSnackbar('Failed to revoke API key', 'error')
     }
   }
 
@@ -100,293 +137,389 @@ export default function IntegrationPage() {
     setIsModalOpen(true)
   }
 
+  /* ── column definitions ── */
+  const connectionColumns: Column<any>[] = useMemo(() => [
+    {
+      id: 'label',
+      label: 'Label',
+      render: (row) => (
+        <Typography variant="body2" fontWeight={500} color="text.primary">
+          {row.label}
+        </Typography>
+      ),
+    },
+    {
+      id: 'connector_type',
+      label: 'Connector Type',
+      render: (row) => (
+        <Chip
+          label={row.connector_type?.replace(/_/g, ' ')}
+          color={CONNECTOR_COLOR[row.connector_type] ?? 'default'}
+          size="small"
+          variant="filled"
+        />
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (row) => <StatusChip status={row.status} />,
+    },
+    {
+      id: 'created_at',
+      label: 'Created',
+      render: (row) => formatDate(row.created_at),
+    },
+    {
+      id: 'updated_at',
+      label: 'Updated',
+      render: (row) => formatDate(row.updated_at),
+    },
+  ], [])
+
+  const webhookColumns: Column<any>[] = useMemo(() => [
+    {
+      id: 'event_type',
+      label: 'Event Type',
+      render: (row) => (
+        <Typography variant="body2" fontWeight={500} color="text.primary" sx={{ fontSize: 12 }}>
+          {row.event_type}
+        </Typography>
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (row) => <StatusChip status={row.status} />,
+    },
+    {
+      id: 'attempt_count',
+      label: 'Attempts',
+      render: (row) => row.attempt_count ?? 0,
+    },
+    {
+      id: 'last_response_code',
+      label: 'Last Response',
+      render: (row) =>
+        row.last_response_code ? (
+          <Chip
+            label={row.last_response_code}
+            color={row.last_response_code < 300 ? 'success' : 'error'}
+            size="small"
+            variant="filled"
+          />
+        ) : (
+          '\u2014'
+        ),
+    },
+    {
+      id: 'delivered_at',
+      label: 'Delivered At',
+      render: (row) => formatETDate(row.delivered_at),
+    },
+  ], [])
+
+  const inboundColumns: Column<any>[] = useMemo(() => [
+    {
+      id: 'event_type',
+      label: 'Event Type',
+      render: (row) => (
+        <Typography variant="body2" fontWeight={500} color="text.primary" sx={{ fontSize: 12 }}>
+          {row.event_type}
+        </Typography>
+      ),
+    },
+    {
+      id: 'provider_event_id',
+      label: 'Provider Event ID',
+      render: (row) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 11 }}>
+          {row.provider_event_id?.slice(0, 20)}{'\u2026'}
+        </Typography>
+      ),
+    },
+    {
+      id: 'signature_verified',
+      label: 'Sig Verified',
+      render: (row) =>
+        row.signature_verified ? (
+          <StatusChip status="active" label="Verified" />
+        ) : (
+          <StatusChip status="failed" label="Unverified" />
+        ),
+    },
+    {
+      id: 'is_duplicate',
+      label: 'Duplicate',
+      render: (row) =>
+        row.is_duplicate ? (
+          <StatusChip status="pending" label="Duplicate" />
+        ) : (
+          <StatusChip status="unknown" label="Unique" />
+        ),
+    },
+    {
+      id: 'processing_status',
+      label: 'Processing Status',
+      render: (row) => <StatusChip status={row.processing_status} />,
+    },
+    {
+      id: 'received_at',
+      label: 'Received At',
+      render: (row) => formatETDate(row.received_at),
+    },
+  ], [])
+
+  const apiKeyColumns: Column<any>[] = useMemo(() => [
+    {
+      id: 'label',
+      label: 'Label',
+      render: (row) => (
+        <Typography variant="body2" fontWeight={500} color="text.primary">
+          {row.label}
+        </Typography>
+      ),
+    },
+    {
+      id: 'token',
+      label: 'API Key / Token',
+      sortable: false,
+      render: (row) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography
+            component="code"
+            variant="body2"
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: 12,
+              bgcolor: 'action.hover',
+              px: 0.75,
+              py: 0.25,
+              borderRadius: 1,
+            }}
+          >
+            {row.token}
+          </Typography>
+          <Tooltip title="Copy API Key">
+            <IconButton size="small" onClick={() => handleCopy(row.token, row.id)}>
+              {copiedKeyId === row.id ? (
+                <CheckIcon fontSize="small" color="success" />
+              ) : (
+                <ContentCopyIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Tooltip>
+        </Box>
+      ),
+    },
+    {
+      id: 'created_at',
+      label: 'Created At',
+      render: (row) => formatETDate(row.created_at),
+    },
+    {
+      id: 'last_used_at',
+      label: 'Last Used',
+      render: (row) => (row.last_used_at ? formatETDate(row.last_used_at) : 'Never'),
+    },
+    {
+      id: 'is_active',
+      label: 'Status',
+      render: (row) => (
+        <StatusChip
+          status={row.is_active ? 'active' : 'inactive'}
+          label={row.is_active ? 'Active' : 'Revoked'}
+        />
+      ),
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      align: 'right' as const,
+      width: 80,
+      render: (row) => (
+        <Tooltip title="Revoke Key">
+          <IconButton size="small" color="error" onClick={() => handleRevokeKey(row.id)}>
+            <DeleteOutlineIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      ),
+    },
+  ], [copiedKeyId])
+
+  /* ── render ── */
   return (
-    <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <div className="page-title">Integration</div>
-          <div className="page-sub">
-            External connections, webhooks, and B2B API access keys.
-          </div>
-        </div>
-        {tab === 'api-keys' && (
-          <button className="btn btn-primary" onClick={openGenerateModal}>
-            <Key size={16} style={{ marginRight: 6 }} />
-            Generate B2B API Key
-          </button>
-        )}
-      </div>
+    <Box>
+      <PageHeader
+        title="Integration"
+        subtitle="External connections, webhooks, and B2B API access keys."
+        actions={
+          tab === 'api-keys' ? (
+            <Button
+              variant="contained"
+              startIcon={<VpnKeyOutlinedIcon />}
+              onClick={openGenerateModal}
+            >
+              Generate B2B API Key
+            </Button>
+          ) : undefined
+        }
+      />
 
-      <div className="tabs">
-        <div className={`tab ${tab === 'connections' ? 'active' : ''}`} onClick={() => setTab('connections')}>
-          Connections
-        </div>
-        <div className={`tab ${tab === 'webhooks' ? 'active' : ''}`} onClick={() => setTab('webhooks')}>
-          Outbound Webhooks
-        </div>
-        <div className={`tab ${tab === 'inbound' ? 'active' : ''}`} onClick={() => setTab('inbound')}>
-          Inbound Receipts
-        </div>
-        <div className={`tab ${tab === 'api-keys' ? 'active' : ''}`} onClick={() => setTab('api-keys')}>
-          B2B API Keys
-        </div>
-      </div>
+      <Tabs
+        value={tab}
+        onChange={(_, v: TabValue) => setTab(v)}
+        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab label="Connections" value="connections" />
+        <Tab label="Outbound Webhooks" value="webhooks" />
+        <Tab label="Inbound Receipts" value="inbound" />
+        <Tab label="B2B API Keys" value="api-keys" />
+      </Tabs>
 
+      {/* ── Connections Tab ── */}
       {tab === 'connections' && (
-        <div className="table-wrap">
-          {cLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : connections.length === 0 ? (
-            <div className="empty-state">
-              <Plug size={40} />
-              <div>No external connections</div>
-              <div style={{ fontSize: 12 }}>
-                Configure connections to QuickBooks, SFTP, REST APIs, and webhooks
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr><th>Label</th><th>Connector Type</th><th>Status</th><th>Created</th><th>Updated</th></tr>
-              </thead>
-              <tbody>
-                {connections.map((c: any) => (
-                  <tr key={c.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{c.label}</td>
-                    <td>
-                      <span className={`badge ${CONNECTOR_BADGE[c.connector_type] ?? 'badge-muted'}`}>
-                        {c.connector_type?.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`badge ${CONN_STATUS[c.status] ?? 'badge-muted'}`}>{c.status}</span>
-                    </td>
-                    <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
-                    <td>{c.updated_at ? new Date(c.updated_at).toLocaleDateString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={connectionColumns}
+          rows={connections}
+          loading={cLoading}
+          rowKey={(row) => row.id}
+          emptyMessage="No external connections"
+          emptyIcon={<PowerOutlinedIcon sx={{ fontSize: 48 }} />}
+        />
       )}
 
+      {/* ── Outbound Webhooks Tab ── */}
       {tab === 'webhooks' && (
-        <div className="table-wrap">
-          {wLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : webhooks.length === 0 ? (
-            <div className="empty-state">
-              <Webhook size={40} />
-              <div>No outbound webhook deliveries</div>
-              <div style={{ fontSize: 12 }}>
-                Outbound webhooks carry platform events to external subscribers
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Event Type</th><th>Status</th><th>Attempts</th>
-                  <th>Last Response</th><th>Delivered At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {webhooks.map((w: any) => (
-                  <tr key={w.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 12 }}>{w.event_type}</td>
-                    <td>
-                      <span className={`badge ${DELIVERY_STATUS[w.status] ?? 'badge-muted'}`}>{w.status}</span>
-                    </td>
-                    <td>{w.attempt_count ?? 0}</td>
-                    <td>
-                      {w.last_response_code
-                        ? <span className={`badge ${w.last_response_code < 300 ? 'badge-green' : 'badge-red'}`}>{w.last_response_code}</span>
-                        : '—'}
-                    </td>
-                    <td>{w.delivered_at ? new Date(w.delivered_at).toLocaleString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={webhookColumns}
+          rows={webhooks}
+          loading={wLoading}
+          rowKey={(row) => row.id}
+          emptyMessage="No outbound webhook deliveries"
+          emptyIcon={<WebhookIcon sx={{ fontSize: 48 }} />}
+        />
       )}
 
+      {/* ── Inbound Receipts Tab ── */}
       {tab === 'inbound' && (
-        <div className="table-wrap">
-          {iLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : inbound.length === 0 ? (
-            <div className="empty-state">
-              <ArrowDownToLine size={40} />
-              <div>No inbound webhook receipts</div>
-              <div style={{ fontSize: 12 }}>
-                Inbound receipts are deduplicated by provider event ID and signature-verified
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Event Type</th><th>Provider Event ID</th><th>Sig Verified</th>
-                  <th>Duplicate</th><th>Processing Status</th><th>Received At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inbound.map((r: any) => (
-                  <tr key={r.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 12 }}>{r.event_type}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{r.provider_event_id?.slice(0, 20)}…</td>
-                    <td>
-                      {r.signature_verified
-                        ? <span className="badge badge-green">Verified</span>
-                        : <span className="badge badge-red">Unverified</span>}
-                    </td>
-                    <td>
-                      {r.is_duplicate
-                        ? <span className="badge badge-amber">Duplicate</span>
-                        : <span className="badge badge-muted">Unique</span>}
-                    </td>
-                    <td><span className="badge badge-muted">{r.processing_status}</span></td>
-                    <td>{r.received_at ? new Date(r.received_at).toLocaleString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={inboundColumns}
+          rows={inbound}
+          loading={iLoading}
+          rowKey={(row) => row.id}
+          emptyMessage="No inbound webhook receipts"
+          emptyIcon={<CallReceivedIcon sx={{ fontSize: 48 }} />}
+        />
       )}
 
+      {/* ── B2B API Keys Tab ── */}
       {tab === 'api-keys' && (
-        <div className="table-wrap">
-          {kLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : apiKeys.length === 0 ? (
-            <div className="empty-state">
-              <Key size={40} />
-              <div>No B2B API Keys</div>
-              <div style={{ fontSize: 12, marginBottom: 16 }}>
-                Create B2B API keys to authorize your external storefronts, scripts, or ERP systems.
-              </div>
-              <button className="btn btn-primary btn-sm" onClick={openGenerateModal}>
-                Generate First Key
-              </button>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Label</th>
-                  <th>API Key / Token</th>
-                  <th>Created At</th>
-                  <th>Last Used</th>
-                  <th>Status</th>
-                  <th style={{ width: 80, textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {apiKeys.map((k: any) => (
-                  <tr key={k.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{k.label}</td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <code className="mono" style={{ background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
-                          {k.token}
-                        </code>
-                        <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => handleCopy(k.token, k.id)} title="Copy API Key">
-                          {copiedKeyId === k.id ? <Check size={14} style={{ color: 'var(--green)' }} /> : <Copy size={14} />}
-                        </button>
-                      </div>
-                    </td>
-                    <td>{k.created_at ? new Date(k.created_at).toLocaleString() : '—'}</td>
-                    <td>{k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never'}</td>
-                    <td>
-                      <span className={`badge ${k.is_active ? 'badge-green' : 'badge-red'}`}>
-                        {k.is_active ? 'Active' : 'Revoked'}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="btn btn-ghost" style={{ padding: 4, color: 'var(--red)' }} onClick={() => handleRevokeKey(k.id)} title="Revoke Key">
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <DataTable
+          columns={apiKeyColumns}
+          rows={apiKeys}
+          loading={kLoading}
+          rowKey={(row) => row.id}
+          emptyMessage="No B2B API Keys"
+          emptyIcon={<VpnKeyOutlinedIcon sx={{ fontSize: 48 }} />}
+        />
+      )}
+
+      {/* ── API Key Generation Dialog ── */}
+      <Dialog
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Generate B2B API Key
+          <IconButton size="small" onClick={() => setIsModalOpen(false)} edge="end">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          {modalError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {modalError}
+            </Alert>
           )}
-        </div>
-      )}
 
-      {/* API Key Generation Modal */}
-      {isModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 500, maxWidth: '95%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Generate B2B API Key</div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setIsModalOpen(false)}>
-                <X size={16} />
-              </button>
-            </div>
+          {!generatedKey ? (
+            <Box component="form" id="generate-key-form" onSubmit={handleGenerateKey}>
+              <TextField
+                label="Key Description / Label"
+                placeholder="e.g. Telco Cellular Accessories Storefront"
+                value={keyLabel}
+                onChange={(e) => setKeyLabel(e.target.value)}
+                required
+                fullWidth
+                size="small"
+                helperText="Give the key a descriptive name representing what external client or system will use it."
+              />
+            </Box>
+          ) : (
+            <Box>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                API Key generated successfully! Make sure to copy it now. For security, we won't show it again.
+              </Alert>
+              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                API Key
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <TextField
+                  value={generatedKey}
+                  slotProps={{ input: { readOnly: true } }}
+                  fullWidth
+                  size="small"
+                  sx={{ '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: 13 } }}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={
+                    copiedKeyId === 'modal' ? (
+                      <CheckIcon color="success" />
+                    ) : (
+                      <ContentCopyIcon />
+                    )
+                  }
+                  onClick={() => handleCopy(generatedKey, 'modal')}
+                  sx={{ flexShrink: 0 }}
+                >
+                  {copiedKeyId === 'modal' ? 'Copied' : 'Copy'}
+                </Button>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
 
-            {modalError && (
-              <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-                <AlertCircle size={14} />
-                <span>{modalError}</span>
-              </div>
-            )}
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          {!generatedKey ? (
+            <>
+              <Button variant="text" onClick={() => setIsModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="generate-key-form"
+                variant="contained"
+                disabled={isCreatingKey}
+                startIcon={isCreatingKey ? <CircularProgress size={16} color="inherit" /> : undefined}
+              >
+                {isCreatingKey ? 'Generating...' : 'Generate Key'}
+              </Button>
+            </>
+          ) : (
+            <Button variant="contained" onClick={() => setIsModalOpen(false)}>
+              I have copied the key
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
-            {!generatedKey ? (
-              <form onSubmit={handleGenerateKey}>
-                <div className="form-group" style={{ marginBottom: 16 }}>
-                  <label className="label">Key Description / Label *</label>
-                  <input
-                    className="input"
-                    placeholder="e.g. Telco Cellular Accessories Storefront"
-                    value={keyLabel}
-                    onChange={e => setKeyLabel(e.target.value)}
-                    required
-                  />
-                  <small style={{ display: 'block', marginTop: 4, color: 'var(--text-secondary)', fontSize: 11 }}>
-                    Give the key a descriptive name representing what external client or system will use it.
-                  </small>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={isCreatingKey}>
-                    {isCreatingKey ? 'Generating...' : 'Generate Key'}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div>
-                <div style={{ background: 'var(--green-dim)', color: 'var(--green)', padding: '10px 12px', borderRadius: 6, marginBottom: 16, fontSize: 13 }}>
-                  API Key generated successfully! Make sure to copy it now. For security, we won't show it again.
-                </div>
-                <div className="form-group" style={{ marginBottom: 20 }}>
-                  <label className="label">API Key</label>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                      className="input mono"
-                      style={{ flex: 1, background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
-                      value={generatedKey}
-                      readOnly
-                    />
-                    <button className="btn btn-secondary" onClick={() => handleCopy(generatedKey, 'modal')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {copiedKeyId === 'modal' ? <Check size={16} style={{ color: 'var(--green)' }} /> : <Copy size={16} />}
-                      <span>{copiedKeyId === 'modal' ? 'Copied' : 'Copy'}</span>
-                    </button>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button className="btn btn-primary" onClick={() => setIsModalOpen(false)}>I have copied the key</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      <ConfirmDialog {...dialogProps} />
+    </Box>
   )
 }

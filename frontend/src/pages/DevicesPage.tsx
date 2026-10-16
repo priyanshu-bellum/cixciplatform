@@ -1,138 +1,57 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Smartphone, ChevronRight, Check, Trash2, X, AlertCircle, Download, Settings } from 'lucide-react'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import IconButton from '@mui/material/IconButton'
+import TextField from '@mui/material/TextField'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Table from '@mui/material/Table'
+import TableHead from '@mui/material/TableHead'
+import TableBody from '@mui/material/TableBody'
+import TableRow from '@mui/material/TableRow'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import Chip from '@mui/material/Chip'
+import Tabs from '@mui/material/Tabs'
+import Tab from '@mui/material/Tab'
+import Tooltip from '@mui/material/Tooltip'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import Alert from '@mui/material/Alert'
+import Checkbox from '@mui/material/Checkbox'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import CircularProgress from '@mui/material/CircularProgress'
+import Divider from '@mui/material/Divider'
+import Paper from '@mui/material/Paper'
+import AddIcon from '@mui/icons-material/Add'
+import SmartphoneIcon from '@mui/icons-material/Smartphone'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import CheckIcon from '@mui/icons-material/Check'
+import DeleteIcon from '@mui/icons-material/Delete'
+import CloseIcon from '@mui/icons-material/Close'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined'
+import DownloadIcon from '@mui/icons-material/Download'
+import SettingsIcon from '@mui/icons-material/Settings'
 import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
 import Pagination, { usePagination } from '../components/Pagination'
-
-const LC_COLORS: Record<string, string> = {
-  available: 'badge-green',
-  launching: 'badge-amber',
-  inactive: 'badge-muted',
-  eol: 'badge-red',
-}
-
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return '—'
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return dateStr
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const year = date.getFullYear()
-  return `${month}-${day}-${year}`
-}
-
-const modalStyles = `
-.modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(10, 13, 20, 0.75);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease-out;
-}
-.modal-container {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  width: 550px;
-  max-width: 95vw;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
-  animation: slideUp 0.25s ease-out;
-  display: flex;
-  flex-direction: column;
-}
-.modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.modal-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.modal-body {
-  padding: 20px;
-  overflow-y: auto;
-}
-.modal-footer {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-@keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-.form-grid-full {
-  grid-column: span 2;
-}
-.validation-errors-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-  margin-top: 10px;
-}
-.validation-errors-table th, .validation-errors-table td {
-  padding: 8px;
-  border: 1px solid var(--border);
-}
-.validation-errors-table th {
-  background: var(--bg-elevated);
-  text-align: left;
-}
-.validation-errors-table tr:hover td {
-  background: var(--bg-elevated);
-}
-.checkbox-group {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  padding: 10px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.checkbox-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.input-read-only {
-  padding: 8px 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 13px;
-  min-height: 38px;
-  display: flex;
-  align-items: center;
-}
-`
+import PageHeader from '../components/layout/PageHeader'
+import StatusChip from '../components/data-display/StatusChip'
+import SearchBar from '../components/forms/SearchBar'
+import ConfirmDialog from '../components/feedback/ConfirmDialog'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import { useSnackbar } from '../components/feedback/SnackbarProvider'
+import { formatDate } from '../lib/formatters'
+import { MONO_FONT } from '../theme/typography'
 
 function parseApiError(err: any, fallback: string = 'An error occurred'): string {
   const data = err?.response?.data
@@ -184,6 +103,8 @@ export function parseWirelessCharging(val: string | null | undefined): string[] 
 export default function DevicesPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { showSnackbar } = useSnackbar()
+  const { dialogProps, confirm } = useConfirmDialog()
   const isBuyer = user?.company_type === 'buyer'
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
   const canImportDevices = isCixciAdmin || (!isBuyer && user?.capabilities && Array.isArray(user.capabilities) && user.capabilities.some((c: any) => c.code === 'devices.device.import'))
@@ -276,7 +197,7 @@ export default function DevicesPage() {
 
   // Device Audit History Query
   const [selectedDeviceIdForAudit, setSelectedDeviceIdForAudit] = useState<string | null>(null)
-  const { data: auditHistory, refetch: refetchAuditHistory } = useQuery({
+  const { data: auditHistory } = useQuery({
     queryKey: ['device-audit', selectedDeviceIdForAudit],
     queryFn: () => api.get(`/devices/devices/${selectedDeviceIdForAudit}/audit_history/`).then(r => r.data),
     enabled: !!selectedDeviceIdForAudit,
@@ -293,16 +214,6 @@ export default function DevicesPage() {
     const list = compProductsData?.results ?? compProductsData ?? []
     return Array.isArray(list) ? list : []
   }, [compProductsData])
-
-  const PROD_STATUS_BADGE: Record<string, string> = {
-    active: 'badge-green',
-    inactive: 'badge-muted',
-    archived: 'badge-amber',
-    draft: 'badge-muted',
-    pending_review: 'badge-blue',
-    eol: 'badge-red',
-    out_of_stock: 'badge-red'
-  }
 
   const vendors = useMemo(() => {
     const set = new Set<string>()
@@ -339,10 +250,10 @@ export default function DevicesPage() {
 
   const filteredCompProducts = useMemo(() => {
     let list = compProducts
-    
+
     if (compProdSearch.trim()) {
       const q = compProdSearch.toLowerCase().trim()
-      list = list.filter((p: any) => 
+      list = list.filter((p: any) =>
         (p.name && p.name.toLowerCase().includes(q)) ||
         (p.sku && p.sku.toLowerCase().includes(q)) ||
         (p.upc && p.upc.toLowerCase().includes(q))
@@ -436,7 +347,7 @@ export default function DevicesPage() {
     let list = portfolio ?? []
     if (portfolioSearch.trim()) {
       const q = portfolioSearch.toLowerCase().trim()
-      list = list.filter((ref: any) => 
+      list = list.filter((ref: any) =>
         (ref.device_name && ref.device_name.toLowerCase().includes(q)) ||
         (ref.device_sku && ref.device_sku.toLowerCase().includes(q)) ||
         (ref.device_model_number && ref.device_model_number.toLowerCase().includes(q)) ||
@@ -491,8 +402,8 @@ export default function DevicesPage() {
     try {
       await api.post('/devices/portfolio/add/', { device_id: deviceId })
       refreshPortfolio()
-    } catch (err) {
-      alert('Failed to add device to portfolio.')
+    } catch {
+      showSnackbar('Failed to add device to portfolio.', 'error')
     }
   }
 
@@ -506,8 +417,8 @@ export default function DevicesPage() {
     try {
       await api.post('/devices/portfolio/remove/', { device_id: confirmRemoveId })
       refreshPortfolio()
-    } catch (err) {
-      alert('Failed to remove device from portfolio.')
+    } catch {
+      showSnackbar('Failed to remove device from portfolio.', 'error')
     } finally {
       setConfirmRemoveId(null)
       setConfirmRemoveName('')
@@ -557,6 +468,13 @@ export default function DevicesPage() {
 
   const handleDeleteDropdownValue = async (id: string) => {
     setDropdownError(null)
+    const confirmed = await confirm({
+      title: 'Delete Value',
+      message: 'Are you sure you want to delete this value? This action cannot be undone.',
+      confirmLabel: 'Delete',
+      confirmColor: 'error',
+    })
+    if (!confirmed) return
     try {
       if (manageField === 'manufacturer') {
         await api.delete(`/devices/manufacturers/${id}/`)
@@ -593,7 +511,7 @@ export default function DevicesPage() {
     setEditManufacturer(d.manufacturer || '')
     setEditName(d.name || '')
     setEditDeviceType(d.device_type || '')
-    
+
     let formattedLaunchDate = ''
     if (d.launch_date) {
       const parts = d.launch_date.split('/')
@@ -604,7 +522,7 @@ export default function DevicesPage() {
       }
     }
     setEditLaunchDate(formattedLaunchDate)
-    
+
     setEditStatus(d.lifecycle_status || 'available')
     setEditCharging(d.compatible_charging_interface || 'Not Compatible')
     setEditStorage(d.storage_expansion_compatibility || 'Not Compatible')
@@ -1133,99 +1051,192 @@ export default function DevicesPage() {
     }
   }
 
-  return (
-    <div>
-      <style dangerouslySetInnerHTML={{ __html: modalStyles }} />
-      <div className="page-header">
-        <div>
-          <div className="page-title">Device Catalog</div>
-          <div className="page-sub">All devices, features, and buyer portfolios</div>
-        </div>
-        {(canManageDropdowns || canImportDevices) && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            {canManageDropdowns && (
-              <button className="btn btn-secondary" onClick={() => setShowDropdownModal(true)}>
-                Manage Dropdown Values
-              </button>
-            )}
-            {canImportDevices && (
-              <>
-                <button className="btn btn-secondary" onClick={() => { resetImportState(); setShowImportModal(true); }}>
-                  Import Devices
-                </button>
-                <button className="btn btn-primary" onClick={() => { resetAddState(); setShowAddModal(true); }}>
-                  <Plus size={14} /> Add Device
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+  // Helper: render a read-only field value box
+  const ReadOnlyField = ({ children }: { children: React.ReactNode }) => (
+    <Box
+      sx={{
+        px: 1.5,
+        py: 1,
+        bgcolor: 'action.hover',
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+        color: 'text.primary',
+        fontSize: '0.8125rem',
+        minHeight: 38,
+        display: 'flex',
+        alignItems: 'center',
+      }}
+    >
+      {children}
+    </Box>
+  )
 
-      <div className="tabs">
-        <div className={`tab ${tab === 'devices' ? 'active' : ''}`} onClick={() => setTab('devices')}>All Devices</div>
-        {isBuyer && (
-          <div className={`tab ${tab === 'portfolio' ? 'active' : ''}`} onClick={() => setTab('portfolio')}>My Portfolio</div>
-        )}
-      </div>
+  // Helper: render a wireless charging checkbox group
+  const WirelessCheckboxGroup = ({
+    wireless,
+    onChange,
+  }: {
+    wireless: string[]
+    onChange: (val: string) => void
+  }) => (
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: 1,
+        p: 1.25,
+        bgcolor: 'action.hover',
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+      }}
+    >
+      <FormControlLabel
+        control={
+          <Checkbox
+            size="small"
+            checked={wireless.includes('MagSafe')}
+            disabled={wireless.includes('Not Compatible') || wireless.includes('Qi')}
+            onChange={() => onChange('MagSafe')}
+          />
+        }
+        label={<Typography variant="body2">MagSafe</Typography>}
+      />
+      <FormControlLabel
+        control={
+          <Checkbox
+            size="small"
+            checked={wireless.includes('Qi2')}
+            disabled={wireless.includes('Not Compatible') || wireless.includes('Qi')}
+            onChange={() => onChange('Qi2')}
+          />
+        }
+        label={<Typography variant="body2">Qi2</Typography>}
+      />
+      <FormControlLabel
+        control={
+          <Checkbox
+            size="small"
+            checked={wireless.includes('Qi')}
+            disabled={wireless.includes('Not Compatible') || wireless.includes('MagSafe') || wireless.includes('Qi2')}
+            onChange={() => onChange('Qi')}
+          />
+        }
+        label={<Typography variant="body2">Qi</Typography>}
+      />
+      <FormControlLabel
+        control={
+          <Checkbox
+            size="small"
+            checked={wireless.includes('Not Compatible')}
+            onChange={() => onChange('Not Compatible')}
+          />
+        }
+        label={<Typography variant="body2">Not Compatible</Typography>}
+      />
+    </Box>
+  )
+
+  const getDisplayStatus = (lifecycleStatus: string, launchDate?: string) => {
+    const isLaunching = lifecycleStatus === 'launching' || (lifecycleStatus === 'inactive' && launchDate && new Date(launchDate) > new Date())
+    return isLaunching ? 'launching' : lifecycleStatus
+  }
+
+  return (
+    <Box>
+      <PageHeader
+        title="Device Catalog"
+        subtitle="All devices, features, and buyer portfolios"
+        actions={
+          (canManageDropdowns || canImportDevices) ? (
+            <>
+              {canManageDropdowns && (
+                <Button variant="outlined" size="small" onClick={() => setShowDropdownModal(true)}>
+                  Manage Dropdown Values
+                </Button>
+              )}
+              {canImportDevices && (
+                <>
+                  <Button variant="outlined" size="small" onClick={() => { resetImportState(); setShowImportModal(true); }}>
+                    Import Devices
+                  </Button>
+                  <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { resetAddState(); setShowAddModal(true); }}>
+                    Add Device
+                  </Button>
+                </>
+              )}
+            </>
+          ) : undefined
+        }
+      />
+
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tabs
+          value={tab === 'devices' ? 0 : 1}
+          onChange={(_, v) => setTab(v === 0 ? 'devices' : 'portfolio')}
+        >
+          <Tab label="All Devices" />
+          {isBuyer && <Tab label="My Portfolio" />}
+        </Tabs>
+      </Box>
 
       {tab === 'devices' && (
         <>
-          <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div className="search-bar" style={{ width: 280, margin: 0 }}>
-              <Search size={14} />
-              <input
-                placeholder="Search by name, SKU, model…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
+          <Box sx={{ mb: 2, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+            <SearchBar
+              placeholder="Search by name, SKU, model..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              sx={{ width: 280 }}
+            />
 
-            <select
-              className="input"
-              style={{ width: 180, height: 36, padding: '0 10px', fontSize: 13 }}
-              value={filterManufacturer}
-              onChange={e => setFilterManufacturer(e.target.value)}
-            >
-              <option value="">All Manufacturers</option>
-              {manufacturers.map((m: any) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <Select
+                value={filterManufacturer}
+                onChange={e => setFilterManufacturer(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">All Manufacturers</MenuItem>
+                {manufacturers.map((m: any) => (
+                  <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-            <select
-              className="input"
-              style={{ width: 180, height: 36, padding: '0 10px', fontSize: 13 }}
-              value={filterType}
-              onChange={e => setFilterType(e.target.value)}
-            >
-              <option value="">All Device Types</option>
-              {deviceTypes.map((t: any) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <Select
+                value={filterType}
+                onChange={e => setFilterType(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">All Device Types</MenuItem>
+                {deviceTypes.map((t: any) => (
+                  <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-            <select
-              className="input"
-              style={{ width: 150, height: 36, padding: '0 10px', fontSize: 13 }}
-              value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value)}
-            >
-              <option value="">All Statuses</option>
-              <option value="available">Available</option>
-              <option value="launching">Launching</option>
-              {!isBuyer && (
-                <>
-                  <option value="inactive">Inactive</option>
-                  <option value="eol">EOL</option>
-                </>
-              )}
-            </select>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <Select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">All Statuses</MenuItem>
+                <MenuItem value="available">Available</MenuItem>
+                <MenuItem value="launching">Launching</MenuItem>
+                {!isBuyer && [
+                  <MenuItem key="inactive" value="inactive">Inactive</MenuItem>,
+                  <MenuItem key="eol" value="eol">EOL</MenuItem>,
+                ]}
+              </Select>
+            </FormControl>
 
             {(search || filterManufacturer || filterType || filterStatus) && (
-              <button
-                className="btn btn-secondary btn-sm"
-                style={{ height: 36, fontSize: 13 }}
+              <Button
+                variant="outlined"
+                size="small"
                 onClick={() => {
                   setSearch('')
                   setFilterManufacturer('')
@@ -1234,68 +1245,83 @@ export default function DevicesPage() {
                 }}
               >
                 Clear Filters
-              </button>
+              </Button>
             )}
-          </div>
-          <div className="table-wrap">
+          </Box>
+
+          <Paper variant="outlined">
             {isLoading ? (
-              <div className="loading-overlay"><div className="spinner" /> Loading devices…</div>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 6 }}>
+                <CircularProgress size={24} />
+                <Typography variant="body2" color="text.secondary">Loading devices...</Typography>
+              </Box>
             ) : devices.length === 0 ? (
-              <div className="empty-state">
-                <Smartphone size={40} />
-                <div>No devices found</div>
-                <div style={{ fontSize: 12 }}>Import devices via CSV to get started</div>
-              </div>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
+                <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                <Typography variant="body1">No devices found</Typography>
+                <Typography variant="body2" color="text.secondary">Import devices via CSV to get started</Typography>
+              </Box>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th><th>Manufacturer</th><th>Type</th>
-                    <th>Status</th>
-                    {isBuyer && <th>Action</th>}
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedDevices.map((d: any) => {
-                    const inPortfolio = portfolioDeviceIds.has(d.id)
-                    return (
-                      <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => handleRowClick(d)}>
-                        <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{d.name}</td>
-                        <td>{d.manufacturer_name ?? d.manufacturer}</td>
-                        <td>{d.device_type_name ?? d.device_type}</td>
-                        <td>
-                          {(() => {
-                            const isLaunching = d.lifecycle_status === 'launching' || (d.lifecycle_status === 'inactive' && d.launch_date && new Date(d.launch_date) > new Date());
-                            const displayStatus = isLaunching ? 'launching' : d.lifecycle_status;
-                            return (
-                              <span className={`badge ${LC_COLORS[displayStatus] ?? 'badge-muted'}`}>
-                                {displayStatus === 'eol' ? 'EOL' : displayStatus}
-                              </span>
-                            );
-                          })()}
-                        </td>
-                        {isBuyer && (
-                          <td onClick={e => e.stopPropagation()}>
-                            {inPortfolio ? (
-                              <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                <Check size={11} /> In Portfolio
-                              </span>
-                            ) : (
-                              <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px' }} onClick={() => handleAdd(d.id)}>
-                                Add to Portfolio
-                              </button>
-                            )}
-                          </td>
-                        )}
-                        <td><ChevronRight size={14} style={{ color: 'var(--text-muted)' }} /></td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Manufacturer</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Status</TableCell>
+                      {isBuyer && <TableCell>Action</TableCell>}
+                      <TableCell sx={{ width: 32 }} />
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {paginatedDevices.map((d: any) => {
+                      const inPortfolio = portfolioDeviceIds.has(d.id)
+                      const displayStatus = getDisplayStatus(d.lifecycle_status, d.launch_date)
+                      return (
+                        <TableRow
+                          key={d.id}
+                          hover
+                          sx={{ cursor: 'pointer' }}
+                          onClick={() => handleRowClick(d)}
+                        >
+                          <TableCell sx={{ fontWeight: 500, color: 'text.primary' }}>{d.name}</TableCell>
+                          <TableCell>{d.manufacturer_name ?? d.manufacturer}</TableCell>
+                          <TableCell>{d.device_type_name ?? d.device_type}</TableCell>
+                          <TableCell>
+                            <StatusChip
+                              status={displayStatus}
+                              label={displayStatus === 'eol' ? 'EOL' : undefined}
+                            />
+                          </TableCell>
+                          {isBuyer && (
+                            <TableCell onClick={e => e.stopPropagation()}>
+                              {inPortfolio ? (
+                                <Chip
+                                  icon={<CheckIcon sx={{ fontSize: 14 }} />}
+                                  label="In Portfolio"
+                                  color="success"
+                                  size="small"
+                                  variant="filled"
+                                />
+                              ) : (
+                                <Button variant="outlined" size="small" sx={{ py: 0.25, px: 1 }} onClick={() => handleAdd(d.id)}>
+                                  Add to Portfolio
+                                </Button>
+                              )}
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            <ChevronRightIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
-          </div>
+          </Paper>
           <Pagination
             currentPage={devicePage}
             totalPages={totalDevicePages}
@@ -1309,124 +1335,138 @@ export default function DevicesPage() {
 
       {tab === 'portfolio' && isBuyer && (
         <>
-          <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div className="search-bar" style={{ width: 280, margin: 0 }}>
-              <Search size={14} />
-              <input
-                placeholder="Search by name, SKU, model…"
-                value={portfolioSearch}
-                onChange={e => setPortfolioSearch(e.target.value)}
-              />
-            </div>
+          <Box sx={{ mb: 2, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+            <SearchBar
+              placeholder="Search by name, SKU, model..."
+              value={portfolioSearch}
+              onChange={e => setPortfolioSearch(e.target.value)}
+              sx={{ width: 280 }}
+            />
 
-            <select
-              className="input"
-              style={{ width: 180, height: 36, padding: '0 10px', fontSize: 13 }}
-              value={portfolioMfg}
-              onChange={e => setPortfolioMfg(e.target.value)}
-            >
-              <option value="">All Manufacturers</option>
-              {manufacturers.map((m: any) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <Select
+                value={portfolioMfg}
+                onChange={e => setPortfolioMfg(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">All Manufacturers</MenuItem>
+                {manufacturers.map((m: any) => (
+                  <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-            <select
-              className="input"
-              style={{ width: 180, height: 36, padding: '0 10px', fontSize: 13 }}
-              value={portfolioType}
-              onChange={e => setPortfolioType(e.target.value)}
-            >
-              <option value="">All Device Types</option>
-              {deviceTypes.map((t: any) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <Select
+                value={portfolioType}
+                onChange={e => setPortfolioType(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">All Device Types</MenuItem>
+                {deviceTypes.map((t: any) => (
+                  <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
 
-          <div className="table-wrap">
+          <Paper variant="outlined">
             {(portfolio ?? []).length === 0 ? (
-              <div className="empty-state">
-                <Smartphone size={40} />
-                <div>Your portfolio is empty</div>
-                <div style={{ fontSize: 12 }}>Add devices from the All Devices tab</div>
-              </div>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
+                <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                <Typography variant="body1">Your portfolio is empty</Typography>
+                <Typography variant="body2" color="text.secondary">Add devices from the All Devices tab</Typography>
+              </Box>
             ) : filteredMyDevices.length === 0 ? (
-              <div className="empty-state">
-                <Smartphone size={40} />
-                <div>No matching devices found</div>
-                <div style={{ fontSize: 12 }}>Try clearing or adjusting your search filters</div>
-              </div>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
+                <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                <Typography variant="body1">No matching devices found</Typography>
+                <Typography variant="body2" color="text.secondary">Try clearing or adjusting your search filters</Typography>
+              </Box>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Device</th>
-                    <th>Manufacturer</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Added</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedMyDevices.map((ref: any) => (
-                    <tr key={ref.id}>
-                      <td 
-                        style={{ 
-                          color: 'var(--accent)', 
-                          fontWeight: 500, 
-                          cursor: 'pointer',
-                          textDecoration: 'underline',
-                          textDecorationColor: 'var(--accent)',
-                          textUnderlineOffset: '2px'
-                        }}
-                        onClick={() => handlePortfolioDeviceClick(ref)}
-                        title="View device details"
-                      >
-                        {ref.device_name}
-                      </td>
-                      <td>{ref.device_manufacturer}</td>
-                      <td>{ref.device_type ?? '—'}</td>
-                      <td>
-                        {(() => {
-                          const isLaunching = ref.device_status === 'launching' || (ref.device_status === 'inactive' && ref.device_launch_date && new Date(ref.device_launch_date) > new Date());
-                          const displayStatus = isLaunching ? 'launching' : ref.device_status;
-                          return (
-                            <span className={`badge ${LC_COLORS[displayStatus] ?? 'badge-muted'}`}>
-                              {displayStatus === 'eol' ? 'EOL' : (displayStatus || 'available')}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td style={{ fontSize: 12 }}>{formatDate(ref.created_at)}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          {ref.active_flag ? (
-                            <button className="btn btn-danger btn-sm" onClick={() => handleRemoveClick(ref.device, ref.device_name)}>
-                              <Trash2 size={12} /> Remove
-                            </button>
-                          ) : (
-                            <button className="btn btn-secondary btn-sm" onClick={() => handleAdd(ref.device)}>
-                              Add back
-                            </button>
-                          )}
-                          {ref.active_flag && ref.has_accessories && (
-                            <button 
-                              className="btn btn-primary btn-sm" 
-                              onClick={() => navigate(`/catalog?tab=my-compatibility&compatibility_device=${ref.device}`)}
-                            >
-                              View Products
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Device</TableCell>
+                      <TableCell>Manufacturer</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Added</TableCell>
+                      <TableCell>Action</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {paginatedMyDevices.map((ref: any) => {
+                      const displayStatus = getDisplayStatus(ref.device_status, ref.device_launch_date)
+                      return (
+                        <TableRow key={ref.id} hover>
+                          <TableCell>
+                            <Tooltip title="View device details">
+                              <Typography
+                                component="span"
+                                variant="body2"
+                                sx={{
+                                  color: 'primary.main',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  textUnderlineOffset: '2px',
+                                  '&:hover': { opacity: 0.8 },
+                                }}
+                                onClick={() => handlePortfolioDeviceClick(ref)}
+                              >
+                                {ref.device_name}
+                              </Typography>
+                            </Tooltip>
+                          </TableCell>
+                          <TableCell>{ref.device_manufacturer}</TableCell>
+                          <TableCell>{ref.device_type ?? '\u2014'}</TableCell>
+                          <TableCell>
+                            <StatusChip
+                              status={displayStatus || 'available'}
+                              label={displayStatus === 'eol' ? 'EOL' : undefined}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption">{formatDate(ref.created_at)}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                              {ref.active_flag ? (
+                                <Button
+                                  variant="outlined"
+                                  color="error"
+                                  size="small"
+                                  startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
+                                  onClick={() => handleRemoveClick(ref.device, ref.device_name)}
+                                >
+                                  Remove
+                                </Button>
+                              ) : (
+                                <Button variant="outlined" size="small" onClick={() => handleAdd(ref.device)}>
+                                  Add back
+                                </Button>
+                              )}
+                              {ref.active_flag && ref.has_accessories && (
+                                <Button
+                                  variant="contained"
+                                  size="small"
+                                  onClick={() => navigate(`/catalog?tab=my-compatibility&compatibility_device=${ref.device}`)}
+                                >
+                                  View Products
+                                </Button>
+                              )}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
-          </div>
+          </Paper>
           <Pagination
             currentPage={portfolioPage}
             totalPages={totalPortfolioPages}
@@ -1438,1368 +1478,1252 @@ export default function DevicesPage() {
         </>
       )}
 
-      {/* Remove Confirmation Modal */}
-      {confirmRemoveId && (
-        <div className="modal-overlay" onClick={() => { setConfirmRemoveId(null); setConfirmRemoveName(''); }}>
-          <div className="modal-container" style={{ width: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title">Confirm Removal</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmRemoveId(null); setConfirmRemoveName(''); }}>
-                <X size={16} />
-              </button>
-            </div>
-            <div className="modal-body">
-              <div style={{ textAlign: 'center', padding: '12px 0' }}>
-                <AlertCircle size={40} style={{ color: 'var(--red)', marginBottom: 12 }} />
-                <div style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 500, marginBottom: 8 }}>
-                  Are you sure you want to remove this device from your My Portfolio?
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                  {confirmRemoveName && <><strong>{confirmRemoveName}</strong> will be removed from your portfolio.</>}
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer" style={{ justifyContent: 'center', gap: 12 }}>
-              <button className="btn btn-secondary" onClick={() => { setConfirmRemoveId(null); setConfirmRemoveName(''); }}>
-                Cancel
-              </button>
-              <button className="btn btn-danger" onClick={handleConfirmRemove}>
-                Remove
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Remove Confirmation Dialog */}
+      <Dialog
+        open={!!confirmRemoveId}
+        onClose={() => { setConfirmRemoveId(null); setConfirmRemoveName(''); }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Confirm Removal</DialogTitle>
+        <DialogContent>
+          <Box sx={{ textAlign: 'center', py: 1.5 }}>
+            <ErrorOutlineIcon sx={{ fontSize: 40, color: 'error.main', mb: 1.5 }} />
+            <Typography variant="subtitle1" gutterBottom>
+              Are you sure you want to remove this device from your My Portfolio?
+            </Typography>
+            {confirmRemoveName && (
+              <Typography variant="body2" color="text.secondary">
+                <strong>{confirmRemoveName}</strong> will be removed from your portfolio.
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center', gap: 1.5, pb: 2 }}>
+          <Button variant="outlined" onClick={() => { setConfirmRemoveId(null); setConfirmRemoveName(''); }}>
+            Cancel
+          </Button>
+          <Button variant="contained" color="error" onClick={handleConfirmRemove}>
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* Add Modal */}
-      {showAddModal && (
-        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div className="modal-container" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title">Add New Device</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowAddModal(false)}>
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmitDevice}>
-              <div className="modal-body">
-                {addError && (
-                  <div className="auth-error" style={{ whiteSpace: 'pre-wrap', display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <AlertCircle size={16} style={{ flexShrink: 0 }} />
-                    <div>{addError}</div>
-                  </div>
-                )}
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="label">Manufacturer *</label>
-                    <select
-                      className="input"
-                      value={addManufacturer}
-                      onChange={e => setAddManufacturer(e.target.value)}
-                    >
-                      <option value="">Select Manufacturer</option>
-                      {activeManufacturers.map((m: any) => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Device Name *</label>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder="e.g. iPhone 16 Pro"
-                      value={addName}
-                      onChange={e => setAddName(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Device Type *</label>
-                    <select
-                      className="input"
-                      value={addDeviceType}
-                      onChange={e => setAddDeviceType(e.target.value)}
-                    >
-                      <option value="">Select Device Type</option>
-                      {activeDeviceTypes.map((t: any) => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Launch Date *</label>
-                    <input
-                      type="date"
-                      className="input"
-                      value={addLaunchDate}
-                      onChange={e => setAddLaunchDate(e.target.value)}
-                    />
-                  </div>
-
-                  {selectedCategory && <div className="divider form-grid-full" style={{ margin: '8px 0' }} />}
-
-                  {/* Phone / Tablet fields */}
-                  {(selectedCategory === 'phone' || selectedCategory === 'tablet' || selectedCategory === 'laptop') && (
-                    <div className="form-group">
-                      <label className="label">Charging Interface *</label>
-                      <select
-                        className="input"
-                        value={addCharging}
-                        onChange={e => setAddCharging(e.target.value)}
-                      >
-                        <option value="">Select Charging Interface</option>
-                        <option value="Type-C">Type-C</option>
-                        {selectedCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
-                        <option value="Not Compatible">Not Compatible</option>
-                      </select>
-                    </div>
-                  )}
-
-                  {(selectedCategory === 'phone' || selectedCategory === 'tablet') && (
-                    <>
-                      <div className="form-group">
-                        <label className="label">Storage Expansion *</label>
-                        <select
-                          className="input"
-                          value={addStorage}
-                          onChange={e => handleStorageChange(e.target.value)}
-                        >
-                          <option value="">Select Storage Expansion</option>
-                          <option value="Not Compatible">Not Compatible</option>
-                          <option value="microSDXC">microSDXC</option>
-                          <option value="microSDHC">microSDHC</option>
-                        </select>
-                      </div>
-
-                      {(addStorage === 'microSDXC' || addStorage === 'microSDHC') && (
-                        <div className="form-group">
-                          <label className="label">Maximum Expansion *</label>
-                          <select
-                            className="input"
-                            value={addMaxStorage}
-                            onChange={e => setAddMaxStorage(e.target.value)}
-                          >
-                            {addStorage === 'microSDXC' ? (
-                              <>
-                                <option value="32GB">32GB</option>
-                                <option value="64GB">64GB</option>
-                                <option value="128GB">128GB</option>
-                                <option value="256GB">256GB</option>
-                                <option value="512GB">512GB</option>
-                                <option value="1TB">1TB</option>
-                                <option value="2TB">2TB</option>
-                              </>
-                            ) : (
-                              <>
-                                <option value="16GB">16GB</option>
-                                <option value="32GB">32GB</option>
-                                <option value="64GB">64GB</option>
-                                <option value="128GB">128GB</option>
-                                <option value="256GB">256GB</option>
-                                <option value="512GB">512GB</option>
-                                <option value="1TB">1TB</option>
-                                <option value="1.5TB">1.5TB</option>
-                              </>
-                            )}
-                          </select>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {(selectedCategory === 'phone' || selectedCategory === 'tablet' || selectedCategory === 'laptop') && (
-                    <div className="form-group">
-                      <label className="label">Headphone Jack *</label>
-                      <select
-                        className="input"
-                        value={addHeadphone}
-                        onChange={e => setAddHeadphone(e.target.value)}
-                      >
-                        <option value="">Select Headphone Jack</option>
-                        <option value="Not Compatible">Not Compatible</option>
-                        <option value="Type-C">Type-C</option>
-                        {selectedCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Bluetooth (all categories) */}
-                  {selectedCategory && (
-                    <div className="form-group">
-                      <label className="label">Bluetooth Compatibility *</label>
-                      <select
-                        className="input"
-                        value={addBluetooth}
-                        onChange={e => setAddBluetooth(e.target.value)}
-                      >
-                        <option value="">Select Bluetooth Compatibility</option>
-                        <option value="Yes">Yes</option>
-                        <option value="No">No</option>
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Wireless Charging (Phone / Smartwatch) */}
-                  {(selectedCategory === 'phone' || selectedCategory === 'smartwatch') && (
-                    <div className="form-group form-grid-full">
-                      <label className="label">Wireless Charging Compatibility *</label>
-                      <div className="checkbox-group">
-                        <label className="checkbox-item">
-                          <input
-                            type="checkbox"
-                            checked={addWireless.includes('MagSafe')}
-                            disabled={addWireless.includes('Not Compatible') || addWireless.includes('Qi')}
-                            onChange={() => handleWirelessChange('MagSafe')}
-                          />
-                          MagSafe
-                        </label>
-                        <label className="checkbox-item">
-                          <input
-                            type="checkbox"
-                            checked={addWireless.includes('Qi2')}
-                            disabled={addWireless.includes('Not Compatible') || addWireless.includes('Qi')}
-                            onChange={() => handleWirelessChange('Qi2')}
-                          />
-                          Qi2
-                        </label>
-                        <label className="checkbox-item">
-                          <input
-                            type="checkbox"
-                            checked={addWireless.includes('Qi')}
-                            disabled={addWireless.includes('Not Compatible') || addWireless.includes('MagSafe') || addWireless.includes('Qi2')}
-                            onChange={() => handleWirelessChange('Qi')}
-                          />
-                          Qi
-                        </label>
-                        <label className="checkbox-item">
-                          <input
-                            type="checkbox"
-                            checked={addWireless.includes('Not Compatible')}
-                            onChange={() => handleWirelessChange('Not Compatible')}
-                          />
-                          Not Compatible
-                        </label>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Watch Case Size (Smartwatch) */}
-                  {selectedCategory === 'smartwatch' && (
-                    <div className="form-group">
-                      <label className="label">Watch Case Size *</label>
-                      <select
-                        className="input"
-                        value={addWatchCase}
-                        onChange={e => setAddWatchCase(e.target.value)}
-                      >
-                        <option value="">Select Watch Case Size</option>
-                        <option value="Not Compatible">Not Compatible</option>
-                        <option value="40mm">40mm</option>
-                        <option value="41mm">41mm</option>
-                        <option value="42mm">42mm</option>
-                        <option value="44mm">44mm</option>
-                        <option value="45mm">45mm</option>
-                        <option value="46mm">46mm</option>
-                        <option value="49mm">49mm</option>
-                      </select>
-                    </div>
-                  )}
-
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowAddModal(false)}
-                  disabled={isSubmitting}
+      {/* Add Device Dialog */}
+      <Dialog
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Add New Device</DialogTitle>
+        <form onSubmit={handleSubmitDevice}>
+          <DialogContent dividers>
+            {addError && (
+              <Alert severity="error" icon={<ErrorOutlineIcon />} sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>
+                {addError}
+              </Alert>
+            )}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Manufacturer *</InputLabel>
+                <Select
+                  value={addManufacturer}
+                  onChange={e => setAddManufacturer(e.target.value)}
+                  label="Manufacturer *"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSubmitting}
+                  {activeManufacturers.map((m: any) => (
+                    <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                size="small"
+                label="Device Name *"
+                placeholder="e.g. iPhone 16 Pro"
+                value={addName}
+                onChange={e => setAddName(e.target.value)}
+              />
+
+              <FormControl size="small" fullWidth>
+                <InputLabel>Device Type *</InputLabel>
+                <Select
+                  value={addDeviceType}
+                  onChange={e => setAddDeviceType(e.target.value)}
+                  label="Device Type *"
                 >
-                  {isSubmitting ? 'Saving...' : 'Add Device'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                  {activeDeviceTypes.map((t: any) => (
+                    <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
-      {/* Import Modal */}
-      {showImportModal && (
-        <div className="modal-overlay" onClick={() => { setShowImportModal(false); resetImportState(); }}>
-          <div className="modal-container" style={{ width: 620 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title">Import Devices</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => { setShowImportModal(false); resetImportState(); }}>
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={handleImportSubmit}>
-              <div className="modal-body">
-                {importErrorGeneral && (
-                  <div className="auth-error" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <AlertCircle size={16} style={{ flexShrink: 0 }} />
-                    <div>{importErrorGeneral}</div>
-                  </div>
-                )}
-                {importSuccess && (
-                  <div className="badge badge-green" style={{ display: 'flex', width: '100%', padding: 12, marginBottom: 16, fontSize: 13, gap: 6, borderRadius: 'var(--radius-sm)' }}>
-                    <Check size={16} />
-                    <div>{importSuccess}</div>
-                  </div>
-                )}
+              <TextField
+                size="small"
+                label="Launch Date *"
+                type="date"
+                value={addLaunchDate}
+                onChange={e => setAddLaunchDate(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
 
-                <div className="form-group" style={{ marginBottom: 18 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <label className="label" style={{ margin: 0 }}>Device CSV Template</label>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={handleDownloadTemplate}
-                      style={{ padding: '4px 8px' }}
-                    >
-                      <Download size={12} /> Download Template
-                    </button>
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Download the standard Device CSV Import template to ensure proper columns and validation alignment.
-                  </div>
-                </div>
-
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="label">Import Mode *</label>
-                    <select
-                      className="input"
-                      value={importMode}
-                      onChange={e => setImportMode(e.target.value)}
-                    >
-                      <option value="Create New Only">Create New Only</option>
-                      <option value="Update Existing">Update Existing</option>
-                      <option value="Upsert">Upsert (Create & Update)</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="label">Select CSV File *</label>
-                    <input
-                      type="file"
-                      accept=".csv"
-                      key={importFile ? 'has-file' : 'no-file'}
-                      className="input"
-                      style={{ padding: '6px 10px' }}
-                      onChange={e => setImportFile(e.target.files?.[0] || null)}
-                    />
-                  </div>
-                </div>
-
-                {importErrors.length > 0 && (
-                  <div style={{ marginTop: 20 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--red)', marginBottom: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <AlertCircle size={14} />
-                      Import Validation Failed ({importErrors.length} Errors Found)
-                    </div>
-                    <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                      <table className="validation-errors-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: 50 }}>Row</th>
-                            <th style={{ width: 140 }}>Column</th>
-                            <th style={{ width: 130 }}>Submitted Value</th>
-                            <th>Error Message</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {importErrors.map((err, i) => (
-                            <tr key={i}>
-                              <td style={{ fontWeight: 600 }}>{err.row}</td>
-                              <td style={{ color: 'var(--text-primary)' }}>{err.column}</td>
-                              <td className="mono" style={{ fontSize: 11 }}>{err.submitted_value || <span style={{ color: 'var(--text-muted)' }}>[empty]</span>}</td>
-                              <td style={{ color: 'var(--red)' }}>{err.error_message}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => { setShowImportModal(false); resetImportState(); }}
-                  disabled={isImporting}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isImporting || !importFile}
-                >
-                  {isImporting ? 'Importing...' : 'Start Import'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Dropdown Manager Modal */}
-      {showDropdownModal && (
-        <div className="modal-overlay" onClick={() => { setShowDropdownModal(false); setEditingTypeConfig(null); }}>
-          <div className="modal-container" style={{ width: editingTypeConfig ? 520 : 480, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title">
-                {editingTypeConfig ? 'Configure Device Type Rules' : 'Manage Dropdown Values'}
-              </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => { setShowDropdownModal(false); setEditingTypeConfig(null); }}>
-                <X size={16} />
-              </button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1 }}>
-              {dropdownError && (
-                <div className="auth-error" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: 0 }}>
-                  <AlertCircle size={16} style={{ flexShrink: 0 }} />
-                  <div>{dropdownError}</div>
-                </div>
+              {selectedCategory && (
+                <Box sx={{ gridColumn: 'span 2' }}>
+                  <Divider sx={{ my: 1 }} />
+                </Box>
               )}
 
-              {editingTypeConfig ? (
-                <form onSubmit={handleSaveTypeConfig} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    Configuring Rules for: <span style={{ color: 'var(--primary)' }}>{editingTypeConfig.name}</span>
-                  </div>
+              {/* Phone / Tablet / Laptop fields */}
+              {(selectedCategory === 'phone' || selectedCategory === 'tablet' || selectedCategory === 'laptop') && (
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Charging Interface *</InputLabel>
+                  <Select
+                    value={addCharging}
+                    onChange={e => setAddCharging(e.target.value)}
+                    label="Charging Interface *"
+                  >
+                    <MenuItem value="Type-C">Type-C</MenuItem>
+                    {selectedCategory !== 'laptop' && <MenuItem value="Lightning">Lightning</MenuItem>}
+                    <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
 
-                  <div className="form-group">
-                    <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Status</label>
-                    <select
-                      className="input"
-                      value={typeConfigStatus}
-                      onChange={e => setTypeConfigStatus(e.target.value)}
-                    >
-                      <option value="active">Active</option>
-                      <option value="setup_required">Setup Required</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      id="auto_mapping_eligible"
-                      checked={typeConfigAutoMappingEligible}
-                      onChange={e => setTypeConfigAutoMappingEligible(e.target.checked)}
-                    />
-                    <label htmlFor="auto_mapping_eligible" style={{ fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                      Eligible for Auto-Mapping Remap
-                    </label>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Supported Accessory Categories</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
-                      {categories.map((cat: string) => {
-                        const checked = typeConfigSupportedCategories.includes(cat)
-                        return (
-                          <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={e => {
-                                if (e.target.checked) {
-                                  setTypeConfigSupportedCategories([...typeConfigSupportedCategories, cat])
-                                } else {
-                                  setTypeConfigSupportedCategories(typeConfigSupportedCategories.filter(x => x !== cat))
-                                }
-                              }}
-                            />
-                            {cat}
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="label" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Device Compatibility Rules</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-                      {[
-                        { value: 'compatible_charging_interface', label: 'Charging Interface' },
-                        { value: 'storage_expansion_compatibility', label: 'Storage Expansion' },
-                        { value: 'maximum_supported_storage', label: 'Max Supported Storage' },
-                        { value: 'headphone_jack_compatibility', label: 'Headphone Jack' },
-                        { value: 'bluetooth_compatibility', label: 'Bluetooth' },
-                        { value: 'wireless_charging_compatibility', label: 'Wireless Charging' },
-                        { value: 'compatible_watch_case_size', label: 'Watch Case Size' },
-                      ].map(opt => {
-                        const rule = typeConfigRules[opt.value] || { mode: 'hidden' }
-                        return (
-                          <div key={opt.value} style={{ display: 'flex', flexDirection: 'column', padding: 8, background: 'var(--bg-elevated)', borderRadius: 6, border: '1px solid var(--border-light)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontSize: 13, fontWeight: 555 }}>{opt.label}</span>
-                              <select
-                                style={{ padding: '2px 6px', fontSize: 12, borderRadius: 4, background: 'var(--bg-card)', border: '1px solid var(--border)' }}
-                                value={rule.mode}
-                                onChange={e => {
-                                  setTypeConfigRules({
-                                    ...typeConfigRules,
-                                    [opt.value]: { ...rule, mode: e.target.value }
-                                  })
-                                }}
-                              >
-                                <option value="hidden">Hidden</option>
-                                <option value="required">Required</option>
-                                <option value="optional">Optional</option>
-                                <option value="defaulted">Defaulted</option>
-                              </select>
-                            </div>
-                            {rule.mode === 'defaulted' && (
-                              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Default Value:</span>
-                                <input
-                                  type="text"
-                                  className="input"
-                                  style={{ padding: '2px 6px', fontSize: 12, height: 26, flex: 1 }}
-                                  value={rule.default || ''}
-                                  onChange={e => {
-                                    setTypeConfigRules({
-                                      ...typeConfigRules,
-                                      [opt.value]: { ...rule, default: e.target.value }
-                                    })
-                                  }}
-                                  placeholder="Enter default value..."
-                                />
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
-                    <button type="button" className="btn btn-secondary" onClick={() => setEditingTypeConfig(null)}>
-                      Cancel
-                    </button>
-                    <button type="submit" className="btn btn-primary">
-                      Save Rules
-                    </button>
-                  </div>
-                </form>
-              ) : (
+              {(selectedCategory === 'phone' || selectedCategory === 'tablet') && (
                 <>
-                  <div className="form-group">
-                    <label className="label">Select Taxonomy Dropdown</label>
-                    <select
-                      className="input"
-                      value={manageField}
-                      onChange={e => {
-                        setManageField(e.target.value as any)
-                        setNewDropdownValue('')
-                        setDropdownError(null)
-                      }}
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Storage Expansion *</InputLabel>
+                    <Select
+                      value={addStorage}
+                      onChange={e => handleStorageChange(e.target.value)}
+                      label="Storage Expansion *"
                     >
-                      <option value="manufacturer">Device Manufacturer</option>
-                      <option value="device_type">Device Type</option>
-                    </select>
-                  </div>
+                      <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                      <MenuItem value="microSDXC">microSDXC</MenuItem>
+                      <MenuItem value="microSDHC">microSDHC</MenuItem>
+                    </Select>
+                  </FormControl>
 
-                  <form onSubmit={handleAddDropdownValue} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder={`Add new ${manageField === 'manufacturer' ? 'manufacturer' : 'device type'}…`}
-                      value={newDropdownValue}
-                      onChange={e => setNewDropdownValue(e.target.value)}
-                      style={{ flex: 1 }}
-                    />
-                    <button type="submit" className="btn btn-primary">
-                      Add Value
-                    </button>
-                  </form>
+                  {(addStorage === 'microSDXC' || addStorage === 'microSDHC') && (
+                    <FormControl size="small" fullWidth>
+                      <InputLabel>Maximum Expansion *</InputLabel>
+                      <Select
+                        value={addMaxStorage}
+                        onChange={e => setAddMaxStorage(e.target.value)}
+                        label="Maximum Expansion *"
+                      >
+                        {addStorage === 'microSDXC' ? (
+                          ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(v => (
+                            <MenuItem key={v} value={v}>{v}</MenuItem>
+                          ))
+                        ) : (
+                          ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB'].map(v => (
+                            <MenuItem key={v} value={v}>{v}</MenuItem>
+                          ))
+                        )}
+                      </Select>
+                    </FormControl>
+                  )}
+                </>
+              )}
 
-                  <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-card)', maxHeight: '35vh' }}>
-                    {(manageField === 'manufacturer' ? manufacturers : deviceTypes).length === 0 ? (
-                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                        No values configured.
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        {(manageField === 'manufacturer' ? manufacturers : deviceTypes).map((item: any) => (
-                          <div
-                            key={item.id}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '10px 12px',
-                              borderBottom: '1px solid var(--border-light)',
+              {(selectedCategory === 'phone' || selectedCategory === 'tablet' || selectedCategory === 'laptop') && (
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Headphone Jack *</InputLabel>
+                  <Select
+                    value={addHeadphone}
+                    onChange={e => setAddHeadphone(e.target.value)}
+                    label="Headphone Jack *"
+                  >
+                    <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                    <MenuItem value="Type-C">Type-C</MenuItem>
+                    {selectedCategory !== 'laptop' && <MenuItem value="Lightning">Lightning</MenuItem>}
+                  </Select>
+                </FormControl>
+              )}
+
+              {/* Bluetooth (all categories) */}
+              {selectedCategory && (
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Bluetooth Compatibility *</InputLabel>
+                  <Select
+                    value={addBluetooth}
+                    onChange={e => setAddBluetooth(e.target.value)}
+                    label="Bluetooth Compatibility *"
+                  >
+                    <MenuItem value="Yes">Yes</MenuItem>
+                    <MenuItem value="No">No</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
+
+              {/* Wireless Charging (Phone / Smartwatch) */}
+              {(selectedCategory === 'phone' || selectedCategory === 'smartwatch') && (
+                <Box sx={{ gridColumn: 'span 2' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Wireless Charging Compatibility *
+                  </Typography>
+                  <WirelessCheckboxGroup wireless={addWireless} onChange={handleWirelessChange} />
+                </Box>
+              )}
+
+              {/* Watch Case Size (Smartwatch) */}
+              {selectedCategory === 'smartwatch' && (
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Watch Case Size *</InputLabel>
+                  <Select
+                    value={addWatchCase}
+                    onChange={e => setAddWatchCase(e.target.value)}
+                    label="Watch Case Size *"
+                  >
+                    <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                    {['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm'].map(v => (
+                      <MenuItem key={v} value={v}>{v}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowAddModal(false)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Add Device'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog
+        open={showImportModal}
+        onClose={() => { setShowImportModal(false); resetImportState(); }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Import Devices</DialogTitle>
+        <form onSubmit={handleImportSubmit}>
+          <DialogContent dividers>
+            {importErrorGeneral && (
+              <Alert severity="error" icon={<ErrorOutlineIcon />} sx={{ mb: 2 }}>
+                {importErrorGeneral}
+              </Alert>
+            )}
+            {importSuccess && (
+              <Alert severity="success" icon={<CheckIcon />} sx={{ mb: 2 }}>
+                {importSuccess}
+              </Alert>
+            )}
+
+            <Box sx={{ mb: 2.25 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
+                <Typography variant="subtitle2">Device CSV Template</Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
+                  onClick={handleDownloadTemplate}
+                >
+                  Download Template
+                </Button>
+              </Box>
+              <Typography variant="caption" color="text.secondary">
+                Download the standard Device CSV Import template to ensure proper columns and validation alignment.
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Import Mode *</InputLabel>
+                <Select
+                  value={importMode}
+                  onChange={e => setImportMode(e.target.value)}
+                  label="Import Mode *"
+                >
+                  <MenuItem value="Create New Only">Create New Only</MenuItem>
+                  <MenuItem value="Update Existing">Update Existing</MenuItem>
+                  <MenuItem value="Upsert">Upsert (Create & Update)</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Select CSV File *</Typography>
+                <input
+                  type="file"
+                  accept=".csv"
+                  key={importFile ? 'has-file' : 'no-file'}
+                  style={{ fontSize: 13 }}
+                  onChange={e => setImportFile(e.target.files?.[0] || null)}
+                />
+              </Box>
+            </Box>
+
+            {importErrors.length > 0 && (
+              <Box sx={{ mt: 2.5 }}>
+                <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', mb: 1 }}>
+                  <ErrorOutlineIcon sx={{ fontSize: 16, color: 'error.main' }} />
+                  <Typography variant="subtitle2" color="error">
+                    Import Validation Failed ({importErrors.length} Errors Found)
+                  </Typography>
+                </Box>
+                <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 200 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ width: 50, fontWeight: 600 }}>Row</TableCell>
+                        <TableCell sx={{ width: 140, fontWeight: 600 }}>Column</TableCell>
+                        <TableCell sx={{ width: 130, fontWeight: 600 }}>Submitted Value</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Error Message</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {importErrors.map((err, i) => (
+                        <TableRow key={i} hover>
+                          <TableCell sx={{ fontWeight: 600 }}>{err.row}</TableCell>
+                          <TableCell sx={{ color: 'text.primary' }}>{err.column}</TableCell>
+                          <TableCell sx={{ fontFamily: MONO_FONT, fontSize: '0.6875rem' }}>
+                            {err.submitted_value || <Typography component="span" variant="caption" color="text.disabled">[empty]</Typography>}
+                          </TableCell>
+                          <TableCell sx={{ color: 'error.main' }}>{err.error_message}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => { setShowImportModal(false); resetImportState(); }}
+              disabled={isImporting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained" disabled={isImporting || !importFile}>
+              {isImporting ? 'Importing...' : 'Start Import'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Dropdown Manager Dialog */}
+      <Dialog
+        open={showDropdownModal}
+        onClose={() => { setShowDropdownModal(false); setEditingTypeConfig(null); }}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{ paper: { sx: { maxHeight: '90vh' } } }}
+      >
+        <DialogTitle>
+          {editingTypeConfig ? 'Configure Device Type Rules' : 'Manage Dropdown Values'}
+        </DialogTitle>
+        <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {dropdownError && (
+            <Alert severity="error" icon={<ErrorOutlineIcon />}>
+              {dropdownError}
+            </Alert>
+          )}
+
+          {editingTypeConfig ? (
+            <form onSubmit={handleSaveTypeConfig} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Configuring Rules for: <Typography component="span" color="primary.main" sx={{ fontWeight: 600 }}>{editingTypeConfig.name}</Typography>
+              </Typography>
+
+              <FormControl size="small" fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={typeConfigStatus}
+                  onChange={e => setTypeConfigStatus(e.target.value)}
+                  label="Status"
+                >
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="setup_required">Setup Required</MenuItem>
+                  <MenuItem value="inactive">Inactive</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={typeConfigAutoMappingEligible}
+                    onChange={e => setTypeConfigAutoMappingEligible(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label={<Typography variant="body2" color="text.secondary">Eligible for Auto-Mapping Remap</Typography>}
+              />
+
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Supported Accessory Categories</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 0.5 }}>
+                  {categories.map((cat: string) => {
+                    const checked = typeConfigSupportedCategories.includes(cat)
+                    return (
+                      <FormControlLabel
+                        key={cat}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={checked}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setTypeConfigSupportedCategories([...typeConfigSupportedCategories, cat])
+                              } else {
+                                setTypeConfigSupportedCategories(typeConfigSupportedCategories.filter(x => x !== cat))
+                              }
                             }}
-                          >
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 555 }}>
-                                {item.name}
-                              </span>
-                              {!item.is_active && (
-                                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Inactive</span>
-                              )}
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              {manageField === 'device_type' && (
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  style={{ padding: 4, color: 'var(--primary)', background: 'transparent', border: 'none' }}
-                                  onClick={() => setEditingTypeConfig(item)}
-                                >
-                                  <Settings size={14} />
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                style={{ padding: '2px 4px', fontSize: 11, color: 'var(--text-muted)' }}
-                                onClick={async () => {
-                                  try {
-                                    if (manageField === 'manufacturer') {
-                                      await api.patch(`/devices/manufacturers/${item.id}/`, { is_active: !item.is_active })
-                                      refetchManufacturers()
-                                    } else {
-                                      await api.patch(`/devices/types/${item.id}/`, { 
-                                        is_active: !item.is_active,
-                                        status: !item.is_active ? 'active' : 'inactive'
-                                      })
-                                      refetchTypes()
-                                    }
-                                  } catch (err: any) {
-                                    setDropdownError(parseApiError(err, 'Failed to toggle status.'))
-                                  }
-                                }}
-                              >
-                                {item.is_active ? 'Deactivate' : 'Activate'}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                style={{ padding: 4, color: 'var(--red)', background: 'transparent', border: 'none' }}
-                                onClick={() => handleDeleteDropdownValue(item.id)}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
-                    <button type="button" className="btn btn-secondary" onClick={() => setShowDropdownModal(false)}>
-                      Close
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit / Detail Modal */}
-      {editingDevice && (
-        <div className="modal-overlay" onClick={() => setEditingDevice(null)}>
-          <div className="modal-container" style={{ width: 620 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title">Device Details & History</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setEditingDevice(null)}>
-                <X size={16} />
-              </button>
-            </div>
-            
-            {/* Modal Tabs */}
-            <div className="tabs" style={{ padding: '0 20px', borderBottom: '1px solid var(--border)' }}>
-              <div className={`tab ${editTab === 'details' ? 'active' : ''}`} onClick={() => setEditTab('details')}>
-                {isCixciAdmin ? 'Edit Details' : 'View Details'}
-              </div>
-              <div className={`tab ${editTab === 'compatibility' ? 'active' : ''}`} onClick={() => setEditTab('compatibility')}>
-                Device Compatibility
-              </div>
-              {!isBuyer && (
-                <>
-                  <div className={`tab ${editTab === 'products' ? 'active' : ''}`} onClick={() => setEditTab('products')}>
-                    Compatible Products
-                  </div>
-                  <div className={`tab ${editTab === 'audit' ? 'active' : ''}`} onClick={() => setEditTab('audit')}>
-                    Audit History
-                  </div>
-                </>
-              )}
-            </div>
-
-            {editTab === 'details' ? (
-              <form onSubmit={handleUpdateDevice}>
-                <div className="modal-body">
-                  {editError && (
-                    <div className="auth-error" style={{ whiteSpace: 'pre-wrap', display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <AlertCircle size={16} style={{ flexShrink: 0 }} />
-                      <div>{editError}</div>
-                    </div>
-                  )}
-                  <div className="form-grid">
-                    <div className="form-group">
-                      <label className="label">Manufacturer *</label>
-                      {isCixciAdmin ? (
-                        <select
-                          className="input"
-                          value={editManufacturer}
-                          onChange={e => setEditManufacturer(e.target.value)}
-                        >
-                          <option value="">Select Manufacturer</option>
-                          {manufacturers.map((m: any) => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="input-read-only">{editingDevice.manufacturer_name}</div>
-                      )}
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Device Name *</label>
-                      {isCixciAdmin ? (
-                        <input
-                          type="text"
-                          className="input"
-                          value={editName}
-                          onChange={e => setEditName(e.target.value)}
-                        />
-                      ) : (
-                        <div className="input-read-only">{editingDevice.name}</div>
-                      )}
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Device Type *</label>
-                      {isCixciAdmin ? (
-                        <select
-                          className="input"
-                          value={editDeviceType}
-                          onChange={e => setEditDeviceType(e.target.value)}
-                        >
-                          <option value="">Select Device Type</option>
-                          {deviceTypes.map((t: any) => (
-                            <option key={t.id} value={t.id}>{t.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="input-read-only">{editingDevice.device_type_name}</div>
-                      )}
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Launch Date</label>
-                      {isCixciAdmin ? (
-                        <input
-                          type="date"
-                          className="input"
-                          value={editLaunchDate}
-                          onChange={e => setEditLaunchDate(e.target.value)}
-                        />
-                      ) : (
-                        <div className="input-read-only">
-                          {editingDevice.launch_date ? (
-                            editingDevice.launch_date.match(/^\d{4}-\d{2}-\d{2}$/) ? 
-                            editingDevice.launch_date.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2-$3-$1') : 
-                            editingDevice.launch_date
-                          ) : 'N/A'}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="form-group">
-                      <label className="label">Lifecycle Status</label>
-                      {isCixciAdmin ? (
-                        <select
-                          className="input"
-                          value={editStatus}
-                          onChange={e => setEditStatus(e.target.value)}
-                        >
-                          <option value="available">Available</option>
-                          <option value="launching">Launching</option>
-                          <option value="inactive">Inactive</option>
-                          <option value="eol">EOL</option>
-                        </select>
-                      ) : (
-                        <div className="input-read-only">
-                          {(() => {
-                            const isLaunching = editingDevice.lifecycle_status === 'launching' || (editingDevice.lifecycle_status === 'inactive' && editingDevice.launch_date && new Date(editingDevice.launch_date) > new Date());
-                            const display = isLaunching ? 'launching' : editingDevice.lifecycle_status;
-                            return display === 'eol' ? 'EOL' : display;
-                          })()}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Extra identity fields for buyer view */}
-                    {!isCixciAdmin && (
-                      <>
-                        <div className="form-group">
-                          <label className="label">SKU</label>
-                          <div className="input-read-only">{editingDevice.sku || 'N/A'}</div>
-                        </div>
-                        <div className="form-group">
-                          <label className="label">Model Number</label>
-                          <div className="input-read-only">{editingDevice.model_number || 'N/A'}</div>
-                        </div>
-                        {editingDevice.announced_date && (
-                          <div className="form-group">
-                            <label className="label">Announced Date</label>
-                            <div className="input-read-only">{editingDevice.announced_date}</div>
-                          </div>
-                        )}
-                        {editingDevice.release_date && (
-                          <div className="form-group">
-                            <label className="label">Release Date</label>
-                            <div className="input-read-only">{editingDevice.release_date}</div>
-                          </div>
-                        )}
-                        {editingDevice.eol_date && (
-                          <div className="form-group">
-                            <label className="label">EOL Date</label>
-                            <div className="input-read-only">{editingDevice.eol_date}</div>
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {isCixciAdmin && selectedEditCategory && <div className="divider form-grid-full" style={{ margin: '8px 0' }} />}
-                    {/* Conditional Compatibility Fields - admin only in details tab */}
-                    {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
-                      <div className="form-group">
-                        <label className="label">Charging Interface *</label>
-                        {isCixciAdmin ? (
-                          <select
-                            className="input"
-                            value={editCharging}
-                            onChange={e => setEditCharging(e.target.value)}
-                          >
-                            <option value="">Select Charging Interface</option>
-                            <option value="Type-C">Type-C</option>
-                            {selectedEditCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
-                            <option value="Not Compatible">Not Compatible</option>
-                          </select>
-                        ) : (
-                          <div className="input-read-only">{editCharging}</div>
-                        )}
-                      </div>
-                    )}
-
-                    {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet') && (
-                      <>
-                        <div className="form-group">
-                          <label className="label">Storage Expansion *</label>
-                          {isCixciAdmin ? (
-                            <select
-                              className="input"
-                              value={editStorage}
-                              onChange={e => handleEditStorageChange(e.target.value)}
-                            >
-                              <option value="">Select Storage Expansion</option>
-                              <option value="Not Compatible">Not Compatible</option>
-                              <option value="microSDXC">microSDXC</option>
-                              <option value="microSDHC">microSDHC</option>
-                            </select>
-                          ) : (
-                            <div className="input-read-only">{editStorage}</div>
-                          )}
-                        </div>
-
-                        {(editStorage === 'microSDXC' || editStorage === 'microSDHC') && (
-                          <div className="form-group">
-                            <label className="label">Maximum Expansion *</label>
-                            {isCixciAdmin ? (
-                              <select
-                                className="input"
-                                value={editMaxStorage}
-                                onChange={e => setEditMaxStorage(e.target.value)}
-                              >
-                                {editStorage === 'microSDXC' ? (
-                                  <>
-                                    <option value="32GB">32GB</option>
-                                    <option value="64GB">64GB</option>
-                                    <option value="128GB">128GB</option>
-                                    <option value="256GB">256GB</option>
-                                    <option value="512GB">512GB</option>
-                                    <option value="1TB">1TB</option>
-                                    <option value="2TB">2TB</option>
-                                  </>
-                                ) : (
-                                  <>
-                                    <option value="16GB">16GB</option>
-                                    <option value="32GB">32GB</option>
-                                    <option value="64GB">64GB</option>
-                                    <option value="128GB">128GB</option>
-                                    <option value="256GB">256GB</option>
-                                    <option value="512GB">512GB</option>
-                                    <option value="1TB">1TB</option>
-                                    <option value="1.5TB">1.5TB</option>
-                                  </>
-                                )}
-                              </select>
-                            ) : (
-                              <div className="input-read-only">{editMaxStorage}</div>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
-                      <div className="form-group">
-                        <label className="label">Headphone Jack *</label>
-                        {isCixciAdmin ? (
-                          <select
-                            className="input"
-                            value={editHeadphone}
-                            onChange={e => setEditHeadphone(e.target.value)}
-                          >
-                            <option value="">Select Headphone Jack</option>
-                            <option value="Not Compatible">Not Compatible</option>
-                            <option value="Type-C">Type-C</option>
-                            {selectedEditCategory !== 'laptop' && <option value="Lightning">Lightning</option>}
-                          </select>
-                        ) : (
-                          <div className="input-read-only">{editHeadphone}</div>
-                        )}
-                      </div>
-                    )}
-
-                    {isCixciAdmin && selectedEditCategory && (
-                      <div className="form-group">
-                        <label className="label">Bluetooth Compatibility *</label>
-                        {isCixciAdmin ? (
-                          <select
-                            className="input"
-                            value={editBluetooth}
-                            onChange={e => setEditBluetooth(e.target.value)}
-                          >
-                            <option value="">Select Bluetooth Compatibility</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                          </select>
-                        ) : (
-                          <div className="input-read-only">{editBluetooth}</div>
-                        )}
-                      </div>
-                    )}
-
-                    {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
-                      <div className="form-group form-grid-full">
-                        <label className="label">Wireless Charging Compatibility *</label>
-                        {isCixciAdmin ? (
-                          <div className="checkbox-group">
-                            <label className="checkbox-item">
-                              <input
-                                type="checkbox"
-                                checked={editWireless.includes('MagSafe')}
-                                disabled={editWireless.includes('Not Compatible') || editWireless.includes('Qi')}
-                                onChange={() => handleEditWirelessChange('MagSafe')}
-                              />
-                              MagSafe
-                            </label>
-                            <label className="checkbox-item">
-                              <input
-                                type="checkbox"
-                                checked={editWireless.includes('Qi2')}
-                                disabled={editWireless.includes('Not Compatible') || editWireless.includes('Qi')}
-                                onChange={() => handleEditWirelessChange('Qi2')}
-                              />
-                              Qi2
-                            </label>
-                            <label className="checkbox-item">
-                              <input
-                                type="checkbox"
-                                checked={editWireless.includes('Qi')}
-                                disabled={editWireless.includes('Not Compatible') || editWireless.includes('MagSafe') || editWireless.includes('Qi2')}
-                                onChange={() => handleEditWirelessChange('Qi')}
-                              />
-                              Qi
-                            </label>
-                            <label className="checkbox-item">
-                              <input
-                                type="checkbox"
-                                checked={editWireless.includes('Not Compatible')}
-                                onChange={() => handleEditWirelessChange('Not Compatible')}
-                              />
-                              Not Compatible
-                            </label>
-                          </div>
-                        ) : (
-                          <div className="input-read-only">{editWireless.join(', ') || 'Not Compatible'}</div>
-                        )}
-                      </div>
-                    )}
-
-                    {isCixciAdmin && selectedEditCategory === 'smartwatch' && (
-                      <div className="form-group">
-                        <label className="label">Watch Case Size *</label>
-                        {isCixciAdmin ? (
-                          <select
-                            className="input"
-                            value={editWatchCase}
-                            onChange={e => setEditWatchCase(e.target.value)}
-                          >
-                            <option value="">Select Watch Case Size</option>
-                            <option value="Not Compatible">Not Compatible</option>
-                            <option value="40mm">40mm</option>
-                            <option value="41mm">41mm</option>
-                            <option value="42mm">42mm</option>
-                            <option value="44mm">44mm</option>
-                            <option value="45mm">45mm</option>
-                            <option value="46mm">46mm</option>
-                            <option value="49mm">49mm</option>
-                          </select>
-                        ) : (
-                          <div className="input-read-only">{editWatchCase}</div>
-                        )}
-                      </div>
-                    )}
-                    {/* End admin-only compatibility fields in details tab */}
-
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setEditingDevice(null)}
-                  >
-                    Close
-                  </button>
-                  {isCixciAdmin && (
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={isSubmittingEdit}
-                    >
-                      {isSubmittingEdit ? 'Saving...' : 'Save Changes'}
-                    </button>
-                  )}
-                </div>
-              </form>
-            ) : editTab === 'compatibility' ? (
-              <div className="modal-body">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
-                    Hardware compatibility specifications for this device. {!isCixciAdmin && <span>These fields are managed by CIXCI administrators.</span>}
-                  </div>
-
-                  <div className="form-grid">
-                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
-                      <div className="form-group">
-                        <label className="label">Charging Interface</label>
-                        <div className="input-read-only">{editingDevice.compatible_charging_interface || 'Not Compatible'}</div>
-                      </div>
-                    )}
-
-                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet') && (
-                      <>
-                        <div className="form-group">
-                          <label className="label">Storage Expansion</label>
-                          <div className="input-read-only">{editingDevice.storage_expansion_compatibility || 'Not Compatible'}</div>
-                        </div>
-                        {editingDevice.storage_expansion_compatibility && editingDevice.storage_expansion_compatibility !== 'Not Compatible' && (
-                          <div className="form-group">
-                            <label className="label">Maximum Supported Storage</label>
-                            <div className="input-read-only">{editingDevice.maximum_supported_storage || 'Not Compatible'}</div>
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
-                      <div className="form-group">
-                        <label className="label">Headphone Jack</label>
-                        <div className="input-read-only">{editingDevice.headphone_jack_compatibility || 'Not Compatible'}</div>
-                      </div>
-                    )}
-
-                    {selectedEditCategory && (
-                      <div className="form-group">
-                        <label className="label">Bluetooth Compatibility</label>
-                        <div className="input-read-only">{editingDevice.bluetooth_compatibility || 'N/A'}</div>
-                      </div>
-                    )}
-
-                    {(selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
-                      <div className="form-group form-grid-full">
-                        <label className="label">Wireless Charging Compatibility</label>
-                        <div className="input-read-only">{parseWirelessCharging(editingDevice.wireless_charging_compatibility).join(', ') || 'Not Compatible'}</div>
-                      </div>
-                    )}
-
-                    {selectedEditCategory === 'smartwatch' && (
-                      <div className="form-group">
-                        <label className="label">Watch Case Size</label>
-                        <div className="input-read-only">{editingDevice.compatible_watch_case_size || 'Not Compatible'}</div>
-                      </div>
-                    )}
-
-                    {!selectedEditCategory && (
-                      <div className="form-grid-full" style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
-                        No compatibility data available for this device type.
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="modal-footer" style={{ padding: '16px 0 0 0', marginTop: 16 }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setEditingDevice(null)}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            ) : editTab === 'products' ? (
-              <div className="modal-body">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {/* Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Compatible Products — {editingDevice.manufacturer_name || editingDevice.manufacturer} {editingDevice.name}
-                    </div>
-                    <span className={`badge ${LC_COLORS[editingDevice.lifecycle_status] || 'badge-muted'}`} style={{ textTransform: editingDevice.lifecycle_status === 'eol' ? 'uppercase' : 'capitalize' }}>
-                      Device Status: {editingDevice.lifecycle_status === 'eol' ? 'EOL' : editingDevice.lifecycle_status}
-                    </span>
-                  </div>
-
-                  {/* Summary Cards */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                    <div style={{ padding: 12, background: 'var(--bg-elevated)', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>{stats.total}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Total Compatible</div>
-                    </div>
-                    <div style={{ padding: 12, background: 'var(--bg-elevated)', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>{stats.active}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Active</div>
-                    </div>
-                    <div style={{ padding: 12, background: 'var(--bg-elevated)', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-muted)' }}>{stats.inactive}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Inactive</div>
-                    </div>
-                    <div style={{ padding: 12, background: 'var(--bg-elevated)', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--red)' }}>{stats.eol + stats.outOfStock + stats.other}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>EOL / OOS / Other</div>
-                    </div>
-                  </div>
-
-                  {/* Search and Filters */}
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ flex: '1 1 200px', position: 'relative' }}>
-                      <Search size={14} style={{ position: 'absolute', left: 10, top: 12, color: 'var(--text-muted)' }} />
-                      <input 
-                        type="text" 
-                        placeholder="Search name, SKU, UPC..." 
-                        className="input input-sm" 
-                        style={{ paddingLeft: 30, height: 38 }}
-                        value={compProdSearch}
-                        onChange={e => setCompProdSearch(e.target.value)}
+                          />
+                        }
+                        label={<Typography variant="body2">{cat}</Typography>}
                       />
-                    </div>
-                    <select 
-                      className="input input-sm" 
-                      style={{ flex: '1 1 120px', height: 38 }}
-                      value={compProdVendor}
-                      onChange={e => setCompProdVendor(e.target.value)}
-                    >
-                      <option value="">All Vendors</option>
-                      {vendors.map(v => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
-                    <select 
-                      className="input input-sm" 
-                      style={{ flex: '1 1 120px', height: 38 }}
-                      value={compProdCategory}
-                      onChange={e => setCompProdCategory(e.target.value)}
-                    >
-                      <option value="">All Categories</option>
-                      {categories.map((c: string) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                    <select 
-                      className="input input-sm" 
-                      style={{ flex: '1 1 120px', height: 38 }}
-                      value={compProdStatus}
-                      onChange={e => setCompProdStatus(e.target.value)}
-                    >
-                      <option value="">All Statuses</option>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="draft">Draft</option>
-                      <option value="pending_review">Pending Review</option>
-                      <option value="archived">Archived</option>
-                      <option value="eol">EOL</option>
-                      <option value="out_of_stock">Out of Stock</option>
-                    </select>
-                    {(compProdSearch || compProdVendor || compProdCategory || compProdStatus) && (
-                      <button 
-                        className="btn btn-secondary btn-sm" 
-                        style={{ height: 38 }}
-                        onClick={() => {
-                          setCompProdSearch('')
-                          setCompProdVendor('')
-                          setCompProdCategory('')
-                          setCompProdStatus('')
+                    )
+                  })}
+                </Box>
+              </Box>
+
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Device Compatibility Rules</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 0.75 }}>
+                  {[
+                    { value: 'compatible_charging_interface', label: 'Charging Interface' },
+                    { value: 'storage_expansion_compatibility', label: 'Storage Expansion' },
+                    { value: 'maximum_supported_storage', label: 'Max Supported Storage' },
+                    { value: 'headphone_jack_compatibility', label: 'Headphone Jack' },
+                    { value: 'bluetooth_compatibility', label: 'Bluetooth' },
+                    { value: 'wireless_charging_compatibility', label: 'Wireless Charging' },
+                    { value: 'compatible_watch_case_size', label: 'Watch Case Size' },
+                  ].map(opt => {
+                    const rule = typeConfigRules[opt.value] || { mode: 'hidden' }
+                    return (
+                      <Paper
+                        key={opt.value}
+                        variant="outlined"
+                        sx={{ p: 1, bgcolor: 'action.hover' }}
+                      >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 555 }}>{opt.label}</Typography>
+                          <Select
+                            size="small"
+                            value={rule.mode}
+                            onChange={e => {
+                              setTypeConfigRules({
+                                ...typeConfigRules,
+                                [opt.value]: { ...rule, mode: e.target.value }
+                              })
+                            }}
+                            sx={{ fontSize: '0.75rem', height: 28 }}
+                          >
+                            <MenuItem value="hidden">Hidden</MenuItem>
+                            <MenuItem value="required">Required</MenuItem>
+                            <MenuItem value="optional">Optional</MenuItem>
+                            <MenuItem value="defaulted">Defaulted</MenuItem>
+                          </Select>
+                        </Box>
+                        {rule.mode === 'defaulted' && (
+                          <Box sx={{ mt: 0.75, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="caption" color="text.secondary">Default Value:</Typography>
+                            <TextField
+                              size="small"
+                              value={rule.default || ''}
+                              onChange={e => {
+                                setTypeConfigRules({
+                                  ...typeConfigRules,
+                                  [opt.value]: { ...rule, default: e.target.value }
+                                })
+                              }}
+                              placeholder="Enter default value..."
+                              sx={{ flex: 1 }}
+                              slotProps={{ input: { sx: { fontSize: '0.75rem', height: 28 } } }}
+                            />
+                          </Box>
+                        )}
+                      </Paper>
+                    )
+                  })}
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.25, mt: 1.5, pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+                <Button variant="outlined" onClick={() => setEditingTypeConfig(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="contained">
+                  Save Rules
+                </Button>
+              </Box>
+            </form>
+          ) : (
+            <>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Select Taxonomy Dropdown</InputLabel>
+                <Select
+                  value={manageField}
+                  onChange={e => {
+                    setManageField(e.target.value as any)
+                    setNewDropdownValue('')
+                    setDropdownError(null)
+                  }}
+                  label="Select Taxonomy Dropdown"
+                >
+                  <MenuItem value="manufacturer">Device Manufacturer</MenuItem>
+                  <MenuItem value="device_type">Device Type</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Box component="form" onSubmit={handleAddDropdownValue} sx={{ display: 'flex', gap: 1, mb: 0.5 }}>
+                <TextField
+                  size="small"
+                  placeholder={`Add new ${manageField === 'manufacturer' ? 'manufacturer' : 'device type'}...`}
+                  value={newDropdownValue}
+                  onChange={e => setNewDropdownValue(e.target.value)}
+                  sx={{ flex: 1 }}
+                />
+                <Button type="submit" variant="contained">
+                  Add Value
+                </Button>
+              </Box>
+
+              <Paper variant="outlined" sx={{ flex: 1, overflow: 'auto', maxHeight: '35vh' }}>
+                {(manageField === 'manufacturer' ? manufacturers : deviceTypes).length === 0 ? (
+                  <Box sx={{ p: 3, textAlign: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">No values configured.</Typography>
+                  </Box>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    {(manageField === 'manufacturer' ? manufacturers : deviceTypes).map((item: any) => (
+                      <Box
+                        key={item.id}
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          px: 1.5,
+                          py: 1.25,
+                          borderBottom: 1,
+                          borderColor: 'divider',
                         }}
                       >
-                        Clear
-                      </button>
-                    )}
-                  </div>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 555 }}>
+                            {item.name}
+                          </Typography>
+                          {!item.is_active && (
+                            <Typography variant="caption" color="text.disabled">Inactive</Typography>
+                          )}
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                          {manageField === 'device_type' && (
+                            <Tooltip title="Configure rules">
+                              <IconButton size="small" color="primary" onClick={() => setEditingTypeConfig(item)}>
+                                <SettingsIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          <Button
+                            size="small"
+                            sx={{ fontSize: '0.6875rem', minWidth: 'auto', px: 0.5, color: 'text.secondary' }}
+                            onClick={async () => {
+                              try {
+                                if (manageField === 'manufacturer') {
+                                  await api.patch(`/devices/manufacturers/${item.id}/`, { is_active: !item.is_active })
+                                  refetchManufacturers()
+                                } else {
+                                  await api.patch(`/devices/types/${item.id}/`, {
+                                    is_active: !item.is_active,
+                                    status: !item.is_active ? 'active' : 'inactive'
+                                  })
+                                  refetchTypes()
+                                }
+                              } catch (err: any) {
+                                setDropdownError(parseApiError(err, 'Failed to toggle status.'))
+                              }
+                            }}
+                          >
+                            {item.is_active ? 'Deactivate' : 'Activate'}
+                          </Button>
+                          <Tooltip title="Delete">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleDeleteDropdownValue(item.id)}
+                            >
+                              <DeleteIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Paper>
 
-                  {/* Table */}
-                  <div style={{ maxHeight: 350, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
-                    {isLoadingCompProducts ? (
-                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Loading compatible products...</div>
-                    ) : compProducts.length === 0 ? (
-                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1, pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+                <Button variant="outlined" onClick={() => setShowDropdownModal(false)}>
+                  Close
+                </Button>
+              </Box>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit / Detail Dialog */}
+      <Dialog
+        open={!!editingDevice}
+        onClose={() => setEditingDevice(null)}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{ paper: { sx: { maxHeight: '90vh' } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Device Details & History
+          <IconButton size="small" onClick={() => setEditingDevice(null)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        {/* Modal Tabs */}
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2.5 }}>
+          <Tabs
+            value={editTab === 'details' ? 0 : editTab === 'compatibility' ? 1 : editTab === 'products' ? 2 : 3}
+            onChange={(_, v) => {
+              const tabs: ('details' | 'compatibility' | 'products' | 'audit')[] = ['details', 'compatibility', 'products', 'audit']
+              setEditTab(tabs[v])
+            }}
+            variant="scrollable"
+            scrollButtons="auto"
+          >
+            <Tab label={isCixciAdmin ? 'Edit Details' : 'View Details'} />
+            <Tab label="Device Compatibility" />
+            {!isBuyer && <Tab label="Compatible Products" />}
+            {!isBuyer && <Tab label="Audit History" />}
+          </Tabs>
+        </Box>
+
+        {editTab === 'details' ? (
+          <form onSubmit={handleUpdateDevice}>
+            <DialogContent dividers>
+              {editError && (
+                <Alert severity="error" icon={<ErrorOutlineIcon />} sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>
+                  {editError}
+                </Alert>
+              )}
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Manufacturer *</Typography>
+                  {isCixciAdmin ? (
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        value={editManufacturer}
+                        onChange={e => setEditManufacturer(e.target.value)}
+                        displayEmpty
+                      >
+                        <MenuItem value="">Select Manufacturer</MenuItem>
+                        {manufacturers.map((m: any) => (
+                          <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <ReadOnlyField>{editingDevice?.manufacturer_name}</ReadOnlyField>
+                  )}
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Device Name *</Typography>
+                  {isCixciAdmin ? (
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                    />
+                  ) : (
+                    <ReadOnlyField>{editingDevice?.name}</ReadOnlyField>
+                  )}
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Device Type *</Typography>
+                  {isCixciAdmin ? (
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        value={editDeviceType}
+                        onChange={e => setEditDeviceType(e.target.value)}
+                        displayEmpty
+                      >
+                        <MenuItem value="">Select Device Type</MenuItem>
+                        {deviceTypes.map((t: any) => (
+                          <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <ReadOnlyField>{editingDevice?.device_type_name}</ReadOnlyField>
+                  )}
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Launch Date</Typography>
+                  {isCixciAdmin ? (
+                    <TextField
+                      size="small"
+                      fullWidth
+                      type="date"
+                      value={editLaunchDate}
+                      onChange={e => setEditLaunchDate(e.target.value)}
+                      slotProps={{ inputLabel: { shrink: true } }}
+                    />
+                  ) : (
+                    <ReadOnlyField>
+                      {editingDevice?.launch_date ? (
+                        editingDevice.launch_date.match(/^\d{4}-\d{2}-\d{2}$/)
+                          ? editingDevice.launch_date.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2-$3-$1')
+                          : editingDevice.launch_date
+                      ) : 'N/A'}
+                    </ReadOnlyField>
+                  )}
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Lifecycle Status</Typography>
+                  {isCixciAdmin ? (
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        value={editStatus}
+                        onChange={e => setEditStatus(e.target.value)}
+                      >
+                        <MenuItem value="available">Available</MenuItem>
+                        <MenuItem value="launching">Launching</MenuItem>
+                        <MenuItem value="inactive">Inactive</MenuItem>
+                        <MenuItem value="eol">EOL</MenuItem>
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <ReadOnlyField>
+                      {(() => {
+                        const display = getDisplayStatus(editingDevice?.lifecycle_status, editingDevice?.launch_date)
+                        return display === 'eol' ? 'EOL' : display
+                      })()}
+                    </ReadOnlyField>
+                  )}
+                </Box>
+
+                {/* Extra identity fields for buyer view */}
+                {!isCixciAdmin && (
+                  <>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>SKU</Typography>
+                      <ReadOnlyField>{editingDevice?.sku || 'N/A'}</ReadOnlyField>
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Model Number</Typography>
+                      <ReadOnlyField>{editingDevice?.model_number || 'N/A'}</ReadOnlyField>
+                    </Box>
+                    {editingDevice?.announced_date && (
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Announced Date</Typography>
+                        <ReadOnlyField>{editingDevice.announced_date}</ReadOnlyField>
+                      </Box>
+                    )}
+                    {editingDevice?.release_date && (
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Release Date</Typography>
+                        <ReadOnlyField>{editingDevice.release_date}</ReadOnlyField>
+                      </Box>
+                    )}
+                    {editingDevice?.eol_date && (
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>EOL Date</Typography>
+                        <ReadOnlyField>{editingDevice.eol_date}</ReadOnlyField>
+                      </Box>
+                    )}
+                  </>
+                )}
+
+                {isCixciAdmin && selectedEditCategory && (
+                  <Box sx={{ gridColumn: 'span 2' }}>
+                    <Divider sx={{ my: 1 }} />
+                  </Box>
+                )}
+
+                {/* Conditional Compatibility Fields - admin only in details tab */}
+                {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Charging Interface *</Typography>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        value={editCharging}
+                        onChange={e => setEditCharging(e.target.value)}
+                        displayEmpty
+                      >
+                        <MenuItem value="">Select Charging Interface</MenuItem>
+                        <MenuItem value="Type-C">Type-C</MenuItem>
+                        {selectedEditCategory !== 'laptop' && <MenuItem value="Lightning">Lightning</MenuItem>}
+                        <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+                )}
+
+                {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet') && (
+                  <>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Storage Expansion *</Typography>
+                      <FormControl size="small" fullWidth>
+                        <Select
+                          value={editStorage}
+                          onChange={e => handleEditStorageChange(e.target.value)}
+                          displayEmpty
+                        >
+                          <MenuItem value="">Select Storage Expansion</MenuItem>
+                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                          <MenuItem value="microSDXC">microSDXC</MenuItem>
+                          <MenuItem value="microSDHC">microSDHC</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+
+                    {(editStorage === 'microSDXC' || editStorage === 'microSDHC') && (
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Maximum Expansion *</Typography>
+                        <FormControl size="small" fullWidth>
+                          <Select
+                            value={editMaxStorage}
+                            onChange={e => setEditMaxStorage(e.target.value)}
+                          >
+                            {editStorage === 'microSDXC' ? (
+                              ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(v => (
+                                <MenuItem key={v} value={v}>{v}</MenuItem>
+                              ))
+                            ) : (
+                              ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB'].map(v => (
+                                <MenuItem key={v} value={v}>{v}</MenuItem>
+                              ))
+                            )}
+                          </Select>
+                        </FormControl>
+                      </Box>
+                    )}
+                  </>
+                )}
+
+                {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Headphone Jack *</Typography>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        value={editHeadphone}
+                        onChange={e => setEditHeadphone(e.target.value)}
+                        displayEmpty
+                      >
+                        <MenuItem value="">Select Headphone Jack</MenuItem>
+                        <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                        <MenuItem value="Type-C">Type-C</MenuItem>
+                        {selectedEditCategory !== 'laptop' && <MenuItem value="Lightning">Lightning</MenuItem>}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                )}
+
+                {isCixciAdmin && selectedEditCategory && (
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Bluetooth Compatibility *</Typography>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        value={editBluetooth}
+                        onChange={e => setEditBluetooth(e.target.value)}
+                        displayEmpty
+                      >
+                        <MenuItem value="">Select Bluetooth Compatibility</MenuItem>
+                        <MenuItem value="Yes">Yes</MenuItem>
+                        <MenuItem value="No">No</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+                )}
+
+                {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
+                  <Box sx={{ gridColumn: 'span 2' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Wireless Charging Compatibility *</Typography>
+                    <WirelessCheckboxGroup wireless={editWireless} onChange={handleEditWirelessChange} />
+                  </Box>
+                )}
+
+                {isCixciAdmin && selectedEditCategory === 'smartwatch' && (
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Watch Case Size *</Typography>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        value={editWatchCase}
+                        onChange={e => setEditWatchCase(e.target.value)}
+                        displayEmpty
+                      >
+                        <MenuItem value="">Select Watch Case Size</MenuItem>
+                        <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                        {['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm'].map(v => (
+                          <MenuItem key={v} value={v}>{v}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                )}
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setEditingDevice(null)}>
+                Close
+              </Button>
+              {isCixciAdmin && (
+                <Button type="submit" variant="contained" disabled={isSubmittingEdit}>
+                  {isSubmittingEdit ? 'Saving...' : 'Save Changes'}
+                </Button>
+              )}
+            </DialogActions>
+          </form>
+        ) : editTab === 'compatibility' ? (
+          <>
+            <DialogContent dividers>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Hardware compatibility specifications for this device.{' '}
+                {!isCixciAdmin && <span>These fields are managed by CIXCI administrators.</span>}
+              </Typography>
+
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
+                {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Charging Interface</Typography>
+                    <ReadOnlyField>{editingDevice?.compatible_charging_interface || 'Not Compatible'}</ReadOnlyField>
+                  </Box>
+                )}
+
+                {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet') && (
+                  <>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Storage Expansion</Typography>
+                      <ReadOnlyField>{editingDevice?.storage_expansion_compatibility || 'Not Compatible'}</ReadOnlyField>
+                    </Box>
+                    {editingDevice?.storage_expansion_compatibility && editingDevice.storage_expansion_compatibility !== 'Not Compatible' && (
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Maximum Supported Storage</Typography>
+                        <ReadOnlyField>{editingDevice?.maximum_supported_storage || 'Not Compatible'}</ReadOnlyField>
+                      </Box>
+                    )}
+                  </>
+                )}
+
+                {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Headphone Jack</Typography>
+                    <ReadOnlyField>{editingDevice?.headphone_jack_compatibility || 'Not Compatible'}</ReadOnlyField>
+                  </Box>
+                )}
+
+                {selectedEditCategory && (
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Bluetooth Compatibility</Typography>
+                    <ReadOnlyField>{editingDevice?.bluetooth_compatibility || 'N/A'}</ReadOnlyField>
+                  </Box>
+                )}
+
+                {(selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
+                  <Box sx={{ gridColumn: 'span 2' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Wireless Charging Compatibility</Typography>
+                    <ReadOnlyField>{parseWirelessCharging(editingDevice?.wireless_charging_compatibility).join(', ') || 'Not Compatible'}</ReadOnlyField>
+                  </Box>
+                )}
+
+                {selectedEditCategory === 'smartwatch' && (
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Watch Case Size</Typography>
+                    <ReadOnlyField>{editingDevice?.compatible_watch_case_size || 'Not Compatible'}</ReadOnlyField>
+                  </Box>
+                )}
+
+                {!selectedEditCategory && (
+                  <Box sx={{ gridColumn: 'span 2', py: 3, textAlign: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No compatibility data available for this device type.
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setEditingDevice(null)}>
+                Close
+              </Button>
+            </DialogActions>
+          </>
+        ) : editTab === 'products' ? (
+          <>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {/* Header */}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Compatible Products &mdash; {editingDevice?.manufacturer_name || editingDevice?.manufacturer} {editingDevice?.name}
+                  </Typography>
+                  <StatusChip
+                    status={editingDevice?.lifecycle_status || 'unknown'}
+                    label={`Device Status: ${editingDevice?.lifecycle_status === 'eol' ? 'EOL' : editingDevice?.lifecycle_status}`}
+                  />
+                </Box>
+
+                {/* Summary Cards */}
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1.5 }}>
+                  <Card variant="outlined">
+                    <CardContent sx={{ textAlign: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Typography variant="h5" sx={{ fontWeight: 700 }}>{stats.total}</Typography>
+                      <Typography variant="caption" color="text.secondary">Total Compatible</Typography>
+                    </CardContent>
+                  </Card>
+                  <Card variant="outlined">
+                    <CardContent sx={{ textAlign: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Typography variant="h5" sx={{ fontWeight: 700, color: 'success.main' }}>{stats.active}</Typography>
+                      <Typography variant="caption" color="text.secondary">Active</Typography>
+                    </CardContent>
+                  </Card>
+                  <Card variant="outlined">
+                    <CardContent sx={{ textAlign: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.disabled' }}>{stats.inactive}</Typography>
+                      <Typography variant="caption" color="text.secondary">Inactive</Typography>
+                    </CardContent>
+                  </Card>
+                  <Card variant="outlined">
+                    <CardContent sx={{ textAlign: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Typography variant="h5" sx={{ fontWeight: 700, color: 'error.main' }}>{stats.eol + stats.outOfStock + stats.other}</Typography>
+                      <Typography variant="caption" color="text.secondary">EOL / OOS / Other</Typography>
+                    </CardContent>
+                  </Card>
+                </Box>
+
+                {/* Search and Filters */}
+                <Box sx={{ display: 'flex', gap: 1.25, flexWrap: 'wrap' }}>
+                  <SearchBar
+                    placeholder="Search name, SKU, UPC..."
+                    value={compProdSearch}
+                    onChange={e => setCompProdSearch(e.target.value)}
+                    sx={{ flex: '1 1 200px' }}
+                  />
+                  <FormControl size="small" sx={{ flex: '1 1 120px' }}>
+                    <Select
+                      value={compProdVendor}
+                      onChange={e => setCompProdVendor(e.target.value)}
+                      displayEmpty
+                    >
+                      <MenuItem value="">All Vendors</MenuItem>
+                      {vendors.map(v => (
+                        <MenuItem key={v.id} value={v.id}>{v.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ flex: '1 1 120px' }}>
+                    <Select
+                      value={compProdCategory}
+                      onChange={e => setCompProdCategory(e.target.value)}
+                      displayEmpty
+                    >
+                      <MenuItem value="">All Categories</MenuItem>
+                      {categories.map((c: string) => (
+                        <MenuItem key={c} value={c}>{c}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ flex: '1 1 120px' }}>
+                    <Select
+                      value={compProdStatus}
+                      onChange={e => setCompProdStatus(e.target.value)}
+                      displayEmpty
+                    >
+                      <MenuItem value="">All Statuses</MenuItem>
+                      <MenuItem value="active">Active</MenuItem>
+                      <MenuItem value="inactive">Inactive</MenuItem>
+                      <MenuItem value="draft">Draft</MenuItem>
+                      <MenuItem value="pending_review">Pending Review</MenuItem>
+                      <MenuItem value="archived">Archived</MenuItem>
+                      <MenuItem value="eol">EOL</MenuItem>
+                      <MenuItem value="out_of_stock">Out of Stock</MenuItem>
+                    </Select>
+                  </FormControl>
+                  {(compProdSearch || compProdVendor || compProdCategory || compProdStatus) && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => {
+                        setCompProdSearch('')
+                        setCompProdVendor('')
+                        setCompProdCategory('')
+                        setCompProdStatus('')
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                </Box>
+
+                {/* Table */}
+                <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 350 }}>
+                  {isLoadingCompProducts ? (
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">Loading compatible products...</Typography>
+                    </Box>
+                  ) : compProducts.length === 0 ? (
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">
                         No compatible products are currently mapped to this device.
-                      </div>
-                    ) : filteredCompProducts.length === 0 ? (
-                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                      </Typography>
+                    </Box>
+                  ) : filteredCompProducts.length === 0 ? (
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">
                         No compatible products found matching your filters.
-                      </div>
-                    ) : (
-                      <table style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
-                        <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 1, borderBottom: '1px solid var(--border)' }}>
-                          <tr>
-                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Vendor</th>
-                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Image</th>
-                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Product Name</th>
-                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>SKU</th>
-                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>UPC</th>
-                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Category</th>
-                            <th style={{ padding: 8, textAlign: 'left', fontSize: 12 }}>Status</th>
-                            <th style={{ padding: 8, textAlign: 'center', fontSize: 12 }}>Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredCompProducts.map((p: any) => (
-                            <tr key={p.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                              <td style={{ padding: 8, fontSize: 12 }}>{p.vendor_name || '—'}</td>
-                              <td style={{ padding: 8 }}>
-                                {p.primary_image_url ? (
-                                  <img 
-                                    src={p.primary_image_url} 
-                                    alt={p.name} 
-                                    style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 4, background: '#fff', border: '1px solid var(--border)' }} 
-                                  />
-                                ) : (
-                                  <div style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
-                                    <Smartphone size={12} style={{ color: 'var(--text-muted)' }} />
-                                  </div>
-                                )}
-                              </td>
-                              <td style={{ padding: 8, fontSize: 12, fontWeight: 500 }}>{p.name}</td>
-                              <td className="mono" style={{ padding: 8, fontSize: 11 }}>{p.sku}</td>
-                              <td className="mono" style={{ padding: 8, fontSize: 11 }}>{p.upc || '—'}</td>
-                              <td style={{ padding: 8, fontSize: 11 }}>{p.product_category || '—'}</td>
-                              <td style={{ padding: 8 }}>
-                                <span className={`badge ${PROD_STATUS_BADGE[p.status] || 'badge-muted'}`} style={{ textTransform: 'capitalize', fontSize: 10, padding: '2px 6px' }}>
-                                  {p.status ? p.status.replace('_', ' ') : '—'}
-                                </span>
-                              </td>
-                              <td style={{ padding: 8, textAlign: 'center' }}>
-                                <button 
-                                  className="btn btn-ghost btn-sm" 
-                                  style={{ padding: '2px 8px', fontSize: 11, height: 'auto', minHeight: 0 }}
-                                  onClick={() => {
-                                    navigate(`/catalog?tab=all-products&all_search=${encodeURIComponent(p.sku || p.name)}`);
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Vendor</TableCell>
+                          <TableCell>Image</TableCell>
+                          <TableCell>Product Name</TableCell>
+                          <TableCell>SKU</TableCell>
+                          <TableCell>UPC</TableCell>
+                          <TableCell>Category</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell align="center">Action</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {filteredCompProducts.map((p: any) => (
+                          <TableRow key={p.id} hover>
+                            <TableCell sx={{ fontSize: '0.75rem' }}>{p.vendor_name || '\u2014'}</TableCell>
+                            <TableCell>
+                              {p.primary_image_url ? (
+                                <Box
+                                  component="img"
+                                  src={p.primary_image_url}
+                                  alt={p.name}
+                                  sx={{
+                                    width: 28,
+                                    height: 28,
+                                    objectFit: 'contain',
+                                    borderRadius: 0.5,
+                                    bgcolor: '#fff',
+                                    border: 1,
+                                    borderColor: 'divider',
+                                  }}
+                                />
+                              ) : (
+                                <Box
+                                  sx={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: 0.5,
+                                    bgcolor: 'action.hover',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    border: 1,
+                                    borderColor: 'divider',
                                   }}
                                 >
-                                  View Product
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </div>
-                <div className="modal-footer" style={{ padding: '16px 0 0 0', marginTop: 16 }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setEditingDevice(null)}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="modal-body">
-                <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-                  {!auditHistory || auditHistory.length === 0 ? (
-                    <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
-                      No audit history records found for this device.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {auditHistory.map((record: any) => (
-                        <div
-                          key={record.id}
-                          style={{
-                            padding: '12px 14px',
-                            background: 'var(--bg-elevated)',
-                            border: '1px solid var(--border-light)',
-                            borderRadius: 'var(--radius)',
-                            fontSize: 13,
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                            <span className="badge badge-indigo" style={{ textTransform: 'none', fontSize: 11 }}>
-                              {record.event_code}
-                            </span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                              {new Date(record.created_at).toLocaleString()}
-                            </span>
-                          </div>
-                          <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
-                            {record.description}
-                          </div>
-                          {record.actor_id && (
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                              Actor ID: {record.actor_id}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                                  <SmartphoneIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                                </Box>
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ fontSize: '0.75rem', fontWeight: 500 }}>{p.name}</TableCell>
+                            <TableCell sx={{ fontFamily: MONO_FONT, fontSize: '0.6875rem' }}>{p.sku}</TableCell>
+                            <TableCell sx={{ fontFamily: MONO_FONT, fontSize: '0.6875rem' }}>{p.upc || '\u2014'}</TableCell>
+                            <TableCell sx={{ fontSize: '0.6875rem' }}>{p.product_category || '\u2014'}</TableCell>
+                            <TableCell>
+                              <StatusChip status={p.status || 'unknown'} />
+                            </TableCell>
+                            <TableCell align="center">
+                              <Button
+                                size="small"
+                                sx={{ fontSize: '0.6875rem', py: 0.25, px: 1, minHeight: 0 }}
+                                onClick={() => {
+                                  navigate(`/catalog?tab=all-products&all_search=${encodeURIComponent(p.sku || p.name)}`)
+                                }}
+                              >
+                                View Product
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   )}
-                </div>
-                <div className="modal-footer" style={{ padding: '16px 0 0 0', marginTop: 16 }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setEditingDevice(null)}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+                </TableContainer>
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setEditingDevice(null)}>
+                Close
+              </Button>
+            </DialogActions>
+          </>
+        ) : (
+          <>
+            <DialogContent dividers>
+              <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+                {!auditHistory || auditHistory.length === 0 ? (
+                  <Box sx={{ p: 3, textAlign: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No audit history records found for this device.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {auditHistory.map((record: any) => (
+                      <Paper
+                        key={record.id}
+                        variant="outlined"
+                        sx={{ p: 1.5 }}
+                      >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
+                          <Chip
+                            label={record.event_code}
+                            color="info"
+                            size="small"
+                            variant="filled"
+                            sx={{ fontSize: '0.6875rem', textTransform: 'none' }}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            {formatDate(record.created_at)}
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {record.description}
+                        </Typography>
+                        {record.actor_id && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                            Actor ID: {record.actor_id}
+                          </Typography>
+                        )}
+                      </Paper>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setEditingDevice(null)}>
+                Close
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* Shared ConfirmDialog for delete actions */}
+      <ConfirmDialog {...dialogProps} />
+    </Box>
   )
 }

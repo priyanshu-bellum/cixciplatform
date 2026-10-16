@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import IconButton from '@mui/material/IconButton'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 
 export interface PaginationProps {
   currentPage: number
@@ -73,109 +77,65 @@ export const Pagination: React.FC<PaginationProps> = ({
   const canGoNext = currentPage < totalPages
 
   return (
-    <div
-      style={{
+    <Box
+      sx={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '12px 16px',
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-sm)',
-        marginTop: 16,
-        marginBottom: 8,
-        fontSize: 13,
-        color: 'var(--text-secondary)',
+        p: '12px 16px',
+        bgcolor: 'background.paper',
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1.5,
+        mt: 2,
+        mb: 1,
         flexWrap: 'wrap',
-        gap: 12,
+        gap: 1.5,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span>
-          Showing <strong style={{ color: 'var(--text-primary)' }}>{startIndex}</strong>–
-          <strong style={{ color: 'var(--text-primary)' }}>{endIndex}</strong> of{' '}
-          <strong style={{ color: 'var(--text-primary)' }}>{totalItems}</strong> {itemName}
-        </span>
-      </div>
+      <Typography variant="body2" color="text.secondary">
+        Showing <strong>{startIndex}</strong>&ndash;<strong>{endIndex}</strong> of{' '}
+        <strong>{totalItems}</strong> {itemName}
+      </Typography>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => canGoPrev && onPageChange(currentPage - 1)}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <IconButton
+          size="small"
           disabled={!canGoPrev}
+          onClick={() => canGoPrev && onPageChange(currentPage - 1)}
           title="Previous Page"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 32,
-            height: 32,
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border)',
-            background: canGoPrev ? 'var(--bg-elevated)' : 'transparent',
-            color: canGoPrev ? 'var(--text-primary)' : 'var(--text-muted)',
-            cursor: canGoPrev ? 'pointer' : 'not-allowed',
-            opacity: canGoPrev ? 1 : 0.4,
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={(e) => {
-            if (canGoPrev) e.currentTarget.style.background = 'var(--bg-hover)'
-          }}
-          onMouseLeave={(e) => {
-            if (canGoPrev) e.currentTarget.style.background = 'var(--bg-elevated)'
-          }}
         >
-          <ChevronLeft size={16} />
-        </button>
+          <ChevronLeftIcon fontSize="small" />
+        </IconButton>
 
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            padding: '4px 12px',
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)',
-            color: 'var(--text-primary)',
+        <Typography
+          variant="body2"
+          sx={{
+            px: 1.5,
+            py: 0.5,
+            bgcolor: 'action.hover',
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 1,
             fontWeight: 500,
             fontSize: 12,
             minWidth: 90,
-            justifyContent: 'center',
+            textAlign: 'center',
           }}
         >
           Page {currentPage} of {totalPages}
-        </span>
+        </Typography>
 
-        <button
-          type="button"
-          onClick={() => canGoNext && onPageChange(currentPage + 1)}
+        <IconButton
+          size="small"
           disabled={!canGoNext}
+          onClick={() => canGoNext && onPageChange(currentPage + 1)}
           title="Next Page"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 32,
-            height: 32,
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border)',
-            background: canGoNext ? 'var(--bg-elevated)' : 'transparent',
-            color: canGoNext ? 'var(--text-primary)' : 'var(--text-muted)',
-            cursor: canGoNext ? 'pointer' : 'not-allowed',
-            opacity: canGoNext ? 1 : 0.4,
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={(e) => {
-            if (canGoNext) e.currentTarget.style.background = 'var(--bg-hover)'
-          }}
-          onMouseLeave={(e) => {
-            if (canGoNext) e.currentTarget.style.background = 'var(--bg-elevated)'
-          }}
         >
-          <ChevronRight size={16} />
-        </button>
-      </div>
-    </div>
+          <ChevronRightIcon fontSize="small" />
+        </IconButton>
+      </Box>
+    </Box>
   )
 }
 

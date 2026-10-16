@@ -1,22 +1,51 @@
 import React, { useState, useEffect } from 'react'
-import toast from 'react-hot-toast'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import IconButton from '@mui/material/IconButton'
+import Card from '@mui/material/Card'
+import Chip from '@mui/material/Chip'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import TextField from '@mui/material/TextField'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import CircularProgress from '@mui/material/CircularProgress'
+import Alert from '@mui/material/Alert'
+import Stack from '@mui/material/Stack'
+import Tooltip from '@mui/material/Tooltip'
+
+import PersonAddIcon from '@mui/icons-material/PersonAdd'
+import VpnKeyIcon from '@mui/icons-material/VpnKey'
+import ShieldIcon from '@mui/icons-material/Shield'
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
+import CloseIcon from '@mui/icons-material/Close'
+import AddIcon from '@mui/icons-material/Add'
+import RefreshIcon from '@mui/icons-material/Refresh'
+import EmailIcon from '@mui/icons-material/Email'
+import DeleteIcon from '@mui/icons-material/Delete'
+import SecurityIcon from '@mui/icons-material/Security'
+
 import api from '../lib/apiClient'
-import {
-  Shield,
-  Key,
-  Plus,
-  X,
-  UserPlus,
-  CheckCircle2,
-  AlertCircle,
-  RefreshCw,
-  Search,
-  Users,
-  Mail,
-  ShieldCheck,
-  ShieldAlert,
-  Trash2
-} from 'lucide-react'
+import { formatDate } from '../lib/formatters'
+import PageHeader from '../components/layout/PageHeader'
+import StatusChip from '../components/data-display/StatusChip'
+import SearchBar from '../components/forms/SearchBar'
+import ConfirmDialog from '../components/feedback/ConfirmDialog'
+import { useSnackbar } from '../components/feedback/SnackbarProvider'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
 
 interface CapabilityItem {
   id: string
@@ -54,6 +83,9 @@ interface Invitation {
 }
 
 export default function CompanyUsersPage() {
+  const { showSnackbar } = useSnackbar()
+  const { dialogProps, confirm } = useConfirmDialog()
+
   const [activeTab, setActiveTab] = useState<'members' | 'invitations'>('members')
   const [memberships, setMemberships] = useState<Membership[]>([])
   const [invitations, setInvitations] = useState<Invitation[]>([])
@@ -104,7 +136,7 @@ export default function CompanyUsersPage() {
       }
     } catch (err: any) {
       console.error(err)
-      toast.error('Failed to load user management records')
+      showSnackbar('Failed to load user management records', 'error')
     } finally {
       setLoading(false)
     }
@@ -123,7 +155,7 @@ export default function CompanyUsersPage() {
   const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inviteEmail || !inviteFirstName || !inviteLastName) {
-      toast.error('Please fill in required fields')
+      showSnackbar('Please fill in required fields', 'error')
       return
     }
 
@@ -137,7 +169,7 @@ export default function CompanyUsersPage() {
         job_title: inviteJobTitle
       })
 
-      toast.success(`Invitation sent to ${inviteEmail}`)
+      showSnackbar(`Invitation sent to ${inviteEmail}`, 'success')
       setShowInviteModal(false)
       setInviteEmail('')
       setInviteFirstName('')
@@ -146,7 +178,7 @@ export default function CompanyUsersPage() {
       fetchData()
     } catch (err: any) {
       const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to send invitation'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     } finally {
       setSubmittingInvite(false)
     }
@@ -155,45 +187,73 @@ export default function CompanyUsersPage() {
   const handleResend = async (id: string, email: string) => {
     try {
       await api.post(`/tenant/invitations/${id}/resend/`)
-      toast.success(`Resent invitation to ${email}`)
+      showSnackbar(`Resent invitation to ${email}`, 'success')
       fetchData()
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to resend invitation'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     }
   }
 
   const handleRevoke = async (id: string) => {
+    const confirmed = await confirm({
+      title: 'Revoke Invitation',
+      message: 'Are you sure you want to revoke this invitation? The invitee will no longer be able to accept it.',
+      confirmLabel: 'Revoke',
+      confirmColor: 'error',
+    })
+    if (!confirmed) return
+
     try {
       await api.post(`/tenant/invitations/${id}/revoke/`)
-      toast.success('Invitation revoked')
+      showSnackbar('Invitation revoked', 'success')
       fetchData()
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to revoke invitation'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     }
   }
 
   const handleLifecycleChange = async (id: string, newStatus: string) => {
+    const action = newStatus === 'suspended' ? 'suspend' : 'reactivate'
+    const confirmed = await confirm({
+      title: `${action.charAt(0).toUpperCase() + action.slice(1)} User`,
+      message: `Are you sure you want to ${action} this user?`,
+      confirmLabel: action.charAt(0).toUpperCase() + action.slice(1),
+      confirmColor: newStatus === 'suspended' ? 'warning' : 'success',
+    })
+    if (!confirmed) return
+
     try {
       await api.post(`/tenant/memberships/${id}/lifecycle/`, { status: newStatus })
-      toast.success(`User status updated to ${newStatus}`)
+      showSnackbar(`User status updated to ${newStatus}`, 'success')
       fetchData()
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to update user status'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     }
   }
 
   const handleAdminToggle = async (id: string, currentlyAdmin: boolean) => {
+    const action = currentlyAdmin ? 'revoke' : 'grant'
+    const confirmed = await confirm({
+      title: `${currentlyAdmin ? 'Revoke' : 'Grant'} Company Admin`,
+      message: currentlyAdmin
+        ? 'Are you sure you want to revoke Company Admin authority from this user?'
+        : 'Are you sure you want to grant Company Admin authority to this user? They will inherit all company capabilities.',
+      confirmLabel: currentlyAdmin ? 'Revoke Admin' : 'Grant Admin',
+      confirmColor: currentlyAdmin ? 'error' : 'warning',
+    })
+    if (!confirmed) return
+
     const endpoint = currentlyAdmin ? 'revoke-admin' : 'grant-admin'
     try {
       await api.post(`/tenant/memberships/${id}/${endpoint}/`)
-      toast.success(currentlyAdmin ? 'Revoked Company Admin authority' : 'Granted Company Admin authority')
+      showSnackbar(currentlyAdmin ? 'Revoked Company Admin authority' : 'Granted Company Admin authority', 'success')
       fetchData()
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Operation failed'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     }
   }
 
@@ -204,13 +264,13 @@ export default function CompanyUsersPage() {
       const res = await api.post(`/tenant/memberships/${selectedMember.id}/assign-capability/`, {
         capability_code: capabilityToAssign
       })
-      toast.success(`Assigned capability '${capabilityToAssign}'`)
+      showSnackbar(`Assigned capability '${capabilityToAssign}'`, 'success')
       setSelectedMember(res.data)
       setMemberships(prev => prev.map(m => m.id === res.data.id ? res.data : m))
       setCapabilityToAssign('')
     } catch (err: any) {
       const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to assign capability'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     } finally {
       setModifyingCapability(false)
     }
@@ -218,17 +278,25 @@ export default function CompanyUsersPage() {
 
   const handleRemoveCapability = async (capabilityCode: string) => {
     if (!selectedMember) return
+    const confirmed = await confirm({
+      title: 'Remove Capability',
+      message: `Are you sure you want to remove the capability '${capabilityCode}' from this user?`,
+      confirmLabel: 'Remove',
+      confirmColor: 'error',
+    })
+    if (!confirmed) return
+
     setModifyingCapability(true)
     try {
       const res = await api.post(`/tenant/memberships/${selectedMember.id}/remove-capability/`, {
         capability_code: capabilityCode
       })
-      toast.success(`Removed capability '${capabilityCode}'`)
+      showSnackbar(`Removed capability '${capabilityCode}'`, 'success')
       setSelectedMember(res.data)
       setMemberships(prev => prev.map(m => m.id === res.data.id ? res.data : m))
     } catch (err: any) {
       const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to remove capability'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     } finally {
       setModifyingCapability(false)
     }
@@ -251,591 +319,523 @@ export default function CompanyUsersPage() {
   const availableCapabilities = allCapabilities.filter(c => !assignedCodes.has(c.code))
 
   return (
-    <div style={{ padding: '28px', maxWidth: '1280px', margin: '0 auto', color: '#f8fafc' }}>
+    <Box sx={{ p: 3.5, maxWidth: 1280, mx: 'auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', gap: '20px', flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Users style={{ width: '28px', height: '28px', color: '#3b82f6' }} />
-            <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#f8fafc', margin: 0, letterSpacing: '-0.02em' }}>
-              Company User & Capability Management
-            </h1>
-          </div>
-          <p style={{ fontSize: '14px', color: '#94a3b8', marginTop: '6px', maxWidth: '650px', lineHeight: 1.5 }}>
-            Manage team members, grant individual system capabilities (such as return creation and fulfillment workflows), delegate Company Admin authority, and manage invitations.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowInviteModal(true)}
-          style={{
-            background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '10px',
-            padding: '11px 20px',
-            fontWeight: 600,
-            fontSize: '14px',
-            cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <UserPlus style={{ width: '18px', height: '18px' }} />
-          <span>Invite Team Member</span>
-        </button>
-      </div>
+      <PageHeader
+        title="Company User & Capability Management"
+        subtitle="Manage team members, grant individual system capabilities (such as return creation and fulfillment workflows), delegate Company Admin authority, and manage invitations."
+        actions={
+          <Button
+            variant="contained"
+            startIcon={<PersonAddIcon />}
+            onClick={() => setShowInviteModal(true)}
+          >
+            Invite Team Member
+          </Button>
+        }
+      />
 
       {/* Controls & Search */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '22px',
-        background: '#1e293b',
-        padding: '12px 18px',
-        borderRadius: '12px',
-        border: '1px solid #334155',
-        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-        gap: '16px',
-        flexWrap: 'wrap'
-      }}>
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: '8px', background: '#0f172a', padding: '4px', borderRadius: '8px', border: '1px solid #334155' }}>
-          <button
-            onClick={() => setActiveTab('members')}
-            style={{
-              background: activeTab === 'members' ? '#3b82f6' : 'transparent',
-              color: activeTab === 'members' ? '#fff' : '#94a3b8',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '8px 18px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '13px',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            Active Members ({memberships.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('invitations')}
-            style={{
-              background: activeTab === 'invitations' ? '#3b82f6' : 'transparent',
-              color: activeTab === 'invitations' ? '#fff' : '#94a3b8',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '8px 18px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '13px',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            Pending Invitations ({invitations.length})
-          </button>
-        </div>
+      <Card
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 2.75,
+          p: 1.5,
+          gap: 2,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Tabs
+          value={activeTab}
+          onChange={(_, val) => setActiveTab(val)}
+          sx={{
+            minHeight: 'auto',
+            '& .MuiTab-root': { minHeight: 40, textTransform: 'none', fontWeight: 600, fontSize: '0.8125rem' },
+          }}
+        >
+          <Tab label={`Active Members (${memberships.length})`} value="members" />
+          <Tab label={`Pending Invitations (${invitations.length})`} value="invitations" />
+        </Tabs>
 
-        {/* Search */}
-        <div style={{ position: 'relative', width: '280px' }}>
-          <Search style={{ position: 'absolute', left: '12px', top: '10px', width: '16px', height: '16px', color: '#64748b' }} />
-          <input
-            type="text"
-            placeholder="Search by name, email, company..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              background: '#0f172a',
-              color: '#f8fafc',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              padding: '9px 12px 9px 36px',
-              fontSize: '13px',
-              outline: 'none'
-            }}
-          />
-        </div>
-      </div>
+        <SearchBar
+          placeholder="Search by name, email, company..."
+          value={searchTerm}
+          onSearch={(val) => setSearchTerm(val)}
+          sx={{ minWidth: 280 }}
+        />
+      </Card>
 
       {/* Content Table */}
       {loading ? (
-        <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8', background: '#1e293b', borderRadius: '12px', border: '1px solid #334155' }}>
-          <RefreshCw style={{ width: '24px', height: '24px', animation: 'spin 1s linear infinite', margin: '0 auto 12px', display: 'block', color: '#3b82f6' }} />
-          Loading user management records...
-        </div>
+        <Card sx={{ p: 7.5, textAlign: 'center' }}>
+          <CircularProgress size={24} sx={{ mb: 1.5 }} />
+          <Typography variant="body2" color="text.secondary">
+            Loading user management records...
+          </Typography>
+        </Card>
       ) : activeTab === 'members' ? (
-        <div style={{ background: '#1e293b', borderRadius: '14px', border: '1px solid #334155', overflow: 'hidden', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#0f172a', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <th style={{ padding: '16px 20px' }}>User</th>
-                <th style={{ padding: '16px 20px' }}>Company</th>
-                <th style={{ padding: '16px 20px' }}>Role & Authority</th>
-                <th style={{ padding: '16px 20px' }}>Assigned Capabilities</th>
-                <th style={{ padding: '16px 20px' }}>Status</th>
-                <th style={{ padding: '16px 20px', textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredMemberships.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-                    No membership records found matching your search.
-                  </td>
-                </tr>
-              ) : (
-                filteredMemberships.map((m) => {
-                  const caps = m.assigned_capabilities || []
-                  return (
-                    <tr key={m.id} style={{ borderBottom: '1px solid #334155', transition: 'background 0.15s ease' }}>
-                      <td style={{ padding: '16px 20px' }}>
-                        <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '14px' }}>
-                          {m.user_first_name} {m.user_last_name}
-                        </div>
-                        <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Mail style={{ width: '12px', height: '12px' }} />
-                          {m.user_email}
-                        </div>
-                      </td>
-                      <td style={{ padding: '16px 20px', color: '#f8fafc', fontSize: '13px', fontWeight: 500 }}>
-                        {m.company_name}
-                      </td>
-                      <td style={{ padding: '16px 20px' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                          <span style={{ fontSize: '12px', background: '#3b82f620', color: '#60a5fa', padding: '3px 8px', borderRadius: '4px', border: '1px solid #3b82f640', fontWeight: 500 }}>
-                            {m.role_bundle}
-                          </span>
-                          {m.is_company_admin && (
-                            <span style={{ fontSize: '11px', background: '#f59e0b20', color: '#fbbf24', padding: '3px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #f59e0b40', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <ShieldCheck style={{ width: '12px', height: '12px' }} />
-                              Company Admin
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td style={{ padding: '16px 20px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <button
+        <Card>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>User</TableCell>
+                  <TableCell>Company</TableCell>
+                  <TableCell>Role & Authority</TableCell>
+                  <TableCell>Assigned Capabilities</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredMemberships.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} sx={{ textAlign: 'center', py: 5 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        No membership records found matching your search.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredMemberships.map((m) => {
+                    const caps = m.assigned_capabilities || []
+                    return (
+                      <TableRow key={m.id} hover>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={600}>
+                            {m.user_first_name} {m.user_last_name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+                            <EmailIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                            <Typography variant="caption" color="text.secondary">
+                              {m.user_email}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={500}>
+                            {m.company_name}
+                          </Typography>
+                        </TableCell>
+
+                        <TableCell>
+                          <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+                            <Chip
+                              label={m.role_bundle}
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                            {m.is_company_admin && (
+                              <Chip
+                                icon={<AdminPanelSettingsIcon />}
+                                label="Company Admin"
+                                size="small"
+                                color="warning"
+                                variant="filled"
+                              />
+                            )}
+                          </Stack>
+                        </TableCell>
+
+                        <TableCell>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<VpnKeyIcon sx={{ fontSize: 16 }} />}
                             onClick={() => setSelectedMember(m)}
-                            style={{
-                              background: '#0f172a',
-                              border: '1px solid #3b82f660',
-                              color: '#60a5fa',
-                              padding: '5px 10px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              fontWeight: 500,
-                              transition: 'all 0.15s ease'
-                            }}
+                            sx={{ textTransform: 'none', fontSize: '0.75rem' }}
                           >
-                            <Key style={{ width: '13px', height: '13px', color: '#38bdf8' }} />
-                            <span>{caps.length} {caps.length === 1 ? 'Capability' : 'Capabilities'}</span>
-                          </button>
-                        </div>
-                      </td>
-                      <td style={{ padding: '16px 20px' }}>
-                        <span style={{
-                          fontSize: '12px',
-                          padding: '4px 10px',
-                          borderRadius: '12px',
-                          fontWeight: 600,
-                          textTransform: 'capitalize',
-                          background: m.status === 'active' ? '#10b98120' : m.status === 'suspended' ? '#f59e0b20' : '#ef444420',
-                          color: m.status === 'active' ? '#34d399' : m.status === 'suspended' ? '#fbbf24' : '#f87171',
-                          border: `1px solid ${m.status === 'active' ? '#10b98140' : m.status === 'suspended' ? '#f59e0b40' : '#ef444440'}`
-                        }}>
-                          {m.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
-                          <button
-                            onClick={() => setSelectedMember(m)}
-                            style={{
-                              background: '#1e3a8a30',
-                              border: '1px solid #3b82f650',
-                              color: '#93c5fd',
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              cursor: 'pointer',
-                              fontWeight: 500
-                            }}
-                          >
-                            Capabilities
-                          </button>
-                          <button
-                            onClick={() => handleAdminToggle(m.id, m.is_company_admin)}
-                            style={{
-                              background: 'transparent',
-                              border: '1px solid #334155',
-                              color: m.is_company_admin ? '#f87171' : '#fbbf24',
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {m.is_company_admin ? 'Revoke Admin' : 'Make Admin'}
-                          </button>
-                          {m.status === 'active' ? (
-                            <button
-                              onClick={() => handleLifecycleChange(m.id, 'suspended')}
-                              style={{ background: 'transparent', border: '1px solid #334155', color: '#f87171', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+                            {caps.length} {caps.length === 1 ? 'Capability' : 'Capabilities'}
+                          </Button>
+                        </TableCell>
+
+                        <TableCell>
+                          <StatusChip status={m.status} />
+                        </TableCell>
+
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end', alignItems: 'center' }}>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              onClick={() => setSelectedMember(m)}
+                              sx={{ textTransform: 'none', fontSize: '0.75rem' }}
                             >
-                              Suspend
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleLifecycleChange(m.id, 'active')}
-                              style={{ background: 'transparent', border: '1px solid #334155', color: '#34d399', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+                              Capabilities
+                            </Button>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              color={m.is_company_admin ? 'error' : 'warning'}
+                              onClick={() => handleAdminToggle(m.id, m.is_company_admin)}
+                              sx={{ textTransform: 'none', fontSize: '0.75rem' }}
                             >
-                              Reactivate
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                              {m.is_company_admin ? 'Revoke Admin' : 'Make Admin'}
+                            </Button>
+                            {m.status === 'active' ? (
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                color="error"
+                                onClick={() => handleLifecycleChange(m.id, 'suspended')}
+                                sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                              >
+                                Suspend
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                color="success"
+                                onClick={() => handleLifecycleChange(m.id, 'active')}
+                                sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                              >
+                                Reactivate
+                              </Button>
+                            )}
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Card>
       ) : (
-        <div style={{ background: '#1e293b', borderRadius: '14px', border: '1px solid #334155', overflow: 'hidden', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#0f172a', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <th style={{ padding: '16px 20px' }}>Invitee</th>
-                <th style={{ padding: '16px 20px' }}>Role</th>
-                <th style={{ padding: '16px 20px' }}>Status</th>
-                <th style={{ padding: '16px 20px' }}>Expires</th>
-                <th style={{ padding: '16px 20px', textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredInvitations.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-                    No pending invitation records found.
-                  </td>
-                </tr>
-              ) : (
-                filteredInvitations.map((inv) => (
-                  <tr key={inv.id} style={{ borderBottom: '1px solid #334155' }}>
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '14px' }}>{inv.first_name} {inv.last_name}</div>
-                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Mail style={{ width: '12px', height: '12px' }} />
-                        {inv.email}
-                      </div>
-                    </td>
-                    <td style={{ padding: '16px 20px', color: '#f8fafc', fontSize: '13px' }}>
-                      <span style={{ fontSize: '12px', background: '#3b82f620', color: '#60a5fa', padding: '3px 8px', borderRadius: '4px', border: '1px solid #3b82f640' }}>
-                        {inv.role_bundle}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 20px' }}>
-                      <span style={{ fontSize: '12px', background: '#3b82f620', color: '#60a5fa', padding: '4px 10px', borderRadius: '12px', fontWeight: 600, textTransform: 'capitalize', border: '1px solid #3b82f640' }}>
-                        {inv.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 20px', fontSize: '13px', color: '#94a3b8' }}>
-                      {new Date(inv.expires_at).toLocaleDateString()}
-                    </td>
-                    <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                        <button
-                          onClick={() => handleResend(inv.id, inv.email)}
-                          style={{ background: 'transparent', border: '1px solid #334155', color: '#60a5fa', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <RefreshCw style={{ width: '12px', height: '12px' }} />
-                          Resend
-                        </button>
-                        <button
-                          onClick={() => handleRevoke(inv.id)}
-                          style={{ background: 'transparent', border: '1px solid #334155', color: '#f87171', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <Trash2 style={{ width: '12px', height: '12px' }} />
-                          Revoke
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Invitee</TableCell>
+                  <TableCell>Role</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Expires</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredInvitations.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} sx={{ textAlign: 'center', py: 5 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        No pending invitation records found.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredInvitations.map((inv) => (
+                    <TableRow key={inv.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>
+                          {inv.first_name} {inv.last_name}
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+                          <EmailIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                          <Typography variant="caption" color="text.secondary">
+                            {inv.email}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+
+                      <TableCell>
+                        <Chip
+                          label={inv.role_bundle}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                        />
+                      </TableCell>
+
+                      <TableCell>
+                        <StatusChip status={inv.status} />
+                      </TableCell>
+
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {formatDate(inv.expires_at)}
+                        </Typography>
+                      </TableCell>
+
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<RefreshIcon sx={{ fontSize: 14 }} />}
+                            onClick={() => handleResend(inv.id, inv.email)}
+                            sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                          >
+                            Resend
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            color="error"
+                            startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
+                            onClick={() => handleRevoke(inv.id)}
+                            sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                          >
+                            Revoke
+                          </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Card>
       )}
 
-      {/* Capability Management Modal */}
-      {selectedMember && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, padding: '20px' }}>
-          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '16px', width: '100%', maxWidth: '640px', padding: '26px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Shield style={{ width: '22px', height: '22px', color: '#38bdf8' }} />
-                  <h2 style={{ fontSize: '19px', fontWeight: 700, color: '#f8fafc', margin: 0 }}>
+      {/* Capability Management Dialog */}
+      <Dialog
+        open={!!selectedMember}
+        onClose={() => setSelectedMember(null)}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{ paper: { sx: { maxHeight: '90vh' } } }}
+      >
+        {selectedMember && (
+          <>
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <SecurityIcon color="primary" />
+                  <Typography variant="h6" component="span" fontWeight={700}>
                     User Capabilities
-                  </h2>
-                </div>
-                <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>
-                  Managing individual capabilities for <strong style={{ color: '#f8fafc' }}>{selectedMember.user_first_name} {selectedMember.user_last_name}</strong> ({selectedMember.user_email}) at <strong>{selectedMember.company_name}</strong>
-                </p>
-              </div>
-              <button
-                onClick={() => setSelectedMember(null)}
-                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
-              >
-                <X style={{ width: '20px', height: '20px' }} />
-              </button>
-            </div>
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Managing individual capabilities for{' '}
+                  <strong>{selectedMember.user_first_name} {selectedMember.user_last_name}</strong>{' '}
+                  ({selectedMember.user_email}) at <strong>{selectedMember.company_name}</strong>
+                </Typography>
+              </Box>
+              <IconButton onClick={() => setSelectedMember(null)} size="small" sx={{ ml: 1 }}>
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
 
-            {selectedMember.is_company_admin && (
-              <div style={{ background: '#f59e0b15', border: '1px solid #f59e0b35', borderRadius: '8px', padding: '12px 14px', marginBottom: '18px', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                <ShieldCheck style={{ width: '18px', height: '18px', color: '#fbbf24', flexShrink: 0, marginTop: '2px' }} />
-                <div style={{ fontSize: '12px', color: '#fde68a', lineHeight: 1.5 }}>
-                  This user is a <strong>Company Admin</strong>. They automatically inherit all capabilities assigned to <strong>{selectedMember.company_name}</strong>. Additional individual capabilities can still be explicitly granted below.
-                </div>
-              </div>
-            )}
-
-            {/* Current Capabilities */}
-            <div style={{ marginBottom: '22px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#cbd5e1', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Directly Assigned Capabilities ({(selectedMember.assigned_capabilities || []).length})
-              </div>
-              {(selectedMember.assigned_capabilities || []).length === 0 ? (
-                <div style={{ background: '#0f172a', border: '1px dashed #334155', borderRadius: '10px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
-                  No direct individual capabilities assigned yet. This user relies on role/company permissions.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {(selectedMember.assigned_capabilities || []).map((cap) => (
-                    <div
-                      key={cap.id || cap.code}
-                      style={{
-                        background: '#0f172a',
-                        border: '1px solid #38bdf840',
-                        borderRadius: '8px',
-                        padding: '6px 12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        fontSize: '13px'
-                      }}
-                    >
-                      <span style={{ color: '#38bdf8', fontWeight: 600, fontFamily: 'monospace' }}>{cap.code}</span>
-                      {cap.module && (
-                        <span style={{ fontSize: '11px', color: '#64748b' }}>({cap.module})</span>
-                      )}
-                      <button
-                        type="button"
-                        disabled={modifyingCapability}
-                        onClick={() => handleRemoveCapability(cap.code)}
-                        title={`Remove ${cap.code}`}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#f87171',
-                          cursor: 'pointer',
-                          padding: '2px',
-                          display: 'flex',
-                          alignItems: 'center'
-                        }}
-                      >
-                        <X style={{ width: '14px', height: '14px' }} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+            <DialogContent dividers>
+              {selectedMember.is_company_admin && (
+                <Alert severity="warning" icon={<AdminPanelSettingsIcon />} sx={{ mb: 2.25 }}>
+                  This user is a <strong>Company Admin</strong>. They automatically inherit all
+                  capabilities assigned to <strong>{selectedMember.company_name}</strong>. Additional
+                  individual capabilities can still be explicitly granted below.
+                </Alert>
               )}
-            </div>
 
-            {/* Assign New Capability */}
-            <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Plus style={{ width: '16px', height: '16px', color: '#3b82f6' }} />
-                Assign Individual Capability
-              </div>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <select
-                  value={capabilityToAssign}
-                  onChange={(e) => setCapabilityToAssign(e.target.value)}
-                  style={{
-                    flex: 1,
-                    background: '#1e293b',
-                    color: '#f8fafc',
-                    border: '1px solid #334155',
-                    borderRadius: '8px',
-                    padding: '10px 12px',
-                    fontSize: '13px',
-                    outline: 'none'
-                  }}
+              {/* Current Capabilities */}
+              <Box sx={{ mb: 2.75 }}>
+                <Typography
+                  variant="overline"
+                  color="text.secondary"
+                  sx={{ display: 'block', mb: 1.25, letterSpacing: '0.04em' }}
                 >
-                  <option value="">-- Select a capability to grant --</option>
-                  {availableCapabilities.map((c) => (
-                    <option key={c.id || c.code} value={c.code}>
-                      {c.code} {c.description ? `— ${c.description}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  disabled={!capabilityToAssign || modifyingCapability}
-                  onClick={handleAssignCapability}
-                  style={{
-                    background: capabilityToAssign ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : '#334155',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '10px 18px',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    cursor: capabilityToAssign && !modifyingCapability ? 'pointer' : 'not-allowed',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {modifyingCapability ? 'Updating...' : 'Assign'}
-                </button>
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>
-                Common operational capabilities: <code style={{ color: '#38bdf8' }}>fulfillment.return.create</code>, <code style={{ color: '#38bdf8' }}>fulfillment.handoff.update</code>
-              </div>
-            </div>
+                  Directly Assigned Capabilities ({(selectedMember.assigned_capabilities || []).length})
+                </Typography>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => setSelectedMember(null)}
-                style={{
-                  background: '#334155',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '9px 18px',
-                  fontWeight: 500,
-                  fontSize: '13px',
-                  cursor: 'pointer'
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                {(selectedMember.assigned_capabilities || []).length === 0 ? (
+                  <Box
+                    sx={{
+                      border: '1px dashed',
+                      borderColor: 'divider',
+                      borderRadius: 1.25,
+                      p: 2.5,
+                      textAlign: 'center',
+                    }}
+                  >
+                    <Typography variant="body2" color="text.disabled">
+                      No direct individual capabilities assigned yet. This user relies on role/company permissions.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                    {(selectedMember.assigned_capabilities || []).map((cap) => (
+                      <Chip
+                        key={cap.id || cap.code}
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{ fontWeight: 600, fontFamily: 'monospace', color: 'primary.light' }}
+                            >
+                              {cap.code}
+                            </Typography>
+                            {cap.module && (
+                              <Typography variant="caption" color="text.disabled">
+                                ({cap.module})
+                              </Typography>
+                            )}
+                          </Box>
+                        }
+                        onDelete={() => handleRemoveCapability(cap.code)}
+                        disabled={modifyingCapability}
+                        deleteIcon={
+                          <Tooltip title={`Remove ${cap.code}`}>
+                            <CloseIcon sx={{ fontSize: 16 }} />
+                          </Tooltip>
+                        }
+                        variant="outlined"
+                        color="primary"
+                      />
+                    ))}
+                  </Stack>
+                )}
+              </Box>
 
-      {/* Invite Modal */}
-      {showInviteModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, padding: '20px' }}>
-          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '16px', width: '100%', maxWidth: '500px', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <UserPlus style={{ width: '20px', height: '20px', color: '#3b82f6' }} />
-                <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#f8fafc', margin: 0 }}>
-                  Invite Team Member
-                </h2>
-              </div>
-              <button
-                onClick={() => setShowInviteModal(false)}
-                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
-              >
-                <X style={{ width: '20px', height: '20px' }} />
-              </button>
-            </div>
+              {/* Assign New Capability */}
+              <Card variant="outlined" sx={{ p: 2, mb: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.25 }}>
+                  <AddIcon fontSize="small" color="primary" />
+                  <Typography variant="subtitle2">Assign Individual Capability</Typography>
+                </Box>
 
-            <form onSubmit={handleSendInvite}>
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>Email Address *</label>
-                <input
-                  type="email"
+                <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Select a capability to grant</InputLabel>
+                    <Select
+                      value={capabilityToAssign}
+                      onChange={(e) => setCapabilityToAssign(e.target.value)}
+                      label="Select a capability to grant"
+                    >
+                      <MenuItem value="">
+                        <em>-- Select a capability to grant --</em>
+                      </MenuItem>
+                      {availableCapabilities.map((c) => (
+                        <MenuItem key={c.id || c.code} value={c.code}>
+                          {c.code} {c.description ? `\u2014 ${c.description}` : ''}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <Button
+                    variant="contained"
+                    disabled={!capabilityToAssign || modifyingCapability}
+                    onClick={handleAssignCapability}
+                    sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                  >
+                    {modifyingCapability ? 'Updating...' : 'Assign'}
+                  </Button>
+                </Stack>
+
+                <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 1 }}>
+                  Common operational capabilities:{' '}
+                  <Typography component="code" variant="caption" color="primary.light">
+                    fulfillment.return.create
+                  </Typography>
+                  ,{' '}
+                  <Typography component="code" variant="caption" color="primary.light">
+                    fulfillment.handoff.update
+                  </Typography>
+                </Typography>
+              </Card>
+            </DialogContent>
+
+            <DialogActions>
+              <Button onClick={() => setSelectedMember(null)}>Close</Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* Invite Team Member Dialog */}
+      <Dialog
+        open={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PersonAddIcon color="primary" />
+            <Typography variant="h6" component="span" fontWeight={600}>
+              Invite Team Member
+            </Typography>
+          </Box>
+          <IconButton onClick={() => setShowInviteModal(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <form onSubmit={handleSendInvite}>
+          <DialogContent dividers>
+            <Stack spacing={2}>
+              <TextField
+                label="Email Address"
+                type="email"
+                required
+                fullWidth
+                size="small"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="colleague@company.com"
+              />
+
+              <Stack direction="row" spacing={1.5}>
+                <TextField
+                  label="First Name"
                   required
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="colleague@company.com"
-                  style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                  fullWidth
+                  size="small"
+                  value={inviteFirstName}
+                  onChange={(e) => setInviteFirstName(e.target.value)}
                 />
-              </div>
+                <TextField
+                  label="Last Name"
+                  required
+                  fullWidth
+                  size="small"
+                  value={inviteLastName}
+                  onChange={(e) => setInviteLastName(e.target.value)}
+                />
+              </Stack>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>First Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={inviteFirstName}
-                    onChange={(e) => setInviteFirstName(e.target.value)}
-                    style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', outline: 'none' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>Last Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={inviteLastName}
-                    onChange={(e) => setInviteLastName(e.target.value)}
-                    style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', outline: 'none' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>Role / Bundle</label>
-                <select
+              <FormControl size="small" fullWidth>
+                <InputLabel>Role / Bundle</InputLabel>
+                <Select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value)}
-                  style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                  label="Role / Bundle"
                 >
-                  <option value="standard_user">Standard User</option>
-                  <option value="company_admin">Company Admin</option>
-                  <option value="procurement_manager">Procurement Manager</option>
-                  <option value="fulfillment_specialist">Fulfillment Specialist</option>
-                </select>
-              </div>
+                  <MenuItem value="standard_user">Standard User</MenuItem>
+                  <MenuItem value="company_admin">Company Admin</MenuItem>
+                  <MenuItem value="procurement_manager">Procurement Manager</MenuItem>
+                  <MenuItem value="fulfillment_specialist">Fulfillment Specialist</MenuItem>
+                </Select>
+              </FormControl>
 
-              <div style={{ marginBottom: '22px' }}>
-                <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>Job Title (Optional)</label>
-                <input
-                  type="text"
-                  value={inviteJobTitle}
-                  onChange={(e) => setInviteJobTitle(e.target.value)}
-                  placeholder="e.g. Operations Specialist"
-                  style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', outline: 'none' }}
-                />
-              </div>
+              <TextField
+                label="Job Title (Optional)"
+                fullWidth
+                size="small"
+                value={inviteJobTitle}
+                onChange={(e) => setInviteJobTitle(e.target.value)}
+                placeholder="e.g. Operations Specialist"
+              />
+            </Stack>
+          </DialogContent>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowInviteModal(false)}
-                  style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingInvite}
-                  style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
-                >
-                  {submittingInvite ? 'Sending...' : 'Send Invitation'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+          <DialogActions>
+            <Button onClick={() => setShowInviteModal(false)}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={submittingInvite}>
+              {submittingInvite ? 'Sending...' : 'Send Invitation'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Shared Confirm Dialog */}
+      <ConfirmDialog {...dialogProps} />
+    </Box>
   )
 }

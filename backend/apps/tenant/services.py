@@ -115,6 +115,10 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 "fulfillment.return.list",
                 "fulfillment.return.read",
                 "fulfillment.return.update",
+                "invoicing.invoice.list",
+                "invoicing.invoice.read",
+                "invoicing.run.list",
+                "invoicing.run.read",
             }
             if (company.company_type or "").lower() == "buyer" and capability_code in buyer_safe_caps:
                 if company_id and str(user.entity.company_id) != str(company_id):
@@ -152,6 +156,12 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 "fulfillment.return.update",
                 "routing.order.list",
                 "routing.order.read",
+                "invoicing.invoice.list",
+                "invoicing.invoice.read",
+                "invoicing.run.list",
+                "invoicing.run.read",
+                "invoicing.reconciliation.read",
+                "invoicing.reconciliation.upload",
             }
             if (company.company_type or "").lower() == "vendor" and capability_code in vendor_safe_caps:
                 if company_id and str(user.entity.company_id) != str(company_id):

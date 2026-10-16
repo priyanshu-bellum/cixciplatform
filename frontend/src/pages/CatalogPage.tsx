@@ -1,13 +1,69 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { ShoppingBag, RefreshCw, Plus, Search, Check, Download, AlertCircle, FileText, X, Upload, Edit, Trash2, Settings, ChevronLeft, ChevronRight, LayoutGrid, List, Eye, Image as ImageIcon, Truck } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
 import { parseWirelessCharging } from './DevicesPage'
 import Pagination, { usePagination } from '../components/Pagination'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import IconButton from '@mui/material/IconButton'
+import Chip from '@mui/material/Chip'
+import Tabs from '@mui/material/Tabs'
+import Tab from '@mui/material/Tab'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import Drawer from '@mui/material/Drawer'
+import TextField from '@mui/material/TextField'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import InputAdornment from '@mui/material/InputAdornment'
+import CircularProgress from '@mui/material/CircularProgress'
+import Alert from '@mui/material/Alert'
+import Tooltip from '@mui/material/Tooltip'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Paper from '@mui/material/Paper'
+import Switch from '@mui/material/Switch'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Divider from '@mui/material/Divider'
+import ShoppingBagIcon from '@mui/icons-material/ShoppingBag'
+import RefreshIcon from '@mui/icons-material/Refresh'
+import AddIcon from '@mui/icons-material/Add'
+import SearchIcon from '@mui/icons-material/Search'
+import CheckIcon from '@mui/icons-material/Check'
+import DownloadIcon from '@mui/icons-material/Download'
+import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
+import DescriptionIcon from '@mui/icons-material/Description'
+import CloseIcon from '@mui/icons-material/Close'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import EditIcon from '@mui/icons-material/Edit'
+import DeleteIcon from '@mui/icons-material/Delete'
+import SettingsIcon from '@mui/icons-material/Settings'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import GridViewIcon from '@mui/icons-material/GridView'
+import ViewListIcon from '@mui/icons-material/ViewList'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import ImageIcon from '@mui/icons-material/Image'
+import LocalShippingIcon from '@mui/icons-material/LocalShipping'
+import { useSnackbar } from '../components/feedback/SnackbarProvider'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import ConfirmDialog from '../components/feedback/ConfirmDialog'
+import PageHeader from '../components/layout/PageHeader'
+import StatusChip from '../components/data-display/StatusChip'
+import { formatCurrency as sharedFormatCurrency, formatDate, formatETDate as sharedFormatETDate, getImageUrl } from '../lib/formatters'
 
 const STATUS_BADGE: Record<string, string> = {
   active: 'badge-green', draft: 'badge-muted', archived: 'badge-muted',
@@ -172,7 +228,7 @@ function MultiSelect({
               }}
             >
               {o.label}
-              <X size={11} style={{ color: 'var(--red)', cursor: 'pointer' }} />
+              <CloseIcon sx={{ fontSize: 11, color: 'error.main', cursor: 'pointer' }} />
             </span>
           ))
         )}
@@ -216,7 +272,7 @@ function MultiSelect({
                   }}
                 >
                   <span style={{ fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>{opt.label}</span>
-                  {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
+                  {isSelected && <CheckIcon sx={{ fontSize: 14, color: 'primary.main' }} />}
                 </div>
               )
             })}
@@ -295,7 +351,7 @@ function MultiSelectColor({
               }}
             >
               {color}
-              <X size={12} style={{ color: 'var(--red)', cursor: 'pointer' }} />
+              <CloseIcon sx={{ fontSize: 12, color: 'error.main', cursor: 'pointer' }} />
             </span>
           ))
         )}
@@ -339,7 +395,7 @@ function MultiSelectColor({
                   }}
                 >
                   <span style={{ fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>{opt}</span>
-                  {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
+                  {isSelected && <CheckIcon sx={{ fontSize: 14, color: 'primary.main' }} />}
                 </div>
               )
             })}
@@ -401,6 +457,8 @@ export const formatETDate = (dateString: string | null | undefined) => {
 export default function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
+  const { showSnackbar } = useSnackbar()
+  const { confirm, dialogProps } = useConfirmDialog()
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
   const isVendor = user?.company_type === 'vendor'
   const isBuyer = user?.company_type === 'buyer'
@@ -1189,11 +1247,10 @@ export default function CatalogPage() {
     return (bulkFile !== null || hasHeaders) && bulkResult === null
   }
 
-  const handleCloseAddModal = () => {
+  const handleCloseAddModal = async () => {
     if (isAddFormDirty()) {
-      if (!window.confirm('You have unsaved changes. Are you sure you want to close and discard them?')) {
-        return
-      }
+      const ok = await confirm({ title: 'Discard changes?', message: 'You have unsaved changes. Are you sure you want to close and discard them?', confirmLabel: 'Discard', confirmColor: 'error' })
+      if (!ok) return
     }
     setShowAddModal(false)
     resetProductForm()
@@ -1250,22 +1307,20 @@ export default function CatalogPage() {
     setFormError(null)
   }
 
-  const handleCloseEditModal = () => {
+  const handleCloseEditModal = async () => {
     if (isEditFormDirty()) {
-      if (!window.confirm('You have unsaved changes. Are you sure you want to close and discard them?')) {
-        return
-      }
+      const ok = await confirm({ title: 'Discard changes?', message: 'You have unsaved changes. Are you sure you want to close and discard them?', confirmLabel: 'Discard', confirmColor: 'error' })
+      if (!ok) return
     }
     setShowEditModal(false)
     resetProductForm()
     setEditingProduct(null)
   }
 
-  const handleCloseBulkModal = () => {
+  const handleCloseBulkModal = async () => {
     if (isBulkFormDirty()) {
-      if (!window.confirm('You have unsaved changes. Are you sure you want to close and discard them?')) {
-        return
-      }
+      const ok = await confirm({ title: 'Discard changes?', message: 'You have unsaved changes. Are you sure you want to close and discard them?', confirmLabel: 'Discard', confirmColor: 'error' })
+      if (!ok) return
     }
     setShowBulkModal(false)
     setTimeout(() => {
@@ -2341,17 +2396,18 @@ export default function CatalogPage() {
 
   const handleDeleteProduct = async (id: string) => {
     if (selectedManageProduct && selectedManageProduct.status === 'active') {
-      alert("Active products that are live and being sold by buyers cannot be deleted.")
+      showSnackbar("Active products that are live and being sold by buyers cannot be deleted.", "warning")
       return
     }
-    if (!window.confirm("Are you sure you want to delete this product?")) return
+    const ok = await confirm({ title: 'Delete product?', message: 'Are you sure you want to delete this product? This action cannot be undone.', confirmLabel: 'Delete', confirmColor: 'error' })
+    if (!ok) return
     try {
       await api.delete(`/catalog/products/${id}/`)
       setShowManageModal(false)
       setSelectedManageProduct(null)
       refreshProducts()
     } catch (err: any) {
-      alert("Failed to delete product: " + (err.response?.data?.detail || err.message))
+      showSnackbar("Failed to delete product: " + (err.response?.data?.detail || err.message), 'error')
     }
   }
 
@@ -2376,7 +2432,7 @@ export default function CatalogPage() {
       setShowExcludeModal(false)
       setExcludeDevice(null)
     } catch (err: any) {
-      alert("Failed to exclude device: " + (err.response?.data?.error || err.message))
+      showSnackbar("Failed to exclude device: " + (err.response?.data?.error || err.message), 'error')
     }
   }
 
@@ -2384,11 +2440,11 @@ export default function CatalogPage() {
     if (!selectedManageProduct) return
     if (!isCixciAdmin) {
       if (isLocked) {
-        alert("Cannot restore a locked mapping.")
+        showSnackbar("Cannot restore a locked mapping.", "warning")
         return
       }
       if (exclusionType !== 'vendor') {
-        alert("Vendors can only restore vendor exclusions.")
+        showSnackbar("Vendors can only restore vendor exclusions.", "warning")
         return
       }
     }
@@ -2399,14 +2455,14 @@ export default function CatalogPage() {
       })
       refetchCompatibilities()
     } catch (err: any) {
-      alert("Failed to restore device: " + (err.response?.data?.error || err.message))
+      showSnackbar("Failed to restore device: " + (err.response?.data?.error || err.message), 'error')
     }
   }
 
   const handleLockCompatibility = async (deviceReference: string) => {
     if (!selectedManageProduct) return
     if (!isCixciAdmin) {
-      alert("Only CIXCI Admins can lock device mappings.")
+      showSnackbar("Only CIXCI Admins can lock device mappings.", "warning")
       return
     }
     try {
@@ -2416,14 +2472,14 @@ export default function CatalogPage() {
       })
       refetchCompatibilities()
     } catch (err: any) {
-      alert("Failed to lock mapping: " + (err.response?.data?.error || err.message))
+      showSnackbar("Failed to lock mapping: " + (err.response?.data?.error || err.message), 'error')
     }
   }
 
   const handleConvertToAdminExclusion = async (deviceReference: string) => {
     if (!selectedManageProduct) return
     if (!isCixciAdmin) {
-      alert("Only CIXCI Admins can convert exclusions to Admin exclusions.")
+      showSnackbar("Only CIXCI Admins can convert exclusions to Admin exclusions.", "warning")
       return
     }
     try {
@@ -2433,7 +2489,7 @@ export default function CatalogPage() {
       })
       refetchCompatibilities()
     } catch (err: any) {
-      alert("Failed to convert exclusion: " + (err.response?.data?.error || err.message))
+      showSnackbar("Failed to convert exclusion: " + (err.response?.data?.error || err.message), 'error')
     }
   }
 
@@ -2450,17 +2506,17 @@ export default function CatalogPage() {
       refetchCompatibilities()
       setQuickAddDeviceId('')
     } catch (err: any) {
-      alert("Failed to add compatibility: " + (err.response?.data?.error || err.message))
+      showSnackbar("Failed to add compatibility: " + (err.response?.data?.error || err.message), 'error')
     }
   }
 
   const handleBulkCompatUpdate = async () => {
     if (!selectedManageProduct || bulkSelectedDevices.length === 0) {
-      alert("Please select at least one device.")
+      showSnackbar("Please select at least one device.", "warning")
       return
     }
     if (bulkUpdateType !== 'add' && selectedManageProduct.status === 'active' && !isCixciAdmin) {
-      alert("Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval.")
+      showSnackbar("Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval.", "warning")
       return
     }
     try {
@@ -2473,26 +2529,26 @@ export default function CatalogPage() {
         assertions
       })
       refetchCompatibilities()
-      alert("Bulk compatibility update completed successfully.")
+      showSnackbar("Bulk compatibility update completed successfully.", "warning")
       setBulkSelectedDevices([])
     } catch (err: any) {
-      alert("Failed to perform bulk update: " + (err.response?.data?.error || err.message))
+      showSnackbar("Failed to perform bulk update: " + (err.response?.data?.error || err.message), 'error')
     }
   }
 
   const handleManualRecalculate = async () => {
     if (!selectedManageProduct) return
     if (!isCixciAdmin) {
-      alert("Only CIXCI Admins can manually trigger compatibility recalculation.")
+      showSnackbar("Only CIXCI Admins can manually trigger compatibility recalculation.", "warning")
       return
     }
     setIsRecalculating(true)
     try {
       await api.post(`/catalog/products/${selectedManageProduct.id}/recalculate-compatibility/`)
       refetchCompatibilities()
-      alert("Compatibility recalculated successfully.")
+      showSnackbar("Compatibility recalculated successfully.", "warning")
     } catch (err: any) {
-      alert("Failed to recalculate compatibility: " + (err.response?.data?.error || err.message))
+      showSnackbar("Failed to recalculate compatibility: " + (err.response?.data?.error || err.message), 'error')
     } finally {
       setIsRecalculating(false)
     }
@@ -2748,7 +2804,7 @@ export default function CatalogPage() {
       await api.post('/catalog/my-projection/refresh/')
       refreshProjection()
     } catch (err: any) {
-      alert("Failed to refresh compatibility projection: " + (err.response?.data?.detail || err.message))
+      showSnackbar("Failed to refresh compatibility projection: " + (err.response?.data?.detail || err.message), 'error')
     } finally {
       setRefreshingProj(false)
     }
@@ -2917,8 +2973,8 @@ export default function CatalogPage() {
           className="admin-product-card"
           key={p.id}
           style={{
-            border: isSelected ? '1px solid #20D1F2' : undefined,
-            boxShadow: isSelected ? '0 0 16px rgba(32, 209, 242, 0.35)' : undefined,
+            border: isSelected ? '1px solid var(--accent)' : undefined,
+            boxShadow: isSelected ? '0 0 16px rgba(var(--accent-rgb), 0.35)' : undefined,
           }}
           onMouseLeave={() => {
             if (hoveredCardImages[p.id]) {
@@ -2940,7 +2996,7 @@ export default function CatalogPage() {
         >
           {/* View Details hover badge – top-right corner */}
           <div className="admin-card-view-hint">
-            <Eye size={11} /> View Details
+            <VisibilityIcon sx={{ fontSize: 11 }} /> View Details
           </div>
 
           {p.recommended_accessory && (
@@ -3098,7 +3154,7 @@ export default function CatalogPage() {
                   {statusLabel}
                 </span>
                 {inv !== null && (
-                  <span style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
                     Inventory: {inv}
                   </span>
                 )}
@@ -3112,7 +3168,7 @@ export default function CatalogPage() {
                   style={{ opacity: 0.75, cursor: 'default' }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#38bdf8' }}>✓ Product Added</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>✓ Product Added</span>
                 </div>
               ) : (
                 <div
@@ -3126,9 +3182,9 @@ export default function CatalogPage() {
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => {}}
-                    style={{ cursor: 'pointer', accentColor: '#38bdf8', width: 14, height: 14 }}
+                    style={{ cursor: 'pointer', accentColor: 'var(--accent)', width: 14, height: 14 }}
                   />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: isSelected ? '#38bdf8' : '#f1f5f9' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text-primary)' }}>
                     Add Product
                   </span>
                 </div>
@@ -3191,12 +3247,12 @@ export default function CatalogPage() {
               top: 10,
               left: 10,
               zIndex: 5,
-              background: 'rgba(15, 23, 42, 0.9)',
+              background: 'var(--bg-elevated)',
               borderRadius: 4,
               padding: '2px 4px',
               display: 'flex',
               alignItems: 'center',
-              border: '1px solid #1f2d45',
+              border: '1px solid var(--border)',
             }}
             onClick={(e) => {
               e.stopPropagation()
@@ -3219,14 +3275,14 @@ export default function CatalogPage() {
         )}
 
         <div className="telco-card-view-hint">
-          <Eye size={12} /> View Details
+          <VisibilityIcon sx={{ fontSize: 12 }} /> View Details
         </div>
         
         <div className="telco-card-img-wrap">
           {p.primary_image_url ? (
             <img src={getImageUrl(p.primary_image_url)} alt={p.name} />
           ) : (
-            <ShoppingBag size={32} style={{ color: 'var(--text-muted)' }} />
+            <ShoppingBagIcon sx={{ fontSize: 32, color: 'text.disabled' }} />
           )}
         </div>
 
@@ -3259,9 +3315,7 @@ export default function CatalogPage() {
               )}
             </div>
             <div className="telco-status-row">
-              <span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`} style={{ fontSize: 10 }}>
-                {p.status}
-              </span>
+              <StatusChip status={p.status ?? 'unknown'} size="small" />
             </div>
           </div>
 
@@ -3290,8 +3344,8 @@ export default function CatalogPage() {
           gap: 20px;
         }
         .admin-product-card {
-          background: #08162b;
-          border: 1px solid #14284b;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
           border-radius: 12px;
           padding: 16px;
           display: flex;
@@ -3303,16 +3357,16 @@ export default function CatalogPage() {
         }
         .admin-product-card:hover {
           transform: translateY(-2px);
-          border-color: #20D1F2;
-          box-shadow: 0 6px 24px rgba(32, 209, 242, 0.15);
+          border-color: var(--accent);
+          box-shadow: 0 6px 24px rgba(var(--accent-rgb), 0.15);
         }
         .admin-card-view-hint {
           position: absolute;
           top: 10px;
           right: 10px;
-          background: rgba(15, 23, 42, 0.88);
-          border: 1px solid rgba(32, 209, 242, 0.35);
-          color: #20D1F2;
+          background: var(--bg-elevated);
+          border: 1px solid rgba(var(--accent-rgb), 0.35);
+          color: var(--accent);
           font-size: 10px;
           font-weight: 600;
           padding: 3px 8px;
@@ -3330,33 +3384,33 @@ export default function CatalogPage() {
           opacity: 1;
         }
         .admin-angle-box.active-thumb {
-          border-color: rgba(32, 209, 242, 0.6);
-          box-shadow: 0 0 6px rgba(32, 209, 242, 0.25);
+          border-color: rgba(var(--accent-rgb), 0.6);
+          box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.25);
         }
         .admin-angle-box:hover {
-          border-color: rgba(32, 209, 242, 0.4);
+          border-color: rgba(var(--accent-rgb), 0.4);
         }
         .admin-card-checkbox {
           position: absolute;
           top: 12px;
           right: 12px;
           z-index: 10;
-          background: rgba(8, 22, 43, 0.85);
+          background: var(--bg-elevated);
           border-radius: 4px;
           padding: 3px 5px;
           display: flex;
           align-items: center;
-          border: 1px solid rgba(56, 189, 248, 0.3);
+          border: 1px solid rgba(var(--accent-rgb), 0.3);
           cursor: pointer;
         }
         .admin-card-checkbox input {
           cursor: pointer;
-          accent-color: #38bdf8;
+          accent-color: var(--accent);
         }
         .buyer-add-product-btn {
           margin-top: 10px;
-          background: rgba(8, 26, 56, 0.75);
-          border: 1px solid rgba(56, 189, 248, 0.25);
+          background: var(--bg-elevated);
+          border: 1px solid var(--border);
           border-radius: 6px;
           padding: 8px 12px;
           display: flex;
@@ -3366,19 +3420,19 @@ export default function CatalogPage() {
           transition: all 0.2s ease;
         }
         .buyer-add-product-btn:hover {
-          background: rgba(14, 38, 78, 0.9);
-          border-color: #20D1F2;
+          background: var(--bg-surface);
+          border-color: var(--accent);
         }
         .buyer-add-product-btn.selected {
-          background: rgba(32, 209, 242, 0.15);
-          border-color: #20D1F2;
+          background: rgba(var(--accent-rgb), 0.15);
+          border-color: var(--accent);
         }
         .admin-recommended-badge {
           align-self: flex-start;
           margin-bottom: 8px;
           background: rgba(245, 158, 11, 0.12);
           border: 1px dashed rgba(245, 158, 11, 0.5);
-          color: #fbbf24;
+          color: var(--amber);
           font-size: 10px;
           font-weight: 700;
           letter-spacing: 0.05em;
@@ -3390,8 +3444,8 @@ export default function CatalogPage() {
         }
         .admin-photo-container {
           height: 160px;
-          background: #061122;
-          border: 1px dashed rgba(56, 189, 248, 0.15);
+          background: var(--bg-elevated);
+          border: 1px dashed var(--border);
           border-radius: 8px;
           display: flex;
           align-items: center;
@@ -3412,11 +3466,11 @@ export default function CatalogPage() {
           gap: 8px;
         }
         .admin-placeholder-icon {
-          color: #2a3e5c;
+          color: var(--text-muted);
         }
         .admin-placeholder-text {
           font-size: 12px;
-          color: #435b7d;
+          color: var(--text-muted);
           font-weight: 500;
         }
         .admin-angle-row {
@@ -3428,15 +3482,15 @@ export default function CatalogPage() {
         }
         .admin-angle-box {
           height: 42px;
-          background: #061122;
-          border: 1px dashed rgba(56, 189, 248, 0.15);
+          background: var(--bg-elevated);
+          border: 1px dashed var(--border);
           border-radius: 6px;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 11px;
           font-weight: 500;
-          color: #435b7d;
+          color: var(--text-muted);
           overflow: hidden;
         }
         .admin-angle-box img {
@@ -3448,14 +3502,14 @@ export default function CatalogPage() {
           font-size: 11px;
           font-weight: 700;
           letter-spacing: 0.06em;
-          color: #38bdf8;
+          color: var(--accent);
           text-transform: uppercase;
           margin-bottom: 4px;
         }
         .admin-card-title {
           font-size: 15px;
           font-weight: 700;
-          color: #ffffff;
+          color: var(--text-primary);
           line-height: 1.35;
           margin-bottom: 8px;
           min-height: 38px;
@@ -3471,19 +3525,19 @@ export default function CatalogPage() {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          background: rgba(14, 30, 56, 0.8);
-          border: 1px solid rgba(56, 189, 248, 0.2);
+          background: var(--bg-elevated);
+          border: 1px solid var(--border);
           padding: 4px 12px;
           border-radius: 9999px;
           font-size: 12px;
           font-weight: 500;
-          color: #93c5fd;
+          color: var(--text-secondary);
         }
         .admin-cat-dot {
           width: 6px;
           height: 6px;
           border-radius: 50%;
-          background: #38bdf8;
+          background: var(--accent);
           display: inline-block;
         }
         .admin-exported-row {
@@ -3494,11 +3548,11 @@ export default function CatalogPage() {
           margin-bottom: 8px;
         }
         .admin-exported-row .admin-label {
-          color: #64748b;
+          color: var(--text-muted);
           font-size: 11px;
         }
         .admin-exported-row .admin-val {
-          color: #cbd5e1;
+          color: var(--text-secondary);
           font-weight: 500;
           font-size: 11px;
         }
@@ -3516,12 +3570,12 @@ export default function CatalogPage() {
           gap: 6px;
         }
         .admin-code-item .admin-label {
-          color: #64748b;
+          color: var(--text-muted);
           font-size: 10px;
           font-weight: 600;
         }
         .admin-code-item .admin-code-val {
-          color: #cbd5e1;
+          color: var(--text-secondary);
           font-size: 11px;
         }
         .admin-color-block {
@@ -3537,7 +3591,7 @@ export default function CatalogPage() {
           gap: 6px;
         }
         .admin-color-row .admin-label {
-          color: #64748b;
+          color: var(--text-muted);
           font-size: 12px;
         }
         .admin-color-swatch {
@@ -3548,13 +3602,13 @@ export default function CatalogPage() {
           flex-shrink: 0;
         }
         .admin-color-row .admin-color-val {
-          color: #ffffff;
+          color: var(--text-primary);
           font-weight: 600;
           font-size: 12px;
         }
         .admin-card-footer {
           margin-top: auto;
-          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          border-top: 1px solid var(--border);
           padding-top: 12px;
           display: flex;
           flex-direction: column;
@@ -3567,13 +3621,13 @@ export default function CatalogPage() {
           margin-bottom: 2px;
         }
         .admin-msrp-row .admin-label {
-          color: #94a3b8;
+          color: var(--text-secondary);
           font-size: 12px;
         }
         .admin-msrp-val {
           font-size: 22px;
           font-weight: 800;
-          color: #ffffff;
+          color: var(--text-primary);
           letter-spacing: -0.02em;
         }
         .admin-price-row {
@@ -3583,10 +3637,10 @@ export default function CatalogPage() {
           font-size: 12px;
         }
         .admin-price-row .admin-label {
-          color: #94a3b8;
+          color: var(--text-secondary);
         }
         .admin-price-row .admin-val {
-          color: #f1f5f9;
+          color: var(--text-primary);
           font-weight: 600;
         }
         .admin-sale-row .admin-label,
@@ -3602,7 +3656,7 @@ export default function CatalogPage() {
           margin-top: 4px;
         }
         .admin-status-row .admin-label {
-          color: #94a3b8;
+          color: var(--text-secondary);
         }
         .admin-stock-badge {
           font-size: 10px;
@@ -3615,23 +3669,23 @@ export default function CatalogPage() {
           align-items: center;
         }
         .admin-stock-badge.in-stock {
-          background: rgba(2, 132, 199, 0.15);
-          border: 1px solid rgba(56, 189, 248, 0.4);
-          color: #38bdf8;
+          background: rgba(var(--accent-rgb), 0.12);
+          border: 1px solid rgba(var(--accent-rgb), 0.4);
+          color: var(--accent);
         }
         .admin-stock-badge.low-stock {
-          background: rgba(180, 83, 9, 0.2);
+          background: rgba(180, 83, 9, 0.15);
           border: 1px solid rgba(234, 179, 8, 0.4);
-          color: #facc15;
+          color: var(--amber);
         }
         .admin-stock-badge.out-of-stock {
-          background: rgba(127, 29, 29, 0.25);
+          background: rgba(220, 38, 38, 0.12);
           border: 1px solid rgba(239, 68, 68, 0.4);
-          color: #fb923c;
+          color: var(--red);
         }
         .telco-card {
-          background: rgba(17, 24, 39, 0.6);
-          border: 1px solid rgba(32, 209, 242, 0.15);
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
           border-radius: 10px;
           padding: 14px;
           display: flex;
@@ -3639,22 +3693,21 @@ export default function CatalogPage() {
           height: 100%;
           position: relative;
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          backdrop-filter: blur(10px);
           cursor: pointer;
           user-select: none;
         }
         .telco-card:hover {
           transform: translateY(-4px);
-          border-color: #20D1F2;
-          box-shadow: 0 4px 20px rgba(32, 209, 242, 0.15);
+          border-color: var(--accent);
+          box-shadow: 0 4px 20px rgba(var(--accent-rgb), 0.15);
         }
         .telco-card-view-hint {
           position: absolute;
           top: 10px;
           right: 10px;
-          background: rgba(15, 23, 42, 0.85);
-          border: 1px solid rgba(32, 209, 242, 0.3);
-          color: #20D1F2;
+          background: var(--bg-elevated);
+          border: 1px solid rgba(var(--accent-rgb), 0.3);
+          color: var(--accent);
           font-size: 10px;
           font-weight: 600;
           padding: 3px 8px;
@@ -3674,7 +3727,7 @@ export default function CatalogPage() {
           position: absolute;
           top: 10px;
           left: 10px;
-          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+          background: linear-gradient(135deg, var(--amber) 0%, #d97706 100%);
           color: #fff;
           font-size: 9px;
           font-weight: 700;
@@ -3692,11 +3745,11 @@ export default function CatalogPage() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #0f172a;
+          background: var(--bg-elevated);
           border-radius: 8px;
           margin-bottom: 12px;
           overflow: hidden;
-          border: 1px solid #1f2d45;
+          border: 1px solid var(--border);
         }
         .telco-card-img-wrap img {
           max-width: 90%;
@@ -3706,7 +3759,7 @@ export default function CatalogPage() {
         .telco-card-name {
           font-size: 13px;
           font-weight: 700;
-          color: #f1f5f9;
+          color: var(--text-primary);
           line-height: 1.4;
           margin-bottom: 4px;
           display: -webkit-box;
@@ -3717,7 +3770,7 @@ export default function CatalogPage() {
         .telco-card-sku {
           font-size: 10px;
           font-family: 'JetBrains Mono', monospace;
-          color: #64748b;
+          color: var(--text-muted);
           margin-bottom: 8px;
         }
         .telco-card-spec-row {
@@ -3729,28 +3782,28 @@ export default function CatalogPage() {
         .telco-card-spec-pill {
           font-size: 9px;
           font-weight: 600;
-          color: #94a3b8;
-          background: #1e293b;
+          color: var(--text-secondary);
+          background: var(--bg-elevated);
           padding: 2px 6px;
           border-radius: 4px;
           display: inline-flex;
           align-items: center;
           gap: 3px;
-          border: 1px solid #334155;
+          border: 1px solid var(--border);
         }
         .telco-color-swatch {
           display: inline-block;
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          border: 1px solid rgba(255,255,255,0.2);
+          border: 1px solid var(--border);
         }
         .telco-card-footer {
           margin-top: auto;
           display: flex;
           flex-direction: column;
           gap: 10px;
-          border-top: 1px solid #1f2d45;
+          border-top: 1px solid var(--border);
           padding-top: 10px;
         }
         .telco-price-row {
@@ -3761,11 +3814,11 @@ export default function CatalogPage() {
         .telco-sale-price {
           font-size: 15px;
           font-weight: 800;
-          color: #20D1F2;
+          color: var(--accent);
         }
         .telco-msrp-strike {
           font-size: 11px;
-          color: #64748b;
+          color: var(--text-muted);
           text-decoration: line-through;
         }
         .telco-status-row {
@@ -3776,7 +3829,7 @@ export default function CatalogPage() {
         }
         .telco-card-btn {
           width: 100%;
-          background: linear-gradient(135deg, #20D1F2 0%, #006488 100%);
+          background: var(--accent);
           color: #fff;
           border: none;
           border-radius: 6px;
@@ -3794,53 +3847,39 @@ export default function CatalogPage() {
           filter: brightness(1.1);
         }
       `}</style>
-      {(!isCixciAdmin && !isVendor && !isBuyer) ? (
-        <div className="page-header">
-          <div>
-            <div className="page-title">Product Catalog</div>
-            <div className="page-sub">Accessories, compatibility projections, export governance</div>
-          </div>
-        </div>
-      ) : (isCixciAdmin || isVendor) ? (
-        <div className="page-header" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 10 }}>
+      <PageHeader
+        title="Product Catalog"
+        subtitle="Accessories, compatibility projections, export governance"
+        actions={
+          <Box sx={{ display: 'flex', gap: 1 }}>
             {isCixciAdmin && (
-              <button className="btn btn-secondary" onClick={() => { setManageField('system_color'); setShowDropdownManagerModal(true); }}>
-                <Settings size={14} style={{ marginRight: 6 }} /> Manage Dropdowns
-              </button>
+              <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => { setManageField('system_color'); setShowDropdownManagerModal(true); }}>
+                Manage Dropdowns
+              </Button>
             )}
             {isVendor && (
               <>
-                <button className="btn btn-secondary" onClick={() => setShowBulkModal(true)}>
-                  <Upload size={14} /> Bulk Upload Catalog
-                </button>
-                <button className="btn btn-primary" onClick={() => {
-                  resetProductForm()
-                  setShowAddModal(true)
-                }}>
-                  <Plus size={14} /> Add Product
-                </button>
+                <Button variant="outlined" startIcon={<CloudUploadIcon />} onClick={() => setShowBulkModal(true)}>
+                  Bulk Upload
+                </Button>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetProductForm(); setShowAddModal(true); }}>
+                  Add Product
+                </Button>
               </>
             )}
-          </div>
-        </div>
-      ) : null}
+          </Box>
+        }
+      />
 
-      <div className="tabs">
-        <div className={`tab ${tab === 'products' ? 'active' : ''}`} onClick={() => setTab('products')}>
-          All Products
-        </div>
-        {isBuyer && (
-          <>
-            <div className={`tab ${tab === 'projection' ? 'active' : ''}`} onClick={() => setTab('projection')}>
-              My Compatibility
-            </div>
-            <div className={`tab ${tab === 'export_jobs' ? 'active' : ''}`} onClick={() => setTab('export_jobs')}>
-              Export Jobs
-            </div>
-          </>
-        )}
-      </div>
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab label="All Products" value="products" />
+        {isBuyer && <Tab label="My Compatibility" value="projection" />}
+        {isBuyer && <Tab label="Export Jobs" value="export_jobs" />}
+      </Tabs>
 
       {tab === 'products' && (
         <>
@@ -3858,7 +3897,7 @@ export default function CatalogPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Search</label>
               <div className="search-bar" style={{ width: 240, margin: 0 }}>
-                <Search size={14} />
+                <SearchIcon sx={{ fontSize: 14 }} />
                 <input placeholder="Search by name, SKU, brand, category, color, status, price…" value={allSearch} onChange={e => setAllSearch(e.target.value)} />
               </div>
             </div>
@@ -3959,9 +3998,9 @@ export default function CatalogPage() {
                 title="Grid View"
                 onClick={() => setViewMode('grid')}
                 style={{
-                  background: viewMode === 'grid' ? 'rgba(32, 209, 242, 0.15)' : 'transparent',
-                  border: viewMode === 'grid' ? '1px solid rgba(32, 209, 242, 0.4)' : '1px solid transparent',
-                  color: viewMode === 'grid' ? '#20D1F2' : 'var(--text-muted)',
+                  background: viewMode === 'grid' ? 'var(--accent-dim)' : 'transparent',
+                  border: viewMode === 'grid' ? '1px solid rgba(var(--accent-rgb), 0.4)' : '1px solid transparent',
+                  color: viewMode === 'grid' ? 'var(--accent)' : 'var(--text-muted)',
                   borderRadius: 4,
                   padding: '4px 10px',
                   cursor: 'pointer',
@@ -3973,7 +4012,7 @@ export default function CatalogPage() {
                   transition: 'all 0.15s ease',
                 }}
               >
-                <LayoutGrid size={14} />
+                <GridViewIcon sx={{ fontSize: 14 }} />
                 Grid
               </button>
               <button
@@ -3981,9 +4020,9 @@ export default function CatalogPage() {
                 title="Table View"
                 onClick={() => setViewMode('table')}
                 style={{
-                  background: viewMode === 'table' ? 'rgba(32, 209, 242, 0.15)' : 'transparent',
-                  border: viewMode === 'table' ? '1px solid rgba(32, 209, 242, 0.4)' : '1px solid transparent',
-                  color: viewMode === 'table' ? '#20D1F2' : 'var(--text-muted)',
+                  background: viewMode === 'table' ? 'var(--accent-dim)' : 'transparent',
+                  border: viewMode === 'table' ? '1px solid rgba(var(--accent-rgb), 0.4)' : '1px solid transparent',
+                  color: viewMode === 'table' ? 'var(--accent)' : 'var(--text-muted)',
                   borderRadius: 4,
                   padding: '4px 10px',
                   cursor: 'pointer',
@@ -3995,7 +4034,7 @@ export default function CatalogPage() {
                   transition: 'all 0.15s ease',
                 }}
               >
-                <List size={14} />
+                <ViewListIcon sx={{ fontSize: 14 }} />
                 Table
               </button>
             </div>
@@ -4006,12 +4045,12 @@ export default function CatalogPage() {
               <div className="loading-overlay"><div className="spinner" /> Loading products…</div>
             ) : isBuyer && (!portfolio || portfolio.filter((d: any) => d.active_flag).length === 0) ? (
               <div className="empty-state">
-                <ShoppingBag size={40} />
+                <ShoppingBagIcon sx={{ fontSize: 40 }} />
                 <div>Please add devices to your portfolio to view compatible products</div>
               </div>
             ) : filteredProducts.length === 0 ? (
               <div className="empty-state">
-                <ShoppingBag size={40} />
+                <ShoppingBagIcon sx={{ fontSize: 40 }} />
                 <div>No products found matching filters</div>
               </div>
             ) : (
@@ -4039,12 +4078,12 @@ export default function CatalogPage() {
                 <div className="loading-overlay"><div className="spinner" /> Loading products…</div>
               ) : isBuyer && (!portfolio || portfolio.filter((d: any) => d.active_flag).length === 0) ? (
                 <div className="empty-state">
-                  <ShoppingBag size={40} />
+                  <ShoppingBagIcon sx={{ fontSize: 40 }} />
                   <div>Please add devices to your portfolio to view compatible products</div>
                 </div>
               ) : filteredProducts.length === 0 ? (
                 <div className="empty-state">
-                  <ShoppingBag size={40} />
+                  <ShoppingBagIcon sx={{ fontSize: 40 }} />
                   <div>No products found matching filters</div>
                 </div>
               ) : (
@@ -4122,7 +4161,7 @@ export default function CatalogPage() {
                             />
                           ) : (
                             <div style={{ width: 36, height: 36, background: 'var(--bg-elevated)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                              <ShoppingBag size={14} />
+                              <ShoppingBagIcon sx={{ fontSize: 14 }} />
                             </div>
                           )}
                         </td>
@@ -4147,8 +4186,8 @@ export default function CatalogPage() {
                             )}
                           </td>
                         )}
-                        <td><span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-muted'}`}>{p.status}</span></td>
-                        <td><span className={`badge ${SELL_BADGE[p.selling_status] ?? 'badge-muted'}`}>{p.selling_status}</span></td>
+                        <td><StatusChip status={p.status ?? 'unknown'} /></td>
+                        <td><StatusChip status={p.selling_status ?? 'unknown'} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -4172,13 +4211,13 @@ export default function CatalogPage() {
           <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>Buyer Compatibility Projection</span>
             <button className="btn btn-secondary btn-sm" onClick={handleRefreshProjection} disabled={refreshingProj || isRefetchingProj}>
-              <RefreshCw size={13} className={refreshingProj || isRefetchingProj ? 'spin' : ''} />
+              <RefreshIcon sx={{ fontSize: 13 }} className={refreshingProj || isRefetchingProj ? 'spin' : ''} />
               {refreshingProj || isRefetchingProj ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
           {!projection ? (
             <div className="empty-state">
-              <ShoppingBag size={40} />
+              <ShoppingBagIcon sx={{ fontSize: 40 }} />
               <div>No projection available</div>
               <div style={{ fontSize: 12 }}>Add devices to your portfolio to generate a projection</div>
             </div>
@@ -4226,7 +4265,7 @@ export default function CatalogPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Search</label>
                     <div className="search-bar" style={{ width: 240, margin: 0 }}>
-                      <Search size={14} />
+                      <SearchIcon sx={{ fontSize: 14 }} />
                       <input placeholder="Search compatible products…" value={compatSearch} onChange={e => setCompatSearch(e.target.value)} />
                     </div>
                   </div>
@@ -4317,7 +4356,7 @@ export default function CatalogPage() {
                           cursor: 'pointer',
                           fontSize: 13,
                           fontWeight: 600,
-                          color: '#f1f5f9',
+                          color: 'var(--text-primary)',
                           userSelect: 'none',
                           padding: '0 12px',
                           height: 38,
@@ -4346,7 +4385,7 @@ export default function CatalogPage() {
                               setMyCompatibilitySelectedIds([])
                             }
                           }}
-                          style={{ cursor: 'pointer', accentColor: '#38bdf8', width: 14, height: 14 }}
+                          style={{ cursor: 'pointer', accentColor: 'var(--accent)', width: 14, height: 14 }}
                         />
                         <span>Select All</span>
                       </label>
@@ -4374,9 +4413,9 @@ export default function CatalogPage() {
                       title="Grid View"
                       onClick={() => setViewMode('grid')}
                       style={{
-                        background: viewMode === 'grid' ? 'rgba(32, 209, 242, 0.15)' : 'transparent',
-                        border: viewMode === 'grid' ? '1px solid rgba(32, 209, 242, 0.4)' : '1px solid transparent',
-                        color: viewMode === 'grid' ? '#20D1F2' : 'var(--text-muted)',
+                        background: viewMode === 'grid' ? 'var(--accent-dim)' : 'transparent',
+                        border: viewMode === 'grid' ? '1px solid rgba(var(--accent-rgb), 0.4)' : '1px solid transparent',
+                        color: viewMode === 'grid' ? 'var(--accent)' : 'var(--text-muted)',
                         borderRadius: 4,
                         padding: '4px 10px',
                         cursor: 'pointer',
@@ -4388,7 +4427,7 @@ export default function CatalogPage() {
                         transition: 'all 0.15s ease',
                       }}
                     >
-                      <LayoutGrid size={14} />
+                      <GridViewIcon sx={{ fontSize: 14 }} />
                       Grid
                     </button>
                     <button
@@ -4396,9 +4435,9 @@ export default function CatalogPage() {
                       title="Table View"
                       onClick={() => setViewMode('table')}
                       style={{
-                        background: viewMode === 'table' ? 'rgba(32, 209, 242, 0.15)' : 'transparent',
-                        border: viewMode === 'table' ? '1px solid rgba(32, 209, 242, 0.4)' : '1px solid transparent',
-                        color: viewMode === 'table' ? '#20D1F2' : 'var(--text-muted)',
+                        background: viewMode === 'table' ? 'var(--accent-dim)' : 'transparent',
+                        border: viewMode === 'table' ? '1px solid rgba(var(--accent-rgb), 0.4)' : '1px solid transparent',
+                        color: viewMode === 'table' ? 'var(--accent)' : 'var(--text-muted)',
                         borderRadius: 4,
                         padding: '4px 10px',
                         cursor: 'pointer',
@@ -4410,7 +4449,7 @@ export default function CatalogPage() {
                         transition: 'all 0.15s ease',
                       }}
                     >
-                      <List size={14} />
+                      <ViewListIcon sx={{ fontSize: 14 }} />
                       Table
                     </button>
                   </div>
@@ -4419,7 +4458,7 @@ export default function CatalogPage() {
                 {viewMode === 'grid' ? (
                   compatibleProducts.length === 0 ? (
                     <div className="empty-state" style={{ padding: '32px 0' }}>
-                      <ShoppingBag size={32} />
+                      <ShoppingBagIcon sx={{ fontSize: 32 }} />
                       <div>No compatible products found</div>
                     </div>
                   ) : (
@@ -4445,7 +4484,7 @@ export default function CatalogPage() {
                   <div className="table-wrap">
                     {compatibleProducts.length === 0 ? (
                       <div className="empty-state" style={{ padding: '32px 0' }}>
-                        <ShoppingBag size={32} />
+                        <ShoppingBagIcon sx={{ fontSize: 32 }} />
                         <div>No compatible products found</div>
                       </div>
                     ) : (
@@ -4518,7 +4557,7 @@ export default function CatalogPage() {
                                   />
                                 ) : (
                                   <div style={{ width: 36, height: 36, background: 'var(--bg-elevated)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                                    <ShoppingBag size={14} />
+                                    <ShoppingBagIcon sx={{ fontSize: 14 }} />
                                   </div>
                                 )}
                               </td>
@@ -4562,7 +4601,7 @@ export default function CatalogPage() {
           <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Procurement Export Jobs</div>
             <button className="btn btn-secondary btn-sm" onClick={() => refreshJobs()} disabled={isRefetchingJobs}>
-              <RefreshCw size={13} className={isRefetchingJobs ? 'spin' : ''} />
+              <RefreshIcon sx={{ fontSize: 13 }} className={isRefetchingJobs ? 'spin' : ''} />
               {isRefetchingJobs ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
@@ -4628,19 +4667,17 @@ export default function CatalogPage() {
       )}
 
       {/* ─── ADD PRODUCT MODAL ─────────────────────────────────────────────────── */}
-      {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 720, maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Add Product</div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={handleCloseAddModal}>
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={handleAddProduct}>
+      <Dialog open={showAddModal} onClose={handleCloseAddModal} fullWidth maxWidth="md" scroll="paper" slotProps={{ paper: { component: 'form', onSubmit: handleAddProduct } }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Add Product
+          <IconButton size="small" onClick={handleCloseAddModal}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
               {formError && (
                 <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <AlertCircle size={14} />
+                  <ErrorOutlinedIcon sx={{ fontSize: 14 }} />
                   <span>{formError}</span>
                 </div>
               )}
@@ -4861,7 +4898,7 @@ export default function CatalogPage() {
                       />
                     ) : (
                       <div style={{ width: 56, height: 56, background: 'var(--bg-elevated)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)' }}>
-                        <ShoppingBag size={18} />
+                        <ShoppingBagIcon sx={{ fontSize: 18 }} />
                       </div>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -4894,7 +4931,7 @@ export default function CatalogPage() {
                   {uploadedZipImages.length > 0 && (
                     <div style={{ marginTop: 10, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: 8 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Check size={14} style={{ color: 'var(--success)' }} /> Generated Image Links:
+                        <CheckIcon sx={{ fontSize: 14, color: 'success.main' }} /> Generated Image Links:
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {uploadedZipImages.map((img, idx) => (
@@ -4912,7 +4949,7 @@ export default function CatalogPage() {
                               style={{ padding: '2px 6px', fontSize: 10, flexShrink: 0 }}
                               onClick={() => {
                                 navigator.clipboard.writeText(img.url)
-                                alert(`Copied link for ${img.name}!`)
+                                showSnackbar(`Copied link for ${img.name}!`, "warning")
                               }}
                             >
                               Copy Link
@@ -5028,7 +5065,7 @@ export default function CatalogPage() {
                           >
                             <span>{label}</span>
                             <span style={{ fontSize: 10, opacity: 0.75 }}>({hint})</span>
-                            {isSelected && <Check size={12} />}
+                            {isSelected && <CheckIcon sx={{ fontSize: 12 }} />}
                           </button>
                         );
                       })}
@@ -5082,7 +5119,7 @@ export default function CatalogPage() {
                               }}
                             >
                               {dev ? `${dev.manufacturer_name} ${dev.name}` : id.slice(0, 8)}
-                              <X size={12} style={{ color: 'var(--red)', cursor: 'pointer' }} />
+                              <CloseIcon sx={{ fontSize: 12, color: 'error.main', cursor: 'pointer' }} />
                             </span>
                           )
                         })
@@ -5155,7 +5192,7 @@ export default function CatalogPage() {
                                   <div style={{ flex: 1, fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>
                                     {dev.manufacturer_name} {dev.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({dev.sku})</span>
                                   </div>
-                                  {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
+                                  {isSelected && <CheckIcon sx={{ fontSize: 14, color: 'primary.main' }} />}
                                 </div>
                               )
                             })}
@@ -5173,29 +5210,25 @@ export default function CatalogPage() {
               )}
 
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-                <button type="button" className="btn btn-secondary" onClick={handleCloseAddModal}>Cancel</button>
-                <button type="submit" className="btn btn-primary">List Product</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={handleCloseAddModal}>Cancel</Button>
+          <Button variant="contained" type="submit">List Product</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ─── EDIT PRODUCT MODAL ─────────────────────────────────────────────────── */}
-      {showEditModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 720, maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Edit Product</div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={handleCloseEditModal}>
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={handleEditProduct}>
+      <Dialog open={showEditModal} onClose={handleCloseEditModal} fullWidth maxWidth="md" scroll="paper" slotProps={{ paper: { component: 'form', onSubmit: handleEditProduct } }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Edit Product
+          <IconButton size="small" onClick={handleCloseEditModal}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
               {formError && (
                 <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <AlertCircle size={14} />
+                  <ErrorOutlinedIcon sx={{ fontSize: 14 }} />
                   <span>{formError}</span>
                 </div>
               )}
@@ -5416,7 +5449,7 @@ export default function CatalogPage() {
                       />
                     ) : (
                       <div style={{ width: 56, height: 56, background: 'var(--bg-elevated)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)' }}>
-                        <ShoppingBag size={18} />
+                        <ShoppingBagIcon sx={{ fontSize: 18 }} />
                       </div>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -5449,7 +5482,7 @@ export default function CatalogPage() {
                   {uploadedZipImages.length > 0 && (
                     <div style={{ marginTop: 10, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: 8 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Check size={14} style={{ color: 'var(--success)' }} /> Generated Image Links:
+                        <CheckIcon sx={{ fontSize: 14, color: 'success.main' }} /> Generated Image Links:
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {uploadedZipImages.map((img, idx) => (
@@ -5467,7 +5500,7 @@ export default function CatalogPage() {
                               style={{ padding: '2px 6px', fontSize: 10, flexShrink: 0 }}
                               onClick={() => {
                                 navigator.clipboard.writeText(img.url)
-                                alert(`Copied link for ${img.name}!`)
+                                showSnackbar(`Copied link for ${img.name}!`, "warning")
                               }}
                             >
                               Copy Link
@@ -5583,7 +5616,7 @@ export default function CatalogPage() {
                           >
                             <span>{label}</span>
                             <span style={{ fontSize: 10, opacity: 0.75 }}>({hint})</span>
-                            {isSelected && <Check size={12} />}
+                            {isSelected && <CheckIcon sx={{ fontSize: 12 }} />}
                           </button>
                         );
                       })}
@@ -5637,7 +5670,7 @@ export default function CatalogPage() {
                               }}
                             >
                               {dev ? `${dev.manufacturer_name} ${dev.name}` : id.slice(0, 8)}
-                              <X size={12} style={{ color: 'var(--red)', cursor: 'pointer' }} />
+                              <CloseIcon sx={{ fontSize: 12, color: 'error.main', cursor: 'pointer' }} />
                             </span>
                           )
                         })
@@ -5710,7 +5743,7 @@ export default function CatalogPage() {
                                   <div style={{ flex: 1, fontSize: 13, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)' }}>
                                     {dev.manufacturer_name} {dev.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({dev.sku})</span>
                                   </div>
-                                  {isSelected && <Check size={14} style={{ color: 'var(--accent)' }} />}
+                                  {isSelected && <CheckIcon sx={{ fontSize: 14, color: 'primary.main' }} />}
                                 </div>
                               )
                             })}
@@ -5729,25 +5762,23 @@ export default function CatalogPage() {
 
               
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-                <button type="button" className="btn btn-secondary" onClick={handleCloseEditModal}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Changes</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={handleCloseEditModal}>Cancel</Button>
+          <Button variant="contained" type="submit">Save Changes</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ─── MANAGE PRODUCT (DETAILS) MODAL ─────────────────────────────────────── */}
-      {showManageModal && selectedManageProduct && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 640, maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{isBuyer ? 'Product Details' : 'Manage Product'}</div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setShowManageModal(false)}>
-                <X size={16} />
-              </button>
-            </div>
+      <Dialog open={!!(showManageModal && selectedManageProduct)} onClose={() => setShowManageModal(false)} fullWidth maxWidth="lg" scroll="paper">
+        {selectedManageProduct && (<>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {isBuyer ? 'Product Details' : 'Manage Product'}
+          <IconButton size="small" onClick={() => setShowManageModal(false)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
             
             <div style={{ display: 'flex', gap: 16, marginBottom: 18 }}>
               {selectedManageProduct.primary_image_url ? (
@@ -5758,7 +5789,7 @@ export default function CatalogPage() {
                 />
               ) : (
                 <div style={{ width: 80, height: 80, background: 'var(--bg-elevated)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                  <ShoppingBag size={28} />
+                  <ShoppingBagIcon sx={{ fontSize: 28 }} />
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -5849,7 +5880,7 @@ export default function CatalogPage() {
                                   onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.7)'}
                                   onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.5)'}
                                 >
-                                  <ChevronLeft size={20} />
+                                  <ChevronLeftIcon sx={{ fontSize: 20 }} />
                                 </button>
                                 {/* Right Arrow */}
                                 <button
@@ -5881,7 +5912,7 @@ export default function CatalogPage() {
                                   onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.7)'}
                                   onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.5)'}
                                 >
-                                  <ChevronRight size={20} />
+                                  <ChevronRightIcon sx={{ fontSize: 20 }} />
                                 </button>
                                 {/* Pagination Badge */}
                                 <div style={{
@@ -5902,7 +5933,7 @@ export default function CatalogPage() {
                           </>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
-                            <ShoppingBag size={48} />
+                            <ShoppingBagIcon sx={{ fontSize: 48 }} />
                             <span style={{ fontSize: 13 }}>No Image Available</span>
                           </div>
                         )}
@@ -5972,10 +6003,8 @@ export default function CatalogPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px 16px' }}>
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Product Status</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, display: 'inline-flex' }}>
-                        <span className={`badge ${STATUS_BADGE[selectedManageProduct.status] ?? 'badge-muted'}`} style={{ fontSize: 11, padding: '2px 8px' }}>
-                          {selectedManageProduct.status || '—'}
-                        </span>
+                      <div style={{ marginTop: 2 }}>
+                        <StatusChip status={selectedManageProduct.status ?? 'unknown'} />
                       </div>
                     </div>
 
@@ -6123,7 +6152,7 @@ export default function CatalogPage() {
                   {(selectedManageProduct.vendor_return_address1 || selectedManageProduct.vendor_return_address) && (
                     <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginTop: 4 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Truck size={14} style={{ color: 'var(--accent)' }} /> Vendor Return Address
+                        <LocalShippingIcon sx={{ fontSize: 14, color: 'primary.main' }} /> Vendor Return Address
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
                         Vendor return shipping information (sent once per vendor, per buyer in export response).
@@ -6225,7 +6254,7 @@ export default function CatalogPage() {
                       disabled={isRecalculating}
                       style={{ display: 'flex', alignItems: 'center', gap: 6 }}
                     >
-                      <RefreshCw size={13} className={isRecalculating ? 'spin' : ''} />
+                      <RefreshIcon sx={{ fontSize: 13 }} className={isRecalculating ? 'spin' : ''} />
                       {isRecalculating ? 'Recalculating...' : 'Trigger Manual Recalculation'}
                     </button>
                   </div>
@@ -6269,7 +6298,7 @@ export default function CatalogPage() {
                       onClick={handleQuickAddDevice}
                       disabled={!quickAddDeviceId}
                     >
-                      <Plus size={14} /> Add Device
+                      <AddIcon sx={{ fontSize: 14 }} /> Add Device
                     </button>
                   </div>
                 )}
@@ -6503,56 +6532,53 @@ export default function CatalogPage() {
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
-              {isBuyer ? (
-                <div style={{ display: 'flex', width: '100%', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowManageModal(false)}>Close</button>
-                </div>
-              ) : (
-                <>
-                  {!isCixciAdmin && (
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      style={{
-                        background: 'var(--red-dim)',
-                        color: 'var(--red)',
-                        opacity: (selectedManageProduct?.status === 'active') ? 0.5 : 1,
-                        cursor: (selectedManageProduct?.status === 'active') ? 'not-allowed' : 'pointer'
-                      }}
-                      onClick={() => handleDeleteProduct(selectedManageProduct.id)}
-                    >
-                      <Trash2 size={14} /> Delete
-                    </button>
-                  )}
-                  <div style={{ display: 'flex', gap: 10, marginLeft: isCixciAdmin ? 'auto' : 0 }}>
-                    <button type="button" className="btn btn-secondary" onClick={() => setShowManageModal(false)}>Close</button>
-                    {!isCixciAdmin && (
-                      <button type="button" className="btn btn-primary" onClick={() => openEditModal(selectedManageProduct)}>
-                        <Edit size={14} /> Edit Product
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'space-between' }}>
+          {isBuyer ? (
+            <div style={{ display: 'flex', width: '100%', justifyContent: 'flex-end' }}>
+              <Button variant="outlined" onClick={() => setShowManageModal(false)}>Close</Button>
             </div>
-          </div>
-        </div>
-      )}
+          ) : (
+            <>
+              {!isCixciAdmin && (
+                <Button
+                  variant="contained"
+                  color="error"
+                  style={{
+                    opacity: (selectedManageProduct?.status === 'active') ? 0.5 : 1,
+                    cursor: (selectedManageProduct?.status === 'active') ? 'not-allowed' : 'pointer'
+                  }}
+                  onClick={() => handleDeleteProduct(selectedManageProduct.id)}
+                >
+                  <DeleteIcon sx={{ fontSize: 14 }} /> Delete
+                </Button>
+              )}
+              <div style={{ display: 'flex', gap: 10, marginLeft: isCixciAdmin ? 'auto' : 0 }}>
+                <Button variant="outlined" onClick={() => setShowManageModal(false)}>Close</Button>
+                {!isCixciAdmin && (
+                  <Button variant="contained" onClick={() => openEditModal(selectedManageProduct)}>
+                    <EditIcon sx={{ fontSize: 14 }} /> Edit Product
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </DialogActions>
+        </>)}
+      </Dialog>
 
       {/* ─── EXCLUSION REASON MODAL ──────────────────────────────────────────────── */}
-      {showExcludeModal && excludeDevice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div className="card" style={{ width: 400, maxWidth: '95%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>Exclude Device Compatibility</div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => { setShowExcludeModal(false); setExcludeDevice(null); }}>
-                <X size={16} />
-              </button>
-            </div>
-            
+      <Dialog open={!!(showExcludeModal && excludeDevice)} onClose={() => { setShowExcludeModal(false); setExcludeDevice(null); }} fullWidth maxWidth="sm" scroll="paper">
+        {excludeDevice && (<>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Exclude Device Compatibility
+          <IconButton size="small" onClick={() => { setShowExcludeModal(false); setExcludeDevice(null); }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
-              Define the exclusion reason for <strong>{excludeDevice.manufacturer_name ? `${excludeDevice.manufacturer_name} ${excludeDevice.name}` : excludeDevice.name}</strong>.
+              Define the exclusion reason for <strong>{excludeDevice?.manufacturer_name ? `${excludeDevice.manufacturer_name} ${excludeDevice.name}` : excludeDevice?.name}</strong>.
             </div>
 
             <div className="form-group" style={{ marginBottom: 12 }}>
@@ -6583,44 +6609,39 @@ export default function CatalogPage() {
                 placeholder={excludeReason === 'other' ? 'Descriptive notes are required...' : 'Add any additional notes...'}
               />
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button type="button" className="btn btn-secondary" onClick={() => { setShowExcludeModal(false); setExcludeDevice(null); }}>Cancel</button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSubmitExclusion}
-                disabled={excludeReason === 'other' && !excludeNotes.trim()}
-              >
-                Exclude Device
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={() => { setShowExcludeModal(false); setExcludeDevice(null); }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmitExclusion}
+            disabled={excludeReason === 'other' && !excludeNotes.trim()}
+          >
+            Exclude Device
+          </Button>
+        </DialogActions>
+        </>)}
+      </Dialog>
 
       {/* ─── BULK UPLOAD MODAL ─────────────────────────────────────────────────── */}
-      {showBulkModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: csvPreviewRows.length > 0 ? 1100 : 480, maxWidth: '95%', transition: 'all 0.2s ease-in-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Bulk Import Products</div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={handleCloseBulkModal} >
-                <X size={16} />
-              </button>
-            </div>
-            
-            <form onSubmit={handleBulkUploadSubmit}>
+      <Dialog open={showBulkModal} onClose={handleCloseBulkModal} fullWidth maxWidth="md" scroll="paper" slotProps={{ paper: { component: 'form', onSubmit: handleBulkUploadSubmit } }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Bulk Import Products
+          <IconButton size="small" onClick={handleCloseBulkModal}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
               {bulkError && (
                 <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <AlertCircle size={14} />
+                  <ErrorOutlinedIcon sx={{ fontSize: 14 }} />
                   <span>{bulkError}</span>
                 </div>
               )}
 
               {validation.hasErrors && (
                 <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <AlertCircle size={14} />
+                  <ErrorOutlinedIcon sx={{ fontSize: 14 }} />
                   <span>Validation failed. Please correct the highlighted cells in the data grid below before uploading.</span>
                 </div>
               )}
@@ -6628,7 +6649,7 @@ export default function CatalogPage() {
               {bulkResult && (
                 <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8, marginBottom: 14 }}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--green)', fontWeight: 600, fontSize: 14 }}>
-                    <Check size={16} />
+                    <CheckIcon sx={{ fontSize: 16 }} />
                     <span>
                       Bulk upload complete. Processed: {bulkResult.total_rows_processed} | Passed: {bulkResult.rows_passed} | Failed: {bulkResult.rows_failed} | Staged: {bulkResult.rows_staged}
                     </span>
@@ -6655,7 +6676,7 @@ export default function CatalogPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <label className="label">Catalog Template Guidelines</label>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={handleDownloadTemplate} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', fontSize: 11 }}>
-                    <Download size={12} /> Download CSV Template
+                    <DownloadIcon sx={{ fontSize: 12 }} /> Download CSV Template
                   </button>
                 </div>
                 <div style={{ background: 'var(--bg-elevated)', padding: 10, borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 14 }}>
@@ -6814,14 +6835,14 @@ export default function CatalogPage() {
                               <td style={{ padding: '6px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                                 {isRowClean ? (
                                   <span style={{ color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                                    <Check size={14} /> Ok
+                                    <CheckIcon sx={{ fontSize: 14 }} /> Ok
                                   </span>
                                 ) : (
                                   <span
                                     title={errors.join(' | ')}
                                     style={{ color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500, cursor: 'help' }}
                                   >
-                                    <AlertCircle size={14} /> {errors[0]}
+                                    <ErrorOutlinedIcon sx={{ fontSize: 14 }} /> {errors[0]}
                                   </span>
                                 )}
                               </td>
@@ -6854,33 +6875,29 @@ export default function CatalogPage() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                <button type="button" className="btn btn-secondary" onClick={handleCloseBulkModal}>
-                  Close
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={uploadingBulk || csvPreviewRows.length === 0 || validation.hasErrors}>
-                  {uploadingBulk ? 'Uploading…' : 'Upload Catalog'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={handleCloseBulkModal}>
+            Close
+          </Button>
+          <Button variant="contained" type="submit" disabled={uploadingBulk || csvPreviewRows.length === 0 || validation.hasErrors}>
+            {uploadingBulk ? 'Uploading…' : 'Upload Catalog'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ─── EXPORT JOB MODAL ──────────────────────────────────────────────────── */}
-      {showExportModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 420, maxWidth: '95%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Export Compatibility Catalog</div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setShowExportModal(false)}>
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={handleStartExport}>
+      <Dialog open={showExportModal} onClose={() => setShowExportModal(false)} fullWidth maxWidth="sm" scroll="paper" slotProps={{ paper: { component: 'form', onSubmit: handleStartExport } }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Export Compatibility Catalog
+          <IconButton size="small" onClick={() => setShowExportModal(false)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
               {exportError && (
                 <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <AlertCircle size={14} />
+                  <ErrorOutlinedIcon sx={{ fontSize: 14 }} />
                   <span>{exportError}</span>
                 </div>
               )}
@@ -6891,30 +6908,26 @@ export default function CatalogPage() {
                 <p style={{ margin: '0 0 8px 0' }}>• Export format: <strong>API</strong></p>
                 <p style={{ margin: 0 }}>• Incompatible products will be excluded.</p>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowExportModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Start Export Job</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={() => setShowExportModal(false)}>Cancel</Button>
+          <Button variant="contained" type="submit">Start Export Job</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ─── EXPORT JOB DETAILS MODAL (AUDIT COMPLIANT) ────────────────────────── */}
-      {selectedJob && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 680, maxWidth: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 16 }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Export Job Details</span>
-                <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{selectedJob.id}</span>
-              </div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => setSelectedJob(null)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={{ overflowY: 'auto', flex: 1, paddingRight: 4 }}>
+      <Dialog open={!!selectedJob} onClose={() => setSelectedJob(null)} fullWidth maxWidth="md" scroll="paper">
+        {selectedJob && (<>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Export Job Details</span>
+            <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{selectedJob.id}</span>
+          </div>
+          <IconButton size="small" onClick={() => setSelectedJob(null)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
               {/* Metadata Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 16, marginBottom: 20 }}>
                 <div>
@@ -6965,7 +6978,7 @@ export default function CatalogPage() {
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
                 Exported Product Snapshot ({selectedJob.products_snapshot?.length ?? 0} Products)
               </div>
-              
+
               <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
                 {!selectedJob.products_snapshot || selectedJob.products_snapshot.length === 0 ? (
                   <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
@@ -6987,14 +7000,14 @@ export default function CatalogPage() {
                         <tr key={p.product_id || idx}>
                           <td>
                             {p.primary_image_url ? (
-                              <img 
-                                src={p.primary_image_url} 
-                                alt={p.product_name} 
-                                style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 4, background: '#fff', border: '1px solid var(--border)' }} 
+                              <img
+                                src={p.primary_image_url}
+                                alt={p.product_name}
+                                style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 4, background: '#fff', border: '1px solid var(--border)' }}
                               />
                             ) : (
                               <div style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
-                                <ShoppingBag size={16} style={{ color: 'var(--text-muted)' }} />
+                                <ShoppingBagIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
                               </div>
                             )}
                           </td>
@@ -7008,30 +7021,25 @@ export default function CatalogPage() {
                   </table>
                 )}
               </div>
-            </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-              <button type="button" className="btn btn-primary" onClick={() => setSelectedJob(null)}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setSelectedJob(null)}>Close</Button>
+        </DialogActions>
+        </>)}
+      </Dialog>
 
-      {showDropdownManagerModal && isCixciAdmin && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 500, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid var(--border-light)', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>
-                {editingCategoryConfig ? 'Configure Category Compatibility' : 'Manage Dropdown Values'}
-              </div>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => { setShowDropdownManagerModal(false); setEditingCategoryConfig(null); }}>
-                <X size={16} />
-              </button>
-            </div>
-
+      <Dialog open={!!(showDropdownManagerModal && isCixciAdmin)} onClose={() => { setShowDropdownManagerModal(false); setEditingCategoryConfig(null); }} fullWidth maxWidth="md" scroll="paper">
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {editingCategoryConfig ? 'Configure Category Compatibility' : 'Manage Dropdown Values'}
+          <IconButton size="small" onClick={() => { setShowDropdownManagerModal(false); setEditingCategoryConfig(null); }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
             {dropdownError && (
               <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-                <AlertCircle size={14} />
+                <ErrorOutlinedIcon sx={{ fontSize: 14 }} />
                 <span>{dropdownError}</span>
               </div>
             )}
@@ -7184,12 +7192,12 @@ export default function CatalogPage() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setEditingCategoryConfig(null)}>
+                  <Button variant="outlined" onClick={() => setEditingCategoryConfig(null)}>
                     Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary">
+                  </Button>
+                  <Button variant="contained" type="submit">
                     Save Configuration
-                  </button>
+                  </Button>
                 </div>
               </form>
             ) : (
@@ -7263,7 +7271,7 @@ export default function CatalogPage() {
                                   style={{ padding: 4, color: 'var(--primary)', background: 'transparent', border: 'none' }}
                                   onClick={() => setEditingCategoryConfig(item)}
                                 >
-                                  <Settings size={14} />
+                                  <SettingsIcon sx={{ fontSize: 14 }} />
                                 </button>
                               )}
                               <button
@@ -7272,7 +7280,7 @@ export default function CatalogPage() {
                                 style={{ padding: 4, color: 'var(--red)', background: 'transparent', border: 'none' }}
                                 onClick={() => handleDeleteDropdownValue(item.id)}
                               >
-                                <Trash2 size={14} />
+                                <DeleteIcon sx={{ fontSize: 14 }} />
                               </button>
                             </div>
                           </div>
@@ -7282,15 +7290,15 @@ export default function CatalogPage() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowDropdownManagerModal(false)}>
+                  <Button variant="outlined" onClick={() => setShowDropdownManagerModal(false)}>
                     Close
-                  </button>
+                  </Button>
                 </div>
               </>
             )}
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
+      <ConfirmDialog {...dialogProps} />
     </div>
   )
 }

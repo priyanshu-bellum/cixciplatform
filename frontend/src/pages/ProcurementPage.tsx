@@ -1,15 +1,22 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ShoppingCart, Plus, List } from 'lucide-react'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
+import Chip from '@mui/material/Chip'
+import IconButton from '@mui/material/IconButton'
+import Tooltip from '@mui/material/Tooltip'
+import Typography from '@mui/material/Typography'
+import Paper from '@mui/material/Paper'
+import AddIcon from '@mui/icons-material/Add'
+import ShoppingCartOutlinedIcon from '@mui/icons-material/ShoppingCartOutlined'
+import ListIcon from '@mui/icons-material/List'
 import api from '../lib/apiClient'
-import { formatCurrency } from './CatalogPage'
-
-const PO_STATUS: Record<string, string> = {
-  draft: 'badge-muted', pending_approval: 'badge-amber', approved: 'badge-blue',
-  submitted: 'badge-blue', acknowledged: 'badge-purple', partially_fulfilled: 'badge-amber',
-  fulfilled: 'badge-green', cancelled: 'badge-muted', rejected: 'badge-red',
-  expired: 'badge-muted', dispute: 'badge-red', closed: 'badge-muted',
-}
+import { formatCurrency, formatDate } from '../lib/formatters'
+import PageHeader from '../components/layout/PageHeader'
+import DataTable, { type Column } from '../components/data-display/DataTable'
+import StatusChip from '../components/data-display/StatusChip'
 
 export default function ProcurementPage() {
   const [tab, setTab] = useState<'orders' | 'lines'>('orders')
@@ -18,140 +25,203 @@ export default function ProcurementPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-orders'],
     queryFn: () =>
-      api.get('/procurement/purchase-orders/').then(r => r.data).catch(() => ({ results: [] })),
+      api.get('/procurement/purchase-orders/').then(r => r.data),
   })
 
   const { data: lineData, isLoading: lineLoading } = useQuery({
     queryKey: ['po-lines', selectedPO?.id],
     queryFn: () =>
-      api.get(`/procurement/purchase-orders/${selectedPO.id}/lines/`).then(r => r.data).catch(() => []),
+      api.get(`/procurement/purchase-orders/${selectedPO.id}/lines/`).then(r => r.data),
     enabled: tab === 'lines' && !!selectedPO,
   })
 
   const orders = data?.results ?? (Array.isArray(data) ? data : [])
   const lines = lineData?.results ?? (Array.isArray(lineData) ? lineData : [])
 
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">Procurement</div>
-          <div className="page-sub">
-            Bulk purchase orders — pricing consumed from immutable snapshots, never recalculated
-          </div>
-        </div>
-        <button className="btn btn-primary"><Plus size={14} /> New PO</button>
-      </div>
+  const orderColumns = useMemo<Column<any>[]>(() => [
+    {
+      id: 'po_number',
+      label: 'PO Number',
+      render: (o) => (
+        <Typography
+          variant="body2"
+          sx={{ fontFamily: 'monospace', color: 'text.primary', fontWeight: 500 }}
+        >
+          {o.po_number || o.id?.slice(0, 8)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'vendor_company_reference',
+      label: 'Vendor',
+      render: (o) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.6875rem' }}>
+          {o.vendor_company_reference?.slice(0, 8)}&hellip;
+        </Typography>
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (o) => <StatusChip status={o.status ?? 'unknown'} />,
+    },
+    {
+      id: 'currency',
+      label: 'Currency',
+      render: (o) => o.currency ?? 'USD',
+    },
+    {
+      id: 'total_amount',
+      label: 'Total',
+      align: 'right',
+      render: (o) => (
+        <Typography variant="body2" sx={{ color: 'text.primary' }}>
+          {formatCurrency(o.total_amount, o.currency)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'created_at',
+      label: 'Created',
+      render: (o) => formatDate(o.created_at),
+    },
+    {
+      id: 'actions',
+      label: '',
+      sortable: false,
+      width: 48,
+      render: (o) => (
+        <Tooltip title="View lines">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation()
+              setSelectedPO(o)
+              setTab('lines')
+            }}
+          >
+            <ListIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      ),
+    },
+  ], [])
 
-      <div className="tabs">
-        <div className={`tab ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>
-          Purchase Orders
-        </div>
-        <div className={`tab ${tab === 'lines' ? 'active' : ''}`} onClick={() => setTab('lines')}>
-          PO Lines {selectedPO && <span className="badge badge-muted" style={{ marginLeft: 6, fontSize: 10 }}>{selectedPO.po_number || selectedPO.id?.slice(0, 8)}</span>}
-        </div>
-      </div>
+  const lineColumns = useMemo<Column<any>[]>(() => [
+    {
+      id: 'id',
+      label: 'Line ID',
+      render: (l) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.6875rem', color: 'text.primary' }}>
+          {l.id?.slice(0, 8)}&hellip;
+        </Typography>
+      ),
+    },
+    {
+      id: 'product_reference',
+      label: 'Product',
+      render: (l) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.6875rem' }}>
+          {l.product_reference?.slice(0, 8)}&hellip;
+        </Typography>
+      ),
+    },
+    {
+      id: 'quantity',
+      label: 'Quantity',
+      align: 'right',
+    },
+    {
+      id: 'unit_price_snapshot',
+      label: 'Unit Price (Snapshot)',
+      align: 'right',
+      render: (l) => formatCurrency(l.unit_price_snapshot, selectedPO?.currency),
+    },
+    {
+      id: 'line_total',
+      label: 'Line Total',
+      align: 'right',
+      render: (l) => (
+        <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 500 }}>
+          {formatCurrency(l.line_total, selectedPO?.currency)}
+        </Typography>
+      ),
+    },
+  ], [selectedPO?.currency])
+
+  return (
+    <Box>
+      <PageHeader
+        title="Procurement"
+        subtitle="Bulk purchase orders — pricing consumed from immutable snapshots, never recalculated"
+        actions={
+          <Button variant="contained" startIcon={<AddIcon />}>
+            New PO
+          </Button>
+        }
+      />
+
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab label="Purchase Orders" value="orders" />
+        <Tab
+          value="lines"
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              PO Lines
+              {selectedPO && (
+                <Chip
+                  label={selectedPO.po_number || selectedPO.id?.slice(0, 8)}
+                  size="small"
+                  color="default"
+                  sx={{ fontSize: '0.625rem', height: 20 }}
+                />
+              )}
+            </Box>
+          }
+        />
+      </Tabs>
 
       {tab === 'orders' && (
-        <div className="table-wrap">
-          {isLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : orders.length === 0 ? (
-            <div className="empty-state">
-              <ShoppingCart size={40} />
-              <div>No purchase orders</div>
-              <div style={{ fontSize: 12 }}>
-                Create bulk purchase orders — prices are bound to Pricing snapshots at submission time
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>PO Number</th><th>Vendor</th><th>Status</th><th>Currency</th>
-                  <th>Total</th><th>Created</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o: any) => (
-                  <tr key={o.id}>
-                    <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
-                      {o.po_number || o.id?.slice(0, 8)}
-                    </td>
-                    <td className="mono" style={{ fontSize: 11 }}>
-                      {o.vendor_company_reference?.slice(0, 8)}…
-                    </td>
-                    <td>
-                      <span className={`badge ${PO_STATUS[o.status] ?? 'badge-muted'}`}>
-                        {o.status?.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td>{o.currency ?? 'USD'}</td>
-                    <td style={{ color: 'var(--text-primary)' }}>
-                      {formatCurrency(o.total_amount, o.currency)}
-                    </td>
-                    <td>{o.created_at ? new Date(o.created_at).toLocaleDateString() : '—'}</td>
-                    <td>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => { setSelectedPO(o); setTab('lines') }}
-                        title="View lines"
-                      >
-                        <List size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={orderColumns}
+          rows={orders}
+          loading={isLoading}
+          rowKey={(o) => o.id}
+          emptyMessage="No purchase orders"
+          emptyIcon={<ShoppingCartOutlinedIcon sx={{ fontSize: 48 }} />}
+        />
       )}
 
       {tab === 'lines' && (
         <>
           {!selectedPO ? (
-            <div className="empty-state" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-              <ShoppingCart size={40} />
-              <div>Select a purchase order</div>
-              <div style={{ fontSize: 12 }}>Click the lines icon on a PO to view its line items</div>
-            </div>
-          ) : lineLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : lines.length === 0 ? (
-            <div className="empty-state" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-              <ShoppingCart size={40} />
-              <div>No lines on this PO</div>
-            </div>
+            <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
+              <Box sx={{ color: 'text.disabled', mb: 1.5 }}>
+                <ShoppingCartOutlinedIcon sx={{ fontSize: 48 }} />
+              </Box>
+              <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+                Select a purchase order
+              </Typography>
+              <Typography variant="body2" color="text.disabled">
+                Click the lines icon on a PO to view its line items
+              </Typography>
+            </Paper>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Line ID</th><th>Product</th><th>Quantity</th>
-                    <th>Unit Price (Snapshot)</th><th>Line Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((l: any) => (
-                    <tr key={l.id}>
-                      <td className="mono" style={{ fontSize: 11, color: 'var(--text-primary)' }}>
-                        {l.id?.slice(0, 8)}…
-                      </td>
-                      <td className="mono" style={{ fontSize: 11 }}>
-                        {l.product_reference?.slice(0, 8)}…
-                      </td>
-                      <td>{l.quantity}</td>
-                      <td>{formatCurrency(l.unit_price_snapshot, selectedPO?.currency)}</td>
-                      <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(l.line_total, selectedPO?.currency)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={lineColumns}
+              rows={lines}
+              loading={lineLoading}
+              rowKey={(l) => l.id}
+              emptyMessage="No lines on this PO"
+              emptyIcon={<ShoppingCartOutlinedIcon sx={{ fontSize: 48 }} />}
+            />
           )}
         </>
       )}
-    </div>
+    </Box>
   )
 }

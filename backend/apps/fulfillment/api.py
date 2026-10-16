@@ -1379,65 +1379,73 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             # Locked Field Verification
             if row_status not in ["rejected", "review_required"] and return_req:
                 buyer_val = get_val(row, "buyer")
-                buyer_company = Company.objects.filter(id=return_req.buyer_reference).first()
-                db_buyer_name = buyer_company.name if buyer_company else ""
-                if buyer_val.strip().lower() != db_buyer_name.strip().lower():
-                    row_errors.append(f"mismatch: Buyer {buyer_val} does not match original {db_buyer_name}")
-                    row_status = "rejected"
-                    
+                if buyer_val:
+                    buyer_company = Company.objects.filter(id=return_req.buyer_reference).first()
+                    db_buyer_name = buyer_company.name if buyer_company else ""
+                    if buyer_val.strip().lower() != db_buyer_name.strip().lower():
+                        row_errors.append(f"mismatch: Buyer {buyer_val} does not match original {db_buyer_name}")
+                        row_status = "rejected"
+
                 suborder_val = get_val(row, "suborder")
-                if suborder_val.strip().lower() != str(return_req.suborder_reference).lower():
-                    row_errors.append(f"mismatch: Suborder {suborder_val} does not match original {return_req.suborder_reference}")
-                    row_status = "rejected"
-                    
+                if suborder_val:
+                    if suborder_val.strip().lower() != str(return_req.suborder_reference).lower():
+                        row_errors.append(f"mismatch: Suborder {suborder_val} does not match original {return_req.suborder_reference}")
+                        row_status = "rejected"
+
                 reason_val = get_val(row, "reason")
-                if reason_val.strip().lower() != (return_req.reason or "").strip().lower():
-                    row_errors.append(f"mismatch: Reason {reason_val} does not match original {return_req.reason}")
-                    row_status = "rejected"
-                    
+                if reason_val:
+                    if reason_val.strip().lower() != (return_req.reason or "").strip().lower():
+                        row_errors.append(f"mismatch: Reason {reason_val} does not match original {return_req.reason}")
+                        row_status = "rejected"
+
                 init_date_val = get_val(row, "return_initiation_date")
-                csv_init_date = parse_date_flexible(init_date_val)
-                db_init_date = return_req.return_initiation_date.date() if return_req.return_initiation_date else None
-                if csv_init_date != db_init_date:
-                    row_errors.append(f"mismatch: Return Initiation Date {init_date_val} does not match original {db_init_date}")
-                    row_status = "rejected"
-                    
+                if init_date_val:
+                    csv_init_date = parse_date_flexible(init_date_val)
+                    db_init_date = return_req.return_initiation_date.date() if return_req.return_initiation_date else None
+                    if csv_init_date != db_init_date:
+                        row_errors.append(f"mismatch: Return Initiation Date {init_date_val} does not match original {db_init_date}")
+                        row_status = "rejected"
+
                 qty_val = get_val(row, "return_quantity")
-                try:
-                    csv_qty = int(qty_val)
-                except (ValueError, TypeError):
-                    csv_qty = None
-                if csv_qty != return_req.return_quantity:
-                    row_errors.append(f"mismatch: Return Quantity {qty_val} does not match original {return_req.return_quantity}")
-                    row_status = "rejected"
-                    
-                price_ref_val = get_val(row, "price_reference").strip()
-                matched_price = False
-                if return_req.vendor_wholesale_price is not None:
+                if qty_val:
                     try:
-                        csv_price = Decimal(price_ref_val)
-                        if csv_price == return_req.vendor_wholesale_price:
+                        csv_qty = int(qty_val)
+                    except (ValueError, TypeError):
+                        csv_qty = None
+                    if csv_qty != return_req.return_quantity:
+                        row_errors.append(f"mismatch: Return Quantity {qty_val} does not match original {return_req.return_quantity}")
+                        row_status = "rejected"
+
+                price_ref_val = get_val(row, "price_reference").strip()
+                if price_ref_val:
+                    matched_price = False
+                    if return_req.vendor_wholesale_price is not None:
+                        try:
+                            csv_price = Decimal(price_ref_val)
+                            if csv_price == return_req.vendor_wholesale_price:
+                                matched_price = True
+                        except Exception:
+                            pass
+                    if return_req.pricing_snapshot_reference is not None:
+                        if price_ref_val.lower() == str(return_req.pricing_snapshot_reference).lower():
                             matched_price = True
-                    except Exception:
-                        pass
-                if return_req.pricing_snapshot_reference is not None:
-                    if price_ref_val.lower() == str(return_req.pricing_snapshot_reference).lower():
+                    if price_ref_val == str(return_req.vendor_wholesale_price) or price_ref_val == str(return_req.pricing_snapshot_reference):
                         matched_price = True
-                if price_ref_val == str(return_req.vendor_wholesale_price) or price_ref_val == str(return_req.pricing_snapshot_reference):
-                    matched_price = True
-                if not matched_price:
-                    row_errors.append(f"mismatch: Price Reference {price_ref_val} does not match original price/snapshot")
-                    row_status = "rejected"
-                    
+                    if not matched_price:
+                        row_errors.append(f"mismatch: Price Reference {price_ref_val} does not match original price/snapshot")
+                        row_status = "rejected"
+
                 sku_val = get_val(row, "sku")
-                if sku_val.strip().lower() != (return_req.sku or "").strip().lower():
-                    row_errors.append(f"mismatch: SKU {sku_val} does not match original {return_req.sku}")
-                    row_status = "rejected"
-                    
+                if sku_val:
+                    if sku_val.strip().lower() != (return_req.sku or "").strip().lower():
+                        row_errors.append(f"mismatch: SKU {sku_val} does not match original {return_req.sku}")
+                        row_status = "rejected"
+
                 upc_val = get_val(row, "upc")
-                if not upc_matches(return_req.upc or "", upc_val):
-                    row_errors.append(f"mismatch: UPC {upc_val} does not match original {return_req.upc}")
-                    row_status = "rejected"
+                if upc_val:
+                    if not upc_matches(return_req.upc or "", upc_val):
+                        row_errors.append(f"mismatch: UPC {upc_val} does not match original {return_req.upc}")
+                        row_status = "rejected"
                     
             # Outcome Fields parsing
             if row_status not in ["rejected", "review_required"] and return_req:
@@ -1557,14 +1565,21 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             
         if has_any_rejections:
             formatted_errors = []
+            formatted_review = []
             for r in rows_analysis:
                 if r["status"] == "rejected":
                     formatted_errors.append({
                         "row": r["row_index"],
                         "errors": r["errors"]
                     })
+                elif r["status"] == "review_required":
+                    formatted_review.append({
+                        "row": r["row_index"],
+                        "errors": r["errors"]
+                    })
             return Response({
-                "errors": formatted_errors
+                "errors": formatted_errors,
+                "review_required": formatted_review,
             }, status=400)
             
         summary = {
@@ -1582,50 +1597,62 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 "rows": rows_analysis
             })
             
+        save_errors = []
         with transaction.atomic():
-            for op in ops_to_execute:
-                req = op["return_req"]
-                req.status = op["status"]
-                for k, v in op["updates"].items():
-                    setattr(req, k, v)
-                req.save()
-                
-                # Auto-close: after refunded or rejected, transition to Return Closed
-                if op["status"] in [ReturnStatus.RETURN_REFUNDED, ReturnStatus.RETURN_REJECTED]:
-                    req.status = ReturnStatus.RETURN_CLOSED
+            for idx, op in enumerate(ops_to_execute):
+                try:
+                    req = op["return_req"]
+                    req.status = op["status"]
+                    for k, v in op["updates"].items():
+                        setattr(req, k, v)
                     req.save()
-                
-            log_vendor_id = None
-            log_scope_id = None
-            if ops_to_execute:
-                from apps.routing.models import RoutedSuborder
-                first_req = ops_to_execute[0]["return_req"]
-                sub = RoutedSuborder.objects.filter(id=first_req.suborder_reference).first()
-                if sub:
-                    log_vendor_id = sub.vendor_company_reference
-                    log_scope_id = sub.order.company_scope_reference
-            if not log_vendor_id:
-                if hasattr(user, "entity") and user.entity and user.entity.company:
-                    log_vendor_id = user.entity.company.id
-                else:
-                    log_vendor_id = user.id
-                    
-            VendorReturnImportLog.objects.create(
-                vendor_company_reference=log_vendor_id,
-                company_scope_reference=log_scope_id,
-                uploaded_by=user if user.is_authenticated else None,
-                csv_filename=getattr(file_obj, "name", "return_import.csv"),
-                csv_content=csv_content,
-                rows_applied=applied_count,
-                rows_skipped=skipped_count,
-                rows_rejected=rejected_count,
-                rows_review_required=review_required_count,
-                results_payload={
-                    "rows": rows_analysis,
-                    "summary": summary
-                }
-            )
-            
+
+                    # Auto-close: after refunded or rejected, transition to Return Closed
+                    if op["status"] in [ReturnStatus.RETURN_REFUNDED, ReturnStatus.RETURN_REJECTED]:
+                        req.status = ReturnStatus.RETURN_CLOSED
+                        req.save()
+                except Exception as e:
+                    save_errors.append({"row": idx, "error": str(e)})
+
+        # ── Audit log: record every import attempt (success or partial failure) ──
+        log_vendor_id = None
+        log_scope_id = None
+        if ops_to_execute:
+            from apps.routing.models import RoutedSuborder
+            first_req = ops_to_execute[0]["return_req"]
+            sub = RoutedSuborder.objects.filter(id=first_req.suborder_reference).first()
+            if sub:
+                log_vendor_id = sub.vendor_company_reference
+                log_scope_id = sub.order.company_scope_reference
+        if not log_vendor_id:
+            if hasattr(user, "entity") and user.entity and user.entity.company:
+                log_vendor_id = user.entity.company.id
+            else:
+                log_vendor_id = user.id
+
+        VendorReturnImportLog.objects.create(
+            vendor_company_reference=log_vendor_id,
+            company_scope_reference=log_scope_id,
+            uploaded_by=user if user.is_authenticated else None,
+            csv_filename=getattr(file_obj, "name", "return_import.csv"),
+            csv_content=csv_content,
+            rows_applied=applied_count,
+            rows_skipped=skipped_count,
+            rows_rejected=rejected_count,
+            rows_review_required=review_required_count,
+            results_payload={
+                "rows": rows_analysis,
+                "summary": summary,
+                "save_errors": save_errors if save_errors else None,
+            }
+        )
+
+        if save_errors:
+            return Response({
+                "detail": "Some rows failed to save.",
+                "save_errors": save_errors,
+            }, status=400)
+
         return Response({
             "success_count": applied_count,
             "skipped_count": skipped_count,

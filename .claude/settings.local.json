@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(python3:*)",
+      "Bash(xargs:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite build)",
+      "Bash(node -e:*)",
+      "Bash(ls:*)",
+      "Bash(while read f)",
+      "Bash(do sed -i \"s|icons-material/ErrorOutline''|icons-material/ErrorOutlined''|g\" \"$f\")",
+      "Bash(done)",
+      "Bash(do sed -i \"s|icons-material/DeleteOutline''|icons-material/DeleteOutlined''|g\" \"$f\")",
+      "Bash(npm uninstall:*)",
+      "Bash(python -m venv:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings_local python manage.py:*)",
+      "Bash(curl:*)",
+      "Bash(npm run build:*)",
+      "Bash(python -c:*)",
+      "Bash(python manage.py migrate:*)",
+      "Bash(python manage.py shell --settings=config.settings_local -c \"\nfrom apps.tenant.models import CixciUser, Company\n# Create or update admin user\nu, created = CixciUser.objects.update_or_create\\(\n    email=''admin@cixci.com'',\n    defaults={\n        ''first_name'': ''Admin'',\n        ''last_name'': ''CIXCI'',\n        ''is_cixci_admin'': True,\n        ''is_active'': True,\n        ''is_staff'': True,\n        ''is_superuser'': True,\n    }\n\\)\nu.set_password\\(''adminpass123''\\)\nu.save\\(\\)\n# Ensure company exists\ncompany, _ = Company.objects.get_or_create\\(\n    name=''CIXCI'',\n    defaults={''company_type'': ''cixci_admin'', ''is_active'': True}\n\\)\nif not u.company:\n    u.company = company\n    u.save\\(\\)\nprint\\(f''User: {u.email}, Company: {u.company}, Created: {created}''\\)\n\")",
+      "Bash(python manage.py shell:*)"
+    ]
+  }
+}

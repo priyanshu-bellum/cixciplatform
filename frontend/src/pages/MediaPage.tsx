@@ -1,27 +1,46 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Image, Upload, Plus, X, AlertCircle, Globe, Lock } from 'lucide-react'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import TextField from '@mui/material/TextField'
+import MenuItem from '@mui/material/MenuItem'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Checkbox from '@mui/material/Checkbox'
+import Typography from '@mui/material/Typography'
+import LinearProgress from '@mui/material/LinearProgress'
+import Alert from '@mui/material/Alert'
+import IconButton from '@mui/material/IconButton'
+import Chip from '@mui/material/Chip'
+import AddIcon from '@mui/icons-material/Add'
+import ImageIcon from '@mui/icons-material/Image'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import PublicIcon from '@mui/icons-material/Public'
+import LockIcon from '@mui/icons-material/Lock'
 import api from '../lib/apiClient'
+import { formatDate } from '../lib/formatters'
+import PageHeader from '../components/layout/PageHeader'
+import StatusChip from '../components/data-display/StatusChip'
+import DataTable, { type Column } from '../components/data-display/DataTable'
+import FileUploadField from '../components/forms/FileUploadField'
+import { useSnackbar } from '../components/feedback/SnackbarProvider'
 
-const ASSET_STATUS: Record<string, string> = {
-  upload_pending: 'badge-muted', uploading: 'badge-blue', validating: 'badge-blue',
-  validation_failed: 'badge-red', processing: 'badge-amber', processing_failed: 'badge-red',
-  ready: 'badge-green', restricted: 'badge-amber', revoked: 'badge-red',
-  expired: 'badge-muted', superseded: 'badge-muted',
-}
-
-const ASSET_TYPE_BADGE: Record<string, string> = {
-  product_image: 'badge-blue', device_image: 'badge-purple', brand_logo: 'badge-amber',
-  document: 'badge-muted', video: 'badge-muted', other: 'badge-muted',
-}
-
-const SESSION_STATUS: Record<string, string> = {
-  initiated: 'badge-muted', uploading: 'badge-blue', completed: 'badge-green',
-  failed: 'badge-red', expired: 'badge-muted',
+const ASSET_TYPE_COLOR: Record<string, 'primary' | 'secondary' | 'warning' | 'default'> = {
+  product_image: 'primary',
+  device_image: 'secondary',
+  brand_logo: 'warning',
+  document: 'default',
+  video: 'default',
+  other: 'default',
 }
 
 function fmtBytes(b: number | null | undefined) {
-  if (b == null) return '—'
+  if (b == null) return '\u2014'
   if (b < 1024) return `${b} B`
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
   return `${(b / (1024 * 1024)).toFixed(1)} MB`
@@ -38,15 +57,17 @@ export default function MediaPage() {
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
+  const { showSnackbar } = useSnackbar()
+
   const { data: assetData, isLoading: aLoading, refetch: refetchAssets } = useQuery({
     queryKey: ['media-assets'],
-    queryFn: () => api.get('/media/assets/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/media/assets/').then(r => r.data),
   })
 
   const { data: sessionData, isLoading: sLoading, refetch: refetchSessions } = useQuery({
     queryKey: ['upload-sessions'],
     queryFn: () =>
-      api.get('/media/upload-sessions/').then(r => r.data).catch(() => ({ results: [] })),
+      api.get('/media/upload-sessions/').then(r => r.data),
     enabled: tab === 'sessions',
   })
 
@@ -100,6 +121,7 @@ export default function MediaPage() {
         setUploading(false)
         setShowModal(false)
         setFile(null)
+        showSnackbar('Asset uploaded successfully', 'success')
         refetchAssets()
         if (tab === 'sessions') {
           refetchSessions()
@@ -112,312 +134,357 @@ export default function MediaPage() {
     }
   }
 
+  const handleCloseModal = () => {
+    if (!uploading) {
+      setShowModal(false)
+      setFile(null)
+      setError(null)
+    }
+  }
+
+  const assetColumns: Column<any>[] = useMemo(() => [
+    {
+      id: 'original_filename',
+      label: 'Filename',
+      width: 220,
+      render: (row: any) => (
+        <Typography
+          variant="body2"
+          sx={{
+            fontWeight: 500,
+            color: 'text.primary',
+            maxWidth: 220,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {row.original_filename}
+        </Typography>
+      ),
+    },
+    {
+      id: 'asset_type',
+      label: 'Type',
+      render: (row: any) => (
+        <Chip
+          label={row.asset_type?.replace(/_/g, ' ')}
+          color={ASSET_TYPE_COLOR[row.asset_type] ?? 'default'}
+          size="small"
+          variant="filled"
+        />
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (row: any) => <StatusChip status={row.status} />,
+    },
+    {
+      id: 'file_size_bytes',
+      label: 'Size',
+      render: (row: any) => (
+        <Typography variant="body2" color="text.secondary">
+          {fmtBytes(row.file_size_bytes)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'owner_module',
+      label: 'Owner Module',
+      render: (row: any) => (
+        <Chip label={row.owner_module ?? '\u2014'} size="small" variant="filled" />
+      ),
+    },
+    {
+      id: 'is_public',
+      label: 'Access',
+      sortable: false,
+      render: (row: any) =>
+        row.is_public ? (
+          <Chip
+            icon={<PublicIcon sx={{ fontSize: 14 }} />}
+            label="Public"
+            color="success"
+            size="small"
+            variant="filled"
+          />
+        ) : (
+          <Chip
+            icon={<LockIcon sx={{ fontSize: 14 }} />}
+            label="Private"
+            size="small"
+            variant="filled"
+          />
+        ),
+    },
+    {
+      id: 'created_at',
+      label: 'Created',
+      render: (row: any) => (
+        <Typography variant="body2" color="text.secondary">
+          {formatDate(row.created_at)}
+        </Typography>
+      ),
+    },
+  ], [])
+
+  const sessionColumns: Column<any>[] = useMemo(() => [
+    {
+      id: 'expected_filename',
+      label: 'Expected Filename',
+      render: (row: any) => (
+        <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
+          {row.expected_filename}
+        </Typography>
+      ),
+    },
+    {
+      id: 'expected_mime_type',
+      label: 'MIME Type',
+      render: (row: any) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 11 }}>
+          {row.expected_mime_type}
+        </Typography>
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (row: any) => <StatusChip status={row.status} />,
+    },
+    {
+      id: 'expires_at',
+      label: 'Expires At',
+      render: (row: any) => (
+        <Typography
+          variant="body2"
+          sx={{
+            color: row.expires_at && new Date(row.expires_at) < new Date()
+              ? 'error.main'
+              : 'text.secondary',
+          }}
+        >
+          {row.expires_at ? formatDate(row.expires_at) : '\u2014'}
+        </Typography>
+      ),
+    },
+    {
+      id: 'completed_at',
+      label: 'Completed At',
+      render: (row: any) => (
+        <Typography variant="body2" color="text.secondary">
+          {row.completed_at ? formatDate(row.completed_at) : '\u2014'}
+        </Typography>
+      ),
+    },
+  ], [])
+
   return (
-    <div>
-      <style>{`
-        .modal-overlay {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(4, 6, 10, 0.8);
-          display: flex; align-items: center; justify-content: center;
-          z-index: 1000;
-          backdrop-filter: blur(5px);
+    <Box>
+      <PageHeader
+        title="Media Assets"
+        subtitle="Images, documents, renditions, and upload sessions"
+        actions={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setShowModal(true)}
+          >
+            Upload Asset
+          </Button>
         }
-        .modal-content {
-          background: var(--bg-surface);
-          border: 1px solid var(--border-light);
-          border-radius: var(--radius);
-          width: 520px;
-          max-width: 90%;
-          padding: 26px;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
-          animation: modalEnter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .dropzone {
-          border: 2px dashed var(--border);
-          border-radius: var(--radius);
-          padding: 30px;
-          text-align: center;
-          background: var(--bg-base);
-          cursor: pointer;
-          transition: all 0.2s;
-          display: flex; flex-direction: column; align-items: center; gap: 8px;
-        }
-        .dropzone:hover {
-          border-color: var(--accent);
-          background: var(--accent-dim);
-        }
-        .progress-bar {
-          height: 6px;
-          background: var(--border);
-          border-radius: 99px;
-          overflow: hidden;
-          margin-top: 16px;
-        }
-        .progress-fill {
-          height: 100%;
-          background: linear-gradient(90deg, var(--accent), var(--purple));
-          transition: width 0.3s ease;
-        }
-        @keyframes modalEnter {
-          from { opacity: 0; transform: scale(0.96) translateY(10px); }
-          to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-      `}</style>
+      />
 
-      <div className="page-header">
-        <div>
-          <div className="page-title">Media Assets</div>
-          <div className="page-sub">Images, documents, renditions, and upload sessions</div>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={14} /> Upload Asset
-        </button>
-      </div>
-
-      <div className="tabs">
-        <div className={`tab ${tab === 'assets' ? 'active' : ''}`} onClick={() => setTab('assets')}>
-          Assets
-        </div>
-        <div className={`tab ${tab === 'sessions' ? 'active' : ''}`} onClick={() => setTab('sessions')}>
-          Upload Sessions
-        </div>
-      </div>
+      <Tabs
+        value={tab}
+        onChange={(_, newVal) => setTab(newVal)}
+        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab label="Assets" value="assets" />
+        <Tab label="Upload Sessions" value="sessions" />
+      </Tabs>
 
       {tab === 'assets' && (
-        <div className="table-wrap">
-          {aLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : assets.length === 0 ? (
-            <div className="empty-state">
-              <Image size={40} />
-              <div>No media assets</div>
-              <div style={{ fontSize: 12 }}>
-                Upload product images, device images, and documents. Storage paths are references — not identifiers.
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Filename</th><th>Type</th><th>Status</th>
-                  <th>Size</th><th>Owner Module</th><th>Access</th><th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assets.map((a: any) => (
-                  <tr key={a.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {a.original_filename}
-                    </td>
-                    <td>
-                      <span className={`badge ${ASSET_TYPE_BADGE[a.asset_type] ?? 'badge-muted'}`}>
-                        {a.asset_type?.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`badge ${ASSET_STATUS[a.status] ?? 'badge-muted'}`}>
-                        {a.status?.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td>{fmtBytes(a.file_size_bytes)}</td>
-                    <td><span className="badge badge-muted">{a.owner_module ?? '—'}</span></td>
-                    <td>
-                      {a.is_public ? (
-                        <span className="badge badge-green" style={{ gap: '4px' }}><Globe size={10} /> Public</span>
-                      ) : (
-                        <span className="badge badge-muted" style={{ gap: '4px' }}><Lock size={10} /> Private</span>
-                      )}
-                    </td>
-                    <td>{a.created_at ? new Date(a.created_at).toLocaleDateString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={assetColumns}
+          rows={assets}
+          loading={aLoading}
+          rowKey={(row: any) => row.id}
+          emptyMessage="No media assets"
+          emptyIcon={<ImageIcon sx={{ fontSize: 48 }} />}
+        />
       )}
 
       {tab === 'sessions' && (
-        <div className="table-wrap">
-          {sLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : sessions.length === 0 ? (
-            <div className="empty-state">
-              <Upload size={40} />
-              <div>No upload sessions</div>
-              <div style={{ fontSize: 12 }}>
-                Upload sessions track presigned GCS/S3 uploads. Sessions expire if unused.
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Expected Filename</th><th>MIME Type</th><th>Status</th>
-                  <th>Expires At</th><th>Completed At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map((s: any) => (
-                  <tr key={s.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{s.expected_filename}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{s.expected_mime_type}</td>
-                    <td>
-                      <span className={`badge ${SESSION_STATUS[s.status] ?? 'badge-muted'}`}>{s.status}</span>
-                    </td>
-                    <td style={{ color: new Date(s.expires_at) < new Date() ? 'var(--red)' : 'var(--text-secondary)' }}>
-                      {s.expires_at ? new Date(s.expires_at).toLocaleString() : '—'}
-                    </td>
-                    <td>{s.completed_at ? new Date(s.completed_at).toLocaleString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={sessionColumns}
+          rows={sessions}
+          loading={sLoading}
+          rowKey={(row: any) => row.id}
+          emptyMessage="No upload sessions"
+          emptyIcon={<CloudUploadIcon sx={{ fontSize: 48 }} />}
+        />
       )}
 
       {/* Upload Asset Modal */}
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 600 }}>Upload Media Asset</h3>
-              <button
-                className="btn btn-ghost"
-                style={{ padding: 4 }}
-                onClick={() => {
-                  if (!uploading) {
-                    setShowModal(false)
-                    setFile(null)
-                    setError(null)
-                  }
+      <Dialog
+        open={showModal}
+        onClose={handleCloseModal}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{ paper: { component: 'form', onSubmit: handleUploadSubmit } }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Upload Media Asset
+          <IconButton
+            size="small"
+            onClick={handleCloseModal}
+            disabled={uploading}
+            aria-label="close"
+          >
+            <Box component="span" sx={{ fontSize: 18, lineHeight: 1 }}>&times;</Box>
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          <Box sx={{ mb: 2.5 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Select File
+            </Typography>
+            {file ? (
+              <Box
+                sx={{
+                  border: '2px dashed',
+                  borderColor: 'primary.main',
+                  borderRadius: 2,
+                  p: 3,
+                  textAlign: 'center',
+                  cursor: uploading ? 'default' : 'pointer',
+                  bgcolor: 'action.hover',
+                  transition: 'all 0.2s',
                 }}
-                disabled={uploading}
+                onClick={() => {
+                  if (!uploading) setFile(null)
+                }}
               >
-                <X size={18} />
-              </button>
-            </div>
+                <CloudUploadIcon sx={{ fontSize: 36, color: 'primary.main', mb: 1 }} />
+                <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-all' }}>
+                  {file.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {fmtBytes(file.size)} &mdash; Click to change
+                </Typography>
+              </Box>
+            ) : (
+              <FileUploadField
+                onFiles={(files) => setFile(files[0] || null)}
+                label="Click to browse or drag file here"
+                disabled={uploading}
+              />
+            )}
+          </Box>
 
-            <form onSubmit={handleUploadSubmit}>
-              {error && (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13 }}>
-                  <AlertCircle size={16} />
-                  <span>{error}</span>
-                </div>
-              )}
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2.5 }}>
+            <TextField
+              select
+              label="Asset Type"
+              size="small"
+              value={assetType}
+              onChange={(e) => setAssetType(e.target.value)}
+              disabled={uploading}
+              fullWidth
+            >
+              <MenuItem value="product_image">Product Image</MenuItem>
+              <MenuItem value="device_image">Device Image</MenuItem>
+              <MenuItem value="brand_logo">Brand Logo</MenuItem>
+              <MenuItem value="document">Document</MenuItem>
+              <MenuItem value="other">Other</MenuItem>
+            </TextField>
 
-              <div style={{ marginBottom: 18 }}>
-                <label className="label">Select File</label>
-                <input
-                  type="file"
-                  id="file-input"
-                  style={{ display: 'none' }}
-                  onChange={e => setFile(e.target.files?.[0] || null)}
-                  disabled={uploading}
-                />
-                <div
-                  className="dropzone"
-                  onClick={() => document.getElementById('file-input')?.click()}
-                >
-                  <Upload size={28} style={{ color: file ? 'var(--accent)' : 'var(--text-muted)' }} />
-                  {file ? (
-                    <div>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{file.name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtBytes(file.size)}</div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div style={{ fontWeight: 500 }}>Click to browse or drag file here</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Any image, document, or media asset</div>
-                    </div>
-                  )}
-                </div>
-              </div>
+            <TextField
+              label="Owner Module"
+              size="small"
+              value={ownerModule}
+              onChange={(e) => setOwnerModule(e.target.value)}
+              placeholder="e.g., catalog"
+              disabled={uploading}
+              fullWidth
+            />
+          </Box>
 
-              <div className="card-grid card-grid-2" style={{ marginBottom: 18 }}>
-                <div className="form-group">
-                  <label className="label">Asset Type</label>
-                  <select
-                    className="input"
-                    value={assetType}
-                    onChange={e => setAssetType(e.target.value)}
-                    disabled={uploading}
-                  >
-                    <option value="product_image">Product Image</option>
-                    <option value="device_image">Device Image</option>
-                    <option value="brand_logo">Brand Logo</option>
-                    <option value="document">Document</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+                disabled={uploading}
+                size="small"
+              />
+            }
+            label={
+              <Typography variant="body2">
+                Make this asset publicly readable
+              </Typography>
+            }
+            sx={{ mb: 1 }}
+          />
 
-                <div className="form-group">
-                  <label className="label">Owner Module</label>
-                  <input
-                    type="text"
-                    className="input"
-                    value={ownerModule}
-                    onChange={e => setOwnerModule(e.target.value)}
-                    placeholder="e.g., catalog"
-                    disabled={uploading}
-                  />
-                </div>
-              </div>
+          {uploading && (
+            <Box sx={{ mt: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Uploading...
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {progress}%
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={progress}
+                sx={{
+                  height: 6,
+                  borderRadius: 3,
+                  bgcolor: 'action.hover',
+                  '& .MuiLinearProgress-bar': {
+                    borderRadius: 3,
+                    background: (theme) =>
+                      `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                  },
+                }}
+              />
+            </Box>
+          )}
+        </DialogContent>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-                <input
-                  type="checkbox"
-                  id="is-public"
-                  checked={isPublic}
-                  onChange={e => setIsPublic(e.target.checked)}
-                  disabled={uploading}
-                  style={{ width: 15, height: 15 }}
-                />
-                <label htmlFor="is-public" style={{ fontSize: 13, userSelect: 'none', cursor: 'pointer' }}>
-                  Make this asset publicly readable
-                </label>
-              </div>
-
-              {uploading && (
-                <div style={{ marginBottom: 18 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-secondary)' }}>
-                    <span>Uploading...</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${progress}%` }} />
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowModal(false)
-                    setFile(null)
-                    setError(null)
-                  }}
-                  disabled={uploading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={!file || uploading}
-                >
-                  {uploading ? 'Uploading...' : 'Start Upload'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setShowModal(false)
+              setFile(null)
+              setError(null)
+            }}
+            disabled={uploading}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={!file || uploading}
+          >
+            {uploading ? 'Uploading...' : 'Start Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   )
 }
-

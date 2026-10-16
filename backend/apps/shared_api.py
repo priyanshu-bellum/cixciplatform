@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from config.pagination import CixciCursorPagination
 
 from apps.tenant.mixins import CheckAccessMixin
 
@@ -445,9 +446,13 @@ class InboundWebhookReceiptSerializer(serializers.ModelSerializer):
         model = InboundWebhookReceipt
         fields = "__all__"
 
+class _InboundWebhookPagination(CixciCursorPagination):
+    ordering = "-received_at"
+
 class InboundWebhookReceiptViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     queryset = InboundWebhookReceipt.objects.all()
     serializer_class = InboundWebhookReceiptSerializer
+    pagination_class = _InboundWebhookPagination
     action_capability_map = {
         "list": "integration.connection.list", "retrieve": "integration.connection.read",
     }

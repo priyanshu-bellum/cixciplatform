@@ -1,32 +1,59 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
-import { Building, Building2, Users, Plus, ShieldCheck, AlertCircle, Upload, Clock, Trash2 } from 'lucide-react'
-import toast from 'react-hot-toast'
 import api from '../lib/apiClient'
 import AddressAutocomplete from '../components/AddressAutocomplete'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import IconButton from '@mui/material/IconButton'
+import Chip from '@mui/material/Chip'
+import Tabs from '@mui/material/Tabs'
+import Tab from '@mui/material/Tab'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import TextField from '@mui/material/TextField'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Alert from '@mui/material/Alert'
+import Paper from '@mui/material/Paper'
+import Divider from '@mui/material/Divider'
+import Checkbox from '@mui/material/Checkbox'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import CircularProgress from '@mui/material/CircularProgress'
+import BusinessIcon from '@mui/icons-material/Business'
+import ApartmentIcon from '@mui/icons-material/Apartment'
+import PeopleIcon from '@mui/icons-material/People'
+import AddIcon from '@mui/icons-material/Add'
+import SecurityIcon from '@mui/icons-material/Security'
+import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import DeleteIcon from '@mui/icons-material/Delete'
+import CloseIcon from '@mui/icons-material/Close'
+import { useSnackbar } from '../components/feedback/SnackbarProvider'
+import PageHeader from '../components/layout/PageHeader'
+import StatusChip from '../components/data-display/StatusChip'
+import { US_STATES } from '../lib/constants'
+import { formatDate } from '../lib/formatters'
 
-const US_STATES = [
-  ['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],
-  ['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['FL','Florida'],['GA','Georgia'],
-  ['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],['IN','Indiana'],['IA','Iowa'],
-  ['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],['ME','Maine'],['MD','Maryland'],
-  ['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],['MS','Mississippi'],['MO','Missouri'],
-  ['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],['NJ','New Jersey'],
-  ['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],
-  ['OK','Oklahoma'],['OR','Oregon'],['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],
-  ['SD','South Dakota'],['TN','Tennessee'],['TX','Texas'],['UT','Utah'],['VT','Vermont'],
-  ['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming'],
-  ['OTHER','Other / International'],
-]
-
-// Status Badge Classes
-const STATUS_BADGE: Record<string, string> = {
-  active: 'badge-green', draft: 'badge-muted', suspended: 'badge-red',
+// Status Badge Colors
+const STATUS_COLOR: Record<string, 'success' | 'default' | 'error' | 'warning' | 'info'> = {
+  active: 'success', draft: 'default', suspended: 'error',
 }
 
-const TYPE_BADGE: Record<string, string> = {
-  cixci_internal: 'badge-purple', buyer: 'badge-blue', vendor: 'badge-amber', manufacturer: 'badge-muted',
+const TYPE_COLOR: Record<string, 'secondary' | 'info' | 'warning' | 'default'> = {
+  cixci_internal: 'secondary', buyer: 'info', vendor: 'warning', manufacturer: 'default',
 }
 
 const CAPABILITY_INFO: Record<string, { name: string; desc: string }> = {
@@ -272,6 +299,7 @@ function AmPmTimePicker({ value, onChange, allowEmpty }: { value: string; onChan
 
 export function SettingsPage() {
   const { user } = useAuthStore()
+  const { showSnackbar } = useSnackbar()
   const isAdmin = user?.is_cixci_admin ?? false
 
   const [activeTab, setActiveTab] = useState<'profile' | 'companies' | 'entities' | 'users' | 'onboarding'>(
@@ -479,25 +507,25 @@ export function SettingsPage() {
   // Queries
   const { data: companiesData, refetch: refetchCompanies } = useQuery({
     queryKey: ['admin-companies'],
-    queryFn: () => api.get('/tenant/companies/').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/tenant/companies/').then(r => r.data),
     enabled: isAdmin && (activeTab === 'companies' || activeTab === 'onboarding' || showOnboardingModal || showCompanyDetailsModal),
   })
 
   const { data: entitiesData, refetch: refetchEntities } = useQuery({
     queryKey: ['admin-entities'],
-    queryFn: () => api.get('/tenant/entities/').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/tenant/entities/').then(r => r.data),
     enabled: isAdmin && (activeTab === 'entities' || activeTab === 'users' || showEntityModal || showUserModal),
   })
 
   const { data: usersData, refetch: refetchUsers } = useQuery({
     queryKey: ['admin-users'],
-    queryFn: () => api.get('/tenant/users/').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/tenant/users/').then(r => r.data),
     enabled: isAdmin && activeTab === 'users',
   })
 
   const { data: allCapabilitiesData } = useQuery({
     queryKey: ['admin-capabilities'],
-    queryFn: () => api.get('/tenant/capabilities/').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/tenant/capabilities/').then(r => r.data),
     enabled: isAdmin || showCompanyDetailsModal,
   })
 
@@ -505,7 +533,7 @@ export function SettingsPage() {
 
   const { data: onboardingRequestsData, refetch: refetchOnboardingRequests } = useQuery({
     queryKey: ['onboarding-requests'],
-    queryFn: () => api.get('/tenant/child-onboarding-requests/').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/tenant/child-onboarding-requests/').then(r => r.data),
     enabled: !!hasChildOnboardingCapability && (activeTab === 'onboarding' || showOnboardingModal),
   })
 
@@ -871,10 +899,10 @@ export function SettingsPage() {
       setIsManageFormDirty(false)
       refetchCompanies()
       setErrorMsg(null)
-      toast.success('Company profile changes saved successfully!')
+      showSnackbar('Company profile changes saved successfully!', 'success')
     } catch (err: any) {
       setErrorMsg(getErrorMessage(err))
-      toast.error('Failed to save profile changes.')
+      showSnackbar('Failed to save profile changes.', 'error')
     }
   }
 
@@ -919,11 +947,11 @@ export function SettingsPage() {
   const handleDeleteCompany = async (id: string) => {
     try {
       await api.delete(`/tenant/companies/${id}/`)
-      toast.success('Company deleted successfully.')
+      showSnackbar('Company deleted successfully.', 'success')
       refetchCompanies()
     } catch (err: any) {
       const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to delete company.'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     } finally {
       setDeleteConfirm(null)
     }
@@ -932,11 +960,11 @@ export function SettingsPage() {
   const handleDeleteEntity = async (id: string) => {
     try {
       await api.delete(`/tenant/entities/${id}/`)
-      toast.success('Entity deleted successfully.')
+      showSnackbar('Entity deleted successfully.', 'success')
       refetchEntities()
     } catch (err: any) {
       const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to delete entity.'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     } finally {
       setDeleteConfirm(null)
     }
@@ -945,11 +973,11 @@ export function SettingsPage() {
   const handleDeleteUser = async (id: string) => {
     try {
       await api.delete(`/tenant/users/${id}/`)
-      toast.success('User deleted successfully.')
+      showSnackbar('User deleted successfully.', 'success')
       refetchUsers()
     } catch (err: any) {
       const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to delete user.'
-      toast.error(msg)
+      showSnackbar(msg, 'error')
     } finally {
       setDeleteConfirm(null)
     }
@@ -1001,9 +1029,9 @@ export function SettingsPage() {
       setNewExcMinPrice('')
       setNewExcStartDate('')
       setNewExcEndDate('')
-      toast.success('MAP pricing exception added successfully!')
+      showSnackbar('MAP pricing exception added successfully!', 'success')
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to add MAP exception.')
+      showSnackbar(err.response?.data?.error || 'Failed to add MAP exception.', 'error')
     }
   }
 
@@ -1013,63 +1041,30 @@ export function SettingsPage() {
       await api.delete(`/pricing/exceptions/${id}/`)
       const res = await api.get(`/pricing/exceptions/?vendor_company_reference=${selectedCompany.id}`)
       setMapExceptions(res.data.results || res.data || [])
-      toast.success('MAP exception deleted.')
+      showSnackbar('MAP exception deleted.', 'success')
     } catch (err: any) {
-      toast.error('Failed to delete exception.')
+      showSnackbar('Failed to delete exception.', 'error')
     }
   }
 
   return (
-    <div>
-      <style>{`
-        .modal-overlay {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(4, 6, 10, 0.8);
-          display: flex; align-items: center; justify-content: center;
-          z-index: 1000;
-          backdrop-filter: blur(5px);
-        }
-        .modal-content {
-          background: var(--bg-surface);
-          border: 1px solid var(--border-light);
-          border-radius: var(--radius);
-          width: 500px;
-          max-width: 90%;
-          padding: 24px;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
-          animation: modalEnter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        @keyframes modalEnter {
-          from { opacity: 0; transform: scale(0.96) translateY(10px); }
-          to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-      `}</style>
+    <Box>
+      <PageHeader
+        title="Settings"
+        subtitle="Manage your organization, users, entities, and platform configuration"
+      />
 
-      {/* Settings Navigation Tabs */}
-      <div className="tabs">
-        <div className={`tab ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveTab('profile')}>
-          Profile & Org
-        </div>
-        {isAdmin && (
-          <>
-            <div className={`tab ${activeTab === 'companies' ? 'active' : ''}`} onClick={() => setActiveTab('companies')}>
-              Companies
-            </div>
-            <div className={`tab ${activeTab === 'entities' ? 'active' : ''}`} onClick={() => setActiveTab('entities')}>
-              Entities
-            </div>
-            <div className={`tab ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
-              User Directory
-            </div>
-          </>
-        )}
-        {hasChildOnboardingCapability && (
-          <div className={`tab ${activeTab === 'onboarding' ? 'active' : ''}`} onClick={() => setActiveTab('onboarding')}>
-            Child Onboarding
-          </div>
-        )}
-      </div>
+      <Tabs
+        value={activeTab}
+        onChange={(_, v) => setActiveTab(v)}
+        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab label="Profile & Org" value="profile" />
+        {isAdmin && <Tab label="Companies" value="companies" />}
+        {isAdmin && <Tab label="Entities" value="entities" />}
+        {isAdmin && <Tab label="User Directory" value="users" />}
+        {hasChildOnboardingCapability && <Tab label="Child Onboarding" value="onboarding" />}
+      </Tabs>
 
       {/* PROFILE & ORG TAB */}
       {activeTab === 'profile' && (
@@ -1092,9 +1087,9 @@ export function SettingsPage() {
                   <div className="label">System Role</div>
                   <div>
                     {user?.is_cixci_admin ? (
-                      <span className="badge badge-purple" style={{ gap: '4px' }}><ShieldCheck size={10} /> CIXCI Admin</span>
+                      <Chip icon={<SecurityIcon sx={{ fontSize: 12 }} />} label="CIXCI Admin" size="small" color="secondary" />
                     ) : (
-                      <span className="badge badge-blue">Platform User</span>
+                      <Chip label="Platform User" size="small" color="info" />
                     )}
                   </div>
                 </div>
@@ -1137,14 +1132,14 @@ export function SettingsPage() {
             <span className="section-title">Child Company Onboarding Requests</span>
             {!isAdmin && (
               <button className="btn btn-primary btn-sm" onClick={() => setShowOnboardingModal(true)}>
-                <Plus size={14} /> Request Child Company
+                <AddIcon sx={{ fontSize: 14 }} /> Request Child Company
               </button>
             )}
           </div>
           <div className="table-wrap">
             {onboardingRequestsList.length === 0 ? (
               <div className="empty-state">
-                <Building2 size={40} />
+                <ApartmentIcon sx={{ fontSize: 40, color: "text.disabled" }} />
                 <div>No onboarding requests found</div>
               </div>
             ) : (
@@ -1257,13 +1252,13 @@ export function SettingsPage() {
               setErrorMsg(null)
               setShowCompanyModal(true)
             }}>
-              <Plus size={14} /> Add Company
+              <AddIcon sx={{ fontSize: 14 }} /> Add Company
             </button>
           </div>
           <div className="table-wrap">
             {companiesList.length === 0 ? (
               <div className="empty-state">
-                <Building size={40} />
+                <BusinessIcon sx={{ fontSize: 40, color: "text.disabled" }} />
                 <div>No companies found</div>
               </div>
             ) : (
@@ -1283,16 +1278,14 @@ export function SettingsPage() {
                         )}
                       </td>
                       <td>
-                        <span className={`badge ${TYPE_BADGE[c.company_type?.toLowerCase()] ?? 'badge-muted'}`}>
-                          {c.company_type?.replace(/_/g, ' ')}
-                        </span>
+                        <Chip label={c.company_type?.replace(/_/g, ' ')} size="small" color={TYPE_COLOR[c.company_type?.toLowerCase()] ?? 'default'} />
                       </td>
                       <td>
-                        <span className={`badge ${STATUS_BADGE[c.status] ?? 'badge-muted'}`}>{c.status}</span>
+                        <StatusChip status={c.status ?? 'unknown'} />
                       </td>
                       <td>
                         {c.is_parent ? (
-                          <span className="badge badge-purple">Parent Company</span>
+                          <Chip label="Parent Company" size="small" color="secondary" />
                         ) : c.parent_company ? (
                           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                             Child of: <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
@@ -1410,7 +1403,7 @@ export function SettingsPage() {
                                   const base = (import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1').replace('/api/v1', '')
                                   setEditLogoPreview(`${base}/media/${res.data.storage_key}`)
                                 }
-                              }).catch(() => {})
+                              })
                             }
                           } catch {
                             setEditBuyerType('')
@@ -1439,7 +1432,7 @@ export function SettingsPage() {
                             }
                           }}
                         >
-                          <Trash2 size={12} /> Delete
+                          <DeleteIcon sx={{ fontSize: 12 }} /> Delete
                         </button>
                       </td>
                     </tr>
@@ -1466,13 +1459,13 @@ export function SettingsPage() {
               setErrorMsg(null)
               setShowEntityModal(true)
             }}>
-              <Plus size={14} /> Add Entity
+              <AddIcon sx={{ fontSize: 14 }} /> Add Entity
             </button>
           </div>
           <div className="table-wrap">
             {entitiesList.length === 0 ? (
               <div className="empty-state">
-                <Building2 size={40} />
+                <ApartmentIcon sx={{ fontSize: 40, color: "text.disabled" }} />
                 <div>No entities found</div>
               </div>
             ) : (
@@ -1491,7 +1484,7 @@ export function SettingsPage() {
                         <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{e.name}</td>
                         <td>{e.company_name}</td>
                         <td>
-                          <span className={`badge ${STATUS_BADGE[e.status] ?? 'badge-muted'}`}>{e.status}</span>
+                          <StatusChip status={e.status ?? 'unknown'} />
                         </td>
                         <td>{e.country_code || '—'}</td>
                         <td>
@@ -1512,7 +1505,7 @@ export function SettingsPage() {
                               }
                             }}
                           >
-                            <Trash2 size={12} /> Delete
+                            <DeleteIcon sx={{ fontSize: 12 }} /> Delete
                           </button>
                         </td>
                       </tr>
@@ -1540,13 +1533,13 @@ export function SettingsPage() {
               setErrorMsg(null)
               setShowUserModal(true)
             }}>
-              <Plus size={14} /> Add User
+              <AddIcon sx={{ fontSize: 14 }} /> Add User
             </button>
           </div>
           <div className="table-wrap">
             {usersList.length === 0 ? (
               <div className="empty-state">
-                <Users size={40} />
+                <PeopleIcon sx={{ fontSize: 40, color: "text.disabled" }} />
                 <div>No users found</div>
               </div>
             ) : (
@@ -1569,9 +1562,9 @@ export function SettingsPage() {
                         </td>
                         <td>
                           {u.is_cixci_admin ? (
-                            <span className="badge badge-purple" style={{ gap: '4px' }}><ShieldCheck size={10} /> CIXCI Admin</span>
+                            <Chip icon={<SecurityIcon sx={{ fontSize: 12 }} />} label="CIXCI Admin" size="small" color="secondary" />
                           ) : (
-                            <span className="badge badge-blue">Org User</span>
+                            <Chip label="Org User" size="small" color="info" />
                           )}
                         </td>
                         <td>
@@ -1597,7 +1590,7 @@ export function SettingsPage() {
                               }
                             }}
                           >
-                            <Trash2 size={12} /> Delete
+                            <DeleteIcon sx={{ fontSize: 12 }} /> Delete
                           </button>
                         </td>
                       </tr>
@@ -1620,7 +1613,7 @@ export function SettingsPage() {
                 background: 'var(--red-dim)', border: '1px solid var(--red)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
               }}>
-                <Trash2 size={16} color="var(--red)" />
+                <DeleteIcon sx={{ fontSize: 16, color: "error.main" }} />
               </div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
@@ -1667,7 +1660,7 @@ export function SettingsPage() {
                   else handleDeleteUser(deleteConfirm.id)
                 }}
               >
-                <Trash2 size={13} /> Delete permanently
+                <DeleteIcon sx={{ fontSize: 13 }} /> Delete permanently
               </button>
             </div>
           </div>
@@ -1689,7 +1682,7 @@ export function SettingsPage() {
             <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Create Company Profile</h3>
             {errorMsg && (
               <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <AlertCircle size={16} />
+                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
                 <span style={{ fontSize: 12, lineHeight: '1.4' }}>{errorMsg}</span>
               </div>
             )}
@@ -1722,7 +1715,7 @@ export function SettingsPage() {
                       background: 'var(--red-dim)', border: '1px solid var(--red)',
                       padding: '5px 10px', borderRadius: 'var(--radius-sm)'
                     }}>
-                      <AlertCircle size={11} />
+                      <ErrorOutlinedIcon sx={{ fontSize: 11 }} />
                       A company with this name already exists. Each company can only be onboarded once.
                     </div>
                   )}
@@ -1825,11 +1818,11 @@ export function SettingsPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       <div className="card-grid card-grid-2">
                         <div className="form-group">
-                          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> First Send Time</label>
+                          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> First Send Time</label>
                           <AmPmTimePicker value={companyDailyEmailTime} onChange={setCompanyDailyEmailTime} />
                         </div>
                         <div className="form-group">
-                          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></label>
+                          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></label>
                           <AmPmTimePicker value={companyDailyEmailTime2} onChange={setCompanyDailyEmailTime2} allowEmpty />
                         </div>
                       </div>
@@ -1891,10 +1884,10 @@ export function SettingsPage() {
                   {companyLogoPreview ? (
                     <img src={companyLogoPreview} alt='Logo' style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', padding: 3 }} />
                   ) : (
-                    <div style={{ width: 48, height: 48, borderRadius: 6, border: '2px dashed var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><Upload size={18} /></div>
+                    <div style={{ width: 48, height: 48, borderRadius: 6, border: '2px dashed var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><CloudUploadIcon sx={{ fontSize: 18 }} /></div>
                   )}
                   <label style={{ cursor: 'pointer' }}>
-                    <span className='btn btn-secondary btn-sm'><Upload size={12} /> Choose Logo</span>
+                    <span className='btn btn-secondary btn-sm'><CloudUploadIcon sx={{ fontSize: 12 }} /> Choose Logo</span>
                     <input type='file' accept='image/*' style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setCompanyLogoFile(f); setCompanyLogoPreview(URL.createObjectURL(f)) } }} />
                   </label>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG, JPG, WEBP or SVG</span>
@@ -2229,7 +2222,7 @@ export function SettingsPage() {
             <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Create Company Entity</h3>
             {errorMsg && (
               <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <AlertCircle size={16} />
+                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
                 <span>{errorMsg}</span>
               </div>
             )}
@@ -2314,7 +2307,7 @@ export function SettingsPage() {
             <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Onboard Admin User</h3>
             {errorMsg && (
               <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <AlertCircle size={16} />
+                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
                 <span>{errorMsg}</span>
               </div>
             )}
@@ -2374,7 +2367,7 @@ export function SettingsPage() {
             <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Request Child Onboarding</h3>
             {errorMsg && (
               <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <AlertCircle size={16} />
+                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
                 <span style={{ fontSize: 12 }}>{errorMsg}</span>
               </div>
             )}
@@ -2451,7 +2444,7 @@ export function SettingsPage() {
             <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Reject Onboarding Request</h3>
             {errorMsg && (
               <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <AlertCircle size={16} />
+                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
                 <span style={{ fontSize: 12 }}>{errorMsg}</span>
               </div>
             )}
@@ -2499,7 +2492,7 @@ export function SettingsPage() {
 
             {errorMsg && (
               <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <AlertCircle size={16} />
+                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
                 <span style={{ fontSize: 12, lineHeight: '1.4' }}>{errorMsg}</span>
               </div>
             )}
@@ -2566,10 +2559,10 @@ export function SettingsPage() {
                       {editLogoPreview ? (
                         <img src={editLogoPreview} alt='Logo' style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', padding: 3 }} />
                       ) : (
-                        <div style={{ width: 48, height: 48, borderRadius: 6, border: '2px dashed var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><Upload size={18} /></div>
+                        <div style={{ width: 48, height: 48, borderRadius: 6, border: '2px dashed var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><CloudUploadIcon sx={{ fontSize: 18 }} /></div>
                       )}
                       <label style={{ cursor: 'pointer' }}>
-                        <span className='btn btn-secondary btn-sm'><Upload size={12} /> Choose Logo</span>
+                        <span className='btn btn-secondary btn-sm'><CloudUploadIcon sx={{ fontSize: 12 }} /> Choose Logo</span>
                         <input type='file' accept='image/*' style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEditLogoFile(f); setEditLogoPreview(URL.createObjectURL(f)); setIsManageFormDirty(true); } }} />
                       </label>
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG, JPG, WEBP or SVG</span>
@@ -2826,11 +2819,11 @@ export function SettingsPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           <div className="card-grid card-grid-2">
                             <div className="form-group">
-                              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> First Send Time</label>
+                              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> First Send Time</label>
                               <AmPmTimePicker value={editDailyEmailTime} onChange={val => { setEditDailyEmailTime(val); setIsManageFormDirty(true); }} />
                             </div>
                             <div className="form-group">
-                              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></label>
+                              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></label>
                               <AmPmTimePicker value={editDailyEmailTime2} onChange={val => { setEditDailyEmailTime2(val); setIsManageFormDirty(true); }} allowEmpty />
                             </div>
                           </div>
@@ -3128,7 +3121,7 @@ export function SettingsPage() {
           </div>
         </div>
       )}
-    </div>
+    </Box>
   )
 }
 

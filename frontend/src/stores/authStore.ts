@@ -30,8 +30,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ loading: true })
     try {
       const { data } = await api.post('/auth/login/', { email, password })
-      sessionStorage.setItem('access', data.access)
-      sessionStorage.setItem('refresh', data.refresh)
+      localStorage.setItem('access', data.access)
+      localStorage.setItem('refresh', data.refresh)
       const me = await api.get('/tenant/users/me/')
       set({ user: me.data, loading: false })
     } catch (err) {
@@ -41,15 +41,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    const refresh = sessionStorage.getItem('refresh')
+    const refresh = localStorage.getItem('refresh')
     if (refresh) api.post('/auth/logout/', { refresh }).catch(() => {})
-    sessionStorage.removeItem('access')
-    sessionStorage.removeItem('refresh')
+    localStorage.removeItem('access')
+    localStorage.removeItem('refresh')
     set({ user: null })
   },
 
   fetchMe: async () => {
-    const token = sessionStorage.getItem('access')
+    const token = localStorage.getItem('access')
     if (!token) return
     set({ loading: true })
     try {

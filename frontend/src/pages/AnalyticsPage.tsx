@@ -1,13 +1,20 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart2, Calendar, Activity } from 'lucide-react'
+import Box from '@mui/material/Box'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
+import Typography from '@mui/material/Typography'
+import BarChartIcon from '@mui/icons-material/BarChart'
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
+import TimelineIcon from '@mui/icons-material/Timeline'
 import api from '../lib/apiClient'
+import PageHeader from '../components/layout/PageHeader'
+import DataTable, { type Column } from '../components/data-display/DataTable'
+import StatusChip from '../components/data-display/StatusChip'
+import { formatDate } from '../lib/formatters'
 
-const WINDOW_STATUS: Record<string, string> = {
-  active: 'badge-green',
-  delivery_failed: 'badge-red',
-  superseded: 'badge-amber',
-  suppressed_no_activity: 'badge-muted',
+const formatDateTime = (dateStr: string | null | undefined): string => {
+  return formatDate(dateStr)
 }
 
 export default function AnalyticsPage() {
@@ -15,175 +22,223 @@ export default function AnalyticsPage() {
 
   const { data: metricData, isLoading: mLoading } = useQuery({
     queryKey: ['analytics-metrics'],
-    queryFn: () => api.get('/analytics/metrics/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/analytics/metrics/').then(r => r.data),
   })
 
   const { data: windowData, isLoading: wLoading } = useQuery({
     queryKey: ['analytics-windows'],
-    queryFn: () => api.get('/analytics/windows/').then(r => r.data).catch(() => ({ results: [] })),
-    enabled: tab === 'windows',
+    queryFn: () => api.get('/analytics/summary-windows/').then(r => r.data),
+    enabled: tab === 'windows' || tab === 'aggregations',
   })
 
+  const windows = windowData?.results ?? (Array.isArray(windowData) ? windowData : [])
+
   const { data: aggData, isLoading: aLoading } = useQuery({
-    queryKey: ['analytics-aggregations'],
-    queryFn: () => api.get('/analytics/aggregations/').then(r => r.data).catch(() => ({ results: [] })),
-    enabled: tab === 'aggregations',
+    queryKey: ['analytics-aggregations', windows],
+    queryFn: async () => {
+      // Aggregations are nested under each summary-window
+      const allAggs: any[] = []
+      for (const w of windows) {
+        try {
+          const res = await api.get(`/analytics/summary-windows/${w.id}/aggregations/`)
+          const items = res.data?.results ?? (Array.isArray(res.data) ? res.data : [])
+          allAggs.push(...items)
+        } catch { /* skip windows with no aggregations */ }
+      }
+      return allAggs
+    },
+    enabled: tab === 'aggregations' && windows.length > 0,
   })
 
   const metrics = metricData?.results ?? (Array.isArray(metricData) ? metricData : [])
-  const windows = windowData?.results ?? (Array.isArray(windowData) ? windowData : [])
   const aggregations = aggData?.results ?? (Array.isArray(aggData) ? aggData : [])
 
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">Analytics & Reporting</div>
-          <div className="page-sub">Metric definitions, summary windows, and immutable aggregation records</div>
-        </div>
-      </div>
+  const metricColumns = useMemo<Column<any>[]>(() => [
+    {
+      id: 'code',
+      label: 'Code',
+      render: (m) => (
+        <Typography
+          variant="body2"
+          sx={{ fontFamily: 'monospace', color: 'text.primary', fontWeight: 500, fontSize: 12 }}
+        >
+          {m.code}
+        </Typography>
+      ),
+    },
+    {
+      id: 'label',
+      label: 'Label',
+    },
+    {
+      id: 'source_module',
+      label: 'Source Module',
+      render: (m) => <StatusChip status="unknown" label={m.source_module} />,
+    },
+    {
+      id: 'aggregation_method',
+      label: 'Method',
+      render: (m) => <StatusChip status="in_progress" label={m.aggregation_method} />,
+    },
+    {
+      id: 'is_active',
+      label: 'Active',
+      render: (m) =>
+        m.is_active
+          ? <StatusChip status="active" />
+          : <StatusChip status="inactive" label="Inactive" />,
+    },
+  ], [])
 
-      <div className="tabs">
-        <div className={`tab ${tab === 'metrics' ? 'active' : ''}`} onClick={() => setTab('metrics')}>
-          Metrics
-        </div>
-        <div className={`tab ${tab === 'windows' ? 'active' : ''}`} onClick={() => setTab('windows')}>
-          Reporting Windows
-        </div>
-        <div className={`tab ${tab === 'aggregations' ? 'active' : ''}`} onClick={() => setTab('aggregations')}>
-          Aggregations
-        </div>
-      </div>
+  const windowColumns = useMemo<Column<any>[]>(() => [
+    {
+      id: 'window_start',
+      label: 'Window Start',
+      render: (w) => (
+        <Typography variant="body2" sx={{ color: 'text.primary' }}>
+          {formatDateTime(w.window_start)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'window_end',
+      label: 'Window End',
+      render: (w) => formatDateTime(w.window_end),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (w) => (
+        <StatusChip
+          status={w.status ?? 'unknown'}
+          label={w.status?.replace(/_/g, ' ')}
+        />
+      ),
+    },
+    {
+      id: 'effective_start',
+      label: 'Effective Start',
+      render: (w) => formatDateTime(w.effective_start),
+    },
+    {
+      id: 'created_at',
+      label: 'Created',
+      render: (w) => formatDate(w.created_at),
+    },
+  ], [])
+
+  const aggregationColumns = useMemo<Column<any>[]>(() => [
+    {
+      id: 'orders_count',
+      label: 'Orders',
+      render: (a) => (
+        <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 500 }}>
+          {a.orders_count ?? 0}
+        </Typography>
+      ),
+    },
+    {
+      id: 'shipments_count',
+      label: 'Shipments',
+      render: (a) => a.shipments_count ?? 0,
+    },
+    {
+      id: 'sla_exceptions_count',
+      label: 'SLA Exceptions',
+      render: (a) => a.sla_exceptions_count ?? 0,
+    },
+    {
+      id: 'late_imports_count',
+      label: 'Late Imports',
+      render: (a) => (
+        <Typography
+          variant="body2"
+          sx={{
+            color: (a.late_imports_count ?? 0) > 0 ? 'error.main' : 'text.secondary',
+          }}
+        >
+          {a.late_imports_count ?? 0}
+        </Typography>
+      ),
+    },
+    {
+      id: 'missing_imports_count',
+      label: 'Missing Imports',
+      render: (a) => (
+        <Typography
+          variant="body2"
+          sx={{
+            color: (a.missing_imports_count ?? 0) > 0 ? 'warning.main' : 'text.secondary',
+          }}
+        >
+          {a.missing_imports_count ?? 0}
+        </Typography>
+      ),
+    },
+    {
+      id: 'is_current',
+      label: 'Current',
+      render: (a) =>
+        a.is_current
+          ? <StatusChip status="active" label="Current" />
+          : <StatusChip status="unknown" label="Old" />,
+    },
+    {
+      id: 'aggregated_at',
+      label: 'Aggregated At',
+      render: (a) => formatDateTime(a.aggregated_at),
+    },
+  ], [])
+
+  return (
+    <Box>
+      <PageHeader
+        title="Analytics & Reporting"
+        subtitle="Metric definitions, summary windows, and immutable aggregation records"
+      />
+
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab label="Metrics" value="metrics" />
+        <Tab label="Reporting Windows" value="windows" />
+        <Tab label="Aggregations" value="aggregations" />
+      </Tabs>
 
       {tab === 'metrics' && (
-        <div className="table-wrap">
-          {mLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : metrics.length === 0 ? (
-            <div className="empty-state">
-              <BarChart2 size={40} />
-              <div>No metrics defined</div>
-              <div style={{ fontSize: 12 }}>
-                Metrics track platform activity — consumed read-only from source modules
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Code</th><th>Label</th><th>Source Module</th><th>Method</th><th>Active</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.map((m: any) => (
-                  <tr key={m.id}>
-                    <td className="mono" style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 12 }}>
-                      {m.code}
-                    </td>
-                    <td>{m.label}</td>
-                    <td><span className="badge badge-muted">{m.source_module}</span></td>
-                    <td><span className="badge badge-blue">{m.aggregation_method}</span></td>
-                    <td>
-                      {m.is_active
-                        ? <span className="badge badge-green">Active</span>
-                        : <span className="badge badge-muted">Inactive</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={metricColumns}
+          rows={metrics}
+          loading={mLoading}
+          rowKey={(m) => String(m.id)}
+          emptyMessage="No metrics defined"
+          emptyIcon={<BarChartIcon sx={{ fontSize: 48 }} />}
+        />
       )}
 
       {tab === 'windows' && (
-        <div className="table-wrap">
-          {wLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : windows.length === 0 ? (
-            <div className="empty-state">
-              <Calendar size={40} />
-              <div>No reporting windows</div>
-              <div style={{ fontSize: 12 }}>
-                Windows are created per scheduled summary cycle.
-                Failed windows carry forward into the next window's interval.
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Window Start</th><th>Window End</th><th>Status</th>
-                  <th>Effective Start</th><th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {windows.map((w: any) => (
-                  <tr key={w.id}>
-                    <td style={{ color: 'var(--text-primary)' }}>
-                      {w.window_start ? new Date(w.window_start).toLocaleString() : '—'}
-                    </td>
-                    <td>{w.window_end ? new Date(w.window_end).toLocaleString() : '—'}</td>
-                    <td>
-                      <span className={`badge ${WINDOW_STATUS[w.status] ?? 'badge-muted'}`}>
-                        {w.status?.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td>{w.effective_start ? new Date(w.effective_start).toLocaleString() : '—'}</td>
-                    <td>{w.created_at ? new Date(w.created_at).toLocaleDateString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={windowColumns}
+          rows={windows}
+          loading={wLoading}
+          rowKey={(w) => String(w.id)}
+          emptyMessage="No reporting windows"
+          emptyIcon={<CalendarTodayIcon sx={{ fontSize: 48 }} />}
+        />
       )}
 
       {tab === 'aggregations' && (
-        <div className="table-wrap">
-          {aLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : aggregations.length === 0 ? (
-            <div className="empty-state">
-              <Activity size={40} />
-              <div>No aggregation records</div>
-              <div style={{ fontSize: 12 }}>
-                Activity summary aggregations are immutable records created per reporting window
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Orders</th><th>Shipments</th><th>SLA Exceptions</th>
-                  <th>Late Imports</th><th>Missing Imports</th><th>Current</th><th>Aggregated At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {aggregations.map((a: any) => (
-                  <tr key={a.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{a.orders_count ?? 0}</td>
-                    <td>{a.shipments_count ?? 0}</td>
-                    <td>{a.sla_exceptions_count ?? 0}</td>
-                    <td style={{ color: (a.late_imports_count ?? 0) > 0 ? 'var(--red)' : 'var(--text-secondary)' }}>
-                      {a.late_imports_count ?? 0}
-                    </td>
-                    <td style={{ color: (a.missing_imports_count ?? 0) > 0 ? 'var(--amber)' : 'var(--text-secondary)' }}>
-                      {a.missing_imports_count ?? 0}
-                    </td>
-                    <td>
-                      {a.is_current
-                        ? <span className="badge badge-green">Current</span>
-                        : <span className="badge badge-muted">Old</span>}
-                    </td>
-                    <td>{a.aggregated_at ? new Date(a.aggregated_at).toLocaleString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={aggregationColumns}
+          rows={aggregations}
+          loading={aLoading}
+          rowKey={(a) => String(a.id)}
+          emptyMessage="No aggregation records"
+          emptyIcon={<TimelineIcon sx={{ fontSize: 48 }} />}
+        />
       )}
-    </div>
+    </Box>
   )
 }

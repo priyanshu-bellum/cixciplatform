@@ -6,7 +6,7 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('access')
+  const token = localStorage.getItem('access')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
@@ -20,24 +20,25 @@ api.interceptors.response.use(
         return Promise.reject(err)
       }
       original._retry = true
-      const refresh = sessionStorage.getItem('refresh')
+      const refresh = localStorage.getItem('refresh')
       if (refresh) {
         try {
           const { data } = await axios.post(
               `${import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1'}/auth/refresh/`,
               { refresh }
           )
-          sessionStorage.setItem('access', data.access)
+          localStorage.setItem('access', data.access)
+          if (data.refresh) localStorage.setItem('refresh', data.refresh)
           original.headers.Authorization = `Bearer ${data.access}`
           return api(original)
         } catch (refreshErr) {
-          sessionStorage.removeItem('access')
-          sessionStorage.removeItem('refresh')
+          localStorage.removeItem('access')
+          localStorage.removeItem('refresh')
           window.location.href = '/login'
           return Promise.reject(refreshErr)
         }
       } else {
-        sessionStorage.removeItem('access')
+        localStorage.removeItem('access')
         window.location.href = '/login'
       }
     }

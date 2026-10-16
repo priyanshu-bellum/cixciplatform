@@ -1,8 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Toaster } from 'react-hot-toast'
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query'
+import Box from '@mui/material/Box'
+import CircularProgress from '@mui/material/CircularProgress'
 
+import { CixciThemeProvider } from './theme/ThemeProvider'
+import { SnackbarProvider, useSnackbar } from './components/feedback/SnackbarProvider'
+import ErrorBoundary from './components/feedback/ErrorBoundary'
 import { useAuthStore } from './stores/authStore'
 import AppLayout from './components/AppLayout'
 import LoginPage from './pages/LoginPage'
@@ -25,27 +29,64 @@ import { SettingsPage } from './pages/StubPages'
 import ConfirmEmailPage from './pages/ConfirmEmailPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 
-const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } })
+function extractErrorMessage(error: unknown): string {
+  const err = error as any
+  const data = err?.response?.data
+  if (data?.detail) return data.detail
+  if (data?.error) return data.error
+  if (typeof data === 'string') return data
+  if (err?.message) return err.message
+  return 'An unexpected error occurred'
+}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore()
-  if (loading) return <div className="loading-overlay"><div className="spinner" /></div>
+  if (loading) return <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}><CircularProgress /></Box>
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
-export default function App() {
+function AppWithQuery() {
+  const { showSnackbar } = useSnackbar()
   const { fetchMe } = useAuthStore()
+
+  const queryClientRef = useRef<QueryClient | null>(null)
+  if (!queryClientRef.current) {
+    queryClientRef.current = new QueryClient({
+      defaultOptions: {
+        queries: { retry: 1, staleTime: 30_000 },
+      },
+      queryCache: new QueryCache({
+        onError: (error, query) => {
+          // Skip showing error if the query opted out via meta.silent
+          if (query.meta?.silent) return
+          // Don't show errors for 401s (handled by auth redirect)
+          if ((error as any)?.response?.status === 401) return
+          const msg = (query.meta?.errorMessage as string) || extractErrorMessage(error)
+          showSnackbar(msg, 'error')
+        },
+      }),
+      mutationCache: new MutationCache({
+        onError: (error, _variables, _context, mutation) => {
+          if (mutation.meta?.silent) return
+          if ((error as any)?.response?.status === 401) return
+          const msg = (mutation.meta?.errorMessage as string) || extractErrorMessage(error)
+          showSnackbar(msg, 'error')
+        },
+      }),
+    })
+  }
+
   useEffect(() => { fetchMe() }, [])
 
   return (
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={queryClientRef.current}>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/confirm-email" element={<ConfirmEmailPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/" element={<RequireAuth><AppLayout /></RequireAuth>}>
+          <Route path="/" element={<RequireAuth><ErrorBoundary><AppLayout /></ErrorBoundary></RequireAuth>}>
             <Route index element={<DashboardPage />} />
             <Route path="devices" element={<DevicesPage />} />
             <Route path="catalog" element={<CatalogPage />} />
@@ -66,7 +107,16 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
-      <Toaster position="top-right" toastOptions={{ style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' } }} />
     </QueryClientProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <CixciThemeProvider>
+      <SnackbarProvider>
+        <AppWithQuery />
+      </SnackbarProvider>
+    </CixciThemeProvider>
   )
 }

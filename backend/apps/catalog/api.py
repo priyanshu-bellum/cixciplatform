@@ -202,7 +202,7 @@ class ProductListSerializer(ProductSerializerBase):
             "vendor_return_zip_code",
             "recommended_accessory", "is_tied_to_activity",
             "vendor_map_pricing_enforced", "exported_date",
-            "compatible_device_types",
+            "compatibility_mode", "compatible_device_types",
         ]
         read_only_fields = ["id"]
 
@@ -927,7 +927,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             else:
                 kwargs["company_scope_reference"] = "00000000-0000-0000-0000-000000000000"
         product = serializer.save(**kwargs)
-        if product.compatible_device_types:
+        if product.compatibility_mode == "universal_device_type" and product.compatible_device_types:
             try:
                 from apps.catalog.compatibility_engine import run_universal_device_type_mapping
                 run_universal_device_type_mapping(product, actor_id=getattr(user, "id", None), change_source="Product Form Create")
@@ -942,7 +942,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 kwargs["brand"] = user.entity.company.name
                 kwargs["vendor_company_reference"] = user.entity.company.id
         product = serializer.save(**kwargs)
-        if product.compatible_device_types:
+        if product.compatibility_mode == "universal_device_type" and product.compatible_device_types:
             try:
                 from apps.catalog.compatibility_engine import run_universal_device_type_mapping
                 run_universal_device_type_mapping(product, actor_id=getattr(user, "id", None), change_source="Product Form Update")

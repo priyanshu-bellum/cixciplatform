@@ -1,14 +1,20 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Rocket, Plus, CheckCircle } from 'lucide-react'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch'
+import AddIcon from '@mui/icons-material/Add'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import api from '../lib/apiClient'
-
-const LAUNCH_STATUS: Record<string, string> = {
-  draft: 'badge-muted', planning: 'badge-blue', readiness_check: 'badge-amber',
-  blocked: 'badge-red', ready: 'badge-green', launched: 'badge-green',
-  cancelled: 'badge-muted', postponed: 'badge-amber',
-  post_launch_review: 'badge-purple', closed: 'badge-muted',
-}
+import { formatDate } from '../lib/formatters'
+import PageHeader from '../components/layout/PageHeader'
+import StatusChip from '../components/data-display/StatusChip'
+import DataTable, { type Column } from '../components/data-display/DataTable'
 
 export default function LaunchPage() {
   const [tab, setTab] = useState<'events' | 'detail'>('events')
@@ -16,7 +22,7 @@ export default function LaunchPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['launch-events'],
-    queryFn: () => api.get('/launch/events/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/launch/events/').then(r => r.data),
   })
 
   const events = data?.results ?? (Array.isArray(data) ? data : [])
@@ -26,146 +32,218 @@ export default function LaunchPage() {
     setTab('detail')
   }
 
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">Launch & Events</div>
-          <div className="page-sub">
-            Product launch coordination — readiness aggregation across products, devices, and pricing
-          </div>
-        </div>
-        <button className="btn btn-primary"><Plus size={14} /> New Launch Event</button>
-      </div>
+  const columns: Column<any>[] = [
+    {
+      id: 'name',
+      label: 'Name',
+      render: (row) => (
+        <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 500 }}>
+          {row.name}
+        </Typography>
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (row) => <StatusChip status={row.status ?? 'unknown'} />,
+    },
+    {
+      id: 'target_launch_date',
+      label: 'Target Launch',
+      render: (row) => formatDate(row.target_launch_date),
+    },
+    {
+      id: 'products',
+      label: 'Products',
+      sortable: false,
+      render: (row) => row.product_readiness_references?.length ?? 0,
+    },
+    {
+      id: 'devices',
+      label: 'Devices',
+      sortable: false,
+      render: (row) => row.device_readiness_references?.length ?? 0,
+    },
+    {
+      id: 'pricing_refs',
+      label: 'Pricing Refs',
+      sortable: false,
+      render: (row) => row.pricing_readiness_references?.length ?? 0,
+    },
+    {
+      id: 'created_at',
+      label: 'Created',
+      render: (row) => formatDate(row.created_at),
+    },
+    {
+      id: 'actions',
+      label: '',
+      sortable: false,
+      render: () => <CheckCircleIcon fontSize="small" sx={{ color: 'text.disabled' }} />,
+    },
+  ]
 
-      <div className="tabs">
-        <div className={`tab ${tab === 'events' ? 'active' : ''}`} onClick={() => setTab('events')}>
-          Launch Events
-        </div>
+  return (
+    <Box>
+      <PageHeader
+        title="Launch & Events"
+        subtitle="Product launch coordination — readiness aggregation across products, devices, and pricing"
+        actions={
+          <Button variant="contained" startIcon={<AddIcon />}>
+            New Launch Event
+          </Button>
+        }
+      />
+
+      <Tabs
+        value={tab}
+        onChange={(_, newValue) => setTab(newValue)}
+        sx={{ mb: 2 }}
+      >
+        <Tab label="Launch Events" value="events" />
         {selected && (
-          <div className={`tab ${tab === 'detail' ? 'active' : ''}`} onClick={() => setTab('detail')}>
-            {selected.name}
-          </div>
+          <Tab label={selected.name} value="detail" />
         )}
-      </div>
+      </Tabs>
 
       {tab === 'events' && (
-        <div className="table-wrap">
-          {isLoading ? (
-            <div className="loading-overlay"><div className="spinner" /></div>
-          ) : events.length === 0 ? (
-            <div className="empty-state">
-              <Rocket size={40} />
-              <div>No launch events</div>
-              <div style={{ fontSize: 12 }}>
-                Launch events coordinate product readiness across all modules.
-                Products, devices, and pricing records remain authoritative in their own modules.
-              </div>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th><th>Status</th><th>Target Launch</th>
-                  <th>Products</th><th>Devices</th><th>Pricing Refs</th><th>Created</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((e: any) => (
-                  <tr key={e.id} style={{ cursor: 'pointer' }} onClick={() => openDetail(e)}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{e.name}</td>
-                    <td>
-                      <span className={`badge ${LAUNCH_STATUS[e.status] ?? 'badge-muted'}`}>
-                        {e.status?.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td>
-                      {e.target_launch_date
-                        ? new Date(e.target_launch_date).toLocaleDateString()
-                        : '—'}
-                    </td>
-                    <td>{e.product_readiness_references?.length ?? 0}</td>
-                    <td>{e.device_readiness_references?.length ?? 0}</td>
-                    <td>{e.pricing_readiness_references?.length ?? 0}</td>
-                    <td>{e.created_at ? new Date(e.created_at).toLocaleDateString() : '—'}</td>
-                    <td><CheckCircle size={14} style={{ color: 'var(--text-muted)' }} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={columns}
+          rows={events}
+          loading={isLoading}
+          emptyMessage="No launch events"
+          emptyIcon={<RocketLaunchIcon sx={{ fontSize: 48 }} />}
+          rowKey={(row) => String(row.id)}
+          onRowClick={openDetail}
+        />
       )}
 
       {tab === 'detail' && selected && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card">
-            <div className="section-header">
-              <span className="section-title">{selected.name}</span>
-              <span className={`badge ${LAUNCH_STATUS[selected.status] ?? 'badge-muted'}`}>
-                {selected.status?.replace(/_/g, ' ')}
-              </span>
-            </div>
-            <div className="card-grid card-grid-3">
-              <div>
-                <div className="label">Target Launch Date</div>
-                <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
-                  {selected.target_launch_date
-                    ? new Date(selected.target_launch_date).toLocaleDateString()
-                    : 'TBD'}
-                </div>
-              </div>
-              <div>
-                <div className="label">Created</div>
-                <div>{selected.created_at ? new Date(selected.created_at).toLocaleDateString() : '—'}</div>
-              </div>
-              <div>
-                <div className="label">Updated</div>
-                <div>{selected.updated_at ? new Date(selected.updated_at).toLocaleDateString() : '—'}</div>
-              </div>
-            </div>
-          </div>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Card variant="outlined">
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600}>
+                  {selected.name}
+                </Typography>
+                <StatusChip status={selected.status ?? 'unknown'} />
+              </Box>
 
-          <div className="card-grid card-grid-3">
-            <div className="card">
-              <div className="section-title" style={{ marginBottom: 12 }}>Product Readiness</div>
-              {(selected.product_readiness_references ?? []).length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No product references</div>
-              ) : (
-                (selected.product_readiness_references ?? []).map((ref: string) => (
-                  <div key={ref} className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                    {ref}
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="card">
-              <div className="section-title" style={{ marginBottom: 12 }}>Device Readiness</div>
-              {(selected.device_readiness_references ?? []).length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No device references</div>
-              ) : (
-                (selected.device_readiness_references ?? []).map((ref: string) => (
-                  <div key={ref} className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                    {ref}
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="card">
-              <div className="section-title" style={{ marginBottom: 12 }}>Pricing Readiness</div>
-              {(selected.pricing_readiness_references ?? []).length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No pricing references</div>
-              ) : (
-                (selected.pricing_readiness_references ?? []).map((ref: string) => (
-                  <div key={ref} className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                    {ref}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+                  gap: 2,
+                }}
+              >
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Target Launch Date
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 500 }}>
+                    {selected.target_launch_date
+                      ? formatDate(selected.target_launch_date)
+                      : 'TBD'}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Created
+                  </Typography>
+                  <Typography variant="body2">
+                    {formatDate(selected.created_at)}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Updated
+                  </Typography>
+                  <Typography variant="body2">
+                    {formatDate(selected.updated_at)}
+                  </Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+              gap: 2,
+            }}
+          >
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                  Product Readiness
+                </Typography>
+                {(selected.product_readiness_references ?? []).length === 0 ? (
+                  <Typography variant="caption" color="text.disabled">
+                    No product references
+                  </Typography>
+                ) : (
+                  (selected.product_readiness_references ?? []).map((ref: string) => (
+                    <Typography
+                      key={ref}
+                      variant="caption"
+                      sx={{ fontFamily: 'monospace', color: 'text.secondary', display: 'block', mb: 0.5 }}
+                    >
+                      {ref}
+                    </Typography>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                  Device Readiness
+                </Typography>
+                {(selected.device_readiness_references ?? []).length === 0 ? (
+                  <Typography variant="caption" color="text.disabled">
+                    No device references
+                  </Typography>
+                ) : (
+                  (selected.device_readiness_references ?? []).map((ref: string) => (
+                    <Typography
+                      key={ref}
+                      variant="caption"
+                      sx={{ fontFamily: 'monospace', color: 'text.secondary', display: 'block', mb: 0.5 }}
+                    >
+                      {ref}
+                    </Typography>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                  Pricing Readiness
+                </Typography>
+                {(selected.pricing_readiness_references ?? []).length === 0 ? (
+                  <Typography variant="caption" color="text.disabled">
+                    No pricing references
+                  </Typography>
+                ) : (
+                  (selected.pricing_readiness_references ?? []).map((ref: string) => (
+                    <Typography
+                      key={ref}
+                      variant="caption"
+                      sx={{ fontFamily: 'monospace', color: 'text.secondary', display: 'block', mb: 0.5 }}
+                    >
+                      {ref}
+                    </Typography>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </Box>
+        </Box>
       )}
-    </div>
+    </Box>
   )
 }

@@ -140,6 +140,18 @@ class Product(models.Model):
     compatible_watch_case_size = models.CharField(max_length=50, default="", blank=True)
     compatibility_status = models.CharField(max_length=30, default="incomplete")
 
+    # Compatibility mode: determines whether compatibility is set per-device or by universal device type
+    COMPATIBILITY_MODE_CHOICES = [
+        ("direct_device", "Direct Device"),
+        ("universal_device_type", "Universal Device Type"),
+    ]
+    compatibility_mode = models.CharField(
+        max_length=25,
+        choices=COMPATIBILITY_MODE_CHOICES,
+        default="direct_device",
+        help_text="How compatibility is determined: per-device assertions or universal device type mapping.",
+    )
+
     # Universal device-type compatibility (e.g. ['phone', 'tablet', 'smartwatch'])
     # Products listed here are auto-mapped to ALL active devices of those types,
     # including future devices added to the catalog.
@@ -206,6 +218,22 @@ class Product(models.Model):
 
     def clean(self):
         super().clean()
+        from django.core.exceptions import ValidationError
+
+        # Mutual exclusion: universal_device_type mode requires compatible_device_types
+        # and direct_device mode must not have compatible_device_types set
+        if self.compatibility_mode == "universal_device_type" and not self.compatible_device_types:
+            raise ValidationError({
+                "compatible_device_types": "Universal Device Type mode requires at least one device type."
+            })
+        if self.compatibility_mode == "direct_device" and self.compatible_device_types:
+            raise ValidationError({
+                "compatible_device_types": (
+                    "Cannot set universal device types when using Direct Device mode. "
+                    "Switch to Universal Device Type mode first."
+                )
+            })
+
         for f in [
             "headphone_jack_compatibility",
             "bluetooth_compatibility",

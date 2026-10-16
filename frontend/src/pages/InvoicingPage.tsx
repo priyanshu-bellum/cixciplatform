@@ -1,28 +1,150 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import {
-  ReceiptText, Plus, X, Calendar, Building2, DollarSign,
-  FileText, ArrowRight, ShieldAlert, CheckCircle2,
-} from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Paper from '@mui/material/Paper'
+import Chip from '@mui/material/Chip'
+import IconButton from '@mui/material/IconButton'
+import Button from '@mui/material/Button'
+import Drawer from '@mui/material/Drawer'
+import Divider from '@mui/material/Divider'
+import CircularProgress from '@mui/material/CircularProgress'
+import MenuItem from '@mui/material/MenuItem'
+import Select, { type SelectChangeEvent } from '@mui/material/Select'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Stack from '@mui/material/Stack'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import Alert from '@mui/material/Alert'
+import Tooltip from '@mui/material/Tooltip'
+import TextField from '@mui/material/TextField'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import CloseIcon from '@mui/icons-material/Close'
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney'
+import BusinessIcon from '@mui/icons-material/Business'
+import DescriptionIcon from '@mui/icons-material/Description'
+import GppMaybeIcon from '@mui/icons-material/GppMaybe'
+import SendIcon from '@mui/icons-material/Send'
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import AddIcon from '@mui/icons-material/Add'
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import api from '../lib/apiClient'
 import Pagination, { usePagination } from '../components/Pagination'
+import PageHeader from '../components/layout/PageHeader'
+import StatusChip from '../components/data-display/StatusChip'
+import SearchBar from '../components/forms/SearchBar'
+import { useSnackbar } from '../components/feedback/SnackbarProvider'
+import { formatCurrency, formatDate } from '../lib/formatters'
+import { useAuthStore } from '../stores/authStore'
 
-const STATUS: Record<string, string> = {
-  draft: 'badge-muted',
-  pending_validation: 'badge-amber',
-  validation_failed: 'badge-red',
-  ready: 'badge-blue',
-  issued: 'badge-blue',
-  sent: 'badge-purple',
-  acknowledged: 'badge-blue',
-  disputed: 'badge-amber',
-  partially_paid: 'badge-amber',
-  paid: 'badge-green',
-  overdue: 'badge-red',
-  void: 'badge-muted',
-  superseded: 'badge-amber',
-  archived: 'badge-muted',
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface InvoiceRun {
+  id: string
+  status: string
+  company_scope_reference: string
+  run_label: string
+  idempotency_key: string
+  scheduled_for: string | null
+  started_at: string | null
+  completed_at: string | null
+  error_detail: string
+  created_at: string
 }
+
+interface InvoiceListItem {
+  id: string
+  invoice_type: string
+  status: string
+  counterparty_role: string
+  counterparty_reference: string
+  counterparty_name: string
+  company_scope_reference: string
+  company_name: string
+  grand_total: string
+  currency: string
+  issued_at: string | null
+  created_at: string
+}
+
+interface InvoiceDetail extends InvoiceListItem {
+  subtotal: string
+  commission_total: string
+  adjustment_total: string
+  quickbooks_handoff_request_reference: string | null
+  quickbooks_payment_status_reference: string
+  auto_payment_submitted: boolean
+  run: string
+  period: string
+}
+
+interface InvoiceLine {
+  id: string
+  invoice: string
+  idempotency_key: string
+  source_module: string
+  source_order_line_reference: string
+  source_product_reference: string | null
+  unit_price_snapshot: string
+  quantity: number
+  line_total: string
+  currency: string
+  line_description: string
+  created_at: string
+}
+
+interface InvoiceAdjustment {
+  id: string
+  invoice: string
+  original_line: string | null
+  adjustment_kind: string
+  amount: string
+  currency: string
+  reason: string
+  evidence_reference: string | null
+  created_at: string
+}
+
+interface ReconciliationJob {
+  id: string
+  invoice: string
+  vendor_company_reference: string
+  status: string
+  row_count: number | null
+  matched_count: number | null
+  unmatched_count: number | null
+  uploaded_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+interface CompanyOption {
+  id: string
+  name: string
+  company_type: string
+}
+
+interface CreateLineItem {
+  description: string
+  quantity: string
+  unit_price: string
+}
+
+const EMPTY_LINE: CreateLineItem = { description: '', quantity: '1', unit_price: '0.00' }
+
+// ─── Constants ──────────────────────────────────────────────────────────────
 
 const TYPE_LABELS: Record<string, string> = {
   buyer_invoice: 'Buyer Invoice',
@@ -33,33 +155,51 @@ const TYPE_LABELS: Record<string, string> = {
   internal_admin_invoice_report: 'Internal Admin Report',
 }
 
-const formatCurrency = (val: number | string | null | undefined, currency: string = 'USD') => {
-  if (val === null || val === undefined || isNaN(Number(val))) return '—'
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(Number(val))
-}
+const ISSUABLE_STATUSES = new Set(['draft', 'ready'])
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export default function InvoicingPage() {
+  const { showSnackbar } = useSnackbar()
+  const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
+
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null)
   const [filterType, setFilterType] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')
+  const [issueDialogOpen, setIssueDialogOpen] = useState(false)
+  const [transitionDialogOpen, setTransitionDialogOpen] = useState(false)
+  const [transitionTarget, setTransitionTarget] = useState<string>('')
 
-  // Fetch invoice runs
+  // Create Invoice dialog state
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createType, setCreateType] = useState<string>('buyer_invoice')
+  const [createRole, setCreateRole] = useState<string>('buyer')
+  const [createCounterparty, setCreateCounterparty] = useState<string>('')
+  const [createPeriodStart, setCreatePeriodStart] = useState<string>('')
+  const [createPeriodEnd, setCreatePeriodEnd] = useState<string>('')
+  const [createCurrency, setCreateCurrency] = useState<string>('USD')
+  const [createLines, setCreateLines] = useState<CreateLineItem[]>([{ ...EMPTY_LINE }])
+
+  // ─── Queries ────────────────────────────────────────────────────────────
+
   const { data: runs } = useQuery({
     queryKey: ['invoice-runs'],
-    queryFn: () => api.get('/invoicing/runs/').then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/invoicing/runs/').then(r => r.data),
+    meta: { errorMessage: 'Failed to load invoice runs' },
   })
-  const runList = runs?.results ?? (Array.isArray(runs) ? runs : [])
+  const runList: InvoiceRun[] = runs?.results ?? (Array.isArray(runs) ? runs : [])
 
-  // Fetch invoices list
-  const { data: invoiceData, isLoading, refetch: refetchInvoices } = useQuery({
+  const { data: invoiceData, isLoading } = useQuery({
     queryKey: ['invoices'],
-    queryFn: () => api.get('/invoicing/invoices/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => ({ results: [] })),
+    queryFn: () => api.get('/invoicing/invoices/', { params: { paginate: 'false' } }).then(r => r.data),
+    meta: { errorMessage: 'Failed to load invoices' },
   })
-  const rawInvoices = invoiceData?.results ?? (Array.isArray(invoiceData) ? invoiceData : [])
+  const rawInvoices: InvoiceListItem[] = invoiceData?.results ?? (Array.isArray(invoiceData) ? invoiceData : [])
 
-  // Filter invoices
-  const filteredInvoices = rawInvoices.filter((inv: any) => {
+  const filteredInvoices = rawInvoices.filter((inv) => {
     if (filterType !== 'all' && inv.invoice_type !== filterType) return false
     if (filterStatus !== 'all' && inv.status !== filterStatus) return false
     if (searchQuery.trim()) {
@@ -72,7 +212,6 @@ export default function InvoicingPage() {
     return true
   })
 
-  // Pagination (50 items per page)
   const {
     currentPage,
     setCurrentPage,
@@ -81,291 +220,363 @@ export default function InvoicingPage() {
     paginatedItems: paginatedInvoices,
   } = usePagination(filteredInvoices, 50)
 
-  // Detail query for selected invoice
-  const { data: invoiceDetail, isLoading: isLoadingDetail } = useQuery({
+  // Detail query
+  const { data: invoiceDetail, isLoading: isLoadingDetail } = useQuery<InvoiceDetail>({
     queryKey: ['invoice-detail', selectedInvoiceId],
     queryFn: () => api.get(`/invoicing/invoices/${selectedInvoiceId}/`).then(r => r.data),
     enabled: !!selectedInvoiceId,
   })
 
-  // Lines query for selected invoice
-  const { data: invoiceLines, isLoading: isLoadingLines } = useQuery({
+  // Lines query
+  const { data: invoiceLines, isLoading: isLoadingLines } = useQuery<InvoiceLine[]>({
     queryKey: ['invoice-lines', selectedInvoiceId],
     queryFn: () => api.get(`/invoicing/invoices/${selectedInvoiceId}/lines/`).then(r => r.data),
     enabled: !!selectedInvoiceId,
   })
 
-  // Adjustments query for selected invoice
-  const { data: invoiceAdjustments } = useQuery({
+  // Adjustments query
+  const { data: invoiceAdjustments } = useQuery<InvoiceAdjustment[]>({
     queryKey: ['invoice-adjustments', selectedInvoiceId],
     queryFn: () => api.get(`/invoicing/invoices/${selectedInvoiceId}/adjustments/`).then(r => r.data),
     enabled: !!selectedInvoiceId,
   })
 
+  // Reconciliation jobs query
+  const { data: reconciliationJobs } = useQuery<ReconciliationJob[]>({
+    queryKey: ['invoice-reconciliation', selectedInvoiceId],
+    queryFn: () => api.get(`/invoicing/invoices/${selectedInvoiceId}/reconciliation/`).then(r => r.data),
+    enabled: !!selectedInvoiceId,
+  })
+
+  // Companies for counterparty dropdown
+  const { data: companiesData } = useQuery({
+    queryKey: ['companies-list'],
+    queryFn: () => api.get('/tenant/companies/', { params: { paginate: 'false' } }).then(r => r.data),
+    enabled: createOpen,
+  })
+  const companies: CompanyOption[] = companiesData?.results ?? (Array.isArray(companiesData) ? companiesData : [])
+
+  // ─── Mutations ──────────────────────────────────────────────────────────
+
+  const createInvoiceMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      api.post('/invoicing/invoices/create-manual/', payload).then(r => r.data),
+    onSuccess: () => {
+      showSnackbar('Invoice created successfully', 'success')
+      setCreateOpen(false)
+      resetCreateForm()
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['invoice-runs'] })
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || err?.response?.data?.errors
+        ? 'Validation errors — check form fields'
+        : err?.message || 'Failed to create invoice'
+      showSnackbar(typeof msg === 'string' ? msg : 'Validation errors — check form fields', 'error')
+    },
+  })
+
+  const issueMutation = useMutation({
+    mutationFn: (invoiceId: string) =>
+      api.post(`/invoicing/invoices/${invoiceId}/issue/`).then(r => r.data),
+    onSuccess: () => {
+      showSnackbar('Invoice issued successfully', 'success')
+      setIssueDialogOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['invoice-detail', selectedInvoiceId] })
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || err?.message || 'Failed to issue invoice'
+      showSnackbar(msg, 'error')
+    },
+  })
+
+  const transitionMutation = useMutation({
+    mutationFn: ({ invoiceId, status }: { invoiceId: string; status: string }) =>
+      api.post(`/invoicing/invoices/${invoiceId}/transition/`, { status }).then(r => r.data),
+    onSuccess: () => {
+      showSnackbar('Invoice status updated', 'success')
+      setTransitionDialogOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['invoice-detail', selectedInvoiceId] })
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || err?.message || 'Status transition failed'
+      showSnackbar(msg, 'error')
+    },
+  })
+
+  const reconciliationMutation = useMutation({
+    mutationFn: (invoiceId: string) =>
+      api.post(`/invoicing/invoices/${invoiceId}/reconciliation/`).then(r => r.data),
+    onSuccess: () => {
+      showSnackbar('Reconciliation job created', 'success')
+      queryClient.invalidateQueries({ queryKey: ['invoice-reconciliation', selectedInvoiceId] })
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || err?.message || 'Failed to create reconciliation job'
+      showSnackbar(msg, 'error')
+    },
+  })
+
+  // ─── Helpers ────────────────────────────────────────────────────────────
+
+  const canIssue = invoiceDetail && ISSUABLE_STATUSES.has(invoiceDetail.status)
+  const canTransition = invoiceDetail && !['archived', 'void'].includes(invoiceDetail.status)
+
+  const getAvailableTransitions = (status: string): string[] => {
+    const map: Record<string, string[]> = {
+      draft: ['ready', 'void'],
+      ready: ['issued', 'void'],
+      issued: ['sent', 'void'],
+      sent: ['acknowledged', 'overdue', 'void'],
+      acknowledged: ['partially_paid', 'paid', 'disputed'],
+      disputed: ['acknowledged', 'void'],
+      partially_paid: ['paid', 'overdue', 'disputed'],
+      overdue: ['paid', 'void', 'disputed'],
+      paid: ['archived'],
+      void: ['archived'],
+    }
+    return map[status] || []
+  }
+
+  // ─── Create Invoice helpers ─────────────────────────────────────────────
+
+  const resetCreateForm = () => {
+    setCreateType('buyer_invoice')
+    setCreateRole('buyer')
+    setCreateCounterparty('')
+    setCreatePeriodStart('')
+    setCreatePeriodEnd('')
+    setCreateCurrency('USD')
+    setCreateLines([{ ...EMPTY_LINE }])
+  }
+
+  const handleAddLine = () => setCreateLines(prev => [...prev, { ...EMPTY_LINE }])
+
+  const handleRemoveLine = (idx: number) =>
+    setCreateLines(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev)
+
+  const handleLineChange = (idx: number, field: keyof CreateLineItem, value: string) =>
+    setCreateLines(prev => prev.map((line, i) => i === idx ? { ...line, [field]: value } : line))
+
+  const computeSubtotal = () =>
+    createLines.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0), 0)
+
+  const handleCreateSubmit = () => {
+    createInvoiceMutation.mutate({
+      invoice_type: createType,
+      counterparty_role: createRole,
+      counterparty_reference: createCounterparty,
+      period_start: createPeriodStart,
+      period_end: createPeriodEnd,
+      currency: createCurrency,
+      lines: createLines.map(l => ({
+        description: l.description,
+        quantity: parseInt(l.quantity) || 0,
+        unit_price: l.unit_price,
+      })),
+    })
+  }
+
+  // Auto-set counterparty role based on invoice type
+  const handleTypeChange = (type: string) => {
+    setCreateType(type)
+    if (type === 'buyer_invoice') setCreateRole('buyer')
+    else if (type === 'vendor_statement' || type === 'vendor_payable_package') setCreateRole('vendor')
+  }
+
+  // Filter companies by counterparty role
+  const filteredCompanies = companies.filter(c => {
+    if (createRole === 'buyer') return c.company_type === 'buyer'
+    if (createRole === 'vendor') return c.company_type === 'vendor'
+    return true
+  })
+
+  // ─── Render ─────────────────────────────────────────────────────────────
+
   return (
-    <div>
-      <style>{`
-        .drawer-backdrop {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(4, 6, 12, 0.7);
-          backdrop-filter: blur(4px);
-          z-index: 1000;
-        }
-        .drawer-panel {
-          position: fixed;
-          top: 0; right: 0; bottom: 0;
-          width: 580px; max-width: 100%;
-          background: var(--bg-surface);
-          border-left: 1px solid var(--border);
-          z-index: 1001;
-          padding: 24px;
-          overflow-y: auto;
-          box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
-          display: flex;
-          flex-direction: column;
-          animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        @keyframes slideIn {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-        .drawer-header {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          padding-bottom: 18px;
-          border-bottom: 1px solid var(--border);
-          margin-bottom: 24px;
-        }
-        .drawer-close {
-          background: transparent; border: none; cursor: pointer;
-          color: var(--text-secondary); padding: 6px; border-radius: var(--radius-sm);
-        }
-        .drawer-close:hover {
-          color: var(--text-primary);
-          background: var(--bg-elevated);
-        }
-        .drawer-title {
-          font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;
-        }
-        .drawer-subtitle {
-          font-size: 12px; color: var(--text-muted); font-family: monospace;
-        }
-        .drawer-section {
-          margin-bottom: 24px;
-        }
-        .drawer-section-title {
-          font-size: 13px; font-weight: 600; color: var(--text-secondary);
-          text-transform: uppercase; letter-spacing: 0.5px;
-          margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
-        }
-        .detail-card {
-          background: var(--bg-elevated);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-md);
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .detail-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 13px;
-        }
-        .detail-label {
-          color: var(--text-secondary);
-        }
-        .detail-value {
-          color: var(--text-primary);
-          font-weight: 500;
-        }
-        .clickable-row {
-          cursor: pointer;
-          transition: background-color 0.15s ease;
-        }
-        .clickable-row:hover {
-          background-color: var(--bg-elevated) !important;
-        }
-        .filter-bar {
-          display: flex;
-          gap: 12px;
-          align-items: center;
-          margin-bottom: 16px;
-          flex-wrap: wrap;
-        }
-        .filter-input {
-          padding: 6px 12px;
-          background: var(--bg-elevated);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-sm);
-          color: var(--text-primary);
-          font-size: 13px;
-          min-width: 220px;
-        }
-        .filter-select {
-          padding: 6px 12px;
-          background: var(--bg-elevated);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-sm);
-          color: var(--text-primary);
-          font-size: 13px;
-        }
-      `}</style>
+    <Box>
+      <PageHeader
+        title="Invoice Management"
+        subtitle="Platform billing, vendor statements, and buyer invoicing across all counterparties"
+        actions={isCixciAdmin ? (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateOpen(true)}
+            size="small"
+          >
+            Create Invoice
+          </Button>
+        ) : undefined}
+      />
 
-      <div className="page-header">
-        <div>
-          <div className="page-title">Invoice Management</div>
-          <div className="page-sub">Platform billing, vendor statements, and buyer invoicing across all counterparties</div>
-        </div>
-      </div>
-
+      {/* Active Invoice Runs */}
       {runList.length > 0 && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="section-header">
-            <span className="section-title">Active Invoice Runs</span>
-          </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {runList.slice(0, 4).map((r: any) => (
-              <div
-                key={r.id}
-                style={{
-                  padding: '10px 16px',
-                  background: 'var(--bg-elevated)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  minWidth: 180,
-                }}
-              >
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.run_label || 'Invoice Run'}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-                  <span className={`badge ${r.status === 'complete' ? 'badge-green' : 'badge-amber'}`}>
-                    {r.status}
-                  </span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                    {r.id.slice(0, 8)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <Card sx={{ mb: 2.5 }}>
+          <CardContent>
+            <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+              Active Invoice Runs
+            </Typography>
+            <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1.5 }}>
+              {runList.slice(0, 4).map((r) => (
+                <Paper
+                  key={r.id}
+                  variant="outlined"
+                  sx={{ px: 2, py: 1.25, minWidth: 180, bgcolor: 'action.hover' }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    {r.run_label || 'Invoice Run'}
+                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.75 }}>
+                    <StatusChip status={r.status} />
+                    <Typography
+                      variant="caption"
+                      sx={{ fontFamily: 'monospace', color: 'text.disabled', fontSize: 11 }}
+                    >
+                      {r.id.slice(0, 8)}
+                    </Typography>
+                  </Box>
+                </Paper>
+              ))}
+            </Stack>
+          </CardContent>
+        </Card>
       )}
 
       {/* Filters Bar */}
-      <div className="filter-bar">
-        <input
-          type="text"
-          className="filter-input"
+      <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <SearchBar
           placeholder="Search by ID, Counterparty, or Company..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onSearch={(value) => setSearchQuery(value)}
+          sx={{ minWidth: 280 }}
         />
-        <select
-          className="filter-select"
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-        >
-          <option value="all">All Invoice Types</option>
-          <option value="buyer_invoice">Buyer Invoice</option>
-          <option value="vendor_statement">Vendor Statement</option>
-          <option value="vendor_payable_package">Vendor Payable Package</option>
-          <option value="commission_report">Commission Report</option>
-          <option value="adjustment_report">Adjustment Report</option>
-          <option value="internal_admin_invoice_report">Internal Admin Report</option>
-        </select>
-        <select
-          className="filter-select"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-        >
-          <option value="all">All Statuses</option>
-          <option value="draft">Draft</option>
-          <option value="ready">Ready</option>
-          <option value="issued">Issued</option>
-          <option value="sent">Sent</option>
-          <option value="acknowledged">Acknowledged</option>
-          <option value="paid">Paid</option>
-          <option value="disputed">Disputed</option>
-          <option value="overdue">Overdue</option>
-        </select>
-      </div>
+        <FormControl size="small" sx={{ minWidth: 180 }}>
+          <Select
+            value={filterType}
+            onChange={(e: SelectChangeEvent) => setFilterType(e.target.value)}
+            displayEmpty
+          >
+            <MenuItem value="all">All Invoice Types</MenuItem>
+            <MenuItem value="buyer_invoice">Buyer Invoice</MenuItem>
+            <MenuItem value="vendor_statement">Vendor Statement</MenuItem>
+            <MenuItem value="vendor_payable_package">Vendor Payable Package</MenuItem>
+            <MenuItem value="commission_report">Commission Report</MenuItem>
+            <MenuItem value="adjustment_report">Adjustment Report</MenuItem>
+            <MenuItem value="internal_admin_invoice_report">Internal Admin Report</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <Select
+            value={filterStatus}
+            onChange={(e: SelectChangeEvent) => setFilterStatus(e.target.value)}
+            displayEmpty
+          >
+            <MenuItem value="all">All Statuses</MenuItem>
+            <MenuItem value="draft">Draft</MenuItem>
+            <MenuItem value="ready">Ready</MenuItem>
+            <MenuItem value="issued">Issued</MenuItem>
+            <MenuItem value="sent">Sent</MenuItem>
+            <MenuItem value="acknowledged">Acknowledged</MenuItem>
+            <MenuItem value="paid">Paid</MenuItem>
+            <MenuItem value="disputed">Disputed</MenuItem>
+            <MenuItem value="overdue">Overdue</MenuItem>
+          </Select>
+        </FormControl>
+      </Stack>
 
-      <div className="table-wrap">
+      {/* Invoice Table */}
+      <TableContainer component={Paper} variant="outlined">
         {isLoading ? (
-          <div className="loading-overlay"><div className="spinner" /></div>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
         ) : rawInvoices.length === 0 ? (
-          <div className="empty-state">
-            <ReceiptText size={40} />
-            <div>No invoices generated yet</div>
-          </div>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8, color: 'text.secondary' }}>
+            <ReceiptLongIcon sx={{ fontSize: 40, mb: 1, color: 'text.disabled' }} />
+            <Typography variant="body2">No invoices generated yet</Typography>
+          </Box>
         ) : paginatedInvoices.length === 0 ? (
-          <div className="empty-state">
-            <ReceiptText size={40} />
-            <div>No invoices matching filter criteria</div>
-          </div>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8, color: 'text.secondary' }}>
+            <ReceiptLongIcon sx={{ fontSize: 40, mb: 1, color: 'text.disabled' }} />
+            <Typography variant="body2">No invoices matching filter criteria</Typography>
+          </Box>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Invoice</th>
-                <th>Counterparty</th>
-                <th>Role</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Grand Total</th>
-                <th>Issued</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedInvoices.map((inv: any) => (
-                <tr
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Invoice</TableCell>
+                <TableCell>Counterparty</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Grand Total</TableCell>
+                <TableCell>Issued</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {paginatedInvoices.map((inv) => (
+                <TableRow
                   key={inv.id}
+                  hover
                   onClick={() => setSelectedInvoiceId(inv.id)}
-                  className="clickable-row"
+                  sx={{ cursor: 'pointer' }}
                 >
-                  <td className="mono" style={{ color: 'var(--accent)', fontWeight: 500, fontSize: 12 }}>
-                    {inv.id.slice(0, 8)}…
-                  </td>
-                  <td>
-                    <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                      {inv.counterparty_name || inv.counterparty_reference?.slice(0, 8) || '—'}
-                    </div>
+                  <TableCell>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontFamily: 'monospace', color: 'primary.main', fontWeight: 500, fontSize: 12 }}
+                    >
+                      {inv.id.slice(0, 8)}...
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {inv.counterparty_name || inv.counterparty_reference?.slice(0, 8) || '\u2014'}
+                    </Typography>
                     {inv.company_name && inv.company_name !== inv.counterparty_name && (
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                         Scope: {inv.company_name}
-                      </div>
+                      </Typography>
                     )}
-                  </td>
-                  <td>
-                    <span className={`badge ${inv.counterparty_role === 'vendor' ? 'badge-purple' : 'badge-blue'}`}>
-                      {inv.counterparty_role || 'counterparty'}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="badge badge-muted" style={{ fontSize: 11 }}>
-                      {TYPE_LABELS[inv.invoice_type] || inv.invoice_type}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`badge ${STATUS[inv.status] ?? 'badge-muted'}`}>
-                      {inv.status}
-                    </span>
-                  </td>
-                  <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                    {formatCurrency(inv.grand_total, inv.currency)}
-                  </td>
-                  <td>
-                    {inv.issued_at ? new Date(inv.issued_at).toLocaleDateString() : '—'}
-                  </td>
-                </tr>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={inv.counterparty_role || 'counterparty'}
+                      size="small"
+                      color={inv.counterparty_role === 'vendor' ? 'secondary' : 'info'}
+                      variant="filled"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={TYPE_LABELS[inv.invoice_type] || inv.invoice_type}
+                      size="small"
+                      variant="outlined"
+                      sx={{ fontSize: 11 }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <StatusChip status={inv.status} />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {formatCurrency(inv.grand_total, inv.currency)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {inv.issued_at ? formatDate(inv.issued_at) : '\u2014'}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
-      </div>
+      </TableContainer>
 
       <Pagination
         currentPage={currentPage}
@@ -376,187 +587,623 @@ export default function InvoicingPage() {
         itemName="invoices"
       />
 
-      {/* Slide-over Invoice Details Drawer */}
-      {selectedInvoiceId && (
-        <>
-          <div className="drawer-backdrop" onClick={() => setSelectedInvoiceId(null)} />
-          <div className="drawer-panel">
-            {/* Header */}
-            <div className="drawer-header">
-              <div>
-                <div className="drawer-title">Invoice Details</div>
-                <div className="drawer-subtitle">{selectedInvoiceId}</div>
-              </div>
-              <button className="drawer-close" onClick={() => setSelectedInvoiceId(null)}>
-                <X size={18} />
-              </button>
-            </div>
+      {/* ─── Invoice Details Drawer ──────────────────────────────────────── */}
+      <Drawer
+        anchor="right"
+        open={!!selectedInvoiceId}
+        onClose={() => setSelectedInvoiceId(null)}
+        slotProps={{ paper: { sx: { width: 580, maxWidth: '100%', p: 3 } } }}
+      >
+        {/* Header */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            pb: 2.25,
+            borderBottom: 1,
+            borderColor: 'divider',
+            mb: 3,
+          }}
+        >
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+              Invoice Details
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+              {selectedInvoiceId}
+            </Typography>
+          </Box>
+          <IconButton size="small" onClick={() => setSelectedInvoiceId(null)}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+
+        {isLoadingDetail ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <>
+            {/* Action Buttons */}
+            {isCixciAdmin && invoiceDetail && (
+              <Stack direction="row" spacing={1} sx={{ mb: 3 }}>
+                {canIssue && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<SendIcon />}
+                    onClick={() => setIssueDialogOpen(true)}
+                    disabled={issueMutation.isPending}
+                  >
+                    Issue Invoice
+                  </Button>
+                )}
+                {canTransition && getAvailableTransitions(invoiceDetail.status).length > 0 && (
+                  <FormControl size="small" sx={{ minWidth: 160 }}>
+                    <Select
+                      value=""
+                      displayEmpty
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setTransitionTarget(e.target.value)
+                          setTransitionDialogOpen(true)
+                        }
+                      }}
+                      renderValue={() => 'Change Status...'}
+                      sx={{ fontSize: 13 }}
+                    >
+                      {getAvailableTransitions(invoiceDetail.status).map((s) => (
+                        <MenuItem key={s} value={s}>
+                          {s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+              </Stack>
+            )}
 
             {/* Financial Totals */}
-            <div className="drawer-section">
-              <div className="drawer-section-title">
-                <DollarSign size={14} /> Financial Summary
-              </div>
-              <div className="detail-card">
-                <div className="detail-item">
-                  <span className="detail-label">Status</span>
-                  <span className="detail-value">
-                    <span className={`badge ${STATUS[invoiceDetail?.status] ?? 'badge-muted'}`}>
-                      {invoiceDetail?.status ?? '...'}
-                    </span>
-                  </span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Invoice Type</span>
-                  <span className="detail-value">
-                    {TYPE_LABELS[invoiceDetail?.invoice_type] || invoiceDetail?.invoice_type || '...'}
-                  </span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Subtotal</span>
-                  <span className="detail-value">
+            <Box sx={{ mb: 3 }}>
+              <Typography
+                variant="overline"
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, fontWeight: 600, color: 'text.secondary', letterSpacing: 0.5 }}
+              >
+                <AttachMoneyIcon sx={{ fontSize: 14 }} /> Financial Summary
+              </Typography>
+              <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5, bgcolor: 'action.hover' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Status</Typography>
+                  <StatusChip status={invoiceDetail?.status ?? '...'} />
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Invoice Type</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    {TYPE_LABELS[invoiceDetail?.invoice_type ?? ''] || invoiceDetail?.invoice_type || '...'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Subtotal</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
                     {formatCurrency(invoiceDetail?.subtotal, invoiceDetail?.currency)}
-                  </span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Commission Total</span>
-                  <span className="detail-value" style={{ color: 'var(--accent)' }}>
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Commission Total</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 500, color: 'primary.main' }}>
                     {formatCurrency(invoiceDetail?.commission_total, invoiceDetail?.currency)}
-                  </span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Adjustment Total</span>
-                  <span className="detail-value">
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Adjustment Total</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
                     {formatCurrency(invoiceDetail?.adjustment_total, invoiceDetail?.currency)}
-                  </span>
-                </div>
-                <div className="detail-item" style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 4 }}>
-                  <span className="detail-label" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Grand Total</span>
-                  <span className="detail-value" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  </Typography>
+                </Box>
+                <Divider />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 0.5 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>Grand Total</Typography>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                     {formatCurrency(invoiceDetail?.grand_total, invoiceDetail?.currency)}
-                  </span>
-                </div>
-              </div>
-            </div>
+                  </Typography>
+                </Box>
+              </Paper>
+            </Box>
 
-            {/* Counterparty & Scope Info */}
-            <div className="drawer-section">
-              <div className="drawer-section-title">
-                <Building2 size={14} /> Counterparty & Scope
-              </div>
-              <div className="detail-card">
-                <div className="detail-item">
-                  <span className="detail-label">Counterparty Name</span>
-                  <span className="detail-value" style={{ fontWeight: 600 }}>
-                    {invoiceDetail?.counterparty_name || '—'}
-                  </span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Counterparty Role</span>
-                  <span className="detail-value">
-                    <span className={`badge ${invoiceDetail?.counterparty_role === 'vendor' ? 'badge-purple' : 'badge-blue'}`}>
-                      {invoiceDetail?.counterparty_role || '—'}
-                    </span>
-                  </span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Counterparty Ref</span>
-                  <span className="detail-value mono" style={{ fontSize: 11 }}>
-                    {invoiceDetail?.counterparty_reference || '—'}
-                  </span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Company Scope</span>
-                  <span className="detail-value">
-                    {invoiceDetail?.company_name || invoiceDetail?.company_scope_reference?.slice(0, 8) || '—'}
-                  </span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Issued Date</span>
-                  <span className="detail-value">
-                    {invoiceDetail?.issued_at ? new Date(invoiceDetail.issued_at).toLocaleString() : 'Not Issued Yet'}
-                  </span>
-                </div>
-              </div>
-            </div>
+            {/* Counterparty & Scope */}
+            <Box sx={{ mb: 3 }}>
+              <Typography
+                variant="overline"
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, fontWeight: 600, color: 'text.secondary', letterSpacing: 0.5 }}
+              >
+                <BusinessIcon sx={{ fontSize: 14 }} /> Counterparty & Scope
+              </Typography>
+              <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5, bgcolor: 'action.hover' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Counterparty Name</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {invoiceDetail?.counterparty_name || '\u2014'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Counterparty Role</Typography>
+                  <Chip
+                    label={invoiceDetail?.counterparty_role || '\u2014'}
+                    size="small"
+                    color={invoiceDetail?.counterparty_role === 'vendor' ? 'secondary' : 'info'}
+                    variant="filled"
+                  />
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Counterparty Ref</Typography>
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 500 }}>
+                    {invoiceDetail?.counterparty_reference || '\u2014'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Company Scope</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    {invoiceDetail?.company_name || invoiceDetail?.company_scope_reference?.slice(0, 8) || '\u2014'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Issued Date</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    {invoiceDetail?.issued_at ? formatDate(invoiceDetail.issued_at) : 'Not Issued Yet'}
+                  </Typography>
+                </Box>
+              </Paper>
+            </Box>
 
             {/* Line Items */}
-            <div className="drawer-section">
-              <div className="drawer-section-title">
-                <FileText size={14} /> Line Items
-              </div>
+            <Box sx={{ mb: 3 }}>
+              <Typography
+                variant="overline"
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, fontWeight: 600, color: 'text.secondary', letterSpacing: 0.5 }}
+              >
+                <DescriptionIcon sx={{ fontSize: 14 }} /> Line Items
+              </Typography>
               {isLoadingLines ? (
-                <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>Loading lines...</div>
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <CircularProgress size={24} />
+                </Box>
               ) : !invoiceLines || invoiceLines.length === 0 ? (
-                <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>No line items recorded</div>
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                  No line items recorded
+                </Typography>
               ) : (
-                <div style={{ overflowX: 'auto', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                  <table style={{ margin: 0 }}>
-                    <thead>
-                      <tr>
-                        <th>Description</th>
-                        <th>Qty</th>
-                        <th>Unit Price</th>
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {invoiceLines.map((line: any) => (
-                        <tr key={line.id}>
-                          <td>
-                            <div style={{ fontWeight: 500 }}>{line.line_description || 'Product Line'}</div>
+                <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: 'action.hover' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Description</TableCell>
+                        <TableCell>Qty</TableCell>
+                        <TableCell>Unit Price</TableCell>
+                        <TableCell>Total</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {invoiceLines.map((line) => (
+                        <TableRow key={line.id}>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                              {line.line_description || 'Product Line'}
+                            </Typography>
                             {line.source_product_reference && (
-                              <div style={{ fontSize: 10, color: 'var(--text-muted)' }} className="mono">
+                              <Typography
+                                variant="caption"
+                                sx={{ fontFamily: 'monospace', color: 'text.disabled', fontSize: 10, display: 'block' }}
+                              >
                                 Ref: {line.source_product_reference.slice(0, 8)}
-                              </div>
+                              </Typography>
                             )}
-                          </td>
-                          <td>{line.quantity}</td>
-                          <td>{formatCurrency(line.unit_price_snapshot, line.currency)}</td>
-                          <td style={{ fontWeight: 600 }}>{formatCurrency(line.line_total, line.currency)}</td>
-                        </tr>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">{line.quantity}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {formatCurrency(line.unit_price_snapshot, line.currency)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {formatCurrency(line.line_total, line.currency)}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               )}
-            </div>
+            </Box>
 
-            {/* Adjustments (if any) */}
+            {/* Adjustments */}
             {invoiceAdjustments && invoiceAdjustments.length > 0 && (
-              <div className="drawer-section">
-                <div className="drawer-section-title">
-                  <ShieldAlert size={14} /> Adjustments
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {invoiceAdjustments.map((adj: any) => (
-                    <div
+              <Box sx={{ mb: 3 }}>
+                <Typography
+                  variant="overline"
+                  sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, fontWeight: 600, color: 'text.secondary', letterSpacing: 0.5 }}
+                >
+                  <GppMaybeIcon sx={{ fontSize: 14 }} /> Adjustments
+                </Typography>
+                <Stack spacing={1}>
+                  {invoiceAdjustments.map((adj) => (
+                    <Paper
                       key={adj.id}
-                      style={{
-                        padding: '10px 14px',
-                        background: 'var(--bg-elevated)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--border)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
+                      variant="outlined"
+                      sx={{ px: 1.75, py: 1.25, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'action.hover' }}
                     >
-                      <div>
-                        <div style={{ fontWeight: 500, fontSize: 12 }}>{adj.adjustment_kind}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{adj.reason || 'No reason provided'}</div>
-                      </div>
-                      <div style={{ fontWeight: 600, color: 'var(--accent)' }}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500, fontSize: 12 }}>
+                          {adj.adjustment_kind.replace(/_/g, ' ')}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {adj.reason || 'No reason provided'}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
                         {formatCurrency(adj.amount, adj.currency)}
-                      </div>
-                    </div>
+                      </Typography>
+                    </Paper>
                   ))}
-                </div>
-              </div>
+                </Stack>
+              </Box>
             )}
-          </div>
-        </>
-      )}
-    </div>
+
+            {/* Reconciliation Jobs */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                <Typography
+                  variant="overline"
+                  sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 600, color: 'text.secondary', letterSpacing: 0.5 }}
+                >
+                  <CompareArrowsIcon sx={{ fontSize: 14 }} /> Vendor Reconciliation
+                </Typography>
+                {invoiceDetail && user?.company_type === 'vendor' && (
+                  <Tooltip title="Create a new reconciliation comparison job">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => selectedInvoiceId && reconciliationMutation.mutate(selectedInvoiceId)}
+                      disabled={reconciliationMutation.isPending}
+                    >
+                      New Job
+                    </Button>
+                  </Tooltip>
+                )}
+              </Box>
+              <Alert severity="info" variant="outlined" sx={{ mb: 1.5, fontSize: 12 }}>
+                Vendor reconciliation files are comparison evidence only — CIXCI invoice lines remain authoritative.
+              </Alert>
+              {!reconciliationJobs || reconciliationJobs.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                  No reconciliation jobs
+                </Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {reconciliationJobs.map((job) => (
+                    <Paper
+                      key={job.id}
+                      variant="outlined"
+                      sx={{ px: 2, py: 1.5, bgcolor: 'action.hover' }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
+                        <StatusChip status={job.status} />
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.disabled', fontSize: 10 }}>
+                          {job.id.slice(0, 8)}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={2}>
+                        {job.row_count != null && (
+                          <Typography variant="caption" color="text.secondary">
+                            Rows: {job.row_count}
+                          </Typography>
+                        )}
+                        {job.matched_count != null && (
+                          <Typography variant="caption" color="success.main">
+                            Matched: {job.matched_count}
+                          </Typography>
+                        )}
+                        {job.unmatched_count != null && job.unmatched_count > 0 && (
+                          <Typography variant="caption" color="warning.main">
+                            Unmatched: {job.unmatched_count}
+                          </Typography>
+                        )}
+                      </Stack>
+                      {job.completed_at && (
+                        <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
+                          Completed: {formatDate(job.completed_at)}
+                        </Typography>
+                      )}
+                    </Paper>
+                  ))}
+                </Stack>
+              )}
+            </Box>
+          </>
+        )}
+      </Drawer>
+
+      {/* ─── Issue Confirmation Dialog ─────────────────────────────────── */}
+      <Dialog open={issueDialogOpen} onClose={() => setIssueDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Issue Invoice</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            This will mark the invoice as <strong>Issued</strong> and set the issued date. This action
+            cannot be undone — issued invoices are immutable.
+          </Typography>
+          {invoiceDetail && (
+            <Paper variant="outlined" sx={{ mt: 2, p: 1.5, bgcolor: 'action.hover' }}>
+              <Typography variant="caption" color="text.secondary">Grand Total</Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                {formatCurrency(invoiceDetail.grand_total, invoiceDetail.currency)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Counterparty: {invoiceDetail.counterparty_name}
+              </Typography>
+            </Paper>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIssueDialogOpen(false)} disabled={issueMutation.isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={issueMutation.isPending ? <CircularProgress size={16} /> : <CheckCircleIcon />}
+            onClick={() => selectedInvoiceId && issueMutation.mutate(selectedInvoiceId)}
+            disabled={issueMutation.isPending}
+          >
+            Confirm Issue
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ─── Transition Confirmation Dialog ────────────────────────────── */}
+      <Dialog open={transitionDialogOpen} onClose={() => setTransitionDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Change Invoice Status</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            Transition invoice from <strong>{invoiceDetail?.status?.replace(/_/g, ' ')}</strong> to{' '}
+            <strong>{transitionTarget.replace(/_/g, ' ')}</strong>?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTransitionDialogOpen(false)} disabled={transitionMutation.isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => selectedInvoiceId && transitionMutation.mutate({ invoiceId: selectedInvoiceId, status: transitionTarget })}
+            disabled={transitionMutation.isPending}
+            startIcon={transitionMutation.isPending ? <CircularProgress size={16} /> : undefined}
+          >
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ─── Create Invoice Dialog ─────────────────────────────────────── */}
+      <Dialog
+        open={createOpen}
+        onClose={() => { setCreateOpen(false); resetCreateForm() }}
+        fullWidth
+        maxWidth="md"
+        scroll="paper"
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Create Invoice
+          <IconButton size="small" onClick={() => { setCreateOpen(false); resetCreateForm() }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {/* Invoice Type & Counterparty */}
+          <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+            Invoice Details
+          </Typography>
+          <Stack spacing={2} sx={{ mb: 3 }}>
+            <Stack direction="row" spacing={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Invoice Type</InputLabel>
+                <Select
+                  value={createType}
+                  label="Invoice Type"
+                  onChange={(e) => handleTypeChange(e.target.value)}
+                >
+                  <MenuItem value="buyer_invoice">Buyer Invoice</MenuItem>
+                  <MenuItem value="vendor_statement">Vendor Statement</MenuItem>
+                  <MenuItem value="vendor_payable_package">Vendor Payable Package</MenuItem>
+                  <MenuItem value="commission_report">Commission Report</MenuItem>
+                  <MenuItem value="adjustment_report">Adjustment Report</MenuItem>
+                  <MenuItem value="internal_admin_invoice_report">Internal Admin Report</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small">
+                <InputLabel>Counterparty Role</InputLabel>
+                <Select
+                  value={createRole}
+                  label="Counterparty Role"
+                  onChange={(e) => setCreateRole(e.target.value)}
+                >
+                  <MenuItem value="buyer">Buyer</MenuItem>
+                  <MenuItem value="vendor">Vendor</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+            <FormControl fullWidth size="small">
+              <InputLabel>Counterparty</InputLabel>
+              <Select
+                value={createCounterparty}
+                label="Counterparty"
+                onChange={(e) => setCreateCounterparty(e.target.value)}
+              >
+                {filteredCompanies.map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.name} ({c.company_type})
+                  </MenuItem>
+                ))}
+                {filteredCompanies.length === 0 && (
+                  <MenuItem disabled value="">
+                    No {createRole} companies found
+                  </MenuItem>
+                )}
+              </Select>
+            </FormControl>
+          </Stack>
+
+          {/* Billing Period */}
+          <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+            Billing Period
+          </Typography>
+          <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Period Start"
+              type="date"
+              value={createPeriodStart}
+              onChange={(e) => setCreatePeriodStart(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <TextField
+              fullWidth
+              size="small"
+              label="Period End"
+              type="date"
+              value={createPeriodEnd}
+              onChange={(e) => setCreatePeriodEnd(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Currency</InputLabel>
+              <Select
+                value={createCurrency}
+                label="Currency"
+                onChange={(e) => setCreateCurrency(e.target.value)}
+              >
+                <MenuItem value="USD">USD</MenuItem>
+                <MenuItem value="EUR">EUR</MenuItem>
+                <MenuItem value="GBP">GBP</MenuItem>
+                <MenuItem value="CAD">CAD</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+
+          {/* Line Items */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              Line Items
+            </Typography>
+            <Button size="small" startIcon={<AddIcon />} onClick={handleAddLine}>
+              Add Line
+            </Button>
+          </Box>
+
+          <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ width: '45%' }}>Description</TableCell>
+                  <TableCell sx={{ width: '15%' }}>Qty</TableCell>
+                  <TableCell sx={{ width: '20%' }}>Unit Price</TableCell>
+                  <TableCell sx={{ width: '15%' }}>Total</TableCell>
+                  <TableCell sx={{ width: '5%' }} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {createLines.map((line, idx) => {
+                  const lineTotal = (parseFloat(line.quantity) || 0) * (parseFloat(line.unit_price) || 0)
+                  return (
+                    <TableRow key={idx}>
+                      <TableCell sx={{ py: 0.75 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          placeholder="Item description"
+                          value={line.description}
+                          onChange={(e) => handleLineChange(idx, 'description', e.target.value)}
+                          variant="standard"
+                        />
+                      </TableCell>
+                      <TableCell sx={{ py: 0.75 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          type="number"
+                          value={line.quantity}
+                          onChange={(e) => handleLineChange(idx, 'quantity', e.target.value)}
+                          variant="standard"
+                          slotProps={{ htmlInput: { min: 1 } }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ py: 0.75 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          type="number"
+                          value={line.unit_price}
+                          onChange={(e) => handleLineChange(idx, 'unit_price', e.target.value)}
+                          variant="standard"
+                          slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ py: 0.75 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {formatCurrency(lineTotal.toFixed(2), createCurrency)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ py: 0.75 }}>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleRemoveLine(idx)}
+                          disabled={createLines.length <= 1}
+                        >
+                          <DeleteOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          {/* Subtotal Preview */}
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: 'action.hover' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Subtotal ({createLines.length} item{createLines.length !== 1 ? 's' : ''})
+              </Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                {formatCurrency(computeSubtotal().toFixed(2), createCurrency)}
+              </Typography>
+            </Box>
+          </Paper>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => { setCreateOpen(false); resetCreateForm() }} disabled={createInvoiceMutation.isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateSubmit}
+            disabled={
+              createInvoiceMutation.isPending ||
+              !createCounterparty ||
+              !createPeriodStart ||
+              !createPeriodEnd ||
+              createLines.every(l => !l.description.trim())
+            }
+            startIcon={createInvoiceMutation.isPending ? <CircularProgress size={16} /> : <CheckCircleIcon />}
+          >
+            Create Invoice
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   )
 }

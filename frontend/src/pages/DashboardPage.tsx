@@ -2,31 +2,68 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
-  Smartphone, ShoppingBag, Package, ReceiptText, TrendingUp, Users, Building, Shield, X, FileText, Truck, Upload, Clock
-} from 'lucide-react'
-import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
 } from 'recharts'
+
+// MUI components
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import Grid from '@mui/material/Grid'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import TextField from '@mui/material/TextField'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Checkbox from '@mui/material/Checkbox'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Chip from '@mui/material/Chip'
+import Alert from '@mui/material/Alert'
+import IconButton from '@mui/material/IconButton'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Divider from '@mui/material/Divider'
+
+// MUI Icons
+import SmartphoneIcon from '@mui/icons-material/Smartphone'
+import ShoppingBagIcon from '@mui/icons-material/ShoppingBag'
+import InventoryIcon from '@mui/icons-material/Inventory'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import PeopleIcon from '@mui/icons-material/People'
+import BusinessIcon from '@mui/icons-material/Business'
+import ShieldIcon from '@mui/icons-material/Shield'
+import CloseIcon from '@mui/icons-material/Close'
+import DescriptionIcon from '@mui/icons-material/Description'
+import LocalShippingIcon from '@mui/icons-material/LocalShipping'
+import UploadIcon from '@mui/icons-material/Upload'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
+
+// Shared components and utilities
 import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
 import AddressAutocomplete from '../components/AddressAutocomplete'
+import PageHeader from '../components/layout/PageHeader'
+import StatCard from '../components/data-display/StatCard'
+import StatusChip from '../components/data-display/StatusChip'
+import ConfirmDialog from '../components/feedback/ConfirmDialog'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import { useSnackbar } from '../components/feedback/SnackbarProvider'
+import { formatCurrency, formatDate } from '../lib/formatters'
+import { US_STATES } from '../lib/constants'
 
-const US_STATES = [
-  ['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],
-  ['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['FL','Florida'],['GA','Georgia'],
-  ['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],['IN','Indiana'],['IA','Iowa'],
-  ['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],['ME','Maine'],['MD','Maryland'],
-  ['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],['MS','Mississippi'],['MO','Missouri'],
-  ['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],['NJ','New Jersey'],
-  ['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],
-  ['OK','Oklahoma'],['OR','Oregon'],['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],
-  ['SD','South Dakota'],['TN','Tennessee'],['TX','Texas'],['UT','Utah'],['VT','Vermont'],
-  ['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming'],
-  ['OTHER','Other / International'],
-]
-
-// AM/PM Time Picker — converts between 24hr storage and 12hr display
-function AmPmTimePicker({ value, onChange, allowEmpty, inputStyle }: { value: string; onChange: (v: string) => void; allowEmpty?: boolean; inputStyle?: React.CSSProperties }) {
+// ─── AM/PM Time Picker ──────────────────────────────────────────────────────
+function AmPmTimePicker({ value, onChange, allowEmpty }: { value: string; onChange: (v: string) => void; allowEmpty?: boolean }) {
   const parseTime = (v: string) => {
     if (!v || v === '--:--') return { hour: '', minute: '00', ampm: 'AM' }
     const [h, m] = v.split(':').map(Number)
@@ -45,37 +82,48 @@ function AmPmTimePicker({ value, onChange, allowEmpty, inputStyle }: { value: st
     onChange(`${String(h24).padStart(2, '0')}:${m || '00'}`)
   }
 
-  const base: React.CSSProperties = inputStyle ?? {
-    padding: '8px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-    borderRadius: 6, color: 'var(--text-primary)', fontSize: 13, outline: 'none',
-    width: '100%', boxSizing: 'border-box'
-  }
-
   return (
-    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-      <select style={{ ...base, flex: 1, padding: '8px 4px', textAlign: 'center' }} value={hour} onChange={e => emit(e.target.value, minute, ampm)}>
-        {allowEmpty && <option value=''>--</option>}
+    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+      <Select
+        size="small"
+        value={hour}
+        onChange={e => emit(e.target.value, minute, ampm)}
+        sx={{ flex: 1, textAlign: 'center' }}
+      >
+        {allowEmpty && <MenuItem value=''>--</MenuItem>}
         {Array.from({ length: 12 }, (_, i) => i + 1).map(h => (
-          <option key={h} value={String(h)}>{String(h).padStart(2, '0')}</option>
+          <MenuItem key={h} value={String(h)}>{String(h).padStart(2, '0')}</MenuItem>
         ))}
-      </select>
-      <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>:</span>
-      <select style={{ ...base, flex: 1, padding: '8px 4px', textAlign: 'center' }} value={minute} onChange={e => emit(hour, e.target.value, ampm)}>
+      </Select>
+      <Typography sx={{ color: 'text.secondary', fontWeight: 600 }}>:</Typography>
+      <Select
+        size="small"
+        value={minute}
+        onChange={e => emit(hour, e.target.value, ampm)}
+        sx={{ flex: 1, textAlign: 'center' }}
+      >
         {['00','05','10','15','20','25','30','35','40','45','50','55'].map(m => (
-          <option key={m} value={m}>{m}</option>
+          <MenuItem key={m} value={m}>{m}</MenuItem>
         ))}
-      </select>
-      <select style={{ ...base, flex: 'none', width: 58, padding: '8px 4px', textAlign: 'center' }} value={ampm} onChange={e => emit(hour, minute, e.target.value)}>
-        <option value='AM'>AM</option>
-        <option value='PM'>PM</option>
-      </select>
-    </div>
+      </Select>
+      <Select
+        size="small"
+        value={ampm}
+        onChange={e => emit(hour, minute, e.target.value)}
+        sx={{ flex: 'none', width: 72, textAlign: 'center' }}
+      >
+        <MenuItem value='AM'>AM</MenuItem>
+        <MenuItem value='PM'>PM</MenuItem>
+      </Select>
+    </Box>
   )
 }
 
 // ─── ONBOARD ORGANIZATION MODAL ──────────────────────────────────────────────
 function OnboardOrgModal({ onClose }: { onClose: () => void }) {
-  const [showConfirmClose, setShowConfirmClose] = useState(false)
+  const { confirm, dialogProps } = useConfirmDialog()
+  const { showSnackbar } = useSnackbar()
+
   const [companyType, setCompanyType] = useState('')
   const [buyerType, setBuyerType] = useState('')
   const [vendorType, setVendorType] = useState('')
@@ -139,7 +187,7 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     api.get('/tenant/companies/').then(r => {
       setCompanies(Array.isArray(r.data) ? r.data : r.data?.results ?? [])
-    }).catch(() => {})
+    })
   }, [])
 
   const isFormDirty = () => {
@@ -188,6 +236,21 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
     if (f) {
       setLogoFile(f)
       setLogoPreview(URL.createObjectURL(f))
+    }
+  }
+
+  const handleClose = async () => {
+    if (isFormDirty()) {
+      const confirmed = await confirm({
+        title: 'Unsaved Changes',
+        message: 'Your progress will be lost because you have unsaved changes. Are you sure you want to close?',
+        confirmLabel: 'Yes, Discard',
+        cancelLabel: 'No, Keep Editing',
+        confirmColor: 'error',
+      })
+      if (confirmed) onClose()
+    } else {
+      onClose()
     }
   }
 
@@ -284,401 +347,494 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const S: Record<string, React.CSSProperties> = {
-    overlay: { position: 'fixed', inset: 0, background: 'rgba(4,6,10,0.82)', backdropFilter: 'blur(6px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-    modal: { background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius)', width: 560, maxWidth: '96vw', maxHeight: '92vh', overflowY: 'auto', padding: 28, boxShadow: '0 32px 64px -12px rgba(0,0,0,0.75)', animation: 'modalEnter .25s cubic-bezier(.16,1,.3,1)' },
-    row: { display: 'flex', gap: 14 },
-    col: { display: 'flex', flexDirection: 'column', gap: 4, flex: 1 },
-    label: { fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' },
-    input: { padding: '8px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box' },
-    section: { borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 8 },
-  }
-
   if (success) return (
-    <div style={S.overlay}>
-      <div style={S.modal}>
-        <div style={{ textAlign: 'center', padding: '32px 0' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Organization Onboarded!</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 24 }}>{companyName} has been created and activated on the platform.</div>
-          <button className="btn btn-primary" onClick={onClose}>Close</button>
-        </div>
-      </div>
-    </div>
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogContent>
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <Typography sx={{ fontSize: 40, mb: 1.5 }}>🎉</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+            Organization Onboarded!
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            {companyName} has been created and activated on the platform.
+          </Typography>
+          <Button variant="contained" onClick={onClose}>Close</Button>
+        </Box>
+      </DialogContent>
+    </Dialog>
   )
 
   return (
-    <div style={S.overlay}>
-      <style>{`@keyframes modalEnter{from{opacity:0;transform:scale(.96) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
-      <div style={S.modal}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>Onboard Organization</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Register a new buyer or vendor tenant on the platform</div>
-          </div>
-          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => { if (isFormDirty()) setShowConfirmClose(true); else onClose() }}><X size={18} /></button>
-        </div>
+    <>
+      <Dialog
+        open
+        onClose={handleClose}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{ paper: { sx: { maxHeight: '92vh' } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', pb: 1 }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>Onboard Organization</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Register a new buyer or vendor tenant on the platform
+            </Typography>
+          </Box>
+          <IconButton size="small" onClick={handleClose} sx={{ mt: -0.5 }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
 
-        {error && <div style={{ background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, padding: '8px 12px', color: '#ef4444', fontSize: 12, marginBottom: 14 }}>{error}</div>}
-
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Company Type */}
-          <div style={S.col}>
-            <label style={S.label}>Company Type *</label>
-            <select style={S.input} value={companyType} onChange={e => { setCompanyType(e.target.value); setBuyerType(''); setVendorType(''); setIntegrationMode('') }}>
-              <option value=''>Select Company Type</option>
-              <option value='buyer'>Buyer</option>
-              <option value='vendor'>Vendor</option>
-              <option value='device_distributor'>Device Distributor</option>
-            </select>
-          </div>
-
-          {/* Buyer Sub-type */}
-          {companyType === 'buyer' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={S.col}>
-                <label style={S.label}>Buyer Type *</label>
-                <select style={S.input} value={buyerType} onChange={e => setBuyerType(e.target.value)}>
-                  <option value=''>Select Buyer Type</option>
-                  <option value='mvno'>MVNO</option>
-                  <option value='wireless_carrier'>Wireless Carrier</option>
-                  <option value='retailer'>Retailer</option>
-                  <option value='enterprise_corporate'>Enterprise/ Corporate</option>
-                </select>
-              </div>
-              <div style={S.row}>
-                <div style={S.col}>
-                  <label style={S.label}>Buyer Pricing Mode *</label>
-                  <select style={S.input} value={buyerPricingMode} onChange={e => setBuyerPricingMode(e.target.value)}>
-                    <option value="standard">Standard Buyer Commission (14%)</option>
-                    <option value="no_commission">No Buyer Commission (0%)</option>
-                    <option value="custom">Custom Buyer Commission</option>
-                  </select>
-                </div>
-                {buyerPricingMode === 'custom' && (
-                  <div style={S.col}>
-                    <label style={S.label}>Commission Percentage (%) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      style={S.input}
-                      placeholder="e.g. 10.00"
-                      value={commissionPercentage}
-                      onChange={e => setCommissionPercentage(e.target.value)}
-                      required
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
+        <DialogContent dividers>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
           )}
 
-          {/* Vendor Sub-type */}
-          {companyType === 'vendor' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={S.col}>
-                <label style={S.label}>Vendor Type *</label>
-                <select style={S.input} value={vendorType} onChange={e => setVendorType(e.target.value)}>
-                  <option value=''>Select Vendor Type</option>
-                  <option value='accessory_vendor'>Accessory Vendor</option>
-                </select>
-              </div>
-            </div>
-          )}
+          <Box component="form" id="onboard-org-form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Company Type */}
+            <FormControl fullWidth size="small">
+              <InputLabel>Company Type *</InputLabel>
+              <Select
+                value={companyType}
+                label="Company Type *"
+                onChange={e => { setCompanyType(e.target.value); setBuyerType(''); setVendorType(''); setIntegrationMode('') }}
+              >
+                <MenuItem value=''>Select Company Type</MenuItem>
+                <MenuItem value='buyer'>Buyer</MenuItem>
+                <MenuItem value='vendor'>Vendor</MenuItem>
+                <MenuItem value='device_distributor'>Device Distributor</MenuItem>
+              </Select>
+            </FormControl>
 
-          {/* Core Identity */}
-          <div style={S.row}>
-            <div style={S.col}>
-              <label style={S.label}>Company Legal Name *</label>
-              <input style={S.input} placeholder='e.g. Acme Corp Ltd.' required value={companyName} onChange={e => {
-                const val = e.target.value;
-                setCompanyName(val);
-                setDisplayName(prev => (prev === '' || prev === companyName) ? val : prev);
-              }} />
-            </div>
-            <div style={S.col}>
-              <label style={S.label}>Display Name *</label>
-              <input style={S.input} placeholder='Short name for UI' required value={displayName} onChange={e => setDisplayName(e.target.value)} />
-            </div>
-          </div>
+            {/* Buyer Sub-type */}
+            {companyType === 'buyer' && (
+              <>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Buyer Type *</InputLabel>
+                  <Select value={buyerType} label="Buyer Type *" onChange={e => setBuyerType(e.target.value)}>
+                    <MenuItem value=''>Select Buyer Type</MenuItem>
+                    <MenuItem value='mvno'>MVNO</MenuItem>
+                    <MenuItem value='wireless_carrier'>Wireless Carrier</MenuItem>
+                    <MenuItem value='retailer'>Retailer</MenuItem>
+                    <MenuItem value='enterprise_corporate'>Enterprise/ Corporate</MenuItem>
+                  </Select>
+                </FormControl>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: buyerPricingMode === 'custom' ? 6 : 12 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Buyer Pricing Mode *</InputLabel>
+                      <Select value={buyerPricingMode} label="Buyer Pricing Mode *" onChange={e => setBuyerPricingMode(e.target.value)}>
+                        <MenuItem value="standard">Standard Buyer Commission (14%)</MenuItem>
+                        <MenuItem value="no_commission">No Buyer Commission (0%)</MenuItem>
+                        <MenuItem value="custom">Custom Buyer Commission</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  {buyerPricingMode === 'custom' && (
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="number"
+                        label="Commission Percentage (%) *"
+                        placeholder="e.g. 10.00"
+                        slotProps={{ htmlInput: { step: '0.01', min: '0', max: '100' } }}
+                        value={commissionPercentage}
+                        onChange={e => setCommissionPercentage(e.target.value)}
+                        required
+                      />
+                    </Grid>
+                  )}
+                </Grid>
+              </>
+            )}
 
-          <div style={S.row}>
-            <div style={S.col}>
-              <label style={S.label}>Primary Contact Name *</label>
-              <input style={S.input} placeholder='Jane Smith' required value={contactName} onChange={e => setContactName(e.target.value)} />
-            </div>
-            <div style={S.col}>
-              <label style={S.label}>Business Email *</label>
-              <input style={S.input} type='email' placeholder='admin@company.com' required value={contactEmail} onChange={e => setContactEmail(e.target.value)} />
-            </div>
-          </div>
+            {/* Vendor Sub-type */}
+            {companyType === 'vendor' && (
+              <FormControl fullWidth size="small">
+                <InputLabel>Vendor Type *</InputLabel>
+                <Select value={vendorType} label="Vendor Type *" onChange={e => setVendorType(e.target.value)}>
+                  <MenuItem value=''>Select Vendor Type</MenuItem>
+                  <MenuItem value='accessory_vendor'>Accessory Vendor</MenuItem>
+                </Select>
+              </FormControl>
+            )}
 
-          <div style={S.row}>
-            <div style={S.col}>
-              <label style={S.label}>Website *</label>
-              <input style={S.input} placeholder='https://company.com' required value={website} onChange={e => setWebsite(e.target.value)} />
-            </div>
-            <div style={S.col}>
-              <label style={S.label}>Email Domain *</label>
-              <input style={S.input} placeholder='company.com' required value={emailDomain} onChange={e => setEmailDomain(e.target.value)} />
-            </div>
-          </div>
-
-          <div style={S.row}>
-            <div style={S.col}>
-              <label style={S.label}>Phone Number <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(optional)</span></label>
-              <input style={S.input} placeholder='+1-555-0199' value={phone} onChange={e => setPhone(e.target.value)} />
-            </div>
-            <div style={S.col}>
-              <label style={S.label}>Country Code *</label>
-              <input style={S.input} placeholder='USA' required value={country} onChange={e => {
-                setCountry(e.target.value)
-                if (sameAsCompanyAddress) setReturnCountry(e.target.value)
-              }} />
-            </div>
-          </div>
-
-          {/* Address with Google Places */}
-          <div style={S.col}>
-            <label style={S.label}>Address Line 1 *</label>
-            <AddressAutocomplete
-              value={address1}
-              onChange={val => {
-                setAddress1(val)
-                if (sameAsCompanyAddress) setReturnAddress1(val)
-              }}
-              onSelect={({ address1: a1, city: c, state: s, zip: z, country: co }) => {
-                setAddress1(a1)
-                setCity(c)
-                setRegion(s)
-                setZip(z)
-                setCountry(co)
-                if (sameAsCompanyAddress) {
-                  setReturnAddress1(a1)
-                  setReturnCity(c)
-                  setReturnRegion(s)
-                  setReturnZip(z)
-                  setReturnCountry(co)
-                }
-              }}
-              style={S.input}
-              className=''
-              placeholder='Start typing an address…'
-            />
-          </div>
-
-          <div style={S.row}>
-            <div style={S.col}>
-              <label style={S.label}>Address Line 2 <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(unit, suite…)</span></label>
-              <input style={S.input} placeholder='e.g. Suite 400' value={address2} onChange={e => {
-                setAddress2(e.target.value)
-                if (sameAsCompanyAddress) setReturnAddress2(e.target.value)
-              }} />
-            </div>
-            <div style={S.col}>
-              <label style={S.label}>City</label>
-              <input style={S.input} placeholder='Auto-filled' value={city} onChange={e => {
-                setCity(e.target.value)
-                if (sameAsCompanyAddress) setReturnCity(e.target.value)
-              }} />
-            </div>
-          </div>
-
-          <div style={S.row}>
-            <div style={S.col}>
-              <label style={S.label}>ZIP / Postal Code</label>
-              <input style={S.input} placeholder='Auto-filled' value={zip} onChange={e => {
-                setZip(e.target.value)
-                if (sameAsCompanyAddress) setReturnZip(e.target.value)
-              }} />
-            </div>
-            <div style={S.col}>
-              <label style={S.label}>State / Province</label>
-              <select style={S.input} value={region} onChange={e => {
-                setRegion(e.target.value)
-                if (sameAsCompanyAddress) setReturnRegion(e.target.value)
-              }}>
-                <option value=''>— Select state —</option>
-                {US_STATES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* Vendor Return Address Section */}
-          {companyType === 'vendor' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, borderTop: '1px solid var(--border-light)', paddingTop: 14 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', marginBottom: 12 }}>
-                <input 
-                  type='checkbox' 
-                  checked={sameAsCompanyAddress} 
+            {/* Core Identity */}
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="Company Legal Name *" placeholder="e.g. Acme Corp Ltd." required
+                  value={companyName}
                   onChange={e => {
-                    const checked = e.target.checked
-                    setSameAsCompanyAddress(checked)
-                    if (checked) {
-                      setReturnAddress1(address1)
-                      setReturnAddress2(address2)
-                      setReturnCity(city)
-                      setReturnRegion(region)
-                      setReturnZip(zip)
-                      setReturnCountry(country)
-                    }
-                  }} 
-                />
-                <strong>Same as company address</strong>
-              </label>
-
-              <div style={S.col}>
-                <label style={S.label}>Return Address Line 1 *</label>
-                <AddressAutocomplete
-                  value={returnAddress1}
-                  onChange={val => {
-                    setReturnAddress1(val)
-                    setSameAsCompanyAddress(false)
+                    const val = e.target.value;
+                    setCompanyName(val);
+                    setDisplayName(prev => (prev === '' || prev === companyName) ? val : prev);
                   }}
-                  onSelect={({ address1: a1, city: c, state: s, zip: z, country: co }) => {
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="Display Name *" placeholder="Short name for UI" required
+                  value={displayName} onChange={e => setDisplayName(e.target.value)}
+                />
+              </Grid>
+            </Grid>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="Primary Contact Name *" placeholder="Jane Smith" required
+                  value={contactName} onChange={e => setContactName(e.target.value)}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" type="email" label="Business Email *" placeholder="admin@company.com" required
+                  value={contactEmail} onChange={e => setContactEmail(e.target.value)}
+                />
+              </Grid>
+            </Grid>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="Website *" placeholder="https://company.com" required
+                  value={website} onChange={e => setWebsite(e.target.value)}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="Email Domain *" placeholder="company.com" required
+                  value={emailDomain} onChange={e => setEmailDomain(e.target.value)}
+                />
+              </Grid>
+            </Grid>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="Phone Number (optional)" placeholder="+1-555-0199"
+                  value={phone} onChange={e => setPhone(e.target.value)}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="Country Code *" placeholder="USA" required
+                  value={country} onChange={e => {
+                    setCountry(e.target.value)
+                    if (sameAsCompanyAddress) setReturnCountry(e.target.value)
+                  }}
+                />
+              </Grid>
+            </Grid>
+
+            {/* Address with Google Places */}
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Address Line 1 *
+              </Typography>
+              <AddressAutocomplete
+                value={address1}
+                onChange={val => {
+                  setAddress1(val)
+                  if (sameAsCompanyAddress) setReturnAddress1(val)
+                }}
+                onSelect={({ address1: a1, city: c, state: s, zip: z, country: co }) => {
+                  setAddress1(a1)
+                  setCity(c)
+                  setRegion(s)
+                  setZip(z)
+                  setCountry(co)
+                  if (sameAsCompanyAddress) {
                     setReturnAddress1(a1)
                     setReturnCity(c)
                     setReturnRegion(s)
                     setReturnZip(z)
                     setReturnCountry(co)
-                    setSameAsCompanyAddress(false)
+                  }
+                }}
+                style={{
+                  padding: '8.5px 14px', background: 'transparent', border: '1px solid rgba(0,0,0,0.23)',
+                  borderRadius: 4, color: 'inherit', fontSize: '0.875rem', outline: 'none',
+                  width: '100%', boxSizing: 'border-box',
+                }}
+                className=''
+                placeholder='Start typing an address...'
+              />
+            </Box>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="Address Line 2 (unit, suite...)" placeholder="e.g. Suite 400"
+                  value={address2} onChange={e => {
+                    setAddress2(e.target.value)
+                    if (sameAsCompanyAddress) setReturnAddress2(e.target.value)
                   }}
-                  style={S.input}
-                  className=''
-                  placeholder='Start typing return address…'
                 />
-              </div>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="City" placeholder="Auto-filled"
+                  value={city} onChange={e => {
+                    setCity(e.target.value)
+                    if (sameAsCompanyAddress) setReturnCity(e.target.value)
+                  }}
+                />
+              </Grid>
+            </Grid>
 
-              <div style={S.row}>
-                <div style={S.col}>
-                  <label style={S.label}>Return Address Line 2 <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(unit, suite…)</span></label>
-                  <input style={S.input} placeholder='e.g. Suite 400' value={returnAddress2} onChange={e => {
-                    setReturnAddress2(e.target.value)
-                    setSameAsCompanyAddress(false)
-                  }} />
-                </div>
-                <div style={S.col}>
-                  <label style={S.label}>Return City</label>
-                  <input style={S.input} placeholder='Auto-filled' value={returnCity} onChange={e => {
-                    setReturnCity(e.target.value)
-                    setSameAsCompanyAddress(false)
-                  }} />
-                </div>
-              </div>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="ZIP / Postal Code" placeholder="Auto-filled"
+                  value={zip} onChange={e => {
+                    setZip(e.target.value)
+                    if (sameAsCompanyAddress) setReturnZip(e.target.value)
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>State / Province</InputLabel>
+                  <Select
+                    value={region}
+                    label="State / Province"
+                    onChange={e => {
+                      setRegion(e.target.value)
+                      if (sameAsCompanyAddress) setReturnRegion(e.target.value)
+                    }}
+                  >
+                    <MenuItem value=''>-- Select state --</MenuItem>
+                    {US_STATES.map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
 
-              <div style={S.row}>
-                <div style={S.col}>
-                  <label style={S.label}>Return ZIP / Postal Code</label>
-                  <input style={S.input} placeholder='Auto-filled' value={returnZip} onChange={e => {
-                    setReturnZip(e.target.value)
-                    setSameAsCompanyAddress(false)
-                  }} />
-                </div>
-                <div style={S.col}>
-                  <label style={S.label}>Return State / Province</label>
-                  <select style={S.input} value={returnRegion} onChange={e => {
-                    setReturnRegion(e.target.value)
-                    setSameAsCompanyAddress(false)
-                  }}>
-                    <option value=''>— Select state —</option>
-                    {US_STATES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </div>
-              </div>
+            {/* Vendor Return Address Section */}
+            {companyType === 'vendor' && (
+              <>
+                <Divider sx={{ mt: 1 }} />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={sameAsCompanyAddress}
+                      onChange={e => {
+                        const checked = e.target.checked
+                        setSameAsCompanyAddress(checked)
+                        if (checked) {
+                          setReturnAddress1(address1)
+                          setReturnAddress2(address2)
+                          setReturnCity(city)
+                          setReturnRegion(region)
+                          setReturnZip(zip)
+                          setReturnCountry(country)
+                        }
+                      }}
+                    />
+                  }
+                  label={<Typography variant="body2" fontWeight={600}>Same as company address</Typography>}
+                  sx={{ mb: 1 }}
+                />
 
-              <div style={S.row}>
-                <div style={S.col}>
-                  <label style={S.label}>Return Country Code *</label>
-                  <input style={S.input} placeholder='USA' value={returnCountry} onChange={e => {
-                    setReturnCountry(e.target.value)
-                    setSameAsCompanyAddress(false)
-                  }} />
-                </div>
-                <div style={S.col}></div>
-              </div>
-            </div>
-          )}
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                    Return Address Line 1 *
+                  </Typography>
+                  <AddressAutocomplete
+                    value={returnAddress1}
+                    onChange={val => {
+                      setReturnAddress1(val)
+                      setSameAsCompanyAddress(false)
+                    }}
+                    onSelect={({ address1: a1, city: c, state: s, zip: z, country: co }) => {
+                      setReturnAddress1(a1)
+                      setReturnCity(c)
+                      setReturnRegion(s)
+                      setReturnZip(z)
+                      setReturnCountry(co)
+                      setSameAsCompanyAddress(false)
+                    }}
+                    style={{
+                      padding: '8.5px 14px', background: 'transparent', border: '1px solid rgba(0,0,0,0.23)',
+                      borderRadius: 4, color: 'inherit', fontSize: '0.875rem', outline: 'none',
+                      width: '100%', boxSizing: 'border-box',
+                    }}
+                    className=''
+                    placeholder='Start typing return address...'
+                  />
+                </Box>
 
-          {/* Company Logo */}
-          <div style={{ ...S.section }}>
-            <label style={{ ...S.label, display: 'block', marginBottom: 8 }}>Company / Tenant Logo</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              {logoPreview ? (
-                <img src={logoPreview} alt='Logo preview' style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', padding: 4 }} />
-              ) : (
-                <div style={{ width: 56, height: 56, borderRadius: 8, border: '2px dashed var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                  <Upload size={20} />
-                </div>
-              )}
-              <div>
-                <label style={{ cursor: 'pointer' }}>
-                  <span className='btn btn-secondary btn-sm'><Upload size={13} /> Choose Logo</span>
-                  <input type='file' accept='image/png,image/jpeg,image/webp,image/svg+xml' style={{ display: 'none' }} onChange={handleLogoChange} />
-                </label>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>PNG, JPG, WEBP or SVG. Recommended 256×256px.</div>
-              </div>
-            </div>
-          </div>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth size="small" label="Return Address Line 2 (unit, suite...)" placeholder="e.g. Suite 400"
+                      value={returnAddress2} onChange={e => {
+                        setReturnAddress2(e.target.value)
+                        setSameAsCompanyAddress(false)
+                      }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth size="small" label="Return City" placeholder="Auto-filled"
+                      value={returnCity} onChange={e => {
+                        setReturnCity(e.target.value)
+                        setSameAsCompanyAddress(false)
+                      }}
+                    />
+                  </Grid>
+                </Grid>
 
-          {/* Additional Fields: Slug, ERP ID, Status, Channels, Flags */}
-          <div style={S.section}>
-            <div style={{ ...S.label, display: 'block', marginBottom: 10 }}>Organization Settings</div>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth size="small" label="Return ZIP / Postal Code" placeholder="Auto-filled"
+                      value={returnZip} onChange={e => {
+                        setReturnZip(e.target.value)
+                        setSameAsCompanyAddress(false)
+                      }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Return State / Province</InputLabel>
+                      <Select
+                        value={returnRegion}
+                        label="Return State / Province"
+                        onChange={e => {
+                          setReturnRegion(e.target.value)
+                          setSameAsCompanyAddress(false)
+                        }}
+                      >
+                        <MenuItem value=''>-- Select state --</MenuItem>
+                        {US_STATES.map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
 
-            <div style={S.row}>
-              <div style={S.col}>
-                <label style={S.label}>Custom Slug <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(optional, auto-generated if blank)</span></label>
-                <input style={S.input} placeholder='e.g. acme-corp' value={slug} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} />
-              </div>
-              <div style={S.col}>
-                <label style={S.label}>External ERP ID <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(optional)</span></label>
-                <input style={S.input} placeholder='e.g. EXT-908' value={erpId} onChange={e => setErpId(e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ ...S.row, marginTop: 10 }}>
-              <div style={S.col}>
-                <label style={S.label}>Status</label>
-                <select style={S.input} value={status} onChange={e => setStatus(e.target.value)}>
-                  <option value='draft'>Draft</option>
-                  <option value='active'>Active</option>
-                  <option value='suspended'>Suspended</option>
-                </select>
-              </div>
-              <div style={{ ...S.col, justifyContent: 'center', gap: 10 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', marginTop: 8 }}>
-                  <input type='checkbox' checked={isParent} onChange={e => setIsParent(e.target.checked)} />
-                  <strong>Mark as Parent Company</strong>
-                </label>
-                {companyType === 'vendor' && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                    <input type='checkbox' checked={mapPricingEnforced} onChange={e => setMapPricingEnforced(e.target.checked)} />
-                    <strong>Enforce MAP Pricing</strong>
-                  </label>
-                )}
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                  <input type='checkbox' checked={allowPersonalEmail} onChange={e => setAllowPersonalEmail(e.target.checked)} />
-                  <strong>Allow personal email domain exception</strong>
-                </label>
-              </div>
-            </div>
-
-            {!isParent && (
-              <div style={{ ...S.col, marginTop: 10 }}>
-                <label style={S.label}>Parent Company</label>
-                <select style={S.input} value={parentId} onChange={e => setParentId(e.target.value)}>
-                  <option value=''>— Select parent —</option>
-                  {companies.filter((c: any) => c.is_parent).map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth size="small" label="Return Country Code *" placeholder="USA"
+                      value={returnCountry} onChange={e => {
+                        setReturnCountry(e.target.value)
+                        setSameAsCompanyAddress(false)
+                      }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }} />
+                </Grid>
+              </>
             )}
 
-            <div style={{ marginTop: 12 }}>
-              <label style={{ ...S.label, display: 'block', marginBottom: 8 }}>Allowed Sales Channels</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            {/* Company Logo */}
+            <Divider sx={{ mt: 1 }} />
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', display: 'block', mb: 1 }}>
+                Company / Tenant Logo
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {logoPreview ? (
+                  <Box
+                    component="img"
+                    src={logoPreview}
+                    alt="Logo preview"
+                    sx={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 1, border: 1, borderColor: 'divider', bgcolor: 'action.hover', p: 0.5 }}
+                  />
+                ) : (
+                  <Box sx={{
+                    width: 56, height: 56, borderRadius: 1, border: '2px dashed',
+                    borderColor: 'divider', bgcolor: 'action.hover',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'text.secondary',
+                  }}>
+                    <UploadIcon />
+                  </Box>
+                )}
+                <Box>
+                  <Button variant="outlined" size="small" component="label" startIcon={<UploadIcon />}>
+                    Choose Logo
+                    <input type='file' accept='image/png,image/jpeg,image/webp,image/svg+xml' hidden onChange={handleLogoChange} />
+                  </Button>
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                    PNG, JPG, WEBP or SVG. Recommended 256x256px.
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+
+            {/* Additional Fields: Slug, ERP ID, Status, Channels, Flags */}
+            <Divider sx={{ mt: 1 }} />
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Organization Settings
+            </Typography>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="Custom Slug (optional, auto-generated if blank)" placeholder="e.g. acme-corp"
+                  value={slug} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth size="small" label="External ERP ID (optional)" placeholder="e.g. EXT-908"
+                  value={erpId} onChange={e => setErpId(e.target.value)}
+                />
+              </Grid>
+            </Grid>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select value={status} label="Status" onChange={e => setStatus(e.target.value)}>
+                    <MenuItem value='draft'>Draft</MenuItem>
+                    <MenuItem value='active'>Active</MenuItem>
+                    <MenuItem value='suspended'>Suspended</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
+                  <FormControlLabel
+                    control={<Checkbox size="small" checked={isParent} onChange={e => setIsParent(e.target.checked)} />}
+                    label={<Typography variant="body2" fontWeight={600}>Mark as Parent Company</Typography>}
+                  />
+                  {companyType === 'vendor' && (
+                    <FormControlLabel
+                      control={<Checkbox size="small" checked={mapPricingEnforced} onChange={e => setMapPricingEnforced(e.target.checked)} />}
+                      label={<Typography variant="body2" fontWeight={600}>Enforce MAP Pricing</Typography>}
+                    />
+                  )}
+                  <FormControlLabel
+                    control={<Checkbox size="small" checked={allowPersonalEmail} onChange={e => setAllowPersonalEmail(e.target.checked)} />}
+                    label={<Typography variant="body2" fontWeight={600}>Allow personal email domain exception</Typography>}
+                  />
+                </Box>
+              </Grid>
+            </Grid>
+
+            {!isParent && (
+              <FormControl fullWidth size="small">
+                <InputLabel>Parent Company</InputLabel>
+                <Select value={parentId} label="Parent Company" onChange={e => setParentId(e.target.value)}>
+                  <MenuItem value=''>-- Select parent --</MenuItem>
+                  {companies.filter((c: any) => c.is_parent).map((c: any) => (
+                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', display: 'block', mb: 1 }}>
+                Allowed Sales Channels
+              </Typography>
+              <Grid container spacing={1}>
                 {[
                   { val: 'online_dtc', lbl: 'Online DTC' },
                   { val: 'bulk_po', lbl: 'Bulk PO' },
@@ -687,181 +843,130 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
                   { val: 'marketplace', lbl: 'Marketplace' },
                   { val: 'retail_pos', lbl: 'Retail POS' },
                 ].map(ch => (
-                  <label key={ch.val} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                    <input type='checkbox' checked={allowedChannels.includes(ch.val)}
-                      onChange={e => setAllowedChannels(e.target.checked ? [...allowedChannels, ch.val] : allowedChannels.filter(x => x !== ch.val))}
-                    />
-                    {ch.lbl}
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-          {companyType === 'vendor' && (
-            <div style={S.section}>
-              <div style={{ ...S.label, marginBottom: 10, display: 'block' }}>Integration Mode</div>
-              <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                {(['api', 'manual'] as const).map(mode => (
-                  <button
-                    key={mode}
-                    type='button'
-                    onClick={() => {
-                      if (integrationMode === mode) {
-                        if (mode === 'api') {
-                          setIntegrationMode('')
-                        } else if (mode === 'manual') {
-                          const isEmpty = (dailyEmailTime === '08:00' || !dailyEmailTime) && !dailyEmailTime2 && orderDigestEmails.length === 0
-                          if (isEmpty) {
-                            setIntegrationMode('')
-                          }
-                        }
-                      } else {
-                        setIntegrationMode(mode)
+                  <Grid size={{ xs: 6, sm: 4 }} key={ch.val}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={allowedChannels.includes(ch.val)}
+                          onChange={e => setAllowedChannels(e.target.checked ? [...allowedChannels, ch.val] : allowedChannels.filter(x => x !== ch.val))}
+                        />
                       }
-                    }}
-                    style={{
-                      flex: 1, padding: '10px 0', borderRadius: 8, border: `1.5px solid ${integrationMode === mode ? 'var(--accent)' : 'var(--border)'}`,
-                      background: integrationMode === mode ? 'rgba(99,102,241,.12)' : 'var(--bg-elevated)',
-                      color: integrationMode === mode ? 'var(--accent)' : 'var(--text-secondary)',
-                      fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all .15s'
-                    }}
-                  >
-                    {mode === 'api' ? '🔌 API Integration' : '📋 Manual (Order Sheet)'}
-                  </button>
+                      label={<Typography variant="body2">{ch.lbl}</Typography>}
+                    />
+                  </Grid>
                 ))}
-              </div>
-              {integrationMode === 'api' && (
-                <div style={{ padding: '10px 12px', background: 'rgba(99,102,241,.08)', borderRadius: 6, fontSize: 12, color: 'var(--text-muted)' }}>
-                  API keys will be generated and sent to the vendor's business email after approval. The vendor will use the CIXCI REST API to push/pull order data.
-                </div>
-              )}
-              {integrationMode === 'manual' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ padding: '10px 12px', background: 'rgba(245,158,11,.08)', borderRadius: 6, fontSize: 12, color: 'var(--text-muted)' }}>
-                    Order digest emails will be sent automatically to the primary business email and any additional addresses configured below. No API credentials will be issued.
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <div style={S.col}>
-                      <label style={{ ...S.label, display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={12} /> First Send Time</label>
-                      <AmPmTimePicker value={dailyEmailTime} onChange={setDailyEmailTime} inputStyle={S.input} />
-                    </div>
-                    <div style={S.col}>
-                      <label style={{ ...S.label, display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={12} /> Second Send Time <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(optional)</span></label>
-                      <AmPmTimePicker value={dailyEmailTime2} onChange={setDailyEmailTime2} allowEmpty inputStyle={S.input} />
-                    </div>
-                  </div>
-                  <div style={S.col}>
-                    <label style={S.label}>Additional Automated Digest Recipients</label>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input
-                        type="email"
-                        style={{ ...S.input, flex: 1 }}
-                        placeholder="e.g. sales@vendor.com"
-                        value={newDigestEmail}
-                        onChange={e => setNewDigestEmail(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddDigestEmail(); } }}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddDigestEmail}
-                        style={{
-                          background: 'var(--accent)',
-                          border: 'none',
-                          borderRadius: 6,
-                          color: '#fff',
-                          padding: '0 14px',
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        + Add
-                      </button>
-                    </div>
-                    {orderDigestEmails.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6, maxHeight: 120, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: 6, padding: 6, border: '1px solid var(--border)' }}>
-                        {orderDigestEmails.map(email => (
-                          <div key={email} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)', padding: '4px 8px', borderRadius: 4, fontSize: 12, border: '1px solid var(--border-light)' }}>
-                            <span style={{ color: 'var(--text-primary)' }}>{email}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveDigestEmail(email)}
-                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Order digests emailed daily to the configured recipients at these times.</div>
-                </div>
-              )}
-            </div>
-          )}
+              </Grid>
+            </Box>
 
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--border)', marginTop: 4 }}>
-            <button type='button' className='btn btn-secondary' onClick={() => { if (isFormDirty()) setShowConfirmClose(true); else onClose() }} disabled={submitting}>Cancel</button>
-            <button type='submit' className='btn btn-primary' disabled={submitting}>
-              {submitting ? 'Creating…' : '✓ Onboard Organization'}
-            </button>
-          </div>
-        </form>
+            {companyType === 'vendor' && (
+              <>
+                <Divider sx={{ mt: 1 }} />
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', display: 'block', mb: 1 }}>
+                  Integration Mode
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1.5, mb: 1.5 }}>
+                  {(['api', 'manual'] as const).map(mode => (
+                    <Button
+                      key={mode}
+                      variant={integrationMode === mode ? 'contained' : 'outlined'}
+                      color={integrationMode === mode ? 'primary' : 'inherit'}
+                      onClick={() => {
+                        if (integrationMode === mode) {
+                          if (mode === 'api') {
+                            setIntegrationMode('')
+                          } else if (mode === 'manual') {
+                            const isEmpty = (dailyEmailTime === '08:00' || !dailyEmailTime) && !dailyEmailTime2 && orderDigestEmails.length === 0
+                            if (isEmpty) {
+                              setIntegrationMode('')
+                            }
+                          }
+                        } else {
+                          setIntegrationMode(mode)
+                        }
+                      }}
+                      sx={{ flex: 1, py: 1.25, fontWeight: 600, fontSize: 13 }}
+                    >
+                      {mode === 'api' ? 'API Integration' : 'Manual (Order Sheet)'}
+                    </Button>
+                  ))}
+                </Box>
+                {integrationMode === 'api' && (
+                  <Alert severity="info" variant="outlined" sx={{ fontSize: 12 }}>
+                    API keys will be generated and sent to the vendor's business email after approval. The vendor will use the CIXCI REST API to push/pull order data.
+                  </Alert>
+                )}
+                {integrationMode === 'manual' && (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    <Alert severity="warning" variant="outlined" sx={{ fontSize: 12 }}>
+                      Order digest emails will be sent automatically to the primary business email and any additional addresses configured below. No API credentials will be issued.
+                    </Alert>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                          <AccessTimeIcon sx={{ fontSize: 12 }} /> First Send Time
+                        </Typography>
+                        <AmPmTimePicker value={dailyEmailTime} onChange={setDailyEmailTime} />
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                          <AccessTimeIcon sx={{ fontSize: 12 }} /> Second Send Time (optional)
+                        </Typography>
+                        <AmPmTimePicker value={dailyEmailTime2} onChange={setDailyEmailTime2} allowEmpty />
+                      </Grid>
+                    </Grid>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', display: 'block', mb: 0.5 }}>
+                        Additional Automated Digest Recipients
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TextField
+                          fullWidth size="small" type="email" placeholder="e.g. sales@vendor.com"
+                          value={newDigestEmail}
+                          onChange={e => setNewDigestEmail(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddDigestEmail(); } }}
+                        />
+                        <Button variant="contained" size="small" onClick={handleAddDigestEmail} sx={{ whiteSpace: 'nowrap' }}>
+                          + Add
+                        </Button>
+                      </Box>
+                      {orderDigestEmails.length > 0 && (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 1, maxHeight: 120, overflowY: 'auto', bgcolor: 'action.hover', borderRadius: 1, p: 1, border: 1, borderColor: 'divider' }}>
+                          {orderDigestEmails.map(email => (
+                            <Box key={email} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'background.paper', px: 1, py: 0.5, borderRadius: 0.5, border: 1, borderColor: 'divider' }}>
+                              <Typography variant="body2">{email}</Typography>
+                              <Button size="small" color="error" onClick={() => handleRemoveDigestEmail(email)} sx={{ fontSize: 11, minWidth: 'auto' }}>
+                                Remove
+                              </Button>
+                            </Box>
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Order digests emailed daily to the configured recipients at these times.
+                    </Typography>
+                  </Box>
+                )}
+              </>
+            )}
+          </Box>
+        </DialogContent>
 
-        {showConfirmClose && (
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'rgba(4,6,10,0.92)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 3000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            borderRadius: 'var(--radius)'
-          }}>
-            <div style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-light)',
-              borderRadius: 8,
-              padding: 24,
-              maxWidth: 360,
-              textAlign: 'center',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
-            }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
-              <h4 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Unsaved Changes</h4>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, lineHeight: 1.4 }}>
-                Your progress will be lost because you have unsaved changes. Are you sure you want to close?
-              </p>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                <button type='button' className="btn btn-secondary btn-sm" onClick={() => setShowConfirmClose(false)}>No, Keep Editing</button>
-                <button type='button' className="btn btn-danger btn-sm" style={{ background: 'var(--red)', borderColor: 'var(--red)', color: '#fff' }} onClick={onClose}>Yes, Discard</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: 1, borderColor: 'divider' }}>
+          <Button variant="outlined" onClick={handleClose} disabled={submitting}>Cancel</Button>
+          <Button type="submit" form="onboard-org-form" variant="contained" disabled={submitting}>
+            {submitting ? 'Creating...' : 'Onboard Organization'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <ConfirmDialog {...dialogProps} />
+    </>
   )
 }
 
-function StatCard({ icon: Icon, label, value, sub, color, linkTo }: any) {
-  const content = (
-    <div className="stat-card">
-      <div className="stat-icon" style={{ background: `${color}18` }}>
-        <Icon size={18} color={color} />
-      </div>
-      <div className="stat-label">{label}</div>
-      <div className="stat-value" style={{ color }}>{value}</div>
-      <div className="stat-sub">{sub}</div>
-    </div>
-  )
-  return linkTo ? <Link to={linkTo} style={{ textDecoration: 'none' }}>{content}</Link> : content
-}
-
+// ─── MAIN DASHBOARD PAGE ─────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user } = useAuthStore()
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
@@ -884,136 +989,171 @@ export default function DashboardPage() {
 // ─── CIXCI ADMIN DASHBOARD ───────────────────────────────────────────────────
 function AdminDashboard({ count }: any) {
   const [showOnboardModal, setShowOnboardModal] = useState(false)
-  const { data: companies } = useQuery({ queryKey: ['admin-companies'], queryFn: () => api.get('/tenant/companies/').then(r => r.data).catch(() => []) })
-  const { data: users } = useQuery({ queryKey: ['admin-users'], queryFn: () => api.get('/tenant/users/').then(r => r.data).catch(() => []) })
-  const { data: devices } = useQuery({ queryKey: ['admin-devices'], queryFn: () => api.get('/devices/devices/').then(r => r.data).catch(() => []) })
-  const { data: products } = useQuery({ queryKey: ['admin-products'], queryFn: () => api.get('/catalog/products/').then(r => r.data).catch(() => []) })
+  const { data: companies } = useQuery({ queryKey: ['admin-companies'], queryFn: () => api.get('/tenant/companies/').then(r => r.data) })
+  const { data: users } = useQuery({ queryKey: ['admin-users'], queryFn: () => api.get('/tenant/users/').then(r => r.data) })
+  const { data: devices } = useQuery({ queryKey: ['admin-devices'], queryFn: () => api.get('/devices/devices/').then(r => r.data) })
+  const { data: products } = useQuery({ queryKey: ['admin-products'], queryFn: () => api.get('/catalog/products/').then(r => r.data) })
 
   const cCount = count(companies)
   const uCount = count(users)
   const dCount = count(devices)
   const pCount = count(products)
 
-  const globalActivity = [
-    { event: 'Tenant activated', desc: 'Added buyer: Telco Retailer', status: 'badge-green', statusText: 'Active', time: '5 min ago' },
-    { event: 'Device catalog import', desc: 'Imported 12 new 5G models', status: 'badge-blue', statusText: 'Complete', time: '14 min ago' },
-    { event: 'SLA rule triggered', desc: 'Evaluated 4 pending fulfillments', status: 'badge-purple', statusText: 'Evaluated', time: '1 hr ago' },
-    { event: 'Invoice issued', desc: 'Generated buyer transaction invoice', status: 'badge-green', statusText: 'Success', time: '2 hr ago' },
-  ]
+  const { data: auditData } = useQuery({
+    queryKey: ['admin-audit-trail'],
+    queryFn: () => api.get('/audit/records/', { params: { page_size: 10, paginate: 'false' } }).then(r => r.data),
+  })
+  const auditRecords = Array.isArray(auditData) ? auditData : (auditData?.results ?? [])
+  const globalActivity = auditRecords.slice(0, 10).map((r: any) => ({
+    event: r.event_code?.replace(/_/g, ' ') || 'System event',
+    desc: r.event_description || r.source_module || '—',
+    status: r.status || 'unknown',
+    statusText: r.status?.replace(/_/g, ' ') || 'Unknown',
+    time: r.created_at ? formatDate(r.created_at) : '—',
+  }))
 
   const dataChart = [
-    { name: 'Jan', companies: 4, users: 10 },
-    { name: 'Feb', companies: 8, users: 18 },
-    { name: 'Mar', companies: 12, users: 26 },
-    { name: 'Apr', companies: 15, users: 35 },
-    { name: 'May', companies: 22, users: 49 },
+    { name: 'Companies', companies: cCount },
+    { name: 'Users', companies: uCount },
+    { name: 'Devices', companies: dCount },
+    { name: 'Products', companies: pCount },
   ]
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">CIXCI System Admin Console</div>
-          <div className="page-sub">Global platform health, tenant activations, and system metrics</div>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowOnboardModal(true)}>
-          <Building size={14} /> Onboard Organization
-        </button>
-        {showOnboardModal && <OnboardOrgModal onClose={() => setShowOnboardModal(false)} />}
-      </div>
+    <Box>
+      <PageHeader
+        title="CIXCI System Admin Console"
+        subtitle="Global platform health, tenant activations, and system metrics"
+        actions={
+          <Button variant="contained" startIcon={<BusinessIcon />} onClick={() => setShowOnboardModal(true)}>
+            Onboard Organization
+          </Button>
+        }
+      />
+      {showOnboardModal && <OnboardOrgModal onClose={() => setShowOnboardModal(false)} />}
 
-      <div className="card-grid card-grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={Building} label="Active Companies" value={cCount} sub="registered tenants" color="var(--purple)" linkTo="/settings" />
-        <StatCard icon={Users} label="System Admins & Users" value={uCount} sub="onboarded members" color="var(--accent)" linkTo="/settings" />
-        <StatCard icon={Smartphone} label="Global Devices" value={dCount} sub="in master catalog" color="var(--green)" linkTo="/devices" />
-        <StatCard icon={ShoppingBag} label="Catalog Products" value={pCount} sub="wholesale accessories" color="var(--amber)" linkTo="/catalog" />
-      </div>
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/settings" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<BusinessIcon />} title="Active Companies" value={cCount} subtitle="registered tenants" color="var(--purple)" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/settings" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<PeopleIcon />} title="System Admins & Users" value={uCount} subtitle="onboarded members" color="var(--accent)" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/devices" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<SmartphoneIcon />} title="Global Devices" value={dCount} subtitle="in master catalog" color="var(--green)" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/catalog" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<ShoppingBagIcon />} title="Catalog Products" value={pCount} subtitle="wholesale accessories" color="var(--amber)" />
+          </Link>
+        </Grid>
+      </Grid>
 
-      <div className="card-grid card-grid-2" style={{ marginBottom: 24 }}>
-        <div className="card">
-          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-            <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>Platform Growth Trend</span>
-            <span className="badge badge-purple">Global Tenants</span>
-          </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={dataChart}>
-              <defs>
-                <linearGradient id="colorComp" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="var(--purple)" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="name" stroke="var(--text-muted)" />
-              <YAxis stroke="var(--text-muted)" />
-              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
-              <Area type="monotone" dataKey="companies" stroke="var(--purple)" strokeWidth={2} fill="url(#colorComp)" name="Companies" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card variant="outlined">
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600}>Platform Entity Overview</Typography>
+                <Chip label="Current Counts" size="small" color="secondary" />
+              </Box>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={dataChart}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="name" stroke="var(--text-muted)" />
+                  <YAxis stroke="var(--text-muted)" />
+                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
+                  <Bar dataKey="companies" fill="var(--purple)" radius={[4, 4, 0, 0]} name="Count" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </Grid>
 
-        <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div className="section-header" style={{ marginBottom: 16 }}>
-            <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>System Quick Actions</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, justifyContent: 'center' }}>
-            <Link to="/settings?tab=users&action=invite" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
-              <Users size={16} color="var(--accent)" />
-              <div style={{ textAlign: 'left', marginLeft: 8 }}>
-                <div style={{ fontWeight: 650 }}>Invite Organization Admin</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Send time-limited secure onboarding link</div>
-              </div>
-            </Link>
-            <Link to="/devices" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
-              <Smartphone size={16} color="var(--green)" />
-              <div style={{ textAlign: 'left', marginLeft: 8 }}>
-                <div style={{ fontWeight: 650 }}>Import Device Data</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Upload CSV compatibility and features</div>
-              </div>
-            </Link>
-            <Link to="/integration" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
-              <Shield size={16} color="var(--amber)" />
-              <div style={{ textAlign: 'left', marginLeft: 8 }}>
-                <div style={{ fontWeight: 650 }}>System Integration Logs</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Check API payloads, sync alerts, and errors</div>
-              </div>
-            </Link>
-          </div>
-        </div>
-      </div>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card variant="outlined" sx={{ height: '100%' }}>
+            <CardContent sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>System Quick Actions</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1, justifyContent: 'center' }}>
+                <Button
+                  component={Link} to="/settings?tab=users&action=invite" variant="outlined" color="inherit"
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
+                  startIcon={<PeopleIcon sx={{ color: 'var(--accent)' }} />}
+                >
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="body2" fontWeight={650}>Invite Organization Admin</Typography>
+                    <Typography variant="caption" color="text.secondary">Send time-limited secure onboarding link</Typography>
+                  </Box>
+                </Button>
+                <Button
+                  component={Link} to="/devices" variant="outlined" color="inherit"
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
+                  startIcon={<SmartphoneIcon sx={{ color: 'var(--green)' }} />}
+                >
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="body2" fontWeight={650}>Import Device Data</Typography>
+                    <Typography variant="caption" color="text.secondary">Upload CSV compatibility and features</Typography>
+                  </Box>
+                </Button>
+                <Button
+                  component={Link} to="/integration" variant="outlined" color="inherit"
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
+                  startIcon={<ShieldIcon sx={{ color: 'var(--amber)' }} />}
+                >
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="body2" fontWeight={650}>System Integration Logs</Typography>
+                    <Typography variant="caption" color="text.secondary">Check API payloads, sync alerts, and errors</Typography>
+                  </Box>
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
-      <div className="card">
-        <div className="section-header" style={{ marginBottom: 16 }}>
-          <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>Global Audit Trail</span>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Event</th><th>Description</th><th>Status</th><th>Time</th></tr>
-            </thead>
-            <tbody>
-              {globalActivity.map((row, i) => (
-                <tr key={i}>
-                  <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{row.event}</td>
-                  <td>{row.desc}</td>
-                  <td><span className={`badge ${row.status}`}>{row.statusText}</span></td>
-                  <td>{row.time}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Global Audit Trail</Typography>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Event</TableCell>
+                  <TableCell>Description</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Time</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {globalActivity.map((row, i) => (
+                  <TableRow key={i}>
+                    <TableCell sx={{ fontWeight: 500 }}>{row.event}</TableCell>
+                    <TableCell>{row.desc}</TableCell>
+                    <TableCell><StatusChip status={row.status} label={row.statusText} /></TableCell>
+                    <TableCell>{row.time}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+    </Box>
   )
 }
 
 // ─── BUYER DASHBOARD ─────────────────────────────────────────────────────────
 function BuyerDashboard({ count, user }: any) {
-  const { data: myDevices } = useQuery({ queryKey: ['buyer-portfolio'], queryFn: () => api.get('/devices/portfolio/my_devices/').then(r => r.data).catch(() => []) })
-  const { data: projection } = useQuery({ queryKey: ['buyer-projection'], queryFn: () => api.get('/catalog/my-projection/my_projection/').then(r => r.data).catch(() => null) })
-  const { data: orders } = useQuery({ queryKey: ['buyer-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data).catch(() => []) })
-  const { data: invoices } = useQuery({ queryKey: ['buyer-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data).catch(() => []) })
+  const { data: myDevices } = useQuery({ queryKey: ['buyer-portfolio'], queryFn: () => api.get('/devices/portfolio/my_devices/').then(r => r.data) })
+  const { data: projection } = useQuery({ queryKey: ['buyer-projection'], queryFn: () => api.get('/catalog/my-projection/my_projection/').then(r => r.data) })
+  const { data: orders } = useQuery({ queryKey: ['buyer-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data) })
+  const { data: invoices } = useQuery({ queryKey: ['buyer-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data) })
 
   const dCount = count(myDevices)
   const cCount = projection?.compatible_product_count ?? 0
@@ -1022,127 +1162,169 @@ function BuyerDashboard({ count, user }: any) {
 
   const ordersData = Array.isArray(orders) ? orders : (orders?.results ?? [])
 
-  const orderVolumeTrend = [
-    { day: 'Mon', orders: Math.min(oCount, 3) },
-    { day: 'Tue', orders: Math.min(oCount + 1, 5) },
-    { day: 'Wed', orders: Math.min(oCount, 4) },
-    { day: 'Thu', orders: Math.min(oCount + 2, 7) },
-    { day: 'Fri', orders: oCount || 2 },
-    { day: 'Sat', orders: Math.max(0, oCount - 1) },
-    { day: 'Sun', orders: Math.max(0, oCount - 2) },
-  ]
+  // Derive order volume from actual order data grouped by day
+  const orderVolumeTrend = (() => {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const counts: Record<string, number> = {}
+    dayNames.forEach(d => { counts[d] = 0 })
+    ordersData.forEach((o: any) => {
+      const d = o.placed_at || o.order_date_time || o.created_at
+      if (d) {
+        const day = dayNames[new Date(d).getDay()]
+        counts[day] = (counts[day] || 0) + 1
+      }
+    })
+    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => ({ day: d, orders: counts[d] || 0 }))
+  })()
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">Buyer Console — {user?.company_name || 'Retailer Portal'}</div>
-          <div className="page-sub">Accessory procurement, device compatibility portfolios, and storefront channels</div>
-        </div>
-        <Link to="/devices" className="btn btn-primary">
-          <Smartphone size={14} /> Manage My Devices
-        </Link>
-      </div>
+    <Box>
+      <PageHeader
+        title={`Buyer Console — ${user?.company_name || 'Retailer Portal'}`}
+        subtitle="Accessory procurement, device compatibility portfolios, and storefront channels"
+        actions={
+          <Button component={Link} to="/devices" variant="contained" startIcon={<SmartphoneIcon />}>
+            Manage My Devices
+          </Button>
+        }
+      />
 
-      <div className="card-grid card-grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={Smartphone} label="My Device Portfolio" value={dCount} sub="compatible targets" color="var(--accent)" linkTo="/devices" />
-        <StatCard icon={ShoppingBag} label="Compatible Accessories" value={cCount} sub="available in catalog" color="var(--purple)" linkTo="/catalog" />
-        <StatCard icon={Package} label="Orders Placed" value={oCount} sub="tracked packages" color="var(--green)" linkTo="/orders" />
-        <StatCard icon={ReceiptText} label="Procurement Invoices" value={iCount} sub="issued total" color="var(--amber)" linkTo="/invoicing" />
-      </div>
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/devices" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<SmartphoneIcon />} title="My Device Portfolio" value={dCount} subtitle="compatible targets" color="var(--accent)" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/catalog" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<ShoppingBagIcon />} title="Compatible Accessories" value={cCount} subtitle="available in catalog" color="var(--purple)" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/orders" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<InventoryIcon />} title="Orders Placed" value={oCount} subtitle="tracked packages" color="var(--green)" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/invoicing" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<ReceiptLongIcon />} title="Procurement Invoices" value={iCount} subtitle="issued total" color="var(--amber)" />
+          </Link>
+        </Grid>
+      </Grid>
 
-      <div className="card-grid card-grid-2" style={{ marginBottom: 24 }}>
-        <div className="card">
-          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-            <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>My Weekly Order Volume</span>
-            <span className="badge badge-blue"><TrendingUp size={10} /> Scoped Placed</span>
-          </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={orderVolumeTrend}>
-              <defs>
-                <linearGradient id="buyerOrders" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="day" stroke="var(--text-muted)" />
-              <YAxis stroke="var(--text-muted)" />
-              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
-              <Area type="monotone" dataKey="orders" stroke="var(--accent)" strokeWidth={2} fill="url(#buyerOrders)" name="Orders" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card variant="outlined">
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600}>My Weekly Order Volume</Typography>
+                <Chip icon={<TrendingUpIcon sx={{ fontSize: 14 }} />} label="Scoped Placed" size="small" color="primary" />
+              </Box>
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={orderVolumeTrend}>
+                  <defs>
+                    <linearGradient id="buyerOrders" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="day" stroke="var(--text-muted)" />
+                  <YAxis stroke="var(--text-muted)" />
+                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
+                  <Area type="monotone" dataKey="orders" stroke="var(--accent)" strokeWidth={2} fill="url(#buyerOrders)" name="Orders" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </Grid>
 
-        <div className="card">
-          <div className="section-header" style={{ marginBottom: 16 }}>
-            <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>Quick Actions</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Link to="/catalog" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
-              <ShoppingBag size={16} color="var(--purple)" />
-              <div style={{ textAlign: 'left', marginLeft: 8 }}>
-                <div style={{ fontWeight: 650 }}>Export Selection Catalog</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Generate CSV/JSON/XLSX compatibility exports</div>
-              </div>
-            </Link>
-            <Link to="/devices" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
-              <Smartphone size={16} color="var(--accent)" />
-              <div style={{ textAlign: 'left', marginLeft: 8 }}>
-                <div style={{ fontWeight: 650 }}>Review Devices Portfolio</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Update your list of active cell phones & tablets</div>
-              </div>
-            </Link>
-            <Link to="/orders" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
-              <Package size={16} color="var(--green)" />
-              <div style={{ textAlign: 'left', marginLeft: 8 }}>
-                <div style={{ fontWeight: 650 }}>Track Routed Orders</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Monitor real-time fulfillment status of purchases</div>
-              </div>
-            </Link>
-          </div>
-        </div>
-      </div>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card variant="outlined" sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Quick Actions</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Button
+                  component={Link} to="/catalog" variant="outlined" color="inherit"
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
+                  startIcon={<ShoppingBagIcon sx={{ color: 'var(--purple)' }} />}
+                >
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="body2" fontWeight={650}>Export Selection Catalog</Typography>
+                    <Typography variant="caption" color="text.secondary">Generate CSV/JSON/XLSX compatibility exports</Typography>
+                  </Box>
+                </Button>
+                <Button
+                  component={Link} to="/devices" variant="outlined" color="inherit"
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
+                  startIcon={<SmartphoneIcon sx={{ color: 'var(--accent)' }} />}
+                >
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="body2" fontWeight={650}>Review Devices Portfolio</Typography>
+                    <Typography variant="caption" color="text.secondary">Update your list of active cell phones & tablets</Typography>
+                  </Box>
+                </Button>
+                <Button
+                  component={Link} to="/orders" variant="outlined" color="inherit"
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
+                  startIcon={<InventoryIcon sx={{ color: 'var(--green)' }} />}
+                >
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="body2" fontWeight={650}>Track Routed Orders</Typography>
+                    <Typography variant="caption" color="text.secondary">Monitor real-time fulfillment status of purchases</Typography>
+                  </Box>
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
-      <div className="card">
-        <div className="section-header" style={{ marginBottom: 16 }}>
-          <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>Recent Routed Purchases</span>
-        </div>
-        <div className="table-wrap">
-          {ordersData.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
-              No purchase orders found.
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr><th>Order Reference</th><th>SKU</th><th>Quantity</th><th>Routed State</th><th>Created</th></tr>
-              </thead>
-              <tbody>
-                {ordersData.slice(0, 5).map((ord: any) => (
-                  <tr key={ord.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }} className="mono">{ord.id.slice(0, 8)}…</td>
-                    <td className="mono">{ord.sku}</td>
-                    <td>{ord.quantity}</td>
-                    <td><span className="badge badge-green">{ord.routing_status || 'Routed'}</span></td>
-                    <td>{new Date(ord.created_at).toLocaleDateString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    </div>
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Recent Routed Purchases</Typography>
+          <TableContainer>
+            {ordersData.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+                No purchase orders found.
+              </Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Order Reference</TableCell>
+                    <TableCell>SKU</TableCell>
+                    <TableCell>Quantity</TableCell>
+                    <TableCell>Routed State</TableCell>
+                    <TableCell>Created</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {ordersData.slice(0, 5).map((ord: any) => (
+                    <TableRow key={ord.id}>
+                      <TableCell sx={{ fontWeight: 500, fontFamily: 'monospace' }}>{ord.id.slice(0, 8)}...</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace' }}>{ord.sku}</TableCell>
+                      <TableCell>{ord.quantity}</TableCell>
+                      <TableCell><StatusChip status={ord.routing_status || 'active'} label={ord.routing_status || 'Routed'} /></TableCell>
+                      <TableCell>{formatDate(ord.created_at)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </TableContainer>
+        </CardContent>
+      </Card>
+    </Box>
   )
 }
 
 // ─── VENDOR DASHBOARD ────────────────────────────────────────────────────────
 function VendorDashboard({ count, user }: any) {
-  const { data: products } = useQuery({ queryKey: ['vendor-products'], queryFn: () => api.get('/catalog/products/').then(r => r.data).catch(() => []) })
-  const { data: orders } = useQuery({ queryKey: ['vendor-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data).catch(() => []) })
-  const { data: relationships } = useQuery({ queryKey: ['vendor-relationships'], queryFn: () => api.get('/tenant/relationships/').then(r => r.data).catch(() => []) })
-  const { data: invoices } = useQuery({ queryKey: ['vendor-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data).catch(() => []) })
+  const { data: products } = useQuery({ queryKey: ['vendor-products'], queryFn: () => api.get('/catalog/products/').then(r => r.data) })
+  const { data: orders } = useQuery({ queryKey: ['vendor-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data) })
+  const { data: relationships } = useQuery({ queryKey: ['vendor-relationships'], queryFn: () => api.get('/tenant/relationships/').then(r => r.data) })
+  const { data: invoices } = useQuery({ queryKey: ['vendor-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data) })
 
   const pCount = count(products)
   const oCount = count(orders)
@@ -1151,111 +1333,158 @@ function VendorDashboard({ count, user }: any) {
 
   const ordersData = Array.isArray(orders) ? orders : (orders?.results ?? [])
 
-  const fulfillData = [
-    { day: 'Mon', on_time: 14, late: 1 },
-    { day: 'Tue', on_time: 19, late: 0 },
-    { day: 'Wed', on_time: 12, late: 2 },
-    { day: 'Thu', on_time: 25, late: 1 },
-    { day: 'Fri', on_time: 18, late: 3 },
-  ]
+  // Derive fulfillment data from actual orders
+  const fulfillData = (() => {
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+    const result: { day: string; on_time: number; late: number }[] = dayNames.map(d => ({ day: d, on_time: 0, late: 0 }))
+    ordersData.forEach((o: any) => {
+      const d = o.placed_at || o.order_date_time || o.created_at
+      if (d) {
+        const dayIdx = new Date(d).getDay()
+        if (dayIdx >= 1 && dayIdx <= 5) {
+          const idx = dayIdx - 1
+          if (o.status === 'delivered' || o.status === 'shipped') {
+            result[idx].on_time += 1
+          } else if (o.status === 'exception' || o.status === 'sla_breach') {
+            result[idx].late += 1
+          }
+        }
+      }
+    })
+    return result
+  })()
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">Vendor Portal — {user?.company_name || 'Partner Workspace'}</div>
-          <div className="page-sub">Accessory inventory, catalog listings, fulfillment SLA tracking</div>
-        </div>
-        <Link to="/catalog" className="btn btn-primary">
-          <ShoppingBag size={14} /> Add New Product
-        </Link>
-      </div>
+    <Box>
+      <PageHeader
+        title={`Vendor Portal — ${user?.company_name || 'Partner Workspace'}`}
+        subtitle="Accessory inventory, catalog listings, fulfillment SLA tracking"
+        actions={
+          <Button component={Link} to="/catalog" variant="contained" startIcon={<ShoppingBagIcon />}>
+            Add New Product
+          </Button>
+        }
+      />
 
-      <div className="card-grid card-grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={ShoppingBag} label="Listed Accessories" value={pCount} sub="in active catalog" color="var(--purple)" linkTo="/catalog" />
-        <StatCard icon={Package} label="Assigned Orders" value={oCount} sub="pending fulfillment" color="var(--green)" linkTo="/orders" />
-        <StatCard icon={Building} label="Active Buyers" value={rCount} sub="retailer partnerships" color="var(--accent)" />
-        <StatCard icon={ReceiptText} label="Invoices Issued" value={iCount} sub="billing total" color="var(--amber)" linkTo="/invoicing" />
-      </div>
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/catalog" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<ShoppingBagIcon />} title="Listed Accessories" value={pCount} subtitle="in active catalog" color="var(--purple)" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/orders" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<InventoryIcon />} title="Assigned Orders" value={oCount} subtitle="pending fulfillment" color="var(--green)" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <StatCard icon={<BusinessIcon />} title="Active Buyers" value={rCount} subtitle="retailer partnerships" color="var(--accent)" />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Link to="/invoicing" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<ReceiptLongIcon />} title="Invoices Issued" value={iCount} subtitle="billing total" color="var(--amber)" />
+          </Link>
+        </Grid>
+      </Grid>
 
-      <div className="card-grid card-grid-2" style={{ marginBottom: 24 }}>
-        <div className="card">
-          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-            <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>Fulfillment SLA Performance</span>
-            <span className="badge badge-green">On-time vs Late</span>
-          </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={fulfillData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="day" stroke="var(--text-muted)" />
-              <YAxis stroke="var(--text-muted)" />
-              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
-              <Bar dataKey="on_time" fill="var(--green)" radius={[4, 4, 0, 0]} name="On Time" />
-              <Bar dataKey="late" fill="var(--red)" radius={[4, 4, 0, 0]} name="Late" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card variant="outlined">
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600}>Fulfillment SLA Performance</Typography>
+                <Chip label="On-time vs Late" size="small" color="success" />
+              </Box>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={fulfillData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="day" stroke="var(--text-muted)" />
+                  <YAxis stroke="var(--text-muted)" />
+                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
+                  <Bar dataKey="on_time" fill="var(--green)" radius={[4, 4, 0, 0]} name="On Time" />
+                  <Bar dataKey="late" fill="var(--red)" radius={[4, 4, 0, 0]} name="Late" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </Grid>
 
-        <div className="card">
-          <div className="section-header" style={{ marginBottom: 16 }}>
-            <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>Fulfillment Quick Actions</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Link to="/catalog" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
-              <ShoppingBag size={16} color="var(--purple)" />
-              <div style={{ textAlign: 'left', marginLeft: 8 }}>
-                <div style={{ fontWeight: 650 }}>List New Accessory</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Publish a new accessory SKU with specs & wholesale price</div>
-              </div>
-            </Link>
-            <Link to="/fulfillment" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
-              <Truck size={16} color="var(--green)" />
-              <div style={{ textAlign: 'left', marginLeft: 8 }}>
-                <div style={{ fontWeight: 650 }}>Process Shipments</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Update tracking codes, SLA parameters, and return approvals</div>
-              </div>
-            </Link>
-            <Link to="/invoicing" className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: 12 }}>
-              <ReceiptText size={16} color="var(--amber)" />
-              <div style={{ textAlign: 'left', marginLeft: 8 }}>
-                <div style={{ fontWeight: 650 }}>Generate Invoices</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Create wholesale invoice statements for fulfilled orders</div>
-              </div>
-            </Link>
-          </div>
-        </div>
-      </div>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card variant="outlined" sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Fulfillment Quick Actions</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Button
+                  component={Link} to="/catalog" variant="outlined" color="inherit"
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
+                  startIcon={<ShoppingBagIcon sx={{ color: 'var(--purple)' }} />}
+                >
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="body2" fontWeight={650}>List New Accessory</Typography>
+                    <Typography variant="caption" color="text.secondary">Publish a new accessory SKU with specs & wholesale price</Typography>
+                  </Box>
+                </Button>
+                <Button
+                  component={Link} to="/fulfillment" variant="outlined" color="inherit"
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
+                  startIcon={<LocalShippingIcon sx={{ color: 'var(--green)' }} />}
+                >
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="body2" fontWeight={650}>Process Shipments</Typography>
+                    <Typography variant="caption" color="text.secondary">Update tracking codes, SLA parameters, and return approvals</Typography>
+                  </Box>
+                </Button>
+                <Button
+                  component={Link} to="/invoicing" variant="outlined" color="inherit"
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
+                  startIcon={<ReceiptLongIcon sx={{ color: 'var(--amber)' }} />}
+                >
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="body2" fontWeight={650}>Generate Invoices</Typography>
+                    <Typography variant="caption" color="text.secondary">Create wholesale invoice statements for fulfilled orders</Typography>
+                  </Box>
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
-      <div className="card">
-        <div className="section-header" style={{ marginBottom: 16 }}>
-          <span className="section-title" style={{ fontSize: 15, fontWeight: 600 }}>Incoming Orders to Fulfill</span>
-        </div>
-        <div className="table-wrap">
-          {ordersData.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
-              No routing orders assigned.
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr><th>Order Reference</th><th>SKU</th><th>Quantity</th><th>State</th><th>Fulfill By</th></tr>
-              </thead>
-              <tbody>
-                {ordersData.slice(0, 5).map((ord: any) => (
-                  <tr key={ord.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }} className="mono">{ord.id.slice(0, 8)}…</td>
-                    <td className="mono">{ord.sku}</td>
-                    <td>{ord.quantity}</td>
-                    <td><span className="badge badge-amber">{ord.routing_status || 'Received'}</span></td>
-                    <td>{ord.sla_deadline ? new Date(ord.sla_deadline).toLocaleDateString() : 'Immediate'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    </div>
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Incoming Orders to Fulfill</Typography>
+          <TableContainer>
+            {ordersData.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+                No routing orders assigned.
+              </Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Order Reference</TableCell>
+                    <TableCell>SKU</TableCell>
+                    <TableCell>Quantity</TableCell>
+                    <TableCell>State</TableCell>
+                    <TableCell>Fulfill By</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {ordersData.slice(0, 5).map((ord: any) => (
+                    <TableRow key={ord.id}>
+                      <TableCell sx={{ fontWeight: 500, fontFamily: 'monospace' }}>{ord.id.slice(0, 8)}...</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace' }}>{ord.sku}</TableCell>
+                      <TableCell>{ord.quantity}</TableCell>
+                      <TableCell><StatusChip status={ord.routing_status || 'pending'} label={ord.routing_status || 'Received'} /></TableCell>
+                      <TableCell>{ord.sla_deadline ? formatDate(ord.sla_deadline) : 'Immediate'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </TableContainer>
+        </CardContent>
+      </Card>
+    </Box>
   )
 }
-

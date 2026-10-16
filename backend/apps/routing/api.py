@@ -174,22 +174,54 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def _get_order_lines(self, obj):
         sub = self._get_primary_suborder(obj)
+        # If routing snapshot has order_lines, enrich them with vendor name and pricing
         if sub and isinstance(sub.routing_snapshot, dict) and sub.routing_snapshot.get("order_lines"):
-            return sub.routing_snapshot["order_lines"]
+            from apps.tenant.models import Company
+            from apps.catalog.models import Product
+            enriched = []
+            vendor_cache = {}
+            for line in sub.routing_snapshot["order_lines"]:
+                # Resolve vendor_name if missing
+                if not line.get("vendor_name") and line.get("vendor_id"):
+                    vid = line["vendor_id"]
+                    if vid not in vendor_cache:
+                        co = Company.objects.filter(id=vid).first()
+                        vendor_cache[vid] = co.name if co else None
+                    line["vendor_name"] = vendor_cache[vid]
+                # Resolve price/total from product if missing
+                if line.get("unit_price_snapshot") is None or line.get("line_total") is None:
+                    prod = Product.objects.filter(sku=line.get("sku")).first()
+                    if prod and prod.vendor_wholesale_price is not None:
+                        qty = line.get("quantity", 1)
+                        line.setdefault("unit_price_snapshot", float(prod.vendor_wholesale_price))
+                        line.setdefault("line_total", float(prod.vendor_wholesale_price) * qty)
+                enriched.append(line)
+            return enriched
         from apps.procurement.models import PurchaseOrderLine
         from apps.catalog.models import Product
+        from apps.tenant.models import Company
         lines = PurchaseOrderLine.objects.filter(purchase_order_id=obj.id)
         res = []
+        vendor_cache = {}
         for l in lines:
             prod = Product.objects.filter(id=l.product_reference).first()
             vendor_id = str(prod.vendor_company_reference) if prod else (str(sub.vendor_company_reference) if sub else "")
+            # Resolve vendor name
+            vendor_name = None
+            if vendor_id and vendor_id not in vendor_cache:
+                co = Company.objects.filter(id=vendor_id).first()
+                vendor_cache[vendor_id] = co.name if co else None
+            vendor_name = vendor_cache.get(vendor_id)
             res.append({
                 "vendor_id": vendor_id,
+                "vendor_name": vendor_name,
                 "sku": prod.sku if prod else "",
                 "product_name": prod.name if prod else "",
                 "vendor_color": prod.color if prod else "",
                 "quantity": l.quantity,
                 "upc": prod.upc if prod else "",
+                "unit_price_snapshot": float(l.unit_price_snapshot) if l.unit_price_snapshot else None,
+                "line_total": float(l.line_total) if l.line_total else None,
             })
         return res
 
@@ -819,19 +851,31 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                 )
                 
         data = []
+        vendor_cache = {}  # vendor_id -> vendor_name cache to avoid N+1
         for line in lines:
             prod_name = "Unknown Product"
             sku = "N/A"
             upc = "N/A"
             color = "N/A"
             primary_image_url = None
+            vendor_id = None
+            vendor_name = None
             try:
                 prod = Product.objects.get(id=line.product_reference)
                 prod_name = prod.name
                 sku = prod.sku
                 upc = prod.upc or "N/A"
                 color = prod.color or "N/A"
-                
+
+                # Vendor lookup
+                if prod.vendor_company_reference:
+                    vendor_id = str(prod.vendor_company_reference)
+                    if vendor_id not in vendor_cache:
+                        from apps.tenant.models import Company
+                        vendor_co = Company.objects.filter(id=prod.vendor_company_reference).first()
+                        vendor_cache[vendor_id] = vendor_co.name if vendor_co else None
+                    vendor_name = vendor_cache[vendor_id]
+
                 if prod.primary_image_reference:
                     try:
                         from apps.media.models import MediaAsset
@@ -846,7 +890,7 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                     primary_image_url = prod.media_references[0]
             except Product.DoesNotExist:
                 pass
-                
+
             data.append({
                 "id": str(line.id),
                 "purchase_order": str(line.purchase_order_id),
@@ -855,7 +899,10 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                 "sku": sku,
                 "upc": upc,
                 "color": color,
+                "vendor_color": color,
                 "primary_image_url": primary_image_url,
+                "vendor_id": vendor_id,
+                "vendor_name": vendor_name,
                 "quantity": line.quantity,
                 "unit_price_snapshot": float(line.unit_price_snapshot),
                 "line_total": float(line.line_total),
