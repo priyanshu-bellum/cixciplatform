@@ -482,7 +482,7 @@ export default function OrdersPage() {
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', pb: 1 }}>
           <Box>
-            <Typography variant="h6" fontWeight={700}>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
               New Buyer Order
             </Typography>
             <Typography variant="caption" color="text.secondary">
@@ -529,7 +529,7 @@ export default function OrdersPage() {
           <Box component="form" id="create-order-form" onSubmit={handleCreateOrder}>
             {inputMode === 'json' ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Typography variant="caption" fontWeight={600} color="text.secondary">
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                   Order Data JSON Payload (17 Fields)
                 </Typography>
                 <TextField
@@ -792,7 +792,7 @@ export default function OrdersPage() {
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', pb: 1 }}>
           <Box>
-            <Typography variant="h6" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
               <LocalShippingIcon sx={{ fontSize: 20, color: 'primary.main' }} />
               {pendingExportSubId ? 'Add Shipping to Complete Export' : 'Update Customer Shipping'}
             </Typography>
@@ -964,7 +964,7 @@ export default function OrdersPage() {
         {/* Header */}
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', pb: 2, borderBottom: 1, borderColor: 'divider', mb: 3 }}>
           <Box>
-            <Typography variant="subtitle1" fontWeight={600}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
               Order Routing Details
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={monoSx}>
@@ -1160,7 +1160,7 @@ export default function OrdersPage() {
                               </Box>
                             )}
                             <Box>
-                              <Typography variant="body2" fontWeight={500} color="text.primary" sx={{ fontSize: 13 }}>
+                              <Typography variant="body2" color="text.primary" sx={{ fontSize: 13, fontWeight: 500 }}>
                                 {line.product_name}
                               </Typography>
                               <Typography variant="caption" color="text.disabled" sx={{ ...monoSx, fontSize: 10 }}>
@@ -1182,7 +1182,7 @@ export default function OrdersPage() {
                           </Box>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography variant="body2" fontWeight={500}>{line.quantity}</Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>{line.quantity}</Typography>
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2" color="text.secondary">
@@ -1190,7 +1190,7 @@ export default function OrdersPage() {
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography variant="body2" fontWeight={500} color="text.primary">
+                          <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
                             {formatCurrency(line.line_total)}
                           </Typography>
                         </TableCell>

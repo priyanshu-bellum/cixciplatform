@@ -143,7 +143,7 @@ export default function IntegrationPage() {
       id: 'label',
       label: 'Label',
       render: (row) => (
-        <Typography variant="body2" fontWeight={500} color="text.primary">
+        <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
           {row.label}
         </Typography>
       ),
@@ -182,7 +182,7 @@ export default function IntegrationPage() {
       id: 'event_type',
       label: 'Event Type',
       render: (row) => (
-        <Typography variant="body2" fontWeight={500} color="text.primary" sx={{ fontSize: 12 }}>
+        <Typography variant="body2" color="text.primary" sx={{ fontSize: 12, fontWeight: 500 }}>
           {row.event_type}
         </Typography>
       ),
@@ -224,7 +224,7 @@ export default function IntegrationPage() {
       id: 'event_type',
       label: 'Event Type',
       render: (row) => (
-        <Typography variant="body2" fontWeight={500} color="text.primary" sx={{ fontSize: 12 }}>
+        <Typography variant="body2" color="text.primary" sx={{ fontSize: 12, fontWeight: 500 }}>
           {row.event_type}
         </Typography>
       ),
@@ -275,7 +275,7 @@ export default function IntegrationPage() {
       id: 'label',
       label: 'Label',
       render: (row) => (
-        <Typography variant="body2" fontWeight={500} color="text.primary">
+        <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
           {row.label}
         </Typography>
       ),

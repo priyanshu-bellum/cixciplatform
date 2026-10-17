@@ -1,4 +1,5 @@
-import { useCallback, useState, DragEvent, ChangeEvent, useRef } from 'react';
+import { useCallback, useState, useRef } from 'react';
+import type { DragEvent, ChangeEvent } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';

@@ -51,7 +51,7 @@ export default function AnalyticsPage() {
   })
 
   const metrics = metricData?.results ?? (Array.isArray(metricData) ? metricData : [])
-  const aggregations = aggData?.results ?? (Array.isArray(aggData) ? aggData : [])
+  const aggregations = aggData ?? []
 
   const metricColumns = useMemo<Column<any>[]>(() => [
     {

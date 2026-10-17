@@ -404,7 +404,7 @@ export default function CompanyUsersPage() {
                     return (
                       <TableRow key={m.id} hover>
                         <TableCell>
-                          <Typography variant="body2" fontWeight={600}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
                             {m.user_first_name} {m.user_last_name}
                           </Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
@@ -416,7 +416,7 @@ export default function CompanyUsersPage() {
                         </TableCell>
 
                         <TableCell>
-                          <Typography variant="body2" fontWeight={500}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
                             {m.company_name}
                           </Typography>
                         </TableCell>
@@ -533,7 +533,7 @@ export default function CompanyUsersPage() {
                   filteredInvitations.map((inv) => (
                     <TableRow key={inv.id} hover>
                       <TableCell>
-                        <Typography variant="body2" fontWeight={600}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {inv.first_name} {inv.last_name}
                         </Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
@@ -609,7 +609,7 @@ export default function CompanyUsersPage() {
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <SecurityIcon color="primary" />
-                  <Typography variant="h6" component="span" fontWeight={700}>
+                  <Typography variant="h6" component="span" sx={{ fontWeight: 700 }}>
                     User Capabilities
                   </Typography>
                 </Box>
@@ -758,7 +758,7 @@ export default function CompanyUsersPage() {
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <PersonAddIcon color="primary" />
-            <Typography variant="h6" component="span" fontWeight={600}>
+            <Typography variant="h6" component="span" sx={{ fontWeight: 600 }}>
               Invite Team Member
             </Typography>
           </Box>

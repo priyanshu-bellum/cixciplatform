@@ -635,7 +635,7 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
                       }}
                     />
                   }
-                  label={<Typography variant="body2" fontWeight={600}>Same as company address</Typography>}
+                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Same as company address</Typography>}
                   sx={{ mb: 1 }}
                 />
 
@@ -759,7 +759,7 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
                     Choose Logo
                     <input type='file' accept='image/png,image/jpeg,image/webp,image/svg+xml' hidden onChange={handleLogoChange} />
                   </Button>
-                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                     PNG, JPG, WEBP or SVG. Recommended 256x256px.
                   </Typography>
                 </Box>
@@ -802,17 +802,17 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
                   <FormControlLabel
                     control={<Checkbox size="small" checked={isParent} onChange={e => setIsParent(e.target.checked)} />}
-                    label={<Typography variant="body2" fontWeight={600}>Mark as Parent Company</Typography>}
+                    label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Mark as Parent Company</Typography>}
                   />
                   {companyType === 'vendor' && (
                     <FormControlLabel
                       control={<Checkbox size="small" checked={mapPricingEnforced} onChange={e => setMapPricingEnforced(e.target.checked)} />}
-                      label={<Typography variant="body2" fontWeight={600}>Enforce MAP Pricing</Typography>}
+                      label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Enforce MAP Pricing</Typography>}
                     />
                   )}
                   <FormControlLabel
                     control={<Checkbox size="small" checked={allowPersonalEmail} onChange={e => setAllowPersonalEmail(e.target.checked)} />}
-                    label={<Typography variant="body2" fontWeight={600}>Allow personal email domain exception</Typography>}
+                    label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Allow personal email domain exception</Typography>}
                   />
                 </Box>
               </Grid>
@@ -1004,7 +1004,7 @@ function AdminDashboard({ count }: any) {
     queryFn: () => api.get('/audit/records/', { params: { page_size: 10, paginate: 'false' } }).then(r => r.data),
   })
   const auditRecords = Array.isArray(auditData) ? auditData : (auditData?.results ?? [])
-  const globalActivity = auditRecords.slice(0, 10).map((r: any) => ({
+  const globalActivity: { event: string; desc: string; status: string; statusText: string; time: string }[] = auditRecords.slice(0, 10).map((r: any) => ({
     event: r.event_code?.replace(/_/g, ' ') || 'System event',
     desc: r.event_description || r.source_module || '—',
     status: r.status || 'unknown',
@@ -1060,7 +1060,7 @@ function AdminDashboard({ count }: any) {
           <Card variant="outlined">
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600}>Platform Entity Overview</Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Platform Entity Overview</Typography>
                 <Chip label="Current Counts" size="small" color="secondary" />
               </Box>
               <ResponsiveContainer width="100%" height={220}>
@@ -1079,7 +1079,7 @@ function AdminDashboard({ count }: any) {
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>System Quick Actions</Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>System Quick Actions</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1, justifyContent: 'center' }}>
                 <Button
                   component={Link} to="/settings?tab=users&action=invite" variant="outlined" color="inherit"
@@ -1087,7 +1087,7 @@ function AdminDashboard({ count }: any) {
                   startIcon={<PeopleIcon sx={{ color: 'var(--accent)' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" fontWeight={650}>Invite Organization Admin</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }}>Invite Organization Admin</Typography>
                     <Typography variant="caption" color="text.secondary">Send time-limited secure onboarding link</Typography>
                   </Box>
                 </Button>
@@ -1097,7 +1097,7 @@ function AdminDashboard({ count }: any) {
                   startIcon={<SmartphoneIcon sx={{ color: 'var(--green)' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" fontWeight={650}>Import Device Data</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }}>Import Device Data</Typography>
                     <Typography variant="caption" color="text.secondary">Upload CSV compatibility and features</Typography>
                   </Box>
                 </Button>
@@ -1107,7 +1107,7 @@ function AdminDashboard({ count }: any) {
                   startIcon={<ShieldIcon sx={{ color: 'var(--amber)' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" fontWeight={650}>System Integration Logs</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }}>System Integration Logs</Typography>
                     <Typography variant="caption" color="text.secondary">Check API payloads, sync alerts, and errors</Typography>
                   </Box>
                 </Button>
@@ -1119,7 +1119,7 @@ function AdminDashboard({ count }: any) {
 
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Global Audit Trail</Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Global Audit Trail</Typography>
           <TableContainer>
             <Table size="small">
               <TableHead>
@@ -1217,7 +1217,7 @@ function BuyerDashboard({ count, user }: any) {
           <Card variant="outlined">
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600}>My Weekly Order Volume</Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>My Weekly Order Volume</Typography>
                 <Chip icon={<TrendingUpIcon sx={{ fontSize: 14 }} />} label="Scoped Placed" size="small" color="primary" />
               </Box>
               <ResponsiveContainer width="100%" height={220}>
@@ -1242,7 +1242,7 @@ function BuyerDashboard({ count, user }: any) {
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent>
-              <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Quick Actions</Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Quick Actions</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <Button
                   component={Link} to="/catalog" variant="outlined" color="inherit"
@@ -1250,7 +1250,7 @@ function BuyerDashboard({ count, user }: any) {
                   startIcon={<ShoppingBagIcon sx={{ color: 'var(--purple)' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" fontWeight={650}>Export Selection Catalog</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }}>Export Selection Catalog</Typography>
                     <Typography variant="caption" color="text.secondary">Generate CSV/JSON/XLSX compatibility exports</Typography>
                   </Box>
                 </Button>
@@ -1260,7 +1260,7 @@ function BuyerDashboard({ count, user }: any) {
                   startIcon={<SmartphoneIcon sx={{ color: 'var(--accent)' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" fontWeight={650}>Review Devices Portfolio</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }}>Review Devices Portfolio</Typography>
                     <Typography variant="caption" color="text.secondary">Update your list of active cell phones & tablets</Typography>
                   </Box>
                 </Button>
@@ -1270,7 +1270,7 @@ function BuyerDashboard({ count, user }: any) {
                   startIcon={<InventoryIcon sx={{ color: 'var(--green)' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" fontWeight={650}>Track Routed Orders</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }}>Track Routed Orders</Typography>
                     <Typography variant="caption" color="text.secondary">Monitor real-time fulfillment status of purchases</Typography>
                   </Box>
                 </Button>
@@ -1282,7 +1282,7 @@ function BuyerDashboard({ count, user }: any) {
 
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Recent Routed Purchases</Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Recent Routed Purchases</Typography>
           <TableContainer>
             {ordersData.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
@@ -1392,7 +1392,7 @@ function VendorDashboard({ count, user }: any) {
           <Card variant="outlined">
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600}>Fulfillment SLA Performance</Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Fulfillment SLA Performance</Typography>
                 <Chip label="On-time vs Late" size="small" color="success" />
               </Box>
               <ResponsiveContainer width="100%" height={220}>
@@ -1412,7 +1412,7 @@ function VendorDashboard({ count, user }: any) {
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent>
-              <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Fulfillment Quick Actions</Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Fulfillment Quick Actions</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <Button
                   component={Link} to="/catalog" variant="outlined" color="inherit"
@@ -1420,7 +1420,7 @@ function VendorDashboard({ count, user }: any) {
                   startIcon={<ShoppingBagIcon sx={{ color: 'var(--purple)' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" fontWeight={650}>List New Accessory</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }}>List New Accessory</Typography>
                     <Typography variant="caption" color="text.secondary">Publish a new accessory SKU with specs & wholesale price</Typography>
                   </Box>
                 </Button>
@@ -1430,7 +1430,7 @@ function VendorDashboard({ count, user }: any) {
                   startIcon={<LocalShippingIcon sx={{ color: 'var(--green)' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" fontWeight={650}>Process Shipments</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }}>Process Shipments</Typography>
                     <Typography variant="caption" color="text.secondary">Update tracking codes, SLA parameters, and return approvals</Typography>
                   </Box>
                 </Button>
@@ -1440,7 +1440,7 @@ function VendorDashboard({ count, user }: any) {
                   startIcon={<ReceiptLongIcon sx={{ color: 'var(--amber)' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" fontWeight={650}>Generate Invoices</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }}>Generate Invoices</Typography>
                     <Typography variant="caption" color="text.secondary">Create wholesale invoice statements for fulfilled orders</Typography>
                   </Box>
                 </Button>
@@ -1452,7 +1452,7 @@ function VendorDashboard({ count, user }: any) {
 
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Incoming Orders to Fulfill</Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Incoming Orders to Fulfill</Typography>
           <TableContainer>
             {ordersData.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>

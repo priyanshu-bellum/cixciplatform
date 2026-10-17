@@ -147,7 +147,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                   }}
                 >
                   <ListItemIcon sx={{ minWidth: 32 }}>{icon}</ListItemIcon>
-                  <ListItemText primary={label} slotProps={{ primary: { fontSize: '0.8125rem' } }} />
+                  <ListItemText primary={label} slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
                 </ListItemButton>
               ))}
             </List>
@@ -166,7 +166,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             sx={{ mx: 1, borderRadius: 1.5, '&.active': { bgcolor: 'action.selected', color: 'primary.main' } }}
           >
             <ListItemIcon sx={{ minWidth: 32 }}><PeopleIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Users" slotProps={{ primary: { fontSize: '0.8125rem' } }} />
+            <ListItemText primary="Users" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
           </ListItemButton>
           <ListItemButton
             component={NavLink}
@@ -174,11 +174,11 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             sx={{ mx: 1, borderRadius: 1.5, '&.active': { bgcolor: 'action.selected', color: 'primary.main' } }}
           >
             <ListItemIcon sx={{ minWidth: 32 }}><SettingsIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Settings" slotProps={{ primary: { fontSize: '0.8125rem' } }} />
+            <ListItemText primary="Settings" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
           </ListItemButton>
           <ListItemButton onClick={handleLogout} sx={{ mx: 1, borderRadius: 1.5 }}>
             <ListItemIcon sx={{ minWidth: 32 }}><LogoutIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Sign out" slotProps={{ primary: { fontSize: '0.8125rem' } }} />
+            <ListItemText primary="Sign out" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
           </ListItemButton>
         </List>
       </Box>

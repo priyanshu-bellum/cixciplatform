@@ -1,4 +1,5 @@
-import { useState, SyntheticEvent } from 'react'
+import { useState } from 'react'
+import type { SyntheticEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Tabs from '@mui/material/Tabs'

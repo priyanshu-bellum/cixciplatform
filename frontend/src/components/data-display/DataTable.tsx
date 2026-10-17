@@ -1,4 +1,5 @@
-import { useState, useMemo, ReactNode } from 'react';
+import { useState, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';

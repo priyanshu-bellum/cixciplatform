@@ -972,18 +972,18 @@ export default function FulfillmentPage() {
                                               <Typography variant="caption" color="text.disabled">User ID: {log.triggered_by}</Typography>
                                             )}
                                             {log.triggered_by_company_name_snapshot && (
-                                              <Typography variant="caption" display="block" color="text.disabled">Company: {log.triggered_by_company_name_snapshot}</Typography>
+                                              <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Company: {log.triggered_by_company_name_snapshot}</Typography>
                                             )}
                                             {log.triggered_by_role_snapshot && (
-                                              <Typography variant="caption" display="block" color="text.disabled">Role: {log.triggered_by_role_snapshot}</Typography>
+                                              <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Role: {log.triggered_by_role_snapshot}</Typography>
                                             )}
                                           </Box>
                                         ) : (
                                           <Box>
                                             <Typography variant="body2" sx={{ fontWeight: 600 }}>{log.system_process_name || 'Scheduled Vendor Order Export'}</Typography>
-                                            <Typography variant="caption" display="block" color="text.disabled">Process ID: {log.system_process_id || 'scheduled_order_export'}</Typography>
-                                            <Typography variant="caption" display="block" color="text.disabled">Job ID: {log.system_job_id || `job_${log.id.slice(0, 8)}`}</Typography>
-                                            <Typography variant="caption" display="block" color="text.disabled">Schedule: {log.system_schedule_desc || 'Daily vendor export'}</Typography>
+                                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Process ID: {log.system_process_id || 'scheduled_order_export'}</Typography>
+                                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Job ID: {log.system_job_id || `job_${log.id.slice(0, 8)}`}</Typography>
+                                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Schedule: {log.system_schedule_desc || 'Daily vendor export'}</Typography>
                                           </Box>
                                         )}
                                       </TableCell>
@@ -1022,21 +1022,21 @@ export default function FulfillmentPage() {
                                             <Box>
                                               <Typography variant="body2" sx={{ fontWeight: 600 }}>{attempt.triggered_by_user_name_snapshot || 'User'}</Typography>
                                               {attempt.triggered_by_user && (
-                                                <Typography variant="caption" display="block" color="text.disabled">User ID: {attempt.triggered_by_user}</Typography>
+                                                <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>User ID: {attempt.triggered_by_user}</Typography>
                                               )}
                                               {attempt.triggered_by_company_name_snapshot && (
-                                                <Typography variant="caption" display="block" color="text.disabled">Company: {attempt.triggered_by_company_name_snapshot}</Typography>
+                                                <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Company: {attempt.triggered_by_company_name_snapshot}</Typography>
                                               )}
                                               {attempt.triggered_by_role_snapshot && (
-                                                <Typography variant="caption" display="block" color="text.disabled">Role: {attempt.triggered_by_role_snapshot}</Typography>
+                                                <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Role: {attempt.triggered_by_role_snapshot}</Typography>
                                               )}
                                             </Box>
                                           ) : (
                                             <Box>
                                               <Typography variant="body2" sx={{ fontWeight: 600 }}>{attempt.system_process_name || 'Automatic delivery retry'}</Typography>
-                                              <Typography variant="caption" display="block" color="text.disabled">Process: {attempt.system_process_id || 'automated_retry'}</Typography>
-                                              <Typography variant="caption" display="block" color="text.disabled">Job: {attempt.system_job_id || `job_${attempt.id.slice(0, 8)}`}</Typography>
-                                              <Typography variant="caption" display="block" color="text.disabled">Schedule: {attempt.system_schedule_desc || 'Automatic delivery retry'}</Typography>
+                                              <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Process: {attempt.system_process_id || 'automated_retry'}</Typography>
+                                              <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Job: {attempt.system_job_id || `job_${attempt.id.slice(0, 8)}`}</Typography>
+                                              <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Schedule: {attempt.system_schedule_desc || 'Automatic delivery retry'}</Typography>
                                             </Box>
                                           )}
                                         </TableCell>
@@ -1745,15 +1745,15 @@ export default function FulfillmentPage() {
                         {selectedLogForAuditHistory.trigger_type?.toUpperCase() === 'USER' ? (
                           <Box>
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>{selectedLogForAuditHistory.triggered_by_user_name_snapshot || 'User'}</Typography>
-                            <Typography variant="caption" display="block" color="text.disabled">Role: {selectedLogForAuditHistory.triggered_by_role_snapshot || 'N/A'}</Typography>
-                            <Typography variant="caption" display="block" color="text.disabled">Company: {selectedLogForAuditHistory.triggered_by_company_name_snapshot || 'N/A'}</Typography>
+                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Role: {selectedLogForAuditHistory.triggered_by_role_snapshot || 'N/A'}</Typography>
+                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Company: {selectedLogForAuditHistory.triggered_by_company_name_snapshot || 'N/A'}</Typography>
                           </Box>
                         ) : (
                           <Box>
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>{selectedLogForAuditHistory.system_process_name || 'System Auto-digest'}</Typography>
-                            <Typography variant="caption" display="block" color="text.disabled">Process ID: {selectedLogForAuditHistory.system_process_id}</Typography>
+                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Process ID: {selectedLogForAuditHistory.system_process_id}</Typography>
                             {selectedLogForAuditHistory.system_schedule_desc && (
-                              <Typography variant="caption" display="block" color="text.disabled">Schedule: {selectedLogForAuditHistory.system_schedule_desc}</Typography>
+                              <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Schedule: {selectedLogForAuditHistory.system_schedule_desc}</Typography>
                             )}
                           </Box>
                         )}
@@ -1761,7 +1761,7 @@ export default function FulfillmentPage() {
                       <Box>
                         <Typography variant="overline" sx={{ color: 'text.disabled', fontSize: '0.6rem' }}>DESTINATION & METHOD</Typography>
                         <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>{selectedLogForAuditHistory.recipients?.join(', ') || 'Browser Download'}</Typography>
-                        <Typography variant="caption" display="block" color="text.disabled">Method: {selectedLogForAuditHistory.sending_method}</Typography>
+                        <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Method: {selectedLogForAuditHistory.sending_method}</Typography>
                       </Box>
                       <Box>
                         <Typography variant="overline" sx={{ color: 'text.disabled', fontSize: '0.6rem' }}>DELIVERY OUTCOME</Typography>
@@ -1823,13 +1823,13 @@ export default function FulfillmentPage() {
                                 {attempt.trigger_type?.toUpperCase() === 'USER' ? (
                                   <Box>
                                     <Typography variant="body2" sx={{ fontWeight: 600 }}>{attempt.triggered_by_user_name_snapshot || 'User'}</Typography>
-                                    <Typography variant="caption" display="block" color="text.disabled">Role: {attempt.triggered_by_role_snapshot || 'N/A'}</Typography>
-                                    <Typography variant="caption" display="block" color="text.disabled">Company: {attempt.triggered_by_company_name_snapshot || 'N/A'}</Typography>
+                                    <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Role: {attempt.triggered_by_role_snapshot || 'N/A'}</Typography>
+                                    <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Company: {attempt.triggered_by_company_name_snapshot || 'N/A'}</Typography>
                                   </Box>
                                 ) : (
                                   <Box>
                                     <Typography variant="body2" sx={{ fontWeight: 600 }}>{attempt.system_process_name || 'System Automated Retry'}</Typography>
-                                    <Typography variant="caption" display="block" color="text.disabled">Process ID: {attempt.system_process_id}</Typography>
+                                    <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>Process ID: {attempt.system_process_id}</Typography>
                                   </Box>
                                 )}
                               </Box>

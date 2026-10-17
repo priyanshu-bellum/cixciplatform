@@ -3012,7 +3012,7 @@ export default function CatalogPage() {
                 <img src={getImageUrl(displayImg)} alt={p.name} className="admin-main-img" />
               ) : (
                 <div className="admin-placeholder-photo">
-                  <ImageIcon size={32} className="admin-placeholder-icon" />
+                  <ImageIcon sx={{ fontSize: 32 }} className="admin-placeholder-icon" />
                   <span className="admin-placeholder-text">Main product photo</span>
                 </div>
               )

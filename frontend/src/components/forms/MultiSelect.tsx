@@ -13,16 +13,16 @@ interface MultiSelectProps {
 
 export default function MultiSelect({ label, options, value, onChange, placeholder, disabled }: MultiSelectProps) {
   return (
-    <Autocomplete
+    <Autocomplete<string, true, false, false>
       multiple
       size="small"
       options={options}
       value={value}
       onChange={(_, newVal) => onChange(newVal)}
       disabled={disabled}
-      renderTags={(val, getTagProps) =>
-        val.map((option, index) => (
-          <Chip label={option} size="small" {...getTagProps({ index })} key={option} />
+      renderValue={(selected, getItemProps) =>
+        selected.map((option, index) => (
+          <Chip label={option} size="small" {...getItemProps({ index })} key={option} />
         ))
       }
       renderInput={(params) => (

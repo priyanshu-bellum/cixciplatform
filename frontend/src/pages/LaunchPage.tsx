@@ -123,7 +123,7 @@ export default function LaunchPage() {
           <Card variant="outlined">
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                   {selected.name}
                 </Typography>
                 <StatusChip status={selected.status ?? 'unknown'} />
