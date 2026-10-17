@@ -60,6 +60,26 @@ class TestBuyerDataIntegrationSpec:
         assert self.vendor_company.return_state == "TX"
         assert self.vendor_company.return_zip_code == "75001"
 
+    def test_order_list_handles_non_object_routing_snapshot(self):
+        order = Order.objects.create(
+            company_scope_reference=self.buyer_company.id,
+            buyer_reference=self.buyer_company.id,
+            buyer_entity_reference=self.buyer_entity.id,
+            status="processing",
+        )
+        RoutedSuborder.objects.create(
+            order=order,
+            vendor_company_reference=self.vendor_company.id,
+            routing_snapshot="legacy snapshot value",
+            status="processing",
+        )
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.get("/api/v1/routing/orders/?paginate=false")
+
+        assert response.status_code == 200
+        assert response.data[0]["vendor_order"] == ""
+
     def test_return_request_spec_fields_and_serializer(self):
         """Component 1 & 6: ReturnRequest model & serializer include restocking_fee, item_condition, refund_status, confirmation_id, buyer_order_number."""
         order = Order.objects.create(
@@ -253,6 +273,7 @@ class TestBuyerDataIntegrationSpec:
             name="Super Armor Case",
             upc="810099887766",
             color="Matte Black",
+            vendor_wholesale_price_amount=decimal.Decimal("9.75"),
             vendor_company_reference=self.vendor_company.id,
             company_scope_reference=self.vendor_company.id,
             status=ProductStatus.ACTIVE,
@@ -302,6 +323,8 @@ class TestBuyerDataIntegrationSpec:
         assert "2026-09-16" in created_data["order_date_time"]
         assert created_data["buyer_id"] == str(self.buyer_company.id)
         assert created_data["buyer_order_number"] == "BUYER-SPEC-ORD-001"
+        assert created_data["order_lines"][0]["unit_price_snapshot"] == 9.75
+        assert created_data["order_lines"][0]["line_total"] == 29.25
 
         # 2. Retrieve order via GET /api/v1/routing/orders/{id}/
         order_id = created_data["id"]
@@ -328,6 +351,10 @@ class TestBuyerDataIntegrationSpec:
         assert retrieved_data["buyer_order_number"] == "BUYER-SPEC-ORD-001"
         # Vendor order number must NOT be fake-synthesized by the platform
         assert retrieved_data["vendor_order"] == ""
+
+        res_list = self.client.get("/api/v1/routing/orders/?paginate=false")
+        assert res_list.status_code == 200
+        assert any(item["id"] == order_id for item in res_list.data)
 
     def test_incomplete_order_rejected_with_missing_fields(self):
         """Platform must NOT accept incomplete orders missing shipping or identifiers."""
@@ -373,6 +400,4 @@ class TestBuyerDataIntegrationSpec:
         assert "city" in errors3
         assert "state" in errors3
         assert "zip_code" in errors3
-
-
 

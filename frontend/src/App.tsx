@@ -40,8 +40,8 @@ function extractErrorMessage(error: unknown): string {
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuthStore()
-  if (loading) return <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}><CircularProgress /></Box>
+  const { user, initialized } = useAuthStore()
+  if (!initialized) return <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}><CircularProgress /></Box>
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
@@ -77,7 +77,7 @@ function AppWithQuery() {
     })
   }
 
-  useEffect(() => { fetchMe() }, [])
+  useEffect(() => { void fetchMe() }, [fetchMe])
 
   return (
     <QueryClientProvider client={queryClientRef.current}>

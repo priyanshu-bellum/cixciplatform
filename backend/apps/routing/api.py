@@ -191,10 +191,10 @@ class OrderSerializer(serializers.ModelSerializer):
                 # Resolve price/total from product if missing
                 if line.get("unit_price_snapshot") is None or line.get("line_total") is None:
                     prod = Product.objects.filter(sku=line.get("sku")).first()
-                    if prod and prod.vendor_wholesale_price is not None:
+                    if prod and prod.vendor_wholesale_price_amount is not None:
                         qty = line.get("quantity", 1)
-                        line.setdefault("unit_price_snapshot", float(prod.vendor_wholesale_price))
-                        line.setdefault("line_total", float(prod.vendor_wholesale_price) * qty)
+                        line.setdefault("unit_price_snapshot", float(prod.vendor_wholesale_price_amount))
+                        line.setdefault("line_total", float(prod.vendor_wholesale_price_amount) * qty)
                 enriched.append(line)
             return enriched
         from apps.procurement.models import PurchaseOrderLine
@@ -346,7 +346,7 @@ class OrderSerializer(serializers.ModelSerializer):
         if h and h.vendor_order_number:
             return h.vendor_order_number
         sub = self._get_primary_suborder(obj)
-        if sub and sub.routing_snapshot:
+        if sub and isinstance(sub.routing_snapshot, dict):
             if sub.routing_snapshot.get("vendor_order"):
                 return str(sub.routing_snapshot.get("vendor_order"))
             if sub.routing_snapshot.get("vendor_order_number"):

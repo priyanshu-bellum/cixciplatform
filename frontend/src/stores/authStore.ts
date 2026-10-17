@@ -17,6 +17,7 @@ interface User {
 interface AuthState {
   user: User | null
   loading: boolean
+  initialized: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => void
   fetchMe: () => Promise<void>
@@ -25,6 +26,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   loading: false,
+  initialized: false,
 
   login: async (email, password) => {
     set({ loading: true })
@@ -33,7 +35,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       localStorage.setItem('access', data.access)
       localStorage.setItem('refresh', data.refresh)
       const me = await api.get('/tenant/users/me/')
-      set({ user: me.data, loading: false })
+      set({ user: me.data, loading: false, initialized: true })
     } catch (err) {
       set({ loading: false })
       throw err
@@ -45,18 +47,21 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (refresh) api.post('/auth/logout/', { refresh }).catch(() => {})
     localStorage.removeItem('access')
     localStorage.removeItem('refresh')
-    set({ user: null })
+    set({ user: null, loading: false, initialized: true })
   },
 
   fetchMe: async () => {
     const token = localStorage.getItem('access')
-    if (!token) return
+    if (!token) {
+      set({ user: null, loading: false, initialized: true })
+      return
+    }
     set({ loading: true })
     try {
       const { data } = await api.get('/tenant/users/me/')
-      set({ user: data, loading: false })
+      set({ user: data, loading: false, initialized: true })
     } catch {
-      set({ user: null, loading: false })
+      set({ user: null, loading: false, initialized: true })
     }
   },
 }))
