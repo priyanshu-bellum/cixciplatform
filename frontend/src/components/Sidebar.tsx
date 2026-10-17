@@ -26,6 +26,8 @@ import LogoutIcon from '@mui/icons-material/LogoutOutlined'
 import PeopleIcon from '@mui/icons-material/PeopleOutlined'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeMode } from '../theme/ThemeProvider'
+import ConfirmDialog from './feedback/ConfirmDialog'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
 
 export const DRAWER_WIDTH = 240
 
@@ -69,6 +71,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const { mode } = useThemeMode()
+  const { dialogProps, confirm } = useConfirmDialog()
 
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
   const isBuyer = user?.company_type === 'buyer'
@@ -90,7 +93,16 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     return { ...section, items }
   }).filter(section => section.items.length > 0)
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const confirmed = await confirm({
+      title: 'Sign out?',
+      message: 'Are you sure you want to sign out?',
+      confirmLabel: 'Sign out',
+      cancelLabel: 'Cancel',
+      confirmColor: 'warning',
+    })
+    if (!confirmed) return
+
     logout()
     navigate('/login')
   }
@@ -219,6 +231,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       >
         {drawerContent}
       </Drawer>
+
+      <ConfirmDialog {...dialogProps} />
     </>
   )
 }
