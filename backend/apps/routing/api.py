@@ -191,10 +191,14 @@ class OrderSerializer(serializers.ModelSerializer):
                 # Resolve price/total from product if missing
                 if line.get("unit_price_snapshot") is None or line.get("line_total") is None:
                     prod = Product.objects.filter(sku=line.get("sku")).first()
-                    if prod and prod.vendor_wholesale_price_amount is not None:
-                        qty = line.get("quantity", 1)
-                        line.setdefault("unit_price_snapshot", float(prod.vendor_wholesale_price_amount))
-                        line.setdefault("line_total", float(prod.vendor_wholesale_price_amount) * qty)
+                    if prod:
+                        effective_price = prod.buyer_wholesale_price
+                        if effective_price is None:
+                            effective_price = prod.vendor_wholesale_price_amount
+                        if effective_price is not None:
+                            qty = line.get("quantity", 1)
+                            line.setdefault("unit_price_snapshot", float(effective_price))
+                            line.setdefault("line_total", float(effective_price) * qty)
                 enriched.append(line)
             return enriched
         from apps.procurement.models import PurchaseOrderLine
@@ -635,12 +639,28 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 )
                 for l in lines:
                     if l.get("product_reference"):
+                        # Use existing snapshot price if present, else product's buyer wholesale price
+                        unit_price = None
+                        if l.get("unit_price_snapshot") is not None:
+                            try:
+                                unit_price = decimal.Decimal(str(l["unit_price_snapshot"]))
+                            except Exception:
+                                unit_price = None
+                        if unit_price is None:
+                            line_prod = Product.objects.filter(id=uuid.UUID(l["product_reference"])).first()
+                            if line_prod:
+                                unit_price = line_prod.buyer_wholesale_price
+                                if unit_price is None:
+                                    unit_price = line_prod.vendor_wholesale_price_amount
+                        if unit_price is None:
+                            unit_price = decimal.Decimal("0.00")
+                        qty_val = int(l.get("quantity", 1))
                         PurchaseOrderLine.objects.create(
                             purchase_order=po,
                             product_reference=uuid.UUID(l["product_reference"]),
-                            quantity=int(l.get("quantity", 1)),
-                            unit_price_snapshot=decimal.Decimal("0.00"),
-                            line_total=decimal.Decimal("0.00"),
+                            quantity=qty_val,
+                            unit_price_snapshot=unit_price,
+                            line_total=unit_price * qty_val,
                         )
             except Exception:
                 pass

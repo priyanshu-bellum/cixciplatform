@@ -559,3 +559,51 @@ class TestVendorReturnImport:
         assert row[2] == "RAN-12345"
         assert row[7] == "ACC-BAT-111"
         assert row[8] == "111222333444"
+
+    # ─── allowed_refund_amount Property ────────────────────────────────────
+
+    def test_allowed_refund_amount_property(self, setup_data):
+        """Property returns vendor_wholesale_price × return_quantity."""
+        req = setup_data["return_req"]
+        # wholesale=15.50, qty=2 → 31.00
+        assert req.allowed_refund_amount == Decimal("31.00")
+
+    def test_allowed_refund_amount_none_when_no_price(self, setup_data):
+        """Property returns None when vendor_wholesale_price is not set."""
+        req = setup_data["return_req"]
+        req.vendor_wholesale_price = None
+        assert req.allowed_refund_amount is None
+
+    def test_refund_error_includes_max_value(self, setup_data):
+        """CSV import error message includes the actual max allowed value."""
+        client = APIClient()
+        client.force_authenticate(user=setup_data["vendor_user"])
+
+        # wholesale = 15.50, qty = 2, max = 31.00; refund = 50.00
+        rows = [[
+            "Test Buyer Corp",
+            setup_data["sub"].id,
+            "RAN-12345",
+            "Defective battery",
+            setup_data["initiation_date_str"],
+            2,
+            "15.50",
+            "ACC-BAT-111",
+            "111222333444",
+            "",
+            "50.00",
+            ""
+        ]]
+        csv_file = self.generate_csv(rows)
+        response = client.post(
+            "/api/v1/fulfillment/return-requests/import-returns/",
+            {"file": csv_file, "confirm": True},
+            format="multipart"
+        )
+        assert response.status_code == 400
+        errors = response.data["errors"][0]["errors"]
+        # Error should include the actual amounts and the "(vendor wholesale × quantity)" suffix
+        assert any("exceeds maximum allowed" in e for e in errors)
+        assert any("50.00" in e for e in errors)
+        assert any("31.00" in e for e in errors)
+        assert any("vendor wholesale × quantity" in e for e in errors)

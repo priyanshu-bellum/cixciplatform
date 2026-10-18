@@ -535,9 +535,17 @@ def run_device_remapping(device, actor_id=None, change_source="System Remap"):
     if is_active_device and device.device_type:
         dev_type_code = (device.device_type.code or "").lower()
         if dev_type_code:
-            universal_products = Product.objects.filter(
-                compatible_device_types__contains=dev_type_code
-            )
+            from django.db import connection
+            if connection.vendor == "sqlite":
+                # SQLite does not support JSONField contains lookup — filter in Python
+                universal_products = [
+                    p for p in Product.objects.exclude(compatible_device_types__isnull=True)
+                    if dev_type_code in (p.compatible_device_types or [])
+                ]
+            else:
+                universal_products = Product.objects.filter(
+                    compatible_device_types__contains=dev_type_code
+                )
             dev_type_name = device.device_type.name or "Device"
             for product in universal_products:
                 existing = ProductCompatibilityAssertion.objects.filter(

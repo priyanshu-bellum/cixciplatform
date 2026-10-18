@@ -175,6 +175,7 @@ export default function InvoicingPage() {
 
   // Create Invoice dialog state
   const [createOpen, setCreateOpen] = useState(false)
+  const [createMode, setCreateMode] = useState<'manual' | 'auto'>('manual')
   const [createType, setCreateType] = useState<string>('buyer_invoice')
   const [createRole, setCreateRole] = useState<string>('buyer')
   const [createCounterparty, setCreateCounterparty] = useState<string>('')
@@ -276,6 +277,28 @@ export default function InvoicingPage() {
     },
   })
 
+  const createFromOrdersMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      api.post('/invoicing/invoices/create-from-orders/', payload).then(r => r.data),
+    onSuccess: (data) => {
+      const excCount = data?.exceptions?.length || 0
+      showSnackbar(
+        excCount > 0
+          ? `Invoice created with ${excCount} exception(s) — check invoice details`
+          : 'Invoice generated from orders successfully',
+        excCount > 0 ? 'warning' : 'success'
+      )
+      setCreateOpen(false)
+      resetCreateForm()
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['invoice-runs'] })
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || err?.message || 'Failed to generate invoice from orders'
+      showSnackbar(msg, 'error')
+    },
+  })
+
   const issueMutation = useMutation({
     mutationFn: (invoiceId: string) =>
       api.post(`/invoicing/invoices/${invoiceId}/issue/`).then(r => r.data),
@@ -343,6 +366,7 @@ export default function InvoicingPage() {
   // ─── Create Invoice helpers ─────────────────────────────────────────────
 
   const resetCreateForm = () => {
+    setCreateMode('manual')
     setCreateType('buyer_invoice')
     setCreateRole('buyer')
     setCreateCounterparty('')
@@ -364,19 +388,29 @@ export default function InvoicingPage() {
     createLines.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0), 0)
 
   const handleCreateSubmit = () => {
-    createInvoiceMutation.mutate({
-      invoice_type: createType,
-      counterparty_role: createRole,
-      counterparty_reference: createCounterparty,
-      period_start: createPeriodStart,
-      period_end: createPeriodEnd,
-      currency: createCurrency,
-      lines: createLines.map(l => ({
-        description: l.description,
-        quantity: parseInt(l.quantity) || 0,
-        unit_price: l.unit_price,
-      })),
-    })
+    if (createMode === 'auto') {
+      createFromOrdersMutation.mutate({
+        invoice_type: createType,
+        counterparty_reference: createCounterparty,
+        period_start: createPeriodStart,
+        period_end: createPeriodEnd,
+        currency: createCurrency,
+      })
+    } else {
+      createInvoiceMutation.mutate({
+        invoice_type: createType,
+        counterparty_role: createRole,
+        counterparty_reference: createCounterparty,
+        period_start: createPeriodStart,
+        period_end: createPeriodEnd,
+        currency: createCurrency,
+        lines: createLines.map(l => ({
+          description: l.description,
+          quantity: parseInt(l.quantity) || 0,
+          unit_price: l.unit_price,
+        })),
+      })
+    }
   }
 
   // Auto-set counterparty role based on invoice type
@@ -1001,6 +1035,32 @@ export default function InvoicingPage() {
           </IconButton>
         </DialogTitle>
         <DialogContent dividers>
+          {/* Create Mode Toggle */}
+          <Stack direction="row" spacing={1} sx={{ mb: 3 }}>
+            <Button
+              variant={createMode === 'manual' ? 'contained' : 'outlined'}
+              size="small"
+              onClick={() => setCreateMode('manual')}
+              startIcon={<AddIcon />}
+            >
+              Manual Entry
+            </Button>
+            <Button
+              variant={createMode === 'auto' ? 'contained' : 'outlined'}
+              size="small"
+              onClick={() => setCreateMode('auto')}
+              startIcon={<ReceiptLongIcon />}
+            >
+              Generate from Orders
+            </Button>
+          </Stack>
+          {createMode === 'auto' && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Invoice lines will be auto-generated from all purchase orders for this buyer within the selected date range.
+              Lines with zero pricing are skipped and recorded as exceptions.
+            </Alert>
+          )}
+
           {/* Invoice Type & Counterparty */}
           <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
             Invoice Details
@@ -1093,7 +1153,9 @@ export default function InvoicingPage() {
             </FormControl>
           </Stack>
 
-          {/* Line Items */}
+          {/* Line Items — Manual mode only */}
+          {createMode === 'manual' && (
+          <>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
               Line Items
@@ -1183,9 +1245,11 @@ export default function InvoicingPage() {
               </Typography>
             </Box>
           </Paper>
+          </>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => { setCreateOpen(false); resetCreateForm() }} disabled={createInvoiceMutation.isPending}>
+          <Button onClick={() => { setCreateOpen(false); resetCreateForm() }} disabled={createInvoiceMutation.isPending || createFromOrdersMutation.isPending}>
             Cancel
           </Button>
           <Button
@@ -1193,14 +1257,15 @@ export default function InvoicingPage() {
             onClick={handleCreateSubmit}
             disabled={
               createInvoiceMutation.isPending ||
+              createFromOrdersMutation.isPending ||
               !createCounterparty ||
               !createPeriodStart ||
               !createPeriodEnd ||
-              createLines.every(l => !l.description.trim())
+              (createMode === 'manual' && createLines.every(l => !l.description.trim()))
             }
-            startIcon={createInvoiceMutation.isPending ? <CircularProgress size={16} /> : <CheckCircleIcon />}
+            startIcon={createInvoiceMutation.isPending || createFromOrdersMutation.isPending ? <CircularProgress size={16} /> : <CheckCircleIcon />}
           >
-            Create Invoice
+            {createMode === 'auto' ? 'Generate Invoice' : 'Create Invoice'}
           </Button>
         </DialogActions>
       </Dialog>

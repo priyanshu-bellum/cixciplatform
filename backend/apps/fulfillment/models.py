@@ -416,6 +416,13 @@ class ReturnRequest(models.Model):
             models.Index(fields=["status"]),
         ]
 
+    @property
+    def allowed_refund_amount(self):
+        """Maximum allowed refund = vendor_wholesale_price × return_quantity."""
+        if self.vendor_wholesale_price is not None and self.return_quantity:
+            return self.vendor_wholesale_price * self.return_quantity
+        return None
+
 
 class VendorReturnImportLog(models.Model):
     """

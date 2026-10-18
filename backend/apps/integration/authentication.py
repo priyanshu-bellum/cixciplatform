@@ -9,6 +9,8 @@ class CompanyAPIKeyAuthentication(BaseAuthentication):
     Checks for the API key token in 'X-API-Key' or 'Authorization' headers.
     Scopes the authenticated user context to the company's admin/active user.
     """
+    keyword = "Api-Key"
+
     def authenticate(self, request):
         token = request.headers.get("X-API-Key")
         if not token:
@@ -40,6 +42,10 @@ class CompanyAPIKeyAuthentication(BaseAuthentication):
             raise AuthenticationFailed("No active user found for the company entity associated with this API key")
 
         return (user, api_key)
+
+    def authenticate_header(self, request):
+        """Return the WWW-Authenticate header value so DRF returns 401 (not 403) for unauthenticated requests."""
+        return self.keyword
 
 
 try:

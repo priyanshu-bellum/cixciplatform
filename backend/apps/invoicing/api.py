@@ -553,6 +553,175 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             logger.exception("Manual invoice creation failed: %s", exc)
             return Response({"error": str(exc)}, status=400)
 
+    @action(detail=False, methods=["post"], url_path="create-from-orders")
+    def create_from_orders(self, request):
+        """
+        Auto-generate invoice from PurchaseOrders in a date range for a buyer.
+        CIXCI Admin only.
+        Payload: { invoice_type, counterparty_reference, period_start, period_end, currency }
+        Lines are aggregated by product. Zero-price lines create exception records.
+        """
+        result = check_access(request.user, "invoicing.invoice.create")
+        if not result.granted:
+            return Response({"error": result.reason}, status=403)
+
+        data = request.data
+        errors = {}
+        for field in ("invoice_type", "counterparty_reference", "period_start", "period_end"):
+            if not data.get(field):
+                errors[field] = "This field is required."
+        if errors:
+            return Response({"errors": errors}, status=400)
+
+        from datetime import datetime, date
+        from apps.procurement.models import PurchaseOrder, PurchaseOrderLine, POStatus
+        from apps.catalog.models import Product
+
+        buyer_id = data["counterparty_reference"]
+        try:
+            period_start = date.fromisoformat(str(data["period_start"]))
+            period_end = date.fromisoformat(str(data["period_end"]))
+        except ValueError:
+            return Response({"errors": {"period": "Invalid date format. Use YYYY-MM-DD."}}, status=400)
+
+        if period_end < period_start:
+            return Response({"errors": {"period": "Period end must be on or after period start."}}, status=400)
+
+        currency = data.get("currency", "USD")
+
+        EXCLUDED_STATUSES = [POStatus.DRAFT, POStatus.CANCELLED, POStatus.REJECTED]
+
+        pos = PurchaseOrder.objects.filter(
+            company_scope_reference=buyer_id,
+            created_at__date__gte=period_start,
+            created_at__date__lte=period_end,
+        ).exclude(status__in=EXCLUDED_STATUSES).order_by("created_at")
+
+        if not pos.exists():
+            return Response(
+                {"error": "No billable orders found for this buyer in the specified period."},
+                status=400,
+            )
+
+        # Aggregate lines by product
+        product_agg = {}
+        exceptions = []
+
+        for po in pos:
+            po_lines = PurchaseOrderLine.objects.filter(purchase_order=po)
+            for pol in po_lines:
+                if pol.unit_price_snapshot == 0 or pol.line_total == 0:
+                    exceptions.append({
+                        "source_line_id": str(pol.id),
+                        "reason": "missing_pricing_evidence",
+                        "description": (
+                            f"Order line {pol.id} for product {pol.product_reference} "
+                            f"has zero unit price — no pricing snapshot evidence."
+                        ),
+                    })
+                    continue
+
+                prod_ref = str(pol.product_reference)
+                prod = Product.objects.filter(id=pol.product_reference).first()
+                desc = f"{prod.name} ({prod.sku})" if prod else f"Product {prod_ref}"
+
+                if prod_ref not in product_agg:
+                    product_agg[prod_ref] = {
+                        "description": desc,
+                        "quantity": 0,
+                        "unit_price": pol.unit_price_snapshot,
+                        "line_total": Decimal("0"),
+                        "product_reference": pol.product_reference,
+                        "first_line_id": pol.id,
+                        "snapshot_ref": po.pricing_snapshot_reference,
+                    }
+                product_agg[prod_ref]["quantity"] += pol.quantity
+                product_agg[prod_ref]["line_total"] += pol.line_total
+
+        if not product_agg:
+            return Response(
+                {
+                    "error": "No billable lines found. All order lines have zero pricing.",
+                    "exceptions": exceptions,
+                },
+                status=400,
+            )
+
+        user_id = request.user.id
+
+        try:
+            with transaction.atomic():
+                run = InvoiceRun.objects.create(
+                    status="draft",
+                    company_scope_reference=buyer_id,
+                    run_label=data.get(
+                        "run_label",
+                        f"Auto — {period_start.isoformat()} to {period_end.isoformat()}",
+                    ),
+                    idempotency_key=f"auto-{uuid.uuid4()}",
+                    created_by=user_id,
+                )
+                period = InvoicePeriod.objects.create(
+                    run=run,
+                    company_scope_reference=buyer_id,
+                    period_start=data["period_start"],
+                    period_end=data["period_end"],
+                )
+
+                subtotal = Decimal("0")
+                for agg in product_agg.values():
+                    subtotal += agg["line_total"]
+
+                invoice = Invoice.objects.create(
+                    run=run,
+                    period=period,
+                    company_scope_reference=buyer_id,
+                    invoice_type=data["invoice_type"],
+                    status="draft",
+                    counterparty_role="buyer",
+                    counterparty_reference=buyer_id,
+                    subtotal=subtotal,
+                    commission_total=Decimal("0"),
+                    adjustment_total=Decimal("0"),
+                    grand_total=subtotal,
+                    currency=currency,
+                )
+
+                for i, (prod_ref, agg) in enumerate(product_agg.items()):
+                    InvoiceLine.objects.create(
+                        invoice=invoice,
+                        idempotency_key=f"{period.id}-{buyer_id}-auto-{prod_ref}-{i}",
+                        source_module="procurement",
+                        source_order_line_reference=agg["first_line_id"],
+                        source_product_reference=agg["product_reference"],
+                        source_pricing_snapshot_reference=agg["snapshot_ref"] or uuid.uuid4(),
+                        unit_price_snapshot=agg["unit_price"],
+                        quantity=agg["quantity"],
+                        line_total=agg["line_total"],
+                        currency=currency,
+                        line_description=agg["description"],
+                    )
+
+                for exc in exceptions:
+                    InvoiceExceptionRecord.objects.create(
+                        run=run,
+                        invoice=invoice,
+                        exception_kind=exc["reason"],
+                        description=exc["description"],
+                        source_reference=uuid.UUID(exc["source_line_id"]),
+                        is_blocking=False,
+                    )
+
+                run.status = "complete"
+                run.save(update_fields=["status"])
+
+            resp = InvoiceDetailSerializer(invoice).data
+            resp["exceptions"] = exceptions
+            return Response(resp, status=201)
+        except Exception as exc:
+            logger.exception("Auto invoice creation failed: %s", exc)
+            return Response({"error": str(exc)}, status=400)
+
 
 class InvoiceExceptionRecordViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     """Exception records across all runs. Filterable by run, blocking status, resolution."""

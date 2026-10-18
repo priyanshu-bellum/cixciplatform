@@ -424,7 +424,8 @@ class TestVendorShippingImport:
         resp = other_client.post(f"/api/v1/routing/export-logs/{log.id}/reexport/", {
             "reason": "Vendor did not receive file"
         }, format="json")
-        assert resp.status_code == 403
+        # Cross-tenant object access returns 404 (not 403) — avoids leaking resource existence
+        assert resp.status_code == 404
         
         # 2. Re-export fails if reason is missing or "Other" without explanation
         resp = client.post(f"/api/v1/routing/export-logs/{log.id}/reexport/", {}, format="json")

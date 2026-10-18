@@ -270,9 +270,9 @@ class ReturnRequestSerializer(serializers.ModelSerializer):
                 if self.instance.return_refunded_amount is not None and new_refund != self.instance.return_refunded_amount:
                     raise serializers.ValidationError({"return_refunded_amount": "Refund amount is immutable once set."})
                 if new_refund is not None:
-                    allowed = getattr(self.instance, "allowed_refund_amount", None)
+                    allowed = self.instance.allowed_refund_amount
                     if allowed is not None and new_refund > allowed:
-                        raise serializers.ValidationError({"return_refunded_amount": "Refund amount exceeds allowed refund threshold."})
+                        raise serializers.ValidationError({"return_refunded_amount": f"Refund amount {new_refund} exceeds maximum allowed {allowed} (vendor wholesale × quantity)."})
                     elif allowed is None:
                         raise serializers.ValidationError({"return_refunded_amount": "Cannot apply refund without an approved allowed refund amount threshold."})
         return super().validate(attrs)
@@ -1471,11 +1471,9 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             row_status = "rejected"
                         else:
                             # Refund ceiling check
-                            max_allowed = None
-                            if return_req.vendor_wholesale_price is not None:
-                                max_allowed = return_req.vendor_wholesale_price * return_req.return_quantity
+                            max_allowed = return_req.allowed_refund_amount
                             if max_allowed is not None and refund_amt > max_allowed:
-                                row_errors.append(f"Refund amount {refund_amt} exceeds maximum allowed {max_allowed}")
+                                row_errors.append(f"Refund amount {refund_amt} exceeds maximum allowed {max_allowed} (vendor wholesale × quantity)")
                                 row_status = "rejected"
                             else:
                                 target_status = ReturnStatus.RETURN_REFUNDED

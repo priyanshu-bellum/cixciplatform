@@ -6036,10 +6036,7 @@ export default function CatalogPage() {
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Wholesale Price</div>
                       <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600, color: 'var(--accent)' }}>
-                        {isBuyer
-                          ? formatCurrency(selectedManageProduct.buyer_wholesale_price, selectedManageProduct.vendor_wholesale_price_currency)
-                          : formatCurrency(selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)
-                        }
+                        {formatCurrency(selectedManageProduct.buyer_wholesale_price ?? selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)}
                       </div>
                     </div>
 
