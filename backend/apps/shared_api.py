@@ -467,7 +467,7 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
         model = PurchaseOrderLine
         fields = [
             "id", "purchase_order", "product_reference",
-            "quantity", "unit_price_snapshot", "line_total", "created_at"
+            "quantity", "unit_price_snapshot", "msrp_snapshot", "line_total", "created_at"
         ]
         read_only_fields = ["id", "created_at"]
 
@@ -575,6 +575,7 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             product_reference=product.id,
                             quantity=qty,
                             unit_price_snapshot=price,
+                            msrp_snapshot=product.msrp if product.msrp else None,
                             line_total=line_total
                         )
                         # Save triggers PurchaseOrderLine.clean() validation!

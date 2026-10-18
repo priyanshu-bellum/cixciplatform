@@ -47,6 +47,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import DescriptionIcon from '@mui/icons-material/Description'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import UploadIcon from '@mui/icons-material/Upload'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 
 // Shared components and utilities
@@ -1325,11 +1326,13 @@ function VendorDashboard({ count, user }: any) {
   const { data: orders } = useQuery({ queryKey: ['vendor-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data) })
   const { data: relationships } = useQuery({ queryKey: ['vendor-relationships'], queryFn: () => api.get('/tenant/relationships/').then(r => r.data) })
   const { data: invoices } = useQuery({ queryKey: ['vendor-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data) })
+  const { data: returns } = useQuery({ queryKey: ['vendor-returns'], queryFn: () => api.get('/fulfillment/return-requests/').then(r => r.data) })
 
   const pCount = count(products)
   const oCount = count(orders)
   const rCount = count(relationships)
   const iCount = count(invoices)
+  const retCount = count(returns)
 
   const ordersData = Array.isArray(orders) ? orders : (orders?.results ?? [])
 
@@ -1360,29 +1363,39 @@ function VendorDashboard({ count, user }: any) {
         title={`Vendor Portal — ${user?.company_name || 'Partner Workspace'}`}
         subtitle="Accessory inventory, catalog listings, fulfillment SLA tracking"
         actions={
-          <Button component={Link} to="/catalog" variant="contained" startIcon={<ShoppingBagIcon />}>
-            Add New Product
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button component={Link} to="/fulfillment" variant="outlined" startIcon={<CloudUploadIcon />}>
+              Import Returns
+            </Button>
+            <Button component={Link} to="/catalog" variant="contained" startIcon={<ShoppingBagIcon />}>
+              Add New Product
+            </Button>
+          </Box>
         }
       />
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/catalog" style={{ textDecoration: 'none' }}>
             <StatCard icon={<ShoppingBagIcon />} title="Listed Accessories" value={pCount} subtitle="in active catalog" color="var(--purple)" />
           </Link>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/orders" style={{ textDecoration: 'none' }}>
             <StatCard icon={<InventoryIcon />} title="Assigned Orders" value={oCount} subtitle="pending fulfillment" color="var(--green)" />
           </Link>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <StatCard icon={<BusinessIcon />} title="Active Buyers" value={rCount} subtitle="retailer partnerships" color="var(--accent)" />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/invoicing" style={{ textDecoration: 'none' }}>
             <StatCard icon={<ReceiptLongIcon />} title="Invoices Issued" value={iCount} subtitle="billing total" color="var(--amber)" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
+          <Link to="/fulfillment" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<LocalShippingIcon />} title="Return Requests" value={retCount} subtitle="import & manage" color="var(--red, #ef4444)" />
           </Link>
         </Grid>
       </Grid>

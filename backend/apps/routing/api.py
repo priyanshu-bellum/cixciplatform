@@ -199,6 +199,11 @@ class OrderSerializer(serializers.ModelSerializer):
                             qty = line.get("quantity", 1)
                             line.setdefault("unit_price_snapshot", float(effective_price))
                             line.setdefault("line_total", float(effective_price) * qty)
+                # Resolve MSRP from product if missing
+                if line.get("msrp_snapshot") is None:
+                    prod = Product.objects.filter(sku=line.get("sku")).first()
+                    if prod and prod.msrp:
+                        line["msrp_snapshot"] = float(prod.msrp)
                 enriched.append(line)
             return enriched
         from apps.procurement.models import PurchaseOrderLine
@@ -225,6 +230,7 @@ class OrderSerializer(serializers.ModelSerializer):
                 "quantity": l.quantity,
                 "upc": prod.upc if prod else "",
                 "unit_price_snapshot": float(l.unit_price_snapshot) if l.unit_price_snapshot else None,
+                "msrp_snapshot": float(l.msrp_snapshot) if l.msrp_snapshot else (float(prod.msrp) if prod and prod.msrp else None),
                 "line_total": float(l.line_total) if l.line_total else None,
             })
         return res
@@ -655,11 +661,19 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                         if unit_price is None:
                             unit_price = decimal.Decimal("0.00")
                         qty_val = int(l.get("quantity", 1))
+                        msrp_val = None
+                        line_prod = Product.objects.filter(id=uuid.UUID(l["product_reference"])).first()
+                        if line_prod and line_prod.msrp:
+                            try:
+                                msrp_val = decimal.Decimal(str(line_prod.msrp))
+                            except Exception:
+                                msrp_val = None
                         PurchaseOrderLine.objects.create(
                             purchase_order=po,
                             product_reference=uuid.UUID(l["product_reference"]),
                             quantity=qty_val,
                             unit_price_snapshot=unit_price,
+                            msrp_snapshot=msrp_val,
                             line_total=unit_price * qty_val,
                         )
             except Exception:
@@ -880,12 +894,15 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
             primary_image_url = None
             vendor_id = None
             vendor_name = None
+            msrp_val = float(line.msrp_snapshot) if line.msrp_snapshot else None
             try:
                 prod = Product.objects.get(id=line.product_reference)
                 prod_name = prod.name
                 sku = prod.sku
                 upc = prod.upc or "N/A"
                 color = prod.color or "N/A"
+                if msrp_val is None and prod.msrp:
+                    msrp_val = float(prod.msrp)
 
                 # Vendor lookup
                 if prod.vendor_company_reference:
@@ -925,6 +942,7 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                 "vendor_name": vendor_name,
                 "quantity": line.quantity,
                 "unit_price_snapshot": float(line.unit_price_snapshot),
+                "msrp_snapshot": msrp_val,
                 "line_total": float(line.line_total),
             })
             

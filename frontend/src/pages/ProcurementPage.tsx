@@ -132,6 +132,12 @@ export default function ProcurementPage() {
       align: 'right',
     },
     {
+      id: 'msrp_snapshot',
+      label: 'MSRP',
+      align: 'right',
+      render: (l) => l.msrp_snapshot ? formatCurrency(l.msrp_snapshot, selectedPO?.currency) : '\u2014',
+    },
+    {
       id: 'unit_price_snapshot',
       label: 'Unit Price (Snapshot)',
       align: 'right',

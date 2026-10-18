@@ -722,6 +722,100 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             logger.exception("Auto invoice creation failed: %s", exc)
             return Response({"error": str(exc)}, status=400)
 
+    @action(detail=False, methods=["get"], url_path="preview-from-orders")
+    def preview_from_orders(self, request):
+        """
+        Preview eligible orders for auto-invoice generation.
+        GET params: buyer_id, period_start, period_end
+        Returns summary of matching POs and their lines.
+        """
+        result = check_access(request.user, "invoicing.invoice.create")
+        if not result.granted:
+            return Response({"error": result.reason}, status=403)
+
+        buyer_id = request.query_params.get("buyer_id")
+        period_start_str = request.query_params.get("period_start")
+        period_end_str = request.query_params.get("period_end")
+
+        errors = {}
+        if not buyer_id:
+            errors["buyer_id"] = "This field is required."
+        if not period_start_str:
+            errors["period_start"] = "This field is required."
+        if not period_end_str:
+            errors["period_end"] = "This field is required."
+        if errors:
+            return Response({"errors": errors}, status=400)
+
+        from datetime import date
+        from apps.procurement.models import PurchaseOrder, PurchaseOrderLine, POStatus
+        from apps.catalog.models import Product
+
+        try:
+            period_start = date.fromisoformat(str(period_start_str))
+            period_end = date.fromisoformat(str(period_end_str))
+        except ValueError:
+            return Response({"errors": {"period": "Invalid date format. Use YYYY-MM-DD."}}, status=400)
+
+        EXCLUDED_STATUSES = [POStatus.DRAFT, POStatus.CANCELLED, POStatus.REJECTED]
+
+        pos = PurchaseOrder.objects.filter(
+            company_scope_reference=buyer_id,
+            created_at__date__gte=period_start,
+            created_at__date__lte=period_end,
+        ).exclude(status__in=EXCLUDED_STATUSES).order_by("created_at")
+
+        orders_summary = []
+        total_amount = 0
+        total_lines = 0
+        zero_price_lines = 0
+
+        for po in pos:
+            po_lines = PurchaseOrderLine.objects.filter(purchase_order=po)
+            lines_data = []
+            for pol in po_lines:
+                prod = Product.objects.filter(id=pol.product_reference).first()
+                is_zero = pol.unit_price_snapshot == 0 or pol.line_total == 0
+                if is_zero:
+                    zero_price_lines += 1
+                lines_data.append({
+                    "line_id": str(pol.id),
+                    "product_name": prod.name if prod else "Unknown",
+                    "sku": prod.sku if prod else "",
+                    "quantity": pol.quantity,
+                    "unit_price": float(pol.unit_price_snapshot),
+                    "msrp": float(pol.msrp_snapshot) if pol.msrp_snapshot else (float(prod.msrp) if prod and prod.msrp else None),
+                    "line_total": float(pol.line_total),
+                    "is_zero_price": is_zero,
+                })
+                total_lines += 1
+                if not is_zero:
+                    total_amount += float(pol.line_total)
+
+            orders_summary.append({
+                "po_id": str(po.id),
+                "po_number": po.po_number,
+                "status": po.status,
+                "created_at": po.created_at.isoformat() if po.created_at else None,
+                "total_amount": float(po.total_amount) if po.total_amount else 0,
+                "line_count": len(lines_data),
+                "lines": lines_data,
+            })
+
+        from apps.tenant.models import Company
+        buyer = Company.objects.filter(id=buyer_id).first()
+
+        return Response({
+            "buyer": {"id": str(buyer.id), "name": buyer.name} if buyer else None,
+            "period_start": period_start_str,
+            "period_end": period_end_str,
+            "orders_count": len(orders_summary),
+            "total_lines": total_lines,
+            "zero_price_lines": zero_price_lines,
+            "estimated_total": round(total_amount, 2),
+            "orders": orders_summary,
+        })
+
 
 class InvoiceExceptionRecordViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     """Exception records across all runs. Filterable by run, blocking status, resolution."""

@@ -73,6 +73,7 @@ class PurchaseOrderLine(models.Model):
     quantity = models.PositiveIntegerField()
     # Unit price from snapshot — read-only
     unit_price_snapshot = models.DecimalField(max_digits=12, decimal_places=4)
+    msrp_snapshot = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     line_total = models.DecimalField(max_digits=12, decimal_places=4)
     created_at = models.DateTimeField(default=timezone.now)
 

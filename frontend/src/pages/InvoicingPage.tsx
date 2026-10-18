@@ -257,6 +257,20 @@ export default function InvoicingPage() {
   })
   const companies: CompanyOption[] = companiesData?.results ?? (Array.isArray(companiesData) ? companiesData : [])
 
+  // Order preview for auto-invoice mode
+  const { data: orderPreview, isFetching: previewLoading } = useQuery({
+    queryKey: ['invoice-order-preview', createCounterparty, createPeriodStart, createPeriodEnd],
+    queryFn: () => api.get('/invoicing/invoices/preview-from-orders/', {
+      params: {
+        buyer_id: createCounterparty,
+        period_start: createPeriodStart,
+        period_end: createPeriodEnd,
+      },
+    }).then(r => r.data),
+    enabled: createOpen && createMode === 'auto' && !!createCounterparty && !!createPeriodStart && !!createPeriodEnd,
+    retry: false,
+  })
+
   // ─── Mutations ──────────────────────────────────────────────────────────
 
   const createInvoiceMutation = useMutation({
@@ -1152,6 +1166,91 @@ export default function InvoicingPage() {
               </Select>
             </FormControl>
           </Stack>
+
+          {/* Order Preview — Auto mode only */}
+          {createMode === 'auto' && createCounterparty && createPeriodStart && createPeriodEnd && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                Order Preview
+              </Typography>
+              {previewLoading ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
+                  <CircularProgress size={16} />
+                  <Typography variant="body2" color="text.secondary">Loading order preview…</Typography>
+                </Box>
+              ) : orderPreview ? (
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                  <Stack direction="row" spacing={3} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Orders</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{orderPreview.orders_count}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Total Lines</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{orderPreview.total_lines}</Typography>
+                    </Box>
+                    {orderPreview.zero_price_lines > 0 && (
+                      <Box>
+                        <Typography variant="caption" color="warning.main">Zero-Price Lines</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.main' }}>{orderPreview.zero_price_lines}</Typography>
+                      </Box>
+                    )}
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Estimated Total</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.main' }}>
+                        ${orderPreview.estimated_total?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  {orderPreview.orders?.length > 0 && (
+                    <TableContainer sx={{ maxHeight: 200 }}>
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>PO Number</TableCell>
+                            <TableCell>Date</TableCell>
+                            <TableCell align="right">Lines</TableCell>
+                            <TableCell align="right">Total</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {orderPreview.orders.map((o: any) => (
+                            <TableRow key={o.po_id}>
+                              <TableCell>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>{o.po_number}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {o.created_at ? new Date(o.created_at).toLocaleDateString() : '—'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2">{o.line_count}</Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  ${o.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                  {orderPreview.orders_count === 0 && (
+                    <Alert severity="warning" sx={{ mt: 1 }}>
+                      No billable orders found for this buyer in the selected period.
+                    </Alert>
+                  )}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Select a buyer and date range to preview matching orders.
+                </Typography>
+              )}
+            </Box>
+          )}
 
           {/* Line Items — Manual mode only */}
           {createMode === 'manual' && (

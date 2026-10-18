@@ -1117,6 +1117,7 @@ export default function OrdersPage() {
                       <TableCell>Product / SKU</TableCell>
                       <TableCell>Vendor / Details</TableCell>
                       <TableCell align="right">Qty</TableCell>
+                      <TableCell align="right">MSRP</TableCell>
                       <TableCell align="right">Price</TableCell>
                       <TableCell align="right">Total</TableCell>
                     </TableRow>
@@ -1183,6 +1184,11 @@ export default function OrdersPage() {
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2" sx={{ fontWeight: 500 }}>{line.quantity}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2" color="text.secondary">
+                            {line.msrp_snapshot ? formatCurrency(line.msrp_snapshot) : '\u2014'}
+                          </Typography>
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2" color="text.secondary">
