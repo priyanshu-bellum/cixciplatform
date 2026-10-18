@@ -567,7 +567,9 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         if not first_snapshot_id:
                             first_snapshot_id = snapshot.id
 
-                        line_total = price * qty
+                        # line_total = MSRP × qty (client rule), fallback to wholesale × qty
+                        msrp_val = product.msrp if product.msrp else None
+                        line_total = (msrp_val * qty) if msrp_val else (price * qty)
                         total_amount += line_total
 
                         po_line = PurchaseOrderLine(
@@ -575,7 +577,7 @@ class PurchaseOrderViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             product_reference=product.id,
                             quantity=qty,
                             unit_price_snapshot=price,
-                            msrp_snapshot=product.msrp if product.msrp else None,
+                            msrp_snapshot=msrp_val,
                             line_total=line_total
                         )
                         # Save triggers PurchaseOrderLine.clean() validation!

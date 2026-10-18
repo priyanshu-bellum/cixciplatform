@@ -198,7 +198,9 @@ class OrderSerializer(serializers.ModelSerializer):
                         if effective_price is not None:
                             qty = line.get("quantity", 1)
                             line.setdefault("unit_price_snapshot", float(effective_price))
-                            line.setdefault("line_total", float(effective_price) * qty)
+                            # line_total = MSRP × qty (client rule), fallback to wholesale × qty
+                            msrp_price = float(prod.msrp) if prod.msrp else None
+                            line.setdefault("line_total", (msrp_price * qty) if msrp_price else (float(effective_price) * qty))
                 # Resolve MSRP from product if missing
                 if line.get("msrp_snapshot") is None:
                     prod = Product.objects.filter(sku=line.get("sku")).first()
@@ -674,7 +676,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                             quantity=qty_val,
                             unit_price_snapshot=unit_price,
                             msrp_snapshot=msrp_val,
-                            line_total=unit_price * qty_val,
+                            line_total=(msrp_val * qty_val) if msrp_val else (unit_price * qty_val),
                         )
             except Exception:
                 pass

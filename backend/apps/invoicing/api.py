@@ -610,7 +610,10 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         for po in pos:
             po_lines = PurchaseOrderLine.objects.filter(purchase_order=po)
             for pol in po_lines:
-                if pol.unit_price_snapshot == 0 or pol.line_total == 0:
+                # Zero-price: both wholesale and MSRP are zero/missing
+                _prod_for_zero = Product.objects.filter(id=pol.product_reference).first()
+                _effective_msrp = pol.msrp_snapshot if pol.msrp_snapshot else (_prod_for_zero.msrp if _prod_for_zero and _prod_for_zero.msrp else None)
+                if (pol.unit_price_snapshot == 0 or pol.unit_price_snapshot is None) and (_effective_msrp is None or _effective_msrp == 0):
                     exceptions.append({
                         "source_line_id": str(pol.id),
                         "reason": "missing_pricing_evidence",
@@ -625,11 +628,14 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 prod = Product.objects.filter(id=pol.product_reference).first()
                 desc = f"{prod.name} ({prod.sku})" if prod else f"Product {prod_ref}"
 
+                # Invoice pricing = MSRP (client rule), fallback to wholesale snapshot
+                invoice_unit_price = pol.msrp_snapshot if pol.msrp_snapshot else pol.unit_price_snapshot
+
                 if prod_ref not in product_agg:
                     product_agg[prod_ref] = {
                         "description": desc,
                         "quantity": 0,
-                        "unit_price": pol.unit_price_snapshot,
+                        "unit_price": invoice_unit_price,
                         "line_total": Decimal("0"),
                         "product_reference": pol.product_reference,
                         "first_line_id": pol.id,
@@ -775,7 +781,9 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             lines_data = []
             for pol in po_lines:
                 prod = Product.objects.filter(id=pol.product_reference).first()
-                is_zero = pol.unit_price_snapshot == 0 or pol.line_total == 0
+                # Zero-price: both wholesale and MSRP are zero/missing
+                effective_msrp = pol.msrp_snapshot if pol.msrp_snapshot else (prod.msrp if prod and prod.msrp else None)
+                is_zero = (pol.unit_price_snapshot == 0 or pol.unit_price_snapshot is None) and (effective_msrp is None or effective_msrp == 0)
                 if is_zero:
                     zero_price_lines += 1
                 lines_data.append({
@@ -784,7 +792,7 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "sku": prod.sku if prod else "",
                     "quantity": pol.quantity,
                     "unit_price": float(pol.unit_price_snapshot),
-                    "msrp": float(pol.msrp_snapshot) if pol.msrp_snapshot else (float(prod.msrp) if prod and prod.msrp else None),
+                    "msrp": float(effective_msrp) if effective_msrp else None,
                     "line_total": float(pol.line_total),
                     "is_zero_price": is_zero,
                 })
