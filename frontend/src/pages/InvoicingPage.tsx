@@ -314,8 +314,13 @@ export default function InvoicingPage() {
   })
 
   const issueMutation = useMutation({
-    mutationFn: (invoiceId: string) =>
-      api.post(`/invoicing/invoices/${invoiceId}/issue/`).then(r => r.data),
+    mutationFn: async (invoiceId: string) => {
+      const detail = await api.get(`/invoicing/invoices/${invoiceId}/`).then(r => r.data)
+      if (detail.status === 'draft') {
+        await api.post(`/invoicing/invoices/${invoiceId}/transition/`, { status: 'ready' })
+      }
+      return api.post(`/invoicing/invoices/${invoiceId}/issue/`).then(r => r.data)
+    },
     onSuccess: () => {
       showSnackbar('Invoice issued successfully', 'success')
       setIssueDialogOpen(false)

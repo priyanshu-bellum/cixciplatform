@@ -42,6 +42,7 @@ import ShoppingBagIcon from '@mui/icons-material/ShoppingBag'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
+import SearchBar from '../components/forms/SearchBar'
 import CheckIcon from '@mui/icons-material/Check'
 import DownloadIcon from '@mui/icons-material/Download'
 import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
@@ -3883,24 +3884,26 @@ export default function CatalogPage() {
 
       {tab === 'products' && (
         <>
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 12,
-            padding: 16,
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            marginBottom: 16,
-            alignItems: 'center'
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Search</label>
-              <div className="search-bar" style={{ width: 240, margin: 0 }}>
-                <SearchIcon sx={{ fontSize: 14 }} />
-                <input placeholder="Search by name, SKU, brand, category, color, status, price…" value={allSearch} onChange={e => setAllSearch(e.target.value)} />
-              </div>
-            </div>
+          <Box
+            sx={{
+              mb: 2,
+              display: 'flex',
+              gap: 1.5,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              p: 2,
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
+            }}
+          >
+            <SearchBar
+              placeholder="Search by name, SKU, brand, category, color, status, price…"
+              value={allSearch}
+              onChange={(e) => setAllSearch(e.target.value)}
+              sx={{ width: 280 }}
+            />
 
             {isBuyer && (
               <MultiSelect
