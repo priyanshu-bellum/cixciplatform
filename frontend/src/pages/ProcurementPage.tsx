@@ -149,7 +149,7 @@ export default function ProcurementPage() {
       align: 'right',
       render: (l) => (
         <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 500 }}>
-          {formatCurrency(l.line_total, selectedPO?.currency)}
+          {formatCurrency(l.msrp_snapshot ? l.msrp_snapshot * l.quantity : l.line_total, selectedPO?.currency)}
         </Typography>
       ),
     },

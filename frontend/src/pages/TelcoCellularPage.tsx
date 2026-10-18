@@ -305,6 +305,7 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
                               <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Item Name</TableCell>
                               <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>SKU</TableCell>
                               <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Quantity</TableCell>
+                              <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>MSRP</TableCell>
                               <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Unit Price</TableCell>
                               <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b' }}>Total</TableCell>
                               <TableCell sx={{ color: 'text.disabled', fontWeight: 600, borderColor: '#1e293b', textAlign: 'right' }}>Actions</TableCell>
@@ -344,8 +345,9 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
                                   </TableCell>
                                   <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1', fontFamily: MONO_FONT }}>{line.sku}</TableCell>
                                   <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{line.quantity}</TableCell>
+                                  <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{line.msrp_snapshot ? formatCurrency(line.msrp_snapshot) : '\u2014'}</TableCell>
                                   <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{formatCurrency(line.unit_price_snapshot)}</TableCell>
-                                  <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{formatCurrency(line.line_total)}</TableCell>
+                                  <TableCell sx={{ borderColor: '#1e293b', color: '#cbd5e1' }}>{formatCurrency(line.msrp_snapshot ? line.msrp_snapshot * line.quantity : line.line_total)}</TableCell>
                                   <TableCell sx={{ borderColor: '#1e293b', textAlign: 'right' }}>
                                     {existingReturn ? (
                                       <Chip

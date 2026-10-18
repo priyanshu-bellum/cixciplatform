@@ -1197,7 +1197,7 @@ export default function OrdersPage() {
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
-                            {formatCurrency(line.line_total)}
+                            {formatCurrency(line.msrp_snapshot ? line.msrp_snapshot * line.quantity : line.line_total)}
                           </Typography>
                         </TableCell>
                       </TableRow>
