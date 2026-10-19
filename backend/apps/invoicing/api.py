@@ -312,7 +312,14 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             return qs
         if hasattr(user, "entity") and user.entity and user.entity.company:
             cid = user.entity.company.id
-            return qs.filter(Q(company_scope_reference=cid) | Q(counterparty_reference=cid))
+            direct = Q(company_scope_reference=cid) | Q(counterparty_reference=cid)
+            # Vendor visibility: invoices containing lines sourced from this vendor's POs
+            from apps.procurement.models import PurchaseOrderLine
+            pol_ids = PurchaseOrderLine.objects.filter(
+                purchase_order__vendor_company_reference=cid
+            ).values_list("id", flat=True)
+            indirect = Q(lines__source_order_line_reference__in=list(pol_ids))
+            return qs.filter(direct | indirect).distinct()
         return qs
 
     def get_serializer_class(self):
