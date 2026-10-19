@@ -528,7 +528,11 @@ class ReportingMetricViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 class ActivitySummaryWindowViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     queryset = ActivitySummaryReportingWindow.objects.all().order_by("-window_start")
     serializer_class = ActivitySummaryWindowSerializer
-    action_capability_map = {"list": "analytics.summary.read", "retrieve": "analytics.summary.read"}
+    action_capability_map = {
+        "list": "analytics.summary.read",
+        "retrieve": "analytics.summary.read",
+        "live_summary": "analytics.summary.read",
+    }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["status"]
 
@@ -537,6 +541,42 @@ class ActivitySummaryWindowViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
         window = self.get_object()
         aggs = window.aggregation_records.filter(is_current=True)
         return Response(ActivitySummaryAggregationSerializer(aggs, many=True).data)
+
+    @action(detail=False, methods=["get"], url_path="live-summary")
+    def live_summary(self, request):
+        """Counts computed directly from source modules, for the dashboard."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+        from apps.routing.models import Order
+        from apps.fulfillment.models import (
+            DeliveryDateEvidence,
+            LateFulfillmentImportException,
+            MissingFulfillmentImportException,
+            PartialFulfillmentResponseException,
+        )
+
+        try:
+            days = int(request.query_params.get("days", 30))
+        except (TypeError, ValueError):
+            days = 30
+        days = max(1, days)
+        since = timezone.now() - timedelta(days=days)
+
+        late_count = LateFulfillmentImportException.objects.filter(created_at__gte=since).count()
+        missing_count = MissingFulfillmentImportException.objects.filter(created_at__gte=since).count()
+        partial_count = PartialFulfillmentResponseException.objects.filter(created_at__gte=since).count()
+
+        return Response({
+            "window_days": days,
+            "orders_count": Order.objects.filter(placed_at__gte=since).count(),
+            "shipments_count": DeliveryDateEvidence.objects.filter(created_at__gte=since).count(),
+            "sla_exceptions_count": late_count + missing_count + partial_count,
+            "late_imports_count": late_count,
+            "missing_imports_count": missing_count,
+            "partial_imports_count": partial_count,
+            "generated_at": timezone.now(),
+        })
 
 # ── Integration ────────────────────────────────────────────────────────────────
 from apps.integration.models import (

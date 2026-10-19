@@ -108,6 +108,11 @@ export default function AnalyticsPage() {
     queryFn: () => api.get('/analytics/freshness-markers/').then(r => r.data),
   })
 
+  const { data: liveSummary } = useQuery({
+    queryKey: ['analytics-live-summary'],
+    queryFn: () => api.get('/analytics/summary-windows/live-summary/').then(r => r.data),
+  })
+
   const windows = windowData?.results ?? (Array.isArray(windowData) ? windowData : [])
 
   const { data: aggData, isLoading: aLoading } = useQuery({
@@ -130,10 +135,10 @@ export default function AnalyticsPage() {
   const aggregations = aggData ?? []
   const freshnessMarkers = freshnessData?.results ?? (Array.isArray(freshnessData) ? freshnessData : [])
 
-  // Dashboard summary values
-  const totalOrders = aggregations.reduce((s, a) => s + (a.orders_count ?? 0), 0)
-  const totalShipments = aggregations.reduce((s, a) => s + (a.shipments_count ?? 0), 0)
-  const totalSlaExceptions = aggregations.reduce((s, a) => s + (a.sla_exceptions_count ?? 0), 0)
+  // Dashboard summary values — prefer live source counts, fall back to aggregations
+  const totalOrders = liveSummary?.orders_count ?? aggregations.reduce((s, a) => s + (a.orders_count ?? 0), 0)
+  const totalShipments = liveSummary?.shipments_count ?? aggregations.reduce((s, a) => s + (a.shipments_count ?? 0), 0)
+  const totalSlaExceptions = liveSummary?.sla_exceptions_count ?? aggregations.reduce((s, a) => s + (a.sla_exceptions_count ?? 0), 0)
   const totalLateImports = aggregations.reduce((s, a) => s + (a.late_imports_count ?? 0), 0)
   const staleCount = freshnessMarkers.filter((f: any) => f.is_stale).length
   const freshCount = freshnessMarkers.length - staleCount
@@ -226,21 +231,21 @@ export default function AnalyticsPage() {
               value={totalOrders}
               icon={<TrendingUpIcon />}
               color="primary.main"
-              subtitle={`${currentAggs.length} current aggregation(s)`}
+              subtitle={liveSummary ? `Last ${liveSummary.window_days} days (live)` : `${currentAggs.length} current aggregation(s)`}
             />
             <SummaryCard
               title="Total Shipments"
               value={totalShipments}
               icon={<LocalShippingIcon />}
               color="success.main"
-              subtitle="Across all reporting windows"
+              subtitle={liveSummary ? `Last ${liveSummary.window_days} days (live)` : 'Across all reporting windows'}
             />
             <SummaryCard
               title="SLA Exceptions"
               value={totalSlaExceptions}
               icon={<GavelIcon />}
               color={totalSlaExceptions > 0 ? 'error.main' : 'text.disabled'}
-              subtitle="Cumulative across windows"
+              subtitle={liveSummary ? `Last ${liveSummary.window_days} days (live)` : 'Cumulative across windows'}
             />
             <SummaryCard
               title="Active Windows"
