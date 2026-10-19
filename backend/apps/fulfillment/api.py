@@ -1422,11 +1422,14 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     clean_price = re.sub(r'[$€£,\s]', '', price_ref_val)
                     matched_price = False
 
-                    # If ReturnRequest has no price data at all, accept CSV value (nothing to validate against)
-                    if return_req.vendor_wholesale_price is None and return_req.pricing_snapshot_reference is None:
+                    has_price = return_req.vendor_wholesale_price is not None and return_req.vendor_wholesale_price != 0
+                    has_snapshot = return_req.pricing_snapshot_reference is not None
+
+                    # If ReturnRequest has no meaningful price data, accept CSV value
+                    if not has_price and not has_snapshot:
                         matched_price = True
                     else:
-                        if return_req.vendor_wholesale_price is not None:
+                        if has_price:
                             try:
                                 csv_price = Decimal(clean_price)
                                 # Allow small tolerance (0.01) for decimal precision differences
@@ -1434,7 +1437,7 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                                     matched_price = True
                             except Exception:
                                 pass
-                        if return_req.pricing_snapshot_reference is not None:
+                        if has_snapshot:
                             if clean_price.lower() == str(return_req.pricing_snapshot_reference).lower():
                                 matched_price = True
                         if clean_price == str(return_req.vendor_wholesale_price) or clean_price == str(return_req.pricing_snapshot_reference):
@@ -1442,8 +1445,8 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     if not matched_price:
                         expected = (
                             str(return_req.vendor_wholesale_price)
-                            if return_req.vendor_wholesale_price is not None
-                            else str(return_req.pricing_snapshot_reference)
+                            if has_price
+                            else (str(return_req.pricing_snapshot_reference) if has_snapshot else "(none)")
                         )
                         row_errors.append(
                             f"mismatch: Price Reference '{price_ref_val}' does not match original '{expected}'"
@@ -1485,9 +1488,9 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             row_errors.append("Refund amount must be greater than 0")
                             row_status = "rejected"
                         else:
-                            # Refund ceiling check
+                            # Refund ceiling check (skip when wholesale price is 0/unset — no meaningful ceiling)
                             max_allowed = return_req.allowed_refund_amount
-                            if max_allowed is not None and refund_amt > max_allowed:
+                            if max_allowed is not None and max_allowed > 0 and refund_amt > max_allowed:
                                 row_errors.append(f"Refund amount {refund_amt} exceeds maximum allowed {max_allowed} (vendor wholesale × quantity)")
                                 row_status = "rejected"
                             else:
