@@ -47,6 +47,7 @@ class DataFreshnessMarker(models.Model):
     last_processed_at = models.DateTimeField()
     last_source_record_reference = models.UUIDField(null=True, blank=True)
     is_stale = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
