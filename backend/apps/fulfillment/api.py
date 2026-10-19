@@ -1418,21 +1418,36 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
                 price_ref_val = get_val(row, "price_reference").strip()
                 if price_ref_val:
+                    # Strip currency symbols, commas, whitespace for numeric comparison
+                    clean_price = re.sub(r'[$€£,\s]', '', price_ref_val)
                     matched_price = False
-                    if return_req.vendor_wholesale_price is not None:
-                        try:
-                            csv_price = Decimal(price_ref_val)
-                            if csv_price == return_req.vendor_wholesale_price:
-                                matched_price = True
-                        except Exception:
-                            pass
-                    if return_req.pricing_snapshot_reference is not None:
-                        if price_ref_val.lower() == str(return_req.pricing_snapshot_reference).lower():
-                            matched_price = True
-                    if price_ref_val == str(return_req.vendor_wholesale_price) or price_ref_val == str(return_req.pricing_snapshot_reference):
+
+                    # If ReturnRequest has no price data at all, accept CSV value (nothing to validate against)
+                    if return_req.vendor_wholesale_price is None and return_req.pricing_snapshot_reference is None:
                         matched_price = True
+                    else:
+                        if return_req.vendor_wholesale_price is not None:
+                            try:
+                                csv_price = Decimal(clean_price)
+                                # Allow small tolerance (0.01) for decimal precision differences
+                                if abs(csv_price - return_req.vendor_wholesale_price) <= Decimal("0.01"):
+                                    matched_price = True
+                            except Exception:
+                                pass
+                        if return_req.pricing_snapshot_reference is not None:
+                            if clean_price.lower() == str(return_req.pricing_snapshot_reference).lower():
+                                matched_price = True
+                        if clean_price == str(return_req.vendor_wholesale_price) or clean_price == str(return_req.pricing_snapshot_reference):
+                            matched_price = True
                     if not matched_price:
-                        row_errors.append(f"mismatch: Price Reference {price_ref_val} does not match original price/snapshot")
+                        expected = (
+                            str(return_req.vendor_wholesale_price)
+                            if return_req.vendor_wholesale_price is not None
+                            else str(return_req.pricing_snapshot_reference)
+                        )
+                        row_errors.append(
+                            f"mismatch: Price Reference '{price_ref_val}' does not match original '{expected}'"
+                        )
                         row_status = "rejected"
 
                 sku_val = get_val(row, "sku")

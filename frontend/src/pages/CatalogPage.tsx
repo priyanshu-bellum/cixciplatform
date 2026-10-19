@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import api from '../lib/apiClient'
@@ -457,6 +457,7 @@ export const formatETDate = (dateString: string | null | undefined) => {
 
 export default function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const { showSnackbar } = useSnackbar()
   const { confirm, dialogProps } = useConfirmDialog()
@@ -6654,6 +6655,25 @@ export default function CatalogPage() {
                       Bulk upload complete. Processed: {bulkResult.total_rows_processed} | Passed: {bulkResult.rows_passed} | Failed: {bulkResult.rows_failed} | Staged: {bulkResult.rows_staged}
                     </span>
                   </div>
+                  {bulkResult.rows_passed > 0 && (
+                    <div style={{ marginTop: 10, padding: '10px 12px', background: 'rgba(var(--accent-rgb), 0.08)', border: '1px solid rgba(var(--accent-rgb), 0.25)', borderRadius: 6 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                        Products imported without images
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                        Your products are saved but not yet retail-ready. Upload product images via the Media Manager to make them visible to buyers.
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                        onClick={() => navigate('/media')}
+                      >
+                        <ImageIcon sx={{ fontSize: 14 }} />
+                        Upload Images in Media Manager
+                      </button>
+                    </div>
+                  )}
                   {bulkResult.errors && bulkResult.errors.length > 0 && (
                     <div style={{ marginTop: 8, fontSize: 12, maxHeight: 150, overflowY: 'auto' }}>
                       <div style={{ fontWeight: 600, color: 'var(--red)', marginBottom: 4 }}>Errors encountered:</div>

@@ -62,7 +62,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "create": "media.asset.upload", "update": "media.asset.manage",
         "partial_update": "media.asset.manage", "destroy": "media.asset.manage",
         "renditions": "media.asset.read", "request_upload": "media.asset.upload",
-        "upload_file": "media.asset.upload",
+        "upload_file": "media.asset.upload", "upload_zip": "media.asset.upload",
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["asset_type", "status", "owner_module", "company_scope_reference"]
@@ -256,6 +256,213 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         
         return Response(MediaAssetSerializer(asset).data)
 
+    @action(detail=False, methods=["post"])
+    def upload_zip(self, request):
+        """
+        Bulk ZIP image upload with validation and SKU matching.
+        POST /media/assets/upload_zip/
+        Accepts: multipart file (zip), optional company_scope_reference
+        Returns: upload summary with per-file results and SKU match status.
+        """
+        import os
+        import zipfile
+        import hashlib
+        from django.conf import settings
+        from django.utils import timezone
+
+        zip_file = request.FILES.get("file")
+        if not zip_file:
+            return Response({"error": "No ZIP file uploaded"}, status=400)
+
+        # ── ZIP-level validation ──
+        if not zipfile.is_zipfile(zip_file):
+            return Response({"error": "Uploaded file is not a valid ZIP archive."}, status=400)
+
+        zip_size = zip_file.size
+        max_zip_size = getattr(settings, "MEDIA_ZIP_MAX_SIZE", 100 * 1024 * 1024)  # 100MB default
+        if zip_size > max_zip_size:
+            return Response({
+                "error": f"ZIP file size ({zip_size / 1024 / 1024:.1f} MB) exceeds maximum ({max_zip_size / 1024 / 1024:.0f} MB)."
+            }, status=400)
+
+        # Resolve company scope
+        company_id = None
+        if request.user.entity:
+            company_id = request.user.entity.company_id
+        else:
+            from apps.tenant.models import Company
+            company = Company.objects.filter(company_type="cixci_internal").first() or Company.objects.first()
+            if company:
+                company_id = company.id
+        if not company_id:
+            return Response({"error": "Could not resolve company scope for upload."}, status=400)
+
+        max_file_size = getattr(settings, "MEDIA_IMAGE_MAX_SIZE", 10 * 1024 * 1024)  # 10MB per image
+        allowed_exts = {".png"}
+        max_dimension = getattr(settings, "MEDIA_IMAGE_MAX_DIMENSION", 8000)
+
+        results = []
+        matched_count = 0
+        unmatched_count = 0
+        failed_count = 0
+
+        # Build SKU lookup from products for this company's vendors
+        from apps.catalog.models import Product
+        sku_map = {}
+        for p in Product.objects.filter(status="active").only("id", "sku", "vendor_company_reference"):
+            if p.sku:
+                sku_map[p.sku.strip().upper()] = p
+
+        try:
+            with zipfile.ZipFile(zip_file, "r") as zf:
+                # Check for password-protected entries
+                for info in zf.infolist():
+                    if info.flag_bits & 0x1:  # encrypted flag
+                        return Response({"error": "ZIP contains password-protected entries. Please remove passwords and re-upload."}, status=400)
+
+                # Skip directory entries
+                file_entries = [i for i in zf.infolist() if not i.is_dir()]
+
+                if not file_entries:
+                    return Response({"error": "ZIP archive contains no files."}, status=400)
+
+                for info in file_entries:
+                    fname = info.filename
+                    base_name = os.path.basename(fname)
+                    ext = os.path.splitext(base_name)[1].lower()
+                    file_result = {
+                        "filename": base_name,
+                        "path": fname,
+                        "status": "failed",
+                        "reason": "",
+                        "product_sku": None,
+                        "product_id": None,
+                    }
+
+                    # Extension check
+                    if ext not in allowed_exts:
+                        file_result["reason"] = f"Unsupported file type '{ext}'. Only PNG files are allowed."
+                        failed_count += 1
+                        results.append(file_result)
+                        continue
+
+                    # Size check
+                    if info.file_size > max_file_size:
+                        file_result["reason"] = f"File size ({info.file_size / 1024 / 1024:.1f} MB) exceeds maximum ({max_file_size / 1024 / 1024:.0f} MB)."
+                        failed_count += 1
+                        results.append(file_result)
+                        continue
+
+                    # Read file content
+                    try:
+                        content = zf.read(info)
+                    except Exception as e:
+                        file_result["reason"] = f"Failed to read file: {e}"
+                        failed_count += 1
+                        results.append(file_result)
+                        continue
+
+                    # PNG magic bytes check
+                    if not content[:8] == b'\x89PNG\r\n\x1a\n':
+                        file_result["reason"] = "File is not a valid PNG (missing PNG signature)."
+                        failed_count += 1
+                        results.append(file_result)
+                        continue
+
+                    # Dimension check (parse IHDR chunk)
+                    try:
+                        width = int.from_bytes(content[16:20], "big")
+                        height = int.from_bytes(content[20:24], "big")
+                        if width > max_dimension or height > max_dimension:
+                            file_result["reason"] = f"Image dimensions {width}x{height} exceed maximum {max_dimension}x{max_dimension}."
+                            failed_count += 1
+                            results.append(file_result)
+                            continue
+                    except Exception:
+                        pass  # Skip dimension check if IHDR can't be parsed
+
+                    # SKU matching from filename: {SKU}_{Role}_{Seq}.png or {SKU}.png
+                    stem = os.path.splitext(base_name)[0]
+                    matched_product = None
+                    matched_sku = None
+                    # Try exact SKU match on full stem, then on first segment before _ or -
+                    for candidate in [stem.upper(), stem.split("_")[0].upper(), stem.split("-")[0].upper()]:
+                        if candidate in sku_map:
+                            matched_product = sku_map[candidate]
+                            matched_sku = candidate
+                            break
+
+                    # Create MediaAsset
+                    asset_id = __import__("uuid").uuid4()
+                    content_hash = hashlib.sha256(content).hexdigest()
+                    storage_key = f"{company_id}/product_image/{asset_id}/{base_name}"
+
+                    asset = MediaAsset.objects.create(
+                        id=asset_id,
+                        asset_type="product_image",
+                        status="ready",
+                        owner_module="catalog",
+                        owner_record_id=matched_product.id if matched_product else None,
+                        company_scope_reference=company_id,
+                        original_filename=base_name,
+                        file_extension="png",
+                        mime_type="image/png",
+                        file_size_bytes=info.file_size,
+                        storage_key=storage_key,
+                        storage_provider="local",
+                        content_hash=content_hash,
+                        is_public=True,
+                        uploaded_by=request.user.id,
+                    )
+
+                    # Save file to disk
+                    full_path = os.path.join(settings.MEDIA_ROOT, storage_key)
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, "wb") as f:
+                        f.write(content)
+
+                    # Create version + rendition
+                    from apps.media.models import MediaAssetVersion, Rendition
+                    MediaAssetVersion.objects.create(
+                        asset=asset, version_number=1, is_current=True,
+                        storage_key=storage_key, content_hash=content_hash,
+                        file_size_bytes=info.file_size,
+                    )
+                    Rendition.objects.get_or_create(
+                        asset=asset, rendition_type="original",
+                        defaults={
+                            "storage_key": storage_key,
+                            "width": width if "width" in dir() else None,
+                            "height": height if "height" in dir() else None,
+                            "file_size_bytes": info.file_size,
+                            "mime_type": "image/png",
+                            "is_ready": True,
+                        },
+                    )
+
+                    file_result["status"] = "matched" if matched_product else "unmatched"
+                    file_result["product_sku"] = matched_sku
+                    file_result["product_id"] = str(matched_product.id) if matched_product else None
+                    file_result["asset_id"] = str(asset.id)
+                    if matched_product:
+                        matched_count += 1
+                    else:
+                        unmatched_count += 1
+                    results.append(file_result)
+
+        except zipfile.BadZipFile:
+            return Response({"error": "Corrupted ZIP archive. Please re-export and try again."}, status=400)
+
+        summary = {
+            "total_files": len(results),
+            "matched": matched_count,
+            "unmatched": unmatched_count,
+            "failed": failed_count,
+            "results": results,
+        }
+        return Response(summary, status=201)
+
+
 class UploadSessionViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     queryset = UploadSession.objects.all()
     serializer_class = UploadSessionSerializer
@@ -266,7 +473,7 @@ class UploadSessionViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
 
 
 # ── Analytics ──────────────────────────────────────────────────────────────────
-from apps.analytics.models import ReportingMetric, ActivitySummaryReportingWindow, ActivitySummaryAggregationRecord
+from apps.analytics.models import ReportingMetric, ActivitySummaryReportingWindow, ActivitySummaryAggregationRecord, DataFreshnessMarker
 
 class ReportingMetricSerializer(serializers.ModelSerializer):
     class Meta:
@@ -291,6 +498,23 @@ class ActivitySummaryAggregationSerializer(serializers.ModelSerializer):
             "result_discriminator", "aggregated_at",
         ]
         read_only_fields = ["id", "aggregated_at"]
+
+class DataFreshnessMarkerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DataFreshnessMarker
+        fields = [
+            "id", "source_module", "source_event_type",
+            "last_processed_at", "last_source_record_reference",
+            "is_stale", "updated_at",
+        ]
+        read_only_fields = ["id", "last_processed_at", "updated_at"]
+
+class DataFreshnessMarkerViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    queryset = DataFreshnessMarker.objects.all().order_by("-last_processed_at")
+    serializer_class = DataFreshnessMarkerSerializer
+    action_capability_map = {"list": "analytics.summary.read", "retrieve": "analytics.summary.read"}
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["source_module", "is_stale"]
 
 class ReportingMetricViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = ReportingMetric.objects.filter(is_active=True)
@@ -670,6 +894,7 @@ media_router.register("upload-sessions", UploadSessionViewSet, basename="upload-
 analytics_router = DefaultRouter()
 analytics_router.register("metrics", ReportingMetricViewSet, basename="reporting-metric")
 analytics_router.register("summary-windows", ActivitySummaryWindowViewSet, basename="summary-window")
+analytics_router.register("freshness-markers", DataFreshnessMarkerViewSet, basename="freshness-marker")
 
 integration_router = DefaultRouter()
 integration_router.register("connections", ExternalConnectionViewSet, basename="ext-connection")

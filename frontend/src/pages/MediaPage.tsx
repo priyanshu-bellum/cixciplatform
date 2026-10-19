@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Tab from '@mui/material/Tab'
@@ -17,11 +17,21 @@ import LinearProgress from '@mui/material/LinearProgress'
 import Alert from '@mui/material/Alert'
 import IconButton from '@mui/material/IconButton'
 import Chip from '@mui/material/Chip'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
 import AddIcon from '@mui/icons-material/Add'
 import ImageIcon from '@mui/icons-material/Image'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import PublicIcon from '@mui/icons-material/Public'
 import LockIcon from '@mui/icons-material/Lock'
+import ArchiveIcon from '@mui/icons-material/Archive'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import ErrorIcon from '@mui/icons-material/Error'
+import WarningIcon from '@mui/icons-material/Warning'
 import api from '../lib/apiClient'
 import { formatDate } from '../lib/formatters'
 import PageHeader from '../components/layout/PageHeader'
@@ -56,8 +66,12 @@ export default function MediaPage() {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [showZipModal, setShowZipModal] = useState(false)
+  const [zipFile, setZipFile] = useState<File | null>(null)
+  const [zipResult, setZipResult] = useState<any>(null)
 
   const { showSnackbar } = useSnackbar()
+  const queryClient = useQueryClient()
 
   const { data: assetData, isLoading: aLoading, refetch: refetchAssets } = useQuery({
     queryKey: ['media-assets'],
@@ -73,6 +87,25 @@ export default function MediaPage() {
 
   const assets = assetData?.results ?? (Array.isArray(assetData) ? assetData : [])
   const sessions = sessionData?.results ?? (Array.isArray(sessionData) ? sessionData : [])
+
+  const zipUploadMutation = useMutation({
+    mutationFn: (formData: FormData) =>
+      api.post('/media/assets/upload_zip/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data),
+    onSuccess: (data) => {
+      setZipResult(data)
+      showSnackbar(
+        `ZIP processed: ${data.matched} matched, ${data.unmatched} unmatched, ${data.failed} failed`,
+        data.failed > 0 ? 'warning' : 'success'
+      )
+      queryClient.invalidateQueries({ queryKey: ['media-assets'] })
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || err?.message || 'ZIP upload failed'
+      showSnackbar(msg, 'error')
+    },
+  })
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -286,13 +319,22 @@ export default function MediaPage() {
         title="Media Assets"
         subtitle="Images, documents, renditions, and upload sessions"
         actions={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setShowModal(true)}
-          >
-            Upload Asset
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<ArchiveIcon />}
+              onClick={() => { setShowZipModal(true); setZipResult(null); setZipFile(null) }}
+            >
+              Upload ZIP
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setShowModal(true)}
+            >
+              Upload Asset
+            </Button>
+          </Box>
         }
       />
 
@@ -483,6 +525,196 @@ export default function MediaPage() {
           >
             {uploading ? 'Uploading...' : 'Start Upload'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ZIP Upload Modal */}
+      <Dialog
+        open={showZipModal}
+        onClose={() => { if (!zipUploadMutation.isPending) { setShowZipModal(false); setZipResult(null); setZipFile(null) } }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Bulk ZIP Image Upload
+          <IconButton
+            size="small"
+            onClick={() => { setShowZipModal(false); setZipResult(null); setZipFile(null) }}
+            disabled={zipUploadMutation.isPending}
+            aria-label="close"
+          >
+            <Box component="span" sx={{ fontSize: 18, lineHeight: 1 }}>&times;</Box>
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          {!zipResult && (
+            <>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Upload a ZIP file containing product images. Files should be PNG format.
+                Images are matched to products by SKU in the filename (e.g., <strong>PP-211_Main_1.png</strong> or <strong>PP-211.png</strong>).
+              </Alert>
+
+              {zipUploadMutation.isError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {(zipUploadMutation.error as any)?.response?.data?.error || (zipUploadMutation.error as any)?.message || 'ZIP upload failed'}
+                </Alert>
+              )}
+
+              {zipFile ? (
+                <Box
+                  sx={{
+                    border: '2px dashed',
+                    borderColor: 'primary.main',
+                    borderRadius: 2,
+                    p: 4,
+                    textAlign: 'center',
+                    cursor: zipUploadMutation.isPending ? 'default' : 'pointer',
+                    bgcolor: 'action.hover',
+                    transition: 'all 0.2s',
+                  }}
+                  onClick={() => { if (!zipUploadMutation.isPending) setZipFile(null) }}
+                >
+                  <ArchiveIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+                  <Typography variant="h6" sx={{ fontWeight: 600, wordBreak: 'break-all' }}>
+                    {zipFile.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {fmtBytes(zipFile.size)} &mdash; Click to change
+                  </Typography>
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    borderRadius: 2,
+                    p: 4,
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' },
+                    transition: 'all 0.2s',
+                  }}
+                  onClick={() => document.getElementById('zip-file-input')?.click()}
+                >
+                  <CloudUploadIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                    Click to browse or drag a .zip file here
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    PNG files only, max 100 MB ZIP, max 10 MB per image
+                  </Typography>
+                  <input
+                    id="zip-file-input"
+                    type="file"
+                    accept=".zip"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) setZipFile(f)
+                    }}
+                  />
+                </Box>
+              )}
+
+              {zipUploadMutation.isPending && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                    Processing ZIP archive...
+                  </Typography>
+                  <LinearProgress sx={{ height: 6, borderRadius: 3 }} />
+                </Box>
+              )}
+            </>
+          )}
+
+          {zipResult && (
+            <Box>
+              {/* Summary cards */}
+              <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                <Box sx={{ flex: 1, p: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1, textAlign: 'center' }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700 }}>{zipResult.total_files}</Typography>
+                  <Typography variant="caption" color="text.secondary">Total Files</Typography>
+                </Box>
+                <Box sx={{ flex: 1, p: 2, bgcolor: 'success.main', color: 'success.contrastText', borderRadius: 1, textAlign: 'center' }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700 }}>{zipResult.matched}</Typography>
+                  <Typography variant="caption">Matched to Products</Typography>
+                </Box>
+                <Box sx={{ flex: 1, p: 2, bgcolor: 'warning.main', color: 'warning.contrastText', borderRadius: 1, textAlign: 'center' }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700 }}>{zipResult.unmatched}</Typography>
+                  <Typography variant="caption">No SKU Match</Typography>
+                </Box>
+                <Box sx={{ flex: 1, p: 2, bgcolor: 'error.main', color: 'error.contrastText', borderRadius: 1, textAlign: 'center' }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700 }}>{zipResult.failed}</Typography>
+                  <Typography variant="caption">Failed Validation</Typography>
+                </Box>
+              </Box>
+
+              {/* Per-file results table */}
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>File Results</Typography>
+              <TableContainer sx={{ maxHeight: 350, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Filename</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Matched SKU</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Details</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {zipResult.results?.map((r: any, i: number) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          {r.status === 'matched' && <CheckCircleIcon color="success" fontSize="small" />}
+                          {r.status === 'unmatched' && <WarningIcon color="warning" fontSize="small" />}
+                          {r.status === 'failed' && <ErrorIcon color="error" fontSize="small" />}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 11 }}>{r.filename}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          {r.product_sku ? (
+                            <Chip label={r.product_sku} size="small" color="success" variant="outlined" />
+                          ) : (
+                            <Typography variant="body2" color="text.disabled">—</Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" color={r.status === 'failed' ? 'error.main' : 'text.secondary'}>
+                            {r.reason || (r.status === 'matched' ? 'Matched to product' : 'No product with this SKU')}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => { setShowZipModal(false); setZipResult(null); setZipFile(null) }}
+            disabled={zipUploadMutation.isPending}
+          >
+            {zipResult ? 'Close' : 'Cancel'}
+          </Button>
+          {!zipResult && (
+            <Button
+              variant="contained"
+              disabled={!zipFile || zipUploadMutation.isPending}
+              onClick={() => {
+                const fd = new FormData()
+                fd.append('file', zipFile!)
+                zipUploadMutation.mutate(fd)
+              }}
+            >
+              {zipUploadMutation.isPending ? 'Processing...' : 'Upload ZIP'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>
