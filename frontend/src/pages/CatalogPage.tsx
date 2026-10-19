@@ -4042,7 +4042,7 @@ export default function CatalogPage() {
                 Table
               </button>
             </div>
-          </div>
+          </Box>
 
           {viewMode === 'grid' ? (
             isLoading ? (
