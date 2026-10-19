@@ -24,6 +24,15 @@ class AssetStatus(models.TextChoices):
     REVOKED = "revoked", "Revoked"
     EXPIRED = "expired", "Expired"
     SUPERSEDED = "superseded", "Superseded"
+    # Rule §14 vocabulary additions (review workflow)
+    REJECTED = "rejected", "Rejected"
+    ARCHIVED = "archived", "Archived"
+
+
+class ReviewStatus(models.TextChoices):
+    PENDING = "pending", "Pending Review"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
 
 
 class AssetType(models.TextChoices):
@@ -56,6 +65,24 @@ class MediaAsset(models.Model):
     file_extension = models.CharField(max_length=20)
     mime_type = models.CharField(max_length=100)
     file_size_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+
+    # Image validation metadata (Rule §3-§6)
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    has_transparency = models.BooleanField(default=False)
+
+    # Review workflow (Rule §14, §18)
+    review_status = models.CharField(
+        max_length=20, choices=ReviewStatus.choices, default=ReviewStatus.APPROVED
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.UUIDField(null=True, blank=True)
+    review_notes = models.TextField(blank=True)
+    rejection_reason = models.TextField(blank=True)
+
+    # Presentation metadata (Rule §19, §20)
+    alt_text = models.CharField(max_length=500, blank=True)
+    display_order = models.PositiveIntegerField(default=0)
 
     # Storage reference (NOT the source-of-truth identifier)
     storage_key = models.CharField(max_length=1000, blank=True, help_text="S3/R2 object key")

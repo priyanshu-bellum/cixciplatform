@@ -27,3 +27,8 @@ CELERY_TASK_EAGER_PROPAGATES = True
 
 # Disable S3 for tests
 USE_S3 = False
+
+# Existing test fixtures create Active products without media.
+# The media-readiness buyer filter is validated explicitly in
+# tests/test_media_validation.py, so disable it globally here.
+MEDIA_READINESS_ENFORCE_BUYER = False

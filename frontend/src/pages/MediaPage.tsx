@@ -111,6 +111,12 @@ export default function MediaPage() {
     e.preventDefault()
     if (!file) return
 
+    // Rule §3: only PNG with a transparent background is allowed.
+    if (file.type !== 'image/png' || !/\.png$/i.test(file.name)) {
+      setError(`"${file.name}" is not a PNG. Only transparent PNG images are allowed.`)
+      return
+    }
+
     setUploading(true)
     setError(null)
     setProgress(15)
@@ -119,35 +125,47 @@ export default function MediaPage() {
       // 1. Request presigned upload URL from NPS/Media API
       const reqRes = await api.post('/media/assets/request_upload/', {
         filename: file.name,
-        mime_type: file.type || 'application/octet-stream',
+        mime_type: 'image/png',
         asset_type: assetType,
         owner_module: ownerModule,
         is_public: isPublic,
       })
 
-      const { presigned_url, asset: assetId } = reqRes.data
+      const { presigned_url, id: assetId, asset: assetIdAlt } = reqRes.data
+      const resolvedAssetId = assetId || assetIdAlt
       setProgress(40)
 
-      // 2. Perform direct binary upload to GCS/S3 presigned PUT URL
-      const uploadRes = await fetch(presigned_url, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-        },
-        body: file,
-      })
+      const isPlaceholder = !presigned_url ||
+        presigned_url.includes('placeholder-upload.cixci.com') ||
+        presigned_url.includes('placeholder')
 
-      if (!uploadRes.ok) {
-        throw new Error(`Direct upload failed with status ${uploadRes.status}`)
+      if (isPlaceholder) {
+        // 2a. Server-side upload (validates PNG + transparency, sets metadata/status)
+        const formData = new FormData()
+        formData.append('file', file)
+        await api.post(`/media/assets/${resolvedAssetId}/upload_file/`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      } else {
+        // 2b. Direct binary upload to GCS/S3 presigned PUT URL
+        const uploadRes = await fetch(presigned_url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'image/png',
+          },
+          body: file,
+        })
+
+        if (!uploadRes.ok) {
+          throw new Error(`Direct upload failed with status ${uploadRes.status}`)
+        }
+
+        // 3. Inform backend the asset is ready for consumption
+        await api.patch(`/media/assets/${resolvedAssetId}/`, {
+          status: 'ready',
+          file_size_bytes: file.size,
+        })
       }
-
-      setProgress(85)
-
-      // 3. Inform backend the asset is ready for consumption
-      await api.patch(`/media/assets/${assetId}/`, {
-        status: 'ready',
-        file_size_bytes: file.size,
-      })
 
       setProgress(100)
       setTimeout(() => {
@@ -427,7 +445,8 @@ export default function MediaPage() {
             ) : (
               <FileUploadField
                 onFiles={(files) => setFile(files[0] || null)}
-                label="Click to browse or drag file here"
+                accept=".png"
+                label="Click to browse or drag a PNG here"
                 disabled={uploading}
               />
             )}

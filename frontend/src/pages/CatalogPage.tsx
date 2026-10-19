@@ -1926,9 +1926,13 @@ export default function CatalogPage() {
 
   // Handle local file uploads
   const handleUploadImage = async (file: File): Promise<{ id: string; storage_key: string }> => {
+    // Rule §3: only PNG with a transparent background is allowed.
+    if (file.type !== 'image/png' || !/\.png$/i.test(file.name)) {
+      throw new Error(`"${file.name}" is not a PNG. Only transparent PNG images are allowed.`)
+    }
     const reqRes = await api.post('/media/assets/request_upload/', {
       filename: file.name,
-      mime_type: file.type || 'image/jpeg',
+      mime_type: 'image/png',
       asset_type: 'product_image',
       owner_module: 'catalog',
     })
@@ -1954,7 +1958,7 @@ export default function CatalogPage() {
       const uploadRes = await fetch(presigned_url, {
         method: 'PUT',
         headers: {
-          'Content-Type': file.type || 'application/octet-stream',
+          'Content-Type': 'image/png',
         },
         body: file,
       })
@@ -1990,15 +1994,15 @@ export default function CatalogPage() {
           const contents = await zip.loadAsync(file)
           const imageFiles: File[] = []
           for (const [relativePath, entry] of Object.entries(contents.files)) {
-            if (!entry.dir && /\.(png|jpe?g|webp|gif)$/i.test(relativePath)) {
+            if (!entry.dir && /\.png$/i.test(relativePath)) {
               const blob = await entry.async('blob')
-              const name = relativePath.split('/').pop() || 'image.jpg'
-              const imgFile = new File([blob], name, { type: blob.type || 'image/jpeg' })
+              const name = relativePath.split('/').pop() || 'image.png'
+              const imgFile = new File([blob], name, { type: 'image/png' })
               imageFiles.push(imgFile)
             }
           }
           if (imageFiles.length === 0) {
-            setFormError('No valid images (PNG, JPG, JPEG, WEBP, GIF) found in the ZIP file.')
+            setFormError('No valid images found in the ZIP file. Only PNG files are allowed.')
             setSelectedImageFile(null)
             setImagePreviewUrl('')
             setUploadedZipImages([])
@@ -4908,7 +4912,7 @@ export default function CatalogPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <input
                         type="file"
-                        accept="image/*,.zip"
+                        accept=".png,.zip"
                         id="add-image-file"
                         style={{ display: 'none' }}
                         onChange={handleImageChange}
@@ -4917,7 +4921,7 @@ export default function CatalogPage() {
                       <label htmlFor="add-image-file" className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-block', width: 'fit-content' }}>
                         Choose File
                       </label>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>JPEG, PNG, WEBP, ZIP (Max 5MB)</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG (transparent) or ZIP of PNGs (Max 10MB)</div>
                     </div>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Or Primary Image URL / Asset ID</span>
@@ -5459,7 +5463,7 @@ export default function CatalogPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <input
                         type="file"
-                        accept="image/*,.zip"
+                        accept=".png,.zip"
                         id="edit-image-file"
                         style={{ display: 'none' }}
                         onChange={handleImageChange}
@@ -5468,7 +5472,7 @@ export default function CatalogPage() {
                       <label htmlFor="edit-image-file" className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-block', width: 'fit-content' }}>
                         Choose File
                       </label>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>JPEG, PNG, WEBP, ZIP (Leave blank to keep current)</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG (transparent) or ZIP of PNGs (Leave blank to keep current)</div>
                     </div>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Or Primary Image URL / Asset ID</span>

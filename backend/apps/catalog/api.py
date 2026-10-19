@@ -314,6 +314,7 @@ class ProductDetailSerializer(ProductSerializerBase):
     primary_image_url = serializers.SerializerMethodField()
     buyer_wholesale_price = serializers.ReadOnlyField()
     is_tied_to_activity = serializers.ReadOnlyField()
+    media_readiness = serializers.SerializerMethodField()
 
     headphone_jack_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     bluetooth_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -487,7 +488,59 @@ class ProductDetailSerializer(ProductSerializerBase):
             if f in attrs and attrs[f] is None:
                 attrs[f] = ""
 
+        # ── Media readiness gate (Rule §21/§31) ──
+        # A product may be saved as Draft without media, but cannot become
+        # Active without a valid, transparent PNG primary image.
+        from apps.catalog.models import ProductStatus
+        new_status = attrs.get("status", self.instance.status if self.instance else None)
+        if new_status == ProductStatus.ACTIVE:
+            gate_instance = self.instance
+            if gate_instance is None:
+                gate_instance = self.Meta.model(**{
+                    k: v for k, v in attrs.items()
+                    if k in {f.name for f in self.Meta.model._meta.fields}
+                })
+                if "primary_image_reference" in attrs:
+                    gate_instance.primary_image_reference = attrs["primary_image_reference"]
+            else:
+                # Reflect pending changes on a shallow copy for evaluation
+                for k in ("primary_image_reference", "media_references"):
+                    if k in attrs:
+                        setattr(gate_instance, k, attrs[k])
+
+            from apps.media.readiness import compute_media_readiness
+            readiness = compute_media_readiness(gate_instance)
+            if not readiness.is_ready:
+                raise serializers.ValidationError({
+                    "status": (
+                        "A product cannot be Active without at least one valid, "
+                        "transparent PNG primary image. "
+                        f"({readiness.reason})"
+                    ),
+                    "media_readiness": {
+                        "is_ready": False,
+                        "issues": readiness.issues,
+                        "reason": readiness.reason,
+                    },
+                })
+
         return attrs
+
+    def get_media_readiness(self, obj):
+        try:
+            from apps.media.readiness import compute_media_readiness
+            r = compute_media_readiness(obj)
+            return {
+                "is_ready": r.is_ready,
+                "has_primary": r.has_primary,
+                "primary_is_valid": r.primary_is_valid,
+                "valid_image_count": r.valid_image_count,
+                "reason": r.reason,
+                "issues": r.issues,
+                "primary_url": r.primary_url,
+            }
+        except Exception:
+            return None
 
 
     def get_primary_image_url(self, obj):
@@ -770,6 +823,18 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         qs = qs.filter(status=ProductStatus.ACTIVE).exclude(compatibility_status="incomplete").filter(
             Q(release_date__isnull=True) | Q(release_date__lte=today_est)
         )
+
+        # Media readiness gate (Rule §24): buyers only see products whose primary
+        # image is a valid, transparent PNG. Toggle via MEDIA_READINESS_ENFORCE_BUYER
+        # (default True in production; can be disabled for legacy data).
+        from django.conf import settings as _settings
+        if getattr(_settings, "MEDIA_READINESS_ENFORCE_BUYER", True):
+            from apps.media.models import MediaAsset
+            ready_asset_ids = MediaAsset.objects.filter(
+                status="ready", mime_type="image/png", has_transparency=True,
+                review_status="approved",
+            ).values_list("id", flat=True)
+            qs = qs.filter(primary_image_reference__in=list(ready_asset_ids))
 
         if getattr(self, "action", None) in ["list", "retrieve"] and company.company_type == "buyer":
             from apps.integration.models import CompanyAPIKey

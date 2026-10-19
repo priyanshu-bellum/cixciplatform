@@ -219,6 +219,18 @@ else:
     MEDIA_URL = "/media/"
     MEDIA_ROOT = BASE_DIR / "media"
 
+# ─── Media / Image Asset Validation limits (Rule §4-§6) ───────────────────────
+MEDIA_IMAGE_MAX_SIZE = config("MEDIA_IMAGE_MAX_SIZE", default=10 * 1024 * 1024, cast=int)
+MEDIA_IMAGE_MIN_BYTES = config("MEDIA_IMAGE_MIN_BYTES", default=100, cast=int)
+MEDIA_ZIP_MAX_SIZE = config("MEDIA_ZIP_MAX_SIZE", default=100 * 1024 * 1024, cast=int)
+MEDIA_ZIP_MAX_UNCOMPRESSED_SIZE = config(
+    "MEDIA_ZIP_MAX_UNCOMPRESSED_SIZE", default=500 * 1024 * 1024, cast=int
+)
+MEDIA_IMAGE_MAX_DIMENSION = config("MEDIA_IMAGE_MAX_DIMENSION", default=8000, cast=int)
+MEDIA_IMAGE_MIN_DIMENSION = config("MEDIA_IMAGE_MIN_DIMENSION", default=100, cast=int)
+# Enforce the media-readiness rule on buyer-facing catalog queries (Rule §24).
+MEDIA_READINESS_ENFORCE_BUYER = config("MEDIA_READINESS_ENFORCE_BUYER", default=True, cast=bool)
+
 # ─── Email ────────────────────────────────────────────────────────────────────
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@cixci.com")
 RESEND_API_KEY = config("RESEND_API_KEY", default="").strip()
