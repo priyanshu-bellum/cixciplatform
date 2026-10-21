@@ -4147,7 +4147,7 @@ export default function CatalogPage() {
                       <th>Brand</th>
                       <th>Type</th>
                       <th>Category</th>
-                      <th>Wholesale Price</th>
+                      <th>{isVendor ? 'Vendor Wholesale Price' : 'Wholesale Price'}</th>
                       <th>MSRP</th>
                       {isBuyer && <th>Exported Date</th>}
                       <th>Status</th>
@@ -4546,7 +4546,7 @@ export default function CatalogPage() {
                             <th>Brand</th>
                             <th>Type</th>
                             <th>Category</th>
-                            <th>Wholesale Price</th>
+                            <th>{isVendor ? 'Vendor Wholesale Price' : 'Wholesale Price'}</th>
                             <th>MSRP</th>
                             <th>Status</th>
                             <th>Selling</th>
@@ -6064,14 +6064,16 @@ export default function CatalogPage() {
                       <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, fontWeight: 500 }}>{formatCurrency(selectedManageProduct.msrp, selectedManageProduct.vendor_wholesale_price_currency)}</div>
                     </div>
 
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Wholesale Price</div>
-                      <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600, color: 'var(--accent)' }}>
-                        {formatCurrency(selectedManageProduct.buyer_wholesale_price ?? selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)}
+                    {!isVendor && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Wholesale Price</div>
+                        <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600, color: 'var(--accent)' }}>
+                          {formatCurrency(selectedManageProduct.buyer_wholesale_price ?? selectedManageProduct.vendor_wholesale_price_amount, selectedManageProduct.vendor_wholesale_price_currency)}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    {isCixciAdmin && selectedManageProduct.vendor_wholesale_price_amount != null && (
+                    {(isVendor || isCixciAdmin) && selectedManageProduct.vendor_wholesale_price_amount != null && (
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Vendor Wholesale Price</div>
                         <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600, color: 'var(--accent)' }}>
