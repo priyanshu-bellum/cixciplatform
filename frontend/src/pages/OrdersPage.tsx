@@ -1264,13 +1264,17 @@ export default function OrdersPage() {
               <Box>
                 <Typography sx={detailLabelSx}>7. Shipped Date</Typography>
                 <Typography sx={detailValueSx}>
-                  {orderDetail?.shipped_date || (suborders && suborders[0]?.shipped_date) || '\u2014'}
+                  {(orderDetail?.shipped_date || (suborders && suborders[0]?.shipped_date))
+                    ? formatDate(orderDetail?.shipped_date || suborders[0]?.shipped_date)
+                    : '\u2014'}
                 </Typography>
               </Box>
               <Box>
                 <Typography sx={detailLabelSx}>8. Delivered Date</Typography>
                 <Typography sx={detailValueSx}>
-                  {orderDetail?.delivered_date || (suborders && suborders[0]?.delivered_date) || '\u2014'}
+                  {(orderDetail?.delivered_date || (suborders && suborders[0]?.delivered_date))
+                    ? formatDate(orderDetail?.delivered_date || suborders[0]?.delivered_date)
+                    : '\u2014'}
                 </Typography>
               </Box>
             </Box>
