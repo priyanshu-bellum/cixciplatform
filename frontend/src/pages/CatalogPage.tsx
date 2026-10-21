@@ -6046,7 +6046,7 @@ export default function CatalogPage() {
 
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Launch Date</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.launch_date || '—'}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.launch_date ? formatDate(selectedManageProduct.launch_date) : '—'}</div>
                     </div>
 
                     <div>
@@ -6137,7 +6137,7 @@ export default function CatalogPage() {
                     {selectedManageProduct.release_date && (
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 550, color: 'var(--text-muted)' }}>Release Date</div>
-                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{selectedManageProduct.release_date}</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2 }}>{formatDate(selectedManageProduct.release_date)}</div>
                       </div>
                     )}
 
