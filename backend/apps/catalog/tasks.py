@@ -78,6 +78,23 @@ def process_buyer_export_job(job_id):
 
         # Fetch products
         products = Product.objects.filter(id__in=product_ids)
+
+        # ── Media readiness gate (Rule §25) ──
+        # Buyer exports may include ONLY products whose primary image is a
+        # valid, transparent PNG. Products that are media-incomplete are
+        # excluded from the export output (unless the buyer's export rules
+        # explicitly opt in via allow_media_missing).
+        include_media_missing = bool(getattr(job, "include_media_missing", False))
+        if not include_media_missing:
+            from apps.media.readiness import valid_primary_asset_ids
+            valid_ids = valid_primary_asset_ids()
+            media_ready_ids = [
+                p.id for p in products
+                if getattr(p, "primary_image_reference", None) in valid_ids
+            ]
+            products = products.filter(id__in=media_ready_ids)
+            product_ids = [str(pid) for pid in media_ready_ids]
+
         job.product_count = products.count()
 
         # Build products snapshot

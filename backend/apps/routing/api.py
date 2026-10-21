@@ -3,6 +3,7 @@ import uuid
 import decimal
 import logging
 from django.utils import timezone
+from django.db.models import Q
 from rest_framework import serializers, viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -845,16 +846,26 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
         is_admin = getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
-        if not is_admin and user.entity:
-            company = user.entity.company
-            if company and company.company_type == "vendor":
-                qs = qs.filter(routed_suborders__vendor_company_reference=company.id).distinct()
-            else:
-                qs = qs.filter(
-                    buyer_reference=user.id,
-                    company_scope_reference=company.id if company else None,
-                )
-        return qs
+        if is_admin:
+            return qs
+        # Non-admin callers MUST be tenant-scoped. Fail closed: a user with no
+        # entity/company must never receive the global order list.
+        company = getattr(user, "entity", None) and user.entity.company
+        if not company:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Order access requires a company-scoped identity.")
+        if company.company_type == "vendor":
+            return qs.filter(
+                routed_suborders__vendor_company_reference=company.id
+            ).distinct()
+        # Buyer: only orders belonging to this buyer company. `buyer_reference`
+        # is written as a Company id by procurement; historical rows may carry
+        # the creating user's id, so match either, always scoped to the company.
+        return qs.filter(
+            Q(buyer_reference=company.id)
+            | Q(buyer_reference=user.id)
+            | Q(company_scope_reference=company.id)
+        ).distinct()
 
     def get_serializer_class(self):
         return OrderCreateSerializer if self.action == "create" else OrderSerializer
@@ -897,6 +908,8 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
             vendor_id = None
             vendor_name = None
             msrp_val = float(line.msrp_snapshot) if line.msrp_snapshot else None
+            buyer_wholesale_price = None
+            vendor_wholesale_price = None
             try:
                 prod = Product.objects.get(id=line.product_reference)
                 prod_name = prod.name
@@ -905,6 +918,10 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                 color = prod.color or "N/A"
                 if msrp_val is None and prod.msrp:
                     msrp_val = float(prod.msrp)
+                if prod.buyer_wholesale_price is not None:
+                    buyer_wholesale_price = float(prod.buyer_wholesale_price)
+                if getattr(prod, "vendor_wholesale_price_amount", None) is not None:
+                    vendor_wholesale_price = float(prod.vendor_wholesale_price_amount)
 
                 # Vendor lookup
                 if prod.vendor_company_reference:
@@ -944,6 +961,8 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                 "vendor_name": vendor_name,
                 "quantity": line.quantity,
                 "unit_price_snapshot": float(line.unit_price_snapshot),
+                "buyer_wholesale_price": buyer_wholesale_price,
+                "vendor_wholesale_price": vendor_wholesale_price,
                 "msrp_snapshot": msrp_val,
                 "line_total": float(line.line_total),
             })

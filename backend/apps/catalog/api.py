@@ -107,9 +107,18 @@ class ProductSerializerBase(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and hasattr(request, "user") and request.user:
             user = request.user
-            if not getattr(user, "is_cixci_admin", False):
+            is_admin = getattr(user, "is_cixci_admin", False) or (
+                hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+            )
+            is_vendor = (
+                hasattr(user, "company") and user.company and user.company.company_type == "vendor"
+            )
+            # Rule (§5/§6): a vendor admin must see "Vendor Wholesale Price"; a
+            # buyer must never see it. Only strip for non-admin, non-vendor users.
+            if not (is_admin or is_vendor):
                 ret.pop("vendor_wholesale_price_amount", None)
                 ret.pop("vendor_wholesale_price_currency", None)
+            if not is_admin:
                 ret.pop("vendor_name", None)
                 ret.pop("selling_status", None)
                 ret.pop("release_date", None)
@@ -2692,7 +2701,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         "recommended_correction": "Provide correct category-specific compatibility formats."
                     })
 
-            # --- Image URLs ---
+            # --- Image URLs (Rule §11/§22 URL validation) ---
             media_refs = []
             for k in ['imageurl1', 'imageurl2', 'imageurl3', 'imageurl4', 'imageurl5']:
                 url_val = row.get(k)
@@ -2701,6 +2710,25 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             if not media_refs:
                 should_stage = True
+            else:
+                # Validate configured image URLs now (format + reachability +
+                # PNG signature) so a non-PNG/broken reference cannot silently
+                # create a buyer-ready product (Rule §11, §22, §23).
+                if getattr(settings, "MEDIA_VALIDATE_IMPORT_URLS", True):
+                    from apps.media.validation import validate_image_url
+                    for url_val in media_refs:
+                        try:
+                            _ok, _data, _fname, _uerrs = validate_image_url(url_val)
+                        except Exception as _exc:
+                            _ok, _uerrs = False, [f"Image URL validation error ({_exc})."]
+                        if not _ok:
+                            row_errors.append({
+                                "row_number": row_num,
+                                "column_name": "Image URL",
+                                "submitted_value": url_val,
+                                "validation_error": " | ".join(_uerrs),
+                                "recommended_correction": "Provide a reachable transparent PNG image URL (Rule §11).",
+                            })
 
 
 
@@ -2869,6 +2897,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     final_status = "inactive"
                 else:
                     final_status = status_str or "active"
+
+                # Rule §22/§31: a row with missing/invalid required media is
+                # staged and can never import straight to Active.
+                if should_stage and final_status == "active":
+                    final_status = "inactive"
 
                 # AI Enrichment Simulation
                 # 1. Clean Name
@@ -3190,47 +3223,89 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 )
 
                 # Convert original image URLs to CIXCI MediaAsset records and link primary image reference
+                # Rule §11/§22/§23: managed copy downloaded & validated as a
+                # true transparent PNG before it can become the primary image.
                 if media_refs:
                     from apps.media.models import MediaAsset, AssetType, AssetStatus
+                    from apps.media.validation import validate_image_url, validate_image_bytes
                     from django.conf import settings
+                    import os as _os
                     import uuid
                     media_url = getattr(settings, "MEDIA_URL", "/media/")
                     first_asset_id = None
                     cixci_media_refs = []
                     for idx, url in enumerate(media_refs):
-                        filename = url.split("/")[-1] or f"image_{idx}.png"
-                        if "?" in filename:
-                            filename = filename.split("?")[0]
-                        ext = filename.split(".")[-1] if "." in filename else "png"
-                        mime = "image/png"
-                        if ext.lower() in ["jpg", "jpeg"]:
-                            mime = "image/jpeg"
-                        elif ext.lower() == "gif":
-                            mime = "image/gif"
-                        
+                        ok, data, filename, errs = validate_image_url(url)
+                        if not ok:
+                            # Invalid reference — do not create a buyer-facing asset.
+                            row_errors.append({
+                                "row_number": row_num,
+                                "column_name": "Image URL",
+                                "submitted_value": url,
+                                "validation_error": " | ".join(errs),
+                                "recommended_correction": "Provide a reachable transparent PNG (Rule §11).",
+                            })
+                            continue
+
+                        vres = validate_image_bytes(
+                            data=data,
+                            filename=filename,
+                            asset_type="product_image",
+                            mime_hint="image/png",
+                            company_id=vendor_company_id,
+                        )
+                        if not vres.ok:
+                            row_errors.append({
+                                "row_number": row_num,
+                                "column_name": "Image URL",
+                                "submitted_value": url,
+                                "validation_error": " | ".join(vres.errors),
+                                "recommended_correction": "Image must be a transparent PNG within size/dimension limits (Rule §6).",
+                            })
+                            continue
+
                         asset_id = uuid.uuid4()
                         storage_key = f"{vendor_company_id}/product_image/{asset_id}/{filename}"
-                        
+                        full_path = _os.path.join(settings.MEDIA_ROOT, storage_key)
+                        _os.makedirs(_os.path.dirname(full_path), exist_ok=True)
+                        try:
+                            with open(full_path, "wb+") as dest:
+                                dest.write(data)
+                        except Exception:
+                            pass
+
                         MediaAsset.objects.create(
                             id=asset_id,
                             asset_type=AssetType.PRODUCT_IMAGE,
                             status=AssetStatus.READY,
+                            review_status="approved",
                             owner_module="catalog",
                             owner_record_id=product.id,
                             company_scope_reference=uuid.UUID(str(vendor_company_id)),
                             original_filename=filename,
-                            file_extension=ext,
-                            mime_type=mime,
+                            file_extension=".png",
+                            mime_type="image/png",
+                            file_size_bytes=vres.file_size_bytes,
+                            content_hash=vres.content_hash,
+                            width=vres.width,
+                            height=vres.height,
+                            has_transparency=vres.has_transparency,
                             storage_key=storage_key,
-                            is_public=True
+                            is_public=True,
+                            uploaded_by=request.user.id,
                         )
-                        if idx == 0:
+                        if idx == 0 or first_asset_id is None:
                             first_asset_id = asset_id
                         cixci_media_refs.append(f"{media_url}{storage_key}")
                     
                     product.media_references = cixci_media_refs
                     if first_asset_id:
                         product.primary_image_reference = first_asset_id
+                    else:
+                        # No valid transparent PNG imported — keep the product
+                        # out of buyer visibility (Rule §22/§31).
+                        if product.status == "active":
+                            product.status = "inactive"
                     super(Product, product).save()
 
                 # Parse and Save Device Compatibility
@@ -3533,6 +3608,7 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
             portfolio_snapshot_reference=portfolio_snapshot_ref,
             format="API",
             include_incompatible=False,
+            include_media_missing=bool(request.data.get("include_media_missing", False)),
             trigger_type="USER",
             triggered_by_id=request.user.id,
             triggered_by_name=user_full_name,

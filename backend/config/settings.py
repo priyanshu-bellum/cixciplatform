@@ -230,6 +230,8 @@ MEDIA_IMAGE_MAX_DIMENSION = config("MEDIA_IMAGE_MAX_DIMENSION", default=8000, ca
 MEDIA_IMAGE_MIN_DIMENSION = config("MEDIA_IMAGE_MIN_DIMENSION", default=100, cast=int)
 # Enforce the media-readiness rule on buyer-facing catalog queries (Rule §24).
 MEDIA_READINESS_ENFORCE_BUYER = config("MEDIA_READINESS_ENFORCE_BUYER", default=True, cast=bool)
+# Validate product-import image URLs (format/reachability/PNG) (Rule §11/§22).
+MEDIA_VALIDATE_IMPORT_URLS = config("MEDIA_VALIDATE_IMPORT_URLS", default=True, cast=bool)
 
 # ─── Email ────────────────────────────────────────────────────────────────────
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@cixci.com")

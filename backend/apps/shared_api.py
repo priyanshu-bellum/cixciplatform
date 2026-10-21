@@ -9,6 +9,21 @@ from config.pagination import CixciCursorPagination
 
 from apps.tenant.mixins import CheckAccessMixin
 
+
+def _looks_like_uuid(value):
+    import uuid as _uuid
+    try:
+        _uuid.UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def _parse_uuid(value):
+    import uuid as _uuid
+    return _uuid.UUID(str(value))
+
+
 # ── Media ──────────────────────────────────────────────────────────────────────
 from apps.media.models import MediaAsset, UploadSession, Rendition
 
@@ -29,6 +44,13 @@ class MediaAssetSerializer(serializers.ModelSerializer):
             "width", "height", "has_transparency",
             "review_status", "reviewed_at", "review_notes", "rejection_reason",
         ]
+
+    def validate_alt_text(self, value):
+        from apps.media.validation import validate_alt_text
+        ok, errors = validate_alt_text(value, required=False)
+        if not ok:
+            raise serializers.ValidationError(errors)
+        return value
 
 class UploadSessionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -70,7 +92,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "partial_update": "media.asset.manage", "destroy": "media.asset.manage",
         "renditions": "media.asset.read", "request_upload": "media.asset.upload",
         "upload_file": "media.asset.upload", "upload_zip": "media.asset.upload",
-        "review": "media.asset.manage",
+        "review": "media.asset.manage", "reorder": "media.asset.manage",
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["asset_type", "status", "owner_module", "company_scope_reference"]
@@ -81,6 +103,55 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         return getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
+
+    def _user_company_id(self, user=None):
+        user = user or self.request.user
+        if hasattr(user, "entity") and user.entity:
+            return getattr(user.entity, "company_id", None)
+        return None
+
+    def _user_company_type(self, user=None):
+        user = user or self.request.user
+        if hasattr(user, "entity") and user.entity and getattr(user.entity, "company", None):
+            return user.entity.company.company_type
+        return None
+
+    def _assert_can_manage_asset(self, asset):
+        """
+        Tenant/vendor isolation for write operations (Rule §26, §8, §10).
+        Non-admins may only manage assets owned by their own company.
+        """
+        if self._is_admin():
+            return
+        company_id = self._user_company_id()
+        if not company_id or str(asset.company_scope_reference) != str(company_id):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You may only manage media belonging to your own company.")
+
+    def _resolve_target_product(self, product_id, vendor_only=True):
+        """
+        Resolve a product an asset may be attached to, enforcing vendor
+        boundaries (Rule §8, §10, §23): a vendor admin can only attach media to
+        their own vendor's products; CIXCI admin can attach to any.
+        """
+        from apps.catalog.models import Product
+        try:
+            product = Product.objects.get(id=product_id)
+        except (Product.DoesNotExist, ValueError, TypeError):
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"owner_record_id": "Product not found."})
+
+        if self._is_admin():
+            return product
+
+        company_id = self._user_company_id()
+        if not company_id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("No company scope for this user.")
+        if str(product.vendor_company_reference) != str(company_id):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Vendors may only upload images for their own SKUs.")
+        return product
 
     def get_queryset(self):
         """Tenant isolation (Rule §26): users only see their own company's assets."""
@@ -104,10 +175,126 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             company = Company.objects.filter(company_type="cixci_internal").first() or Company.objects.first()
             if company:
                 company_id = company.id
-        serializer.save(
+
+        # Rule §13: an image must be assigned to a valid product, and a vendor
+        # may only assign to their own products (§8/§10/§23).
+        owner_record_id = serializer.validated_data.get("owner_record_id")
+        if owner_record_id:
+            self._resolve_target_product(owner_record_id)
+
+        asset = serializer.save(
             company_scope_reference=company_id,
             uploaded_by=self.request.user.id,
         )
+        if owner_record_id:
+            from apps.media.services import log_media_audit, emit_media_change_events
+            log_media_audit(
+                event_code="media.asset.attached",
+                description=f"Asset {asset.id} attached to product {owner_record_id}",
+                asset_id=asset.id,
+                company_id=company_id,
+                actor_id=self.request.user.id,
+            )
+            emit_media_change_events(owner_record_id, company_id, actor_id=self.request.user.id,
+                                     detail="Media asset attached to product.")
+
+    def perform_update(self, serializer):
+        asset = self.get_object()
+        self._assert_can_manage_asset(asset)
+
+        # Rule §19: alt-text validation on update.
+        if "alt_text" in serializer.validated_data:
+            from apps.media.validation import validate_alt_text
+            ok, errors = validate_alt_text(serializer.validated_data["alt_text"], required=False)
+            if not ok:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({"alt_text": errors})
+
+        # Rule §13/§8: re-assignment must target a valid, permitted product.
+        new_owner = serializer.validated_data.get("owner_record_id")
+        if new_owner and str(new_owner) != str(asset.owner_record_id):
+            self._resolve_target_product(new_owner)
+
+        prev_status = asset.status
+        prev_alt = asset.alt_text
+        updated = serializer.save()
+
+        from apps.media.services import log_media_audit, emit_media_change_events
+        if new_owner and str(new_owner) != str(asset.owner_record_id):
+            log_media_audit(
+                event_code="media.asset.attached",
+                description=f"Asset {updated.id} re-attached to product {new_owner}",
+                asset_id=updated.id, company_id=updated.company_scope_reference,
+                actor_id=self.request.user.id,
+            )
+        if "alt_text" in serializer.validated_data and (prev_alt or "") != (updated.alt_text or ""):
+            log_media_audit(
+                event_code="media.asset.alt_text_changed",
+                description=f"Alt text changed for asset {updated.id}",
+                asset_id=updated.id, company_id=updated.company_scope_reference,
+                actor_id=self.request.user.id,
+            )
+        if prev_status != updated.status:
+            log_media_audit(
+                event_code="media.asset.status_changed",
+                description=f"Asset {updated.id} status {prev_status} -> {updated.status}",
+                asset_id=updated.id, company_id=updated.company_scope_reference,
+                actor_id=self.request.user.id,
+            )
+        if updated.owner_record_id and updated.owner_module == "catalog":
+            emit_media_change_events(updated.owner_record_id, updated.company_scope_reference,
+                                     actor_id=self.request.user.id,
+                                     detail="Media asset updated on product.")
+
+    def perform_destroy(self, instance):
+        """
+        Rule §17: removing the only valid transparent PNG image would leave a
+        buyer-facing product without media — block it. Otherwise archive rather
+        than hard-delete where history matters.
+        """
+        self._assert_can_manage_asset(instance)
+        from rest_framework.exceptions import ValidationError
+        from apps.media.readiness import valid_primary_asset_ids
+        from apps.catalog.models import Product
+
+        product = None
+        if instance.owner_module == "catalog" and instance.owner_record_id:
+            product = Product.objects.filter(id=instance.owner_record_id).first()
+
+        if product:
+            valid_ids = valid_primary_asset_ids()
+            remaining_valid = (
+                MediaAsset.objects.filter(
+                    owner_module="catalog",
+                    owner_record_id=product.id,
+                )
+                .exclude(id=instance.id)
+                .filter(id__in=list(valid_ids))
+                .exists()
+            )
+            is_primary = str(getattr(product, "primary_image_reference", "")) == str(instance.id)
+            if is_primary and not remaining_valid and product.status == "active":
+                raise ValidationError({
+                    "detail": (
+                        "Cannot remove the only valid transparent PNG image of an "
+                        "Active product. Upload or approve another transparent PNG "
+                        "and mark it Primary first (Rule §17)."
+                    )
+                })
+
+        from apps.media.services import log_media_audit, emit_media_change_events
+        owner_id = instance.owner_record_id
+        company_id = instance.company_scope_reference
+        asset_id = instance.id
+        instance.delete()
+        log_media_audit(
+            event_code="media.asset.removed",
+            description=f"Asset {asset_id} removed",
+            asset_id=asset_id, company_id=company_id, actor_id=self.request.user.id,
+        )
+        if owner_id and product:
+            emit_media_change_events(owner_id, company_id, actor_id=self.request.user.id,
+                                     detail="Media asset removed from product.")
 
     @action(detail=True, methods=["post"])
     def review(self, request, pk=None):
@@ -148,7 +335,73 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             company_id=asset.company_scope_reference,
             actor_id=request.user.id,
         )
+        from apps.media.services import emit_media_event, emit_media_change_events
+        emit_media_event(
+            "product.media.approved" if decision == "approve" else "product.media.rejected",
+            asset.owner_record_id, asset.company_scope_reference, actor_id=request.user.id,
+            detail=f"Asset {asset.id} {decision}d.",
+        )
+        if asset.owner_record_id and asset.owner_module == "catalog":
+            emit_media_change_events(asset.owner_record_id, asset.company_scope_reference,
+                                     actor_id=request.user.id,
+                                     detail="Media review decision changed buyer visibility.")
         return Response(MediaAssetSerializer(asset).data)
+
+    @action(detail=False, methods=["post"])
+    def reorder(self, request):
+        """
+        Reorder images within a product (Rule §20).
+
+        Body: { "product_id": "<uuid>", "ordered_asset_ids": ["<uuid>", ...] }
+        Saves display_order (index) for each asset. Audited when the product is
+        Active/buyer-visible.
+        """
+        from rest_framework.exceptions import ValidationError
+        from apps.catalog.models import Product
+        from apps.media.services import log_media_audit, emit_media_change_events
+
+        product_id = request.data.get("product_id")
+        ordered_ids = request.data.get("ordered_asset_ids") or []
+        if not product_id or not isinstance(ordered_ids, list):
+            raise ValidationError({"detail": "product_id and ordered_asset_ids are required."})
+
+        product = self._resolve_target_product(product_id)
+
+        assets = {
+            str(a.id): a
+            for a in MediaAsset.objects.filter(
+                owner_module="catalog", owner_record_id=product.id, id__in=[
+                    _parse_uuid(i) for i in ordered_ids if _looks_like_uuid(i)
+                ]
+            )
+        }
+        changed = []
+        for idx, aid in enumerate(ordered_ids):
+            asset = assets.get(str(aid))
+            if asset and asset.display_order != idx:
+                asset.display_order = idx
+                asset.save(update_fields=["display_order", "updated_at"])
+                changed.append(asset)
+
+        if changed:
+            log_media_audit(
+                event_code="media.asset.reordered",
+                description=f"Reordered {len(changed)} image(s) for product {product.id}",
+                asset_id=changed[0].id, company_id=product.company_scope_reference,
+                actor_id=request.user.id,
+            )
+            if product.status == "active":
+                emit_media_change_events(product.id, product.company_scope_reference,
+                                         actor_id=request.user.id,
+                                         detail="Image order changed on Active product.")
+
+        return Response({
+            "product_id": str(product.id),
+            "updated": len(changed),
+            "order": [str(a.id) for a in MediaAsset.objects.filter(
+                owner_module="catalog", owner_record_id=product.id
+            ).order_by("display_order", "created_at")],
+        })
 
     @action(detail=True, methods=["get"])
     def renditions(self, request, pk=None):
@@ -250,6 +503,8 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             uploaded_by=request.user.id,
             storage_key=storage_key,
             storage_provider=storage_provider,
+            alt_text=(request.data.get("alt_text") or ""),
+            is_public=bool(request.data.get("is_public", False)),
         )
         
         session = UploadSession.objects.create(
@@ -273,6 +528,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     def upload_file(self, request, pk=None):
         """Upload a file directly for this asset in local development."""
         asset = self.get_object()
+        self._assert_can_manage_asset(asset)
         file_obj = request.FILES.get('file')
         if not file_obj:
             return Response({"error": "No file uploaded"}, status=400)
@@ -280,7 +536,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         import os
         from django.conf import settings
         from apps.media import validation
-        from apps.media.services import log_media_audit
+        from apps.media.services import log_media_audit, generate_renditions, emit_media_change_events
 
         # Resolve company
         company_id = asset.company_scope_reference
@@ -291,6 +547,12 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 from apps.tenant.models import Company
                 company = Company.objects.filter(company_type="cixci_internal").first() or Company.objects.first()
                 company_id = company.id if company else None
+        if not company_id:
+            return Response({"error": "Could not resolve company scope for upload."}, status=400)
+
+        # Rule §10/§26: a vendor may only upload to their own product's asset.
+        if asset.owner_module == "catalog" and asset.owner_record_id:
+            self._resolve_target_product(asset.owner_record_id)
 
         # Read file into memory for validation
         data = b""
@@ -319,12 +581,61 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 actor_id=request.user.id,
                 status="failure",
             )
+            from apps.media.services import emit_media_event
+            emit_media_event("product.media.failed", asset.owner_record_id, company_id,
+                             actor_id=request.user.id, status="failure",
+                             detail=f"Upload validation failed: {asset.rejection_reason}")
             return Response({
                 "error": "Image validation failed",
                 "details": v.errors,
                 "warnings": v.warnings,
             }, status=400)
-        
+
+        # Rule §12: hard-block an exact duplicate already attached to the SAME
+        # product (same content hash). Cross-product reuse is a warning.
+        if v.content_hash and asset.owner_record_id:
+            dup_same_product = MediaAsset.objects.filter(
+                owner_module=asset.owner_module,
+                owner_record_id=asset.owner_record_id,
+                content_hash=v.content_hash,
+                status="ready",
+            ).exclude(id=asset.id).first()
+            if dup_same_product:
+                return Response({
+                    "error": "Duplicate image",
+                    "details": [
+                        "This exact image is already attached to this product "
+                        f"(asset {dup_same_product.id})."
+                    ],
+                }, status=400)
+
+        # Rule §16: replacing an image on an Active/buyer-visible product needs
+        # explicit confirmation, and the replacement must be a valid PNG.
+        is_replacement = asset.status == "ready" and bool(asset.content_hash)
+        product = None
+        if asset.owner_module == "catalog" and asset.owner_record_id:
+            from apps.catalog.models import Product
+            product = Product.objects.filter(id=asset.owner_record_id).first()
+        if is_replacement and product and product.status == "active":
+            confirm = str(request.data.get("confirm_replace", "")).lower() in ("1", "true", "yes")
+            if not confirm:
+                return Response({
+                    "error": "Replacing the primary image of an Active product requires confirmation.",
+                    "requires_confirmation": True,
+                    "details": [
+                        "Re-send the upload with confirm_replace=true. The previous "
+                        "image is archived and an audit event is recorded (Rule §16)."
+                    ],
+                }, status=409)
+
+        # Archive previous version (Rule §16) instead of overwriting in place.
+        from apps.media.models import MediaAssetVersion, Rendition
+        from django.utils import timezone as _tz
+        if is_replacement:
+            MediaAssetVersion.objects.filter(asset=asset, is_current=True).update(
+                is_current=False, superseded_at=_tz.now()
+            )
+
         # Save file to MEDIA_ROOT / asset.storage_key
         full_path = os.path.join(settings.MEDIA_ROOT, asset.storage_key)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -344,32 +655,43 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         asset.save()
         
         # Create version & variant rendition records
-        from apps.media.models import MediaAssetVersion, Rendition
+        prev_version = MediaAssetVersion.objects.filter(asset=asset).order_by("-version_number").first()
+        next_version = (prev_version.version_number + 1) if prev_version else 1
         MediaAssetVersion.objects.create(
             asset=asset,
-            version_number=1,
+            version_number=next_version,
             is_current=True,
             storage_key=asset.storage_key,
             content_hash=asset.content_hash,
             file_size_bytes=asset.file_size_bytes
         )
-        Rendition.objects.get_or_create(
+        Rendition.objects.update_or_create(
             asset=asset,
             rendition_type="original",
             defaults={
                 "storage_key": asset.storage_key,
                 "file_size_bytes": asset.file_size_bytes,
                 "mime_type": asset.mime_type,
-                "is_ready": True
-            }
+                "width": v.width,
+                "height": v.height,
+                "is_ready": True,
+            },
         )
+        # Rule §5/§15: generate thumbnails / resized renditions.
+        if not generate_renditions(asset):
+            asset.status = "processing_failed"
+            asset.save(update_fields=["status", "updated_at"])
+
         log_media_audit(
-            event_code="media.asset.uploaded",
-            description=f"Asset {asset.id} uploaded (single)",
+            event_code="media.asset.replaced" if is_replacement else "media.asset.uploaded",
+            description=f"Asset {asset.id} {'replaced' if is_replacement else 'uploaded'} (single)",
             asset_id=asset.id,
             company_id=company_id,
             actor_id=request.user.id,
         )
+        if asset.owner_record_id and asset.owner_module == "catalog":
+            emit_media_change_events(asset.owner_record_id, company_id, actor_id=request.user.id,
+                                     detail="Product image uploaded/replaced.")
         return Response(MediaAssetSerializer(asset).data)
 
     @action(detail=False, methods=["post"])
@@ -379,12 +701,17 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         POST /media/assets/upload_zip/
         Accepts: multipart file (zip), optional company_scope_reference
         Returns: upload summary with per-file results and SKU match status.
+
+        Enforces Rule §7 (filename patterns), §8 (SKU/vendor matching),
+        §9 (ZIP validation), §12 (duplicates), §26 (vendor isolation).
         """
         import os
         import uuid
         from django.conf import settings
         from apps.media import validation
-        from apps.media.services import log_media_audit
+        from apps.media.matching import match_product
+        from apps.media.services import log_media_audit, generate_renditions, emit_media_change_events
+        from apps.media.models import MediaAsset, MediaAssetVersion, Rendition
 
         zip_file = request.FILES.get("file")
         if not zip_file:
@@ -392,6 +719,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
         # Resolve company scope
         company_id = None
+        user_company_type = self._user_company_type()
         if request.user.entity:
             company_id = request.user.entity.company_id
         else:
@@ -424,13 +752,35 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         unmatched_count = 0
         failed_count = 0
         created_count = 0
+        duplicate_count = 0
+        wrong_vendor_count = 0
+        products_updated = set()
+        products_now_ready = set()
 
-        # Build SKU lookup for active products
+        # Build SKU lookup. Rule §8: vendor admins may only match their own
+        # SKUs; CIXCI admins may match across vendors. When the same SKU exists
+        # for multiple vendors, Vendor+SKU filename form is required.
         from apps.catalog.models import Product
+        is_admin = self._is_admin()
+        product_qs = Product.objects.filter(status="active").only(
+            "id", "sku", "vendor_company_reference", "primary_image_reference", "status"
+        )
+        if not is_admin and user_company_type == "vendor":
+            product_qs = product_qs.filter(vendor_company_reference=company_id)
+
         sku_map = {}
-        for p in Product.objects.filter(status="active").only("id", "sku", "vendor_company_reference"):
+        vendor_map = {}
+        from apps.tenant.models import Company
+        vendor_names = {
+            str(c.id): c.name for c in Company.objects.filter(
+                id__in=set(str(p.vendor_company_reference) for p in product_qs)
+            )
+        }
+        for p in product_qs:
             if p.sku:
-                sku_map[p.sku.strip().upper()] = p
+                sku_map.setdefault(p.sku.strip().upper(), p)
+                vname = (vendor_names.get(str(p.vendor_company_reference)) or "").upper()
+                vendor_map[(vname, p.sku.strip().upper())] = p
 
         upload_dir = settings.MEDIA_ROOT
         os.makedirs(upload_dir, exist_ok=True)
@@ -448,29 +798,48 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 })
                 continue
 
-            # Match SKU
+            # Match SKU using the filename-pattern matcher (Rule §7/§8)
             fname = entry.get("filename") or entry.get("source_name", "")
-            base = os.path.splitext(fname)[0]
-            product = sku_map.get(base.strip().upper())
-            if not product:
-                # try split
-                for sep in ("_", "-", " "):
-                    if sep in base:
-                        for token in base.split(sep):
-                            product = sku_map.get(token.strip().upper())
-                            if product:
-                                break
-                        if product:
-                            break
+            product, _key = match_product(fname, sku_map, vendor_map)
+
             if not product:
                 unmatched_count += 1
                 results.append({
                     "filename": fname,
                     "status": "unmatched",
-                    "reason": "No active product found with matching SKU.",
+                    "reason": "No product found with a matching SKU (or filename pattern).",
                     "matched": False,
                     "product_sku": None,
                     "product_id": None,
+                })
+                continue
+
+            # Rule §8/§26: never attach to another vendor's SKU.
+            if not is_admin and str(product.vendor_company_reference) != str(company_id):
+                wrong_vendor_count += 1
+                results.append({
+                    "filename": fname,
+                    "status": "failed",
+                    "reason": "Image does not belong to your vendor's SKU.",
+                    "matched": False,
+                    "product_sku": product.sku,
+                    "product_id": str(product.id),
+                })
+                continue
+
+            # Rule §12: block an exact duplicate on the same product.
+            if entry.get("content_hash") and MediaAsset.objects.filter(
+                owner_module="catalog", owner_record_id=product.id,
+                content_hash=entry["content_hash"], status="ready",
+            ).exists():
+                duplicate_count += 1
+                results.append({
+                    "filename": fname,
+                    "status": "failed",
+                    "reason": "Duplicate image already attached to this product.",
+                    "matched": True,
+                    "product_sku": product.sku,
+                    "product_id": str(product.id),
                 })
                 continue
 
@@ -496,7 +865,6 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 })
                 continue
 
-            from apps.media.models import MediaAsset, MediaAssetVersion, Rendition
             asset = MediaAsset.objects.create(
                 id=asset_id,
                 asset_type="product_image",
@@ -524,7 +892,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 content_hash=entry["content_hash"],
                 file_size_bytes=entry["file_size_bytes"],
             )
-            Rendition.objects.get_or_create(
+            Rendition.objects.update_or_create(
                 asset=asset,
                 rendition_type="original",
                 defaults={
@@ -536,7 +904,11 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "is_ready": True,
                 },
             )
+            # Rule §5/§15: generate thumbnails / resized renditions.
+            generate_renditions(asset)
+
             created_count += 1
+            products_updated.add(str(product.id))
             results.append({
                 "filename": fname,
                 "status": "created",
@@ -545,41 +917,54 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 "product_sku": product.sku,
                 "product_id": str(product.id),
             })
+            log_media_audit(
+                event_code="media.asset.created_from_zip",
+                description=f"Created asset from ZIP, linked to {product.sku}",
+                asset_id=asset.id,
+                company_id=company_id,
+                actor_id=request.user.id,
+            )
+
+        # Link created assets to products (primary if none)
+        for pid in list(products_updated):
             try:
-                from apps.media.services import log_media_audit
-                log_media_audit(
-                    event_code="media.asset.created_from_zip",
-                    description=f"Created asset from ZIP, linked to {product.sku}",
-                    asset_id=asset.id,
-                    company_id=company_id,
-                    actor_id=request.user.id,
-                )
+                product = Product.objects.get(id=pid)
+                assets = MediaAsset.objects.filter(
+                    owner_record_id=product.id, owner_module="catalog"
+                ).order_by("display_order", "created_at")
+                if assets.exists() and not product.primary_image_reference:
+                    product.primary_image_reference = assets.first().id
+                    product.save(actor_id=request.user.id)
+                from apps.media.readiness import compute_media_readiness
+                if compute_media_readiness(product).is_ready:
+                    products_now_ready.add(pid)
+                emit_media_change_events(product.id, company_id, actor_id=request.user.id,
+                                         detail="Bulk ZIP images attached to product.")
             except Exception:
                 pass
 
-        # Link created assets to products (primary if none)
-        try:
-            from apps.catalog.api import ProductSerializerBase
-            for entry in results:
-                if entry.get("product_id") and entry.get("status") == "created":
-                    try:
-                        product = Product.objects.get(id=entry["product_id"])
-                        assets = MediaAsset.objects.filter(owner_record_id=product.id, owner_module="catalog").order_by("display_order", "created_at")
-                        if assets.exists() and not product.primary_image_reference:
-                            product.primary_image_reference = assets.first().id
-                            product.save(actor_id=request.user.id)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
         log_media_audit(
             event_code="media.zip.completed",
-            description=f"ZIP processed: {matched_count} matched, {unmatched_count} unmatched, {failed_count} failed, {created_count} created",
+            description=(
+                f"ZIP processed: {matched_count} matched, {unmatched_count} unmatched, "
+                f"{failed_count} failed, {created_count} created, {duplicate_count} duplicates"
+            ),
             asset_id=None,
             company_id=company_id,
             actor_id=request.user.id,
         )
+
+        summary = dict(arch["summary"])
+        summary.update({
+            "matched": matched_count,
+            "unmatched": unmatched_count,
+            "failed": failed_count,
+            "created": created_count,
+            "duplicates": duplicate_count + summary.get("duplicates", 0),
+            "wrong_vendor": wrong_vendor_count,
+            "products_updated": len(products_updated),
+            "products_now_media_ready": len(products_now_ready),
+        })
 
         return Response({
             "total_files": arch["summary"]["total_files"],
@@ -587,6 +972,11 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             "unmatched": unmatched_count,
             "failed": failed_count,
             "created": created_count,
+            "duplicates": summary["duplicates"],
+            "wrong_vendor": wrong_vendor_count,
+            "products_updated": len(products_updated),
+            "products_now_media_ready": len(products_now_ready),
+            "summary": summary,
             "results": results,
         })
 

@@ -63,6 +63,7 @@ export default function MediaPage() {
   const [assetType, setAssetType] = useState('product_image')
   const [ownerModule, setOwnerModule] = useState('catalog')
   const [isPublic, setIsPublic] = useState(false)
+  const [altText, setAltText] = useState('')
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -129,6 +130,7 @@ export default function MediaPage() {
         asset_type: assetType,
         owner_module: ownerModule,
         is_public: isPublic,
+        alt_text: altText.trim() || undefined,
       })
 
       const { presigned_url, id: assetId, asset: assetIdAlt } = reqRes.data
@@ -189,6 +191,7 @@ export default function MediaPage() {
     if (!uploading) {
       setShowModal(false)
       setFile(null)
+      setAltText('')
       setError(null)
     }
   }
@@ -230,6 +233,46 @@ export default function MediaPage() {
       id: 'status',
       label: 'Status',
       render: (row: any) => <StatusChip status={row.status} />,
+    },
+    {
+      id: 'has_transparency',
+      label: 'Transparent',
+      render: (row: any) =>
+        row.has_transparency ? (
+          <Chip
+            icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
+            label="PNG"
+            color="success"
+            size="small"
+            variant="filled"
+          />
+        ) : (
+          <Chip
+            icon={<ErrorIcon sx={{ fontSize: 14 }} />}
+            label="No alpha"
+            color="error"
+            size="small"
+            variant="filled"
+          />
+        ),
+    },
+    {
+      id: 'review_status',
+      label: 'Review',
+      render: (row: any) => (
+        <Chip
+          label={(row.review_status ?? 'pending')?.replace(/_/g, ' ')}
+          color={
+            row.review_status === 'approved'
+              ? 'success'
+              : row.review_status === 'rejected'
+                ? 'error'
+                : 'warning'
+          }
+          size="small"
+          variant="filled"
+        />
+      ),
     },
     {
       id: 'file_size_bytes',
@@ -479,6 +522,20 @@ export default function MediaPage() {
               fullWidth
             />
           </Box>
+
+          <TextField
+            label="Alt Text (accessibility)"
+            size="small"
+            value={altText}
+            onChange={(e) => setAltText(e.target.value)}
+            placeholder="Describe the image for screen readers"
+            helperText="Required for accessibility review; max 500 chars."
+            disabled={uploading}
+            fullWidth
+            multiline
+            minRows={2}
+            sx={{ mb: 2.5 }}
+          />
 
           <FormControlLabel
             control={

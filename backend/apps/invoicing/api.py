@@ -311,16 +311,28 @@ class InvoiceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if is_admin:
             return qs
         if hasattr(user, "entity") and user.entity and user.entity.company:
-            cid = user.entity.company.id
-            direct = Q(company_scope_reference=cid) | Q(counterparty_reference=cid)
-            # Vendor visibility: invoices containing lines sourced from this vendor's POs
-            from apps.procurement.models import PurchaseOrderLine
-            pol_ids = PurchaseOrderLine.objects.filter(
-                purchase_order__vendor_company_reference=cid
-            ).values_list("id", flat=True)
-            indirect = Q(lines__source_order_line_reference__in=list(pol_ids))
-            return qs.filter(direct | indirect).distinct()
-        return qs
+            company = user.entity.company
+            cid = company.id
+            # Rule (Invoice module): a vendor must NOT see buyer invoices. Buyers
+            # must see only their own invoices. Only the buyer's own scope may
+            # surface buyer_invoice records.
+            vendor_types = [
+                "vendor_statement",
+                "vendor_payable_package",
+                "commission_report",
+                "adjustment_report",
+            ]
+            if company.company_type == "vendor":
+                return qs.filter(
+                    Q(counterparty_reference=cid)
+                    | Q(company_scope_reference=cid)
+                ).filter(invoice_type__in=vendor_types).distinct()
+            # Buyer (or manufacturer): strictly their own invoices.
+            return qs.filter(
+                Q(company_scope_reference=cid) | Q(counterparty_reference=cid)
+            ).distinct()
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied("Invoice access requires a company-scoped identity.")
 
     def get_serializer_class(self):
         return InvoiceDetailSerializer if self.action == "retrieve" else InvoiceListSerializer

@@ -1041,6 +1041,14 @@ class BuyerProductExportJob(models.Model):
 
     # Job configuration
     include_incompatible = models.BooleanField(default=False)
+    include_media_missing = models.BooleanField(
+        default=False,
+        help_text=(
+            "Rule §25: when False (default) the export includes only products "
+            "with a valid transparent PNG primary image. Set True only when the "
+            "buyer's export rules explicitly allow media-missing records."
+        ),
+    )
     format = models.CharField(max_length=20, default="API", help_text="API | csv | json | xlsx")
 
     # Output

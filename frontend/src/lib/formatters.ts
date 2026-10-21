@@ -39,7 +39,7 @@ export const formatETDate = (dateString: string | null | undefined) => {
   try {
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return '\u2014';
-    const formatted = date.toLocaleString('en-US', {
+    const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
       year: 'numeric',
       month: '2-digit',
@@ -47,8 +47,10 @@ export const formatETDate = (dateString: string | null | undefined) => {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-    });
-    return formatted.replace(',', '') + ' ET';
+    }).formatToParts(date);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+    const mmddyyyy = `${get('month')}-${get('day')}-${get('year')}`;
+    return `${mmddyyyy} ${get('hour')}:${get('minute')} ${get('dayPeriod')} ET`;
   } catch {
     return dateString;
   }

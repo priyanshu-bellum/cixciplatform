@@ -45,6 +45,15 @@ def buyer_entity(buyer_company):
     )
 
 
+@pytest.fixture
+def vendor_entity(vendor_company):
+    return CompanyEntity.objects.create(
+        company=vendor_company,
+        name="Vendor Entity HQ",
+        status=EntityStatus.ACTIVE,
+    )
+
+
 # ── Capabilities ──────────────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -146,4 +155,33 @@ def buyer_client(buyer_user):
     """DRF client authenticated as buyer_user."""
     client = APIClient()
     client.force_authenticate(user=buyer_user)
+    return client
+
+
+@pytest.fixture
+def vendor_user(vendor_entity, cap_factory):
+    """Vendor admin user with catalog + media capabilities."""
+    user = User.objects.create_user(
+        email="vendor@vendor.test",
+        entity=vendor_entity,
+        password="vendorpass123",
+    )
+    caps = [
+        "catalog.product.list", "catalog.product.read", "catalog.product.create",
+        "catalog.product.update", "catalog.product.delete",
+        "media.asset.list", "media.asset.read", "media.asset.upload", "media.asset.manage",
+    ]
+    for code in caps:
+        cap = cap_factory(code)
+        user.capabilities.add(cap)
+        if user.company:
+            user.company.capabilities.add(cap)
+    return user
+
+
+@pytest.fixture
+def vendor_client(vendor_user):
+    """DRF client authenticated as vendor_user."""
+    client = APIClient()
+    client.force_authenticate(user=vendor_user)
     return client

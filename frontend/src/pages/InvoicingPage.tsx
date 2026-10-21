@@ -157,6 +157,20 @@ const TYPE_LABELS: Record<string, string> = {
 
 const ISSUABLE_STATUSES = new Set(['draft', 'ready'])
 
+// Invoice types visible per user type (Rule: users see only types associated
+// with their role; vendors must not see buyer invoices).
+const VENDOR_TYPES = ['vendor_statement', 'vendor_payable_package', 'commission_report', 'adjustment_report']
+const BUYER_TYPES = ['buyer_invoice']
+const ADMIN_TYPES = [
+  'buyer_invoice', 'vendor_statement', 'vendor_payable_package',
+  'commission_report', 'adjustment_report', 'internal_admin_invoice_report',
+]
+
+// Invoice statuses are the same set for all roles.
+const INVOICE_STATUSES = [
+  'draft', 'ready', 'issued', 'sent', 'acknowledged', 'paid', 'disputed', 'overdue',
+]
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function InvoicingPage() {
@@ -164,6 +178,8 @@ export default function InvoicingPage() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
+  const isVendor = user?.company_type === 'vendor'
+  const allowedTypes = isCixciAdmin ? ADMIN_TYPES : isVendor ? VENDOR_TYPES : BUYER_TYPES
 
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null)
   const [filterType, setFilterType] = useState<string>('all')
@@ -176,7 +192,7 @@ export default function InvoicingPage() {
   // Create Invoice dialog state
   const [createOpen, setCreateOpen] = useState(false)
   const [createMode, setCreateMode] = useState<'manual' | 'auto'>('manual')
-  const [createType, setCreateType] = useState<string>('buyer_invoice')
+  const [createType, setCreateType] = useState<string>(allowedTypes[0] ?? 'buyer_invoice')
   const [createRole, setCreateRole] = useState<string>('buyer')
   const [createCounterparty, setCreateCounterparty] = useState<string>('')
   const [createPeriodStart, setCreatePeriodStart] = useState<string>('')
@@ -386,7 +402,7 @@ export default function InvoicingPage() {
 
   const resetCreateForm = () => {
     setCreateMode('manual')
-    setCreateType('buyer_invoice')
+    setCreateType(allowedTypes[0] ?? 'buyer_invoice')
     setCreateRole('buyer')
     setCreateCounterparty('')
     setCreatePeriodStart('')
@@ -513,12 +529,9 @@ export default function InvoicingPage() {
             displayEmpty
           >
             <MenuItem value="all">All Invoice Types</MenuItem>
-            <MenuItem value="buyer_invoice">Buyer Invoice</MenuItem>
-            <MenuItem value="vendor_statement">Vendor Statement</MenuItem>
-            <MenuItem value="vendor_payable_package">Vendor Payable Package</MenuItem>
-            <MenuItem value="commission_report">Commission Report</MenuItem>
-            <MenuItem value="adjustment_report">Adjustment Report</MenuItem>
-            <MenuItem value="internal_admin_invoice_report">Internal Admin Report</MenuItem>
+            {allowedTypes.map((t) => (
+              <MenuItem key={t} value={t}>{TYPE_LABELS[t] ?? t}</MenuItem>
+            ))}
           </Select>
         </FormControl>
         <FormControl size="small" sx={{ minWidth: 160 }}>
@@ -528,14 +541,9 @@ export default function InvoicingPage() {
             displayEmpty
           >
             <MenuItem value="all">All Statuses</MenuItem>
-            <MenuItem value="draft">Draft</MenuItem>
-            <MenuItem value="ready">Ready</MenuItem>
-            <MenuItem value="issued">Issued</MenuItem>
-            <MenuItem value="sent">Sent</MenuItem>
-            <MenuItem value="acknowledged">Acknowledged</MenuItem>
-            <MenuItem value="paid">Paid</MenuItem>
-            <MenuItem value="disputed">Disputed</MenuItem>
-            <MenuItem value="overdue">Overdue</MenuItem>
+            {INVOICE_STATUSES.map((s) => (
+              <MenuItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</MenuItem>
+            ))}
           </Select>
         </FormControl>
       </Stack>
@@ -1093,12 +1101,9 @@ export default function InvoicingPage() {
                   label="Invoice Type"
                   onChange={(e) => handleTypeChange(e.target.value)}
                 >
-                  <MenuItem value="buyer_invoice">Buyer Invoice</MenuItem>
-                  <MenuItem value="vendor_statement">Vendor Statement</MenuItem>
-                  <MenuItem value="vendor_payable_package">Vendor Payable Package</MenuItem>
-                  <MenuItem value="commission_report">Commission Report</MenuItem>
-                  <MenuItem value="adjustment_report">Adjustment Report</MenuItem>
-                  <MenuItem value="internal_admin_invoice_report">Internal Admin Report</MenuItem>
+                  {allowedTypes.map((t) => (
+                    <MenuItem key={t} value={t}>{TYPE_LABELS[t] ?? t}</MenuItem>
+                  ))}
                 </Select>
               </FormControl>
               <FormControl fullWidth size="small">
@@ -1226,7 +1231,7 @@ export default function InvoicingPage() {
                               </TableCell>
                               <TableCell>
                                 <Typography variant="body2" color="text.secondary">
-                                  {o.created_at ? new Date(o.created_at).toLocaleDateString() : '—'}
+                                  {o.created_at ? formatDate(o.created_at) : '—'}
                                 </Typography>
                               </TableCell>
                               <TableCell align="right">

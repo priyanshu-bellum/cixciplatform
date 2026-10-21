@@ -140,3 +140,75 @@ class TestCixciAdminCommercePlatformWideVisibility:
         inv_data_1 = next(inv for inv in resp.data.get("results", resp.data) if inv["id"] == str(setup_platform_data["invoice_1"].id))
         assert "counterparty_name" in inv_data_1
         assert "company_name" in inv_data_1
+
+
+@pytest.mark.django_db
+class TestVendorInvoiceVisibility:
+    """Rule: a vendor must NOT see buyer invoices; buyers see only their own."""
+
+    @pytest.fixture
+    def setup(self, vendor_client, vendor_company, buyer_company):
+        run = InvoiceRun.objects.create(
+            company_scope_reference=buyer_company.id,
+            run_label="Vendor Visibility Run",
+            idempotency_key=f"run-{uuid.uuid4()}",
+            created_by=uuid.uuid4(),
+        )
+        period = InvoicePeriod.objects.create(
+            run=run,
+            company_scope_reference=buyer_company.id,
+            period_start=timezone.now().date(),
+            period_end=timezone.now().date(),
+        )
+        buyer_invoice = Invoice.objects.create(
+            run=run,
+            period=period,
+            company_scope_reference=buyer_company.id,
+            counterparty_role="buyer",
+            counterparty_reference=buyer_company.id,
+            invoice_type=InvoiceType.BUYER_INVOICE,
+            status=InvoiceStatus.ISSUED,
+            subtotal=100.0,
+            grand_total=100.0,
+        )
+        vendor_statement = Invoice.objects.create(
+            run=run,
+            period=period,
+            company_scope_reference=vendor_company.id,
+            counterparty_role="vendor",
+            counterparty_reference=vendor_company.id,
+            invoice_type=InvoiceType.VENDOR_STATEMENT,
+            status=InvoiceStatus.ISSUED,
+            subtotal=50.0,
+            grand_total=50.0,
+        )
+        return {"buyer_invoice": buyer_invoice, "vendor_statement": vendor_statement}
+
+    def test_vendor_cannot_see_buyer_invoice(self, vendor_client, setup):
+        resp = vendor_client.get("/api/v1/invoicing/invoices/")
+        assert resp.status_code == 200
+        ids = [inv["id"] for inv in resp.data.get("results", resp.data)]
+        assert str(setup["buyer_invoice"].id) not in ids
+        assert str(setup["vendor_statement"].id) in ids
+
+
+@pytest.mark.django_db
+class TestEntitylessUserFailsClosed:
+    """A non-admin caller with no company scope must not receive the global list."""
+
+    def test_entityless_user_denied_orders(self, cap_factory):
+        user = User.objects.create(
+            email="orphan@nowhere.test",
+            entity=None,
+            is_active=True,
+        )
+        user.set_password("orphanpass123")
+        user.save()
+        for code in ["routing.order.list", "routing.order.read"]:
+            cap = cap_factory(code)
+            user.capabilities.add(cap)
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=user)
+        resp = client.get("/api/v1/routing/orders/")
+        assert resp.status_code in (403, 401)

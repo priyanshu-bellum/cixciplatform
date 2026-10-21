@@ -32,3 +32,6 @@ USE_S3 = False
 # The media-readiness buyer filter is validated explicitly in
 # tests/test_media_validation.py, so disable it globally here.
 MEDIA_READINESS_ENFORCE_BUYER = False
+
+# Never perform network fetches of import image URLs during tests.
+MEDIA_VALIDATE_IMPORT_URLS = False

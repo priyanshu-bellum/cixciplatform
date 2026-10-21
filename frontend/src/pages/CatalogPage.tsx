@@ -452,7 +452,7 @@ export const formatETDate = (dateString: string | null | undefined) => {
   const minute = parts.find(p => p.type === 'minute')?.value || ''
   const dayPeriod = parts.find(p => p.type === 'dayPeriod')?.value || ''
   
-  return `${month}/${day}/${year} ${hour}:${minute} ${dayPeriod} ET`
+  return `${month}-${day}-${year} ${hour}:${minute} ${dayPeriod} ET`
 }
 
 export default function CatalogPage() {
@@ -640,7 +640,8 @@ export default function CatalogPage() {
     if (!dateString) return '—';
     try {
       const date = new Date(dateString);
-      const formatted = date.toLocaleString('en-US', {
+      if (isNaN(date.getTime())) return dateString;
+      const parts = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/New_York',
         year: 'numeric',
         month: '2-digit',
@@ -648,8 +649,9 @@ export default function CatalogPage() {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true
-      });
-      return formatted.replace(',', '') + ' ET';
+      }).formatToParts(date);
+      const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+      return `${get('month')}-${get('day')}-${get('year')} ${get('hour')}:${get('minute')} ${get('dayPeriod')} ET`;
     } catch (e) {
       return dateString;
     }
@@ -1320,6 +1322,24 @@ export default function CatalogPage() {
   }
 
   const handleCloseBulkModal = async () => {
+    // After a successful import, prompt the user to take the next step and
+    // upload product images before discarding the dialog state.
+    if (bulkResult && bulkResult.rows_passed > 0) {
+      const ok = await confirm({
+        title: 'Upload product images',
+        message: `You imported ${bulkResult.rows_passed} product(s). Products need a transparent PNG image to be visible to buyers. Upload images now?`,
+        confirmLabel: 'Upload Images',
+        cancelLabel: 'Not now',
+      })
+      setShowBulkModal(false)
+      setBulkFile(null)
+      setBulkResult(null)
+      setBulkError(null)
+      setCsvHeaders([])
+      setCsvPreviewRows([])
+      if (ok) navigate('/media')
+      return
+    }
     if (isBulkFormDirty()) {
       const ok = await confirm({ title: 'Discard changes?', message: 'You have unsaved changes. Are you sure you want to close and discard them?', confirmLabel: 'Discard', confirmColor: 'error' })
       if (!ok) return
@@ -1884,12 +1904,13 @@ export default function CatalogPage() {
       const month = String(val.getUTCMonth() + 1).padStart(2, '0')
       const day = String(val.getUTCDate()).padStart(2, '0')
       const year = val.getUTCFullYear()
-      return `${month}/${day}/${year}`
+      return `${month}-${day}-${year}`
     }
     const str = String(val).trim()
     if (!str) return ''
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
-      return str
+    const slash = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (slash) {
+      return `${slash[1].padStart(2, '0')}-${slash[2].padStart(2, '0')}-${slash[3]}`
     }
     const num = Number(str)
     if (!isNaN(num) && num > 25569 && num < 100000) {
@@ -1897,14 +1918,14 @@ export default function CatalogPage() {
       const month = String(date.getUTCMonth() + 1).padStart(2, '0')
       const day = String(date.getUTCDate()).padStart(2, '0')
       const year = date.getUTCFullYear()
-      return `${month}/${day}/${year}`
+      return `${month}-${day}-${year}`
     }
     const parsedDate = new Date(str)
     if (!isNaN(parsedDate.getTime())) {
       const month = String(parsedDate.getMonth() + 1).padStart(2, '0')
       const day = String(parsedDate.getDate()).padStart(2, '0')
       const year = parsedDate.getFullYear()
-      return `${month}/${day}/${year}`
+      return `${month}-${day}-${year}`
     }
     return str
   }
@@ -2346,7 +2367,7 @@ export default function CatalogPage() {
       setProdType('')
       setProdCategory('')
       setProdDescription('')
-      setProdPrice('19.99')
+      setProdPrice('')
       setProdUpc('')
       setProdLaunchDate('')
       setProdReleaseDate('')
@@ -2831,7 +2852,7 @@ export default function CatalogPage() {
       const parsed = parseFloat(val);
       return isNaN(parsed) ? '' : parsed.toFixed(2);
     };
-    setProdPrice(p.vendor_wholesale_price_amount ? cleanPriceInput(p.vendor_wholesale_price_amount) : '19.99')
+    setProdPrice(cleanPriceInput(p.vendor_wholesale_price_amount))
     setProdCurrency(p.vendor_wholesale_price_currency || 'USD')
     setImagePreviewUrl(p.primary_image_url ? getImageUrl(p.primary_image_url) : '')
     setProdPrimaryImageUrl(p.primary_image_url ? getImageUrl(p.primary_image_url) : '')
@@ -2927,7 +2948,9 @@ export default function CatalogPage() {
     try {
       const d = new Date(dateVal)
       if (isNaN(d.getTime())) return null
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      return `${mm}-${dd}-${d.getFullYear()}`
     } catch {
       return null
     }
@@ -6507,7 +6530,7 @@ export default function CatalogPage() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {auditHistory.map((item: any) => {
-                      const dateStr = new Date(item.created_at).toLocaleString()
+                      const dateStr = formatETDate(item.created_at)
                       const p = item.payload
                       return (
                         <div key={item.id} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: 'var(--bg-elevated)', fontSize: 12 }}>

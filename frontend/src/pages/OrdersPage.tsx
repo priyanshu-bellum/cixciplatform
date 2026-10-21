@@ -50,6 +50,7 @@ import ConfirmDialog from '../components/feedback/ConfirmDialog'
 import { useSnackbar } from '../components/feedback/SnackbarProvider'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import { formatCurrency, formatDate, getImageUrl } from '../lib/formatters'
+import { useAuthStore } from '../stores/authStore'
 
 const DEFAULT_FORM_DATA = {
   buyer_order_number: '',
@@ -75,6 +76,8 @@ export default function OrdersPage() {
   const navigate = useNavigate()
   const { showSnackbar } = useSnackbar()
   const { dialogProps, confirm } = useConfirmDialog()
+  const { user } = useAuthStore()
+  const isVendor = user?.company_type === 'vendor'
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [showNewOrderModal, setShowNewOrderModal] = useState(false)
@@ -1118,7 +1121,7 @@ export default function OrdersPage() {
                       <TableCell>Vendor / Details</TableCell>
                       <TableCell align="right">Qty</TableCell>
                       <TableCell align="right">MSRP</TableCell>
-                      <TableCell align="right">Price</TableCell>
+                      <TableCell align="right">{isVendor ? 'Vendor Wholesale Price' : 'Wholesale Price'}</TableCell>
                       <TableCell align="right">Total</TableCell>
                     </TableRow>
                   </TableHead>
@@ -1192,7 +1195,15 @@ export default function OrdersPage() {
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2" color="text.secondary">
-                            {formatCurrency(line.unit_price_snapshot)}
+                            {isVendor
+                              ? (line.vendor_wholesale_price != null
+                                  ? formatCurrency(line.vendor_wholesale_price)
+                                  : '\u2014')
+                              : formatCurrency(
+                                  line.buyer_wholesale_price != null
+                                    ? line.buyer_wholesale_price
+                                    : line.unit_price_snapshot
+                                )}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">

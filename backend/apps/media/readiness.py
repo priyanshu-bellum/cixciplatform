@@ -128,3 +128,39 @@ def assert_can_become_active(product, raise_error=True):
             "reason": readiness.reason,
         },
     })
+
+
+# Asset statuses that must never be buyer-facing / exportable (Rule §14, §24, §25)
+NON_BUYER_FACING_STATUSES = {
+    "validation_failed", "processing_failed", "rejected", "archived",
+    "revoked", "superseded", "expired", "restricted",
+}
+
+
+def valid_primary_asset_ids():
+    """
+    Set of MediaAsset IDs that satisfy the export/visibility image rule:
+    Ready + approved + PNG MIME + real transparency, and not in a
+    non-buyer-facing status.
+
+    Returned as a Python set so callers can reuse across many lookups.
+    """
+    from apps.media.models import MediaAsset
+
+    qs = MediaAsset.objects.filter(
+        status="ready",
+        review_status="approved",
+        mime_type="image/png",
+        has_transparency=True,
+    ).exclude(status__in=NON_BUYER_FACING_STATUSES)
+    return set(qs.values_list("id", flat=True))
+
+
+def product_is_media_ready(product, valid_ids=None):
+    """Cheap check: does the product's primary image pass the media rule?"""
+    primary_id = getattr(product, "primary_image_reference", None)
+    if not primary_id:
+        return False
+    if valid_ids is None:
+        return compute_media_readiness(product).is_ready
+    return primary_id in valid_ids

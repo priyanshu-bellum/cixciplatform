@@ -46,6 +46,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function RequireRole({ children, allow }: { children: React.ReactNode; allow: (user: any) => boolean }) {
+  const { user, initialized } = useAuthStore()
+  if (!initialized) return <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}><CircularProgress /></Box>
+  if (!user) return <Navigate to="/login" replace />
+  if (!allow(user)) return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
 function AppWithQuery() {
   const { showSnackbar } = useSnackbar()
   const { fetchMe } = useAuthStore()
@@ -90,7 +98,7 @@ function AppWithQuery() {
             <Route index element={<DashboardPage />} />
             <Route path="devices" element={<DevicesPage />} />
             <Route path="catalog" element={<CatalogPage />} />
-            <Route path="pricing" element={<PricingPage />} />
+            <Route path="pricing" element={<RequireRole allow={(u) => u?.company_type !== 'buyer'}><PricingPage /></RequireRole>} />
             <Route path="orders" element={<OrdersPage />} />
             <Route path="fulfillment" element={<FulfillmentPage />} />
             <Route path="invoicing" element={<InvoicingPage />} />

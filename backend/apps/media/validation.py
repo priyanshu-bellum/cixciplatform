@@ -462,3 +462,107 @@ def validate_zip_archive(
         return {"ok": False, "error": "ZIP archive is corrupted and could not be opened.", "entries": [], "summary": summary}
 
     return {"ok": True, "error": None, "entries": entries, "summary": summary}
+
+
+# ── Image URL validation (Rule §11) ──────────────────────────────────────────
+
+def validate_image_url(url: str, timeout: int = 10):
+    """
+    Validate an external image URL before importing it as managed media.
+
+    Returns (ok: bool, data: bytes|None, filename: str|None, errors: list[str]).
+
+    Rules §11:
+    - valid absolute HTTPS URL
+    - reachable at processing time
+    - must return PNG content (checked via signature after download)
+    - redirects followed by the HTTP client (bounded, same as fetch)
+    """
+    import urllib.request
+    import urllib.parse
+
+    errors = []
+    if not url or not isinstance(url, str):
+        return False, None, None, ["Image URL is empty."]
+
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme not in ("https", "http"):
+        return False, None, None, ["Image URL must use http(s)."]
+    # §11: HTTPS is the approved protocol; warn on plain http.
+    if parsed.scheme != "https":
+        errors.append("Image URL should use HTTPS for security.")
+
+    filename = os.path.basename(parsed.path) or "image.png"
+    if "?" in filename:
+        filename = filename.split("?")[0]
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "CIXCI-Media-Validator"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            data = resp.read(max_image_bytes() + 1)
+    except Exception as exc:
+        return False, None, None, [f"Image URL is not reachable ({exc})."]
+
+    if len(data) > max_image_bytes():
+        return False, None, None, [
+            f"Remote image exceeds the {max_image_bytes() / 1024 / 1024:.0f} MB limit."
+        ]
+
+    if ctype and ctype not in ("image/png", "application/octet-stream", ""):
+        errors.append(f"Remote content type '{ctype}' is not PNG.")
+
+    if not is_png_bytes(data[:8]):
+        errors.append("Remote content is not a PNG image.")
+
+    ok = len(errors) == 0
+    return ok, (data if ok else None), filename, errors
+
+
+# ── Alt text validation (Rule §19) ───────────────────────────────────────────
+_MAX_ALT_TEXT_LEN = 500
+_ALT_UNSAFE = re.compile(r"[<>{}\\]")
+
+
+def validate_alt_text(
+    alt_text: str,
+    required: bool = False,
+    max_length: int = _MAX_ALT_TEXT_LEN,
+):
+    """
+    Validate image alt text.
+
+    Returns (ok: bool, errors: list[str]).
+
+    Rules §19:
+    - required (when CIXCI uses the accessibility/SEO field)
+    - not blank when required
+    - within the approved character limit
+    - no unsupported characters (angle brackets, braces, backslashes)
+    - not obviously keyword-stuffed
+    """
+    errors = []
+    value = (alt_text or "").strip()
+
+    if not value:
+        if required:
+            errors.append("Alt text is required.")
+        return (not errors), errors
+
+    if len(value) > max_length:
+        errors.append(f"Alt text exceeds the {max_length} character limit.")
+
+    if _ALT_UNSAFE.search(value):
+        errors.append("Alt text contains unsupported characters.")
+
+    words = value.split()
+    if words:
+        lowered = [w.lower() for w in words]
+        # keyword stuffing: any single word repeated more than 3 times
+        for w in set(lowered):
+            if lowered.count(w) > 3 and len(w) > 2:
+                errors.append("Alt text appears keyword-stuffed.")
+                break
+
+    return (not errors), errors
+
