@@ -69,6 +69,10 @@ class Order(models.Model):
     pricing_snapshot_references = models.JSONField(default=dict,
         help_text="product_id → EffectivePriceSnapshot ID mapping")
 
+    # Shipping fee snapshots (vendor_id → ShippingFeeSnapshot ID mapping)
+    shipping_fee_snapshot_references = models.JSONField(default=dict,
+        help_text="vendor_id → ShippingFeeSnapshot ID mapping")
+
     order_id = models.CharField(
         max_length=100, blank=True, null=True, unique=True, db_index=True,
         help_text="Standard Order ID starting with 1000 + company slug"
@@ -123,6 +127,11 @@ class RoutedSuborder(models.Model):
     vendor_company_reference = models.UUIDField(db_index=True)
     status = models.CharField(max_length=30, choices=RoutingStatus.choices, default=RoutingStatus.PENDING)
     routing_snapshot = models.JSONField(default=dict, help_text="Routing decision snapshot at creation")
+
+    # Shipping fee snapshot (frozen at order time — Pricing owns calculation)
+    shipping_fee_snapshot_reference = models.UUIDField(null=True, blank=True,
+        help_text="ShippingFeeSnapshot ID for this vendor suborder")
+
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

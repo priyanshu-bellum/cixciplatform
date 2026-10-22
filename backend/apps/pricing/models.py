@@ -335,3 +335,114 @@ class MapException(models.Model):
         return f"MapException({self.sku}: {self.approved_minimum_price} - {self.status})"
 
 
+# ─── Shipping Fee Type ───────────────────────────────────────────────────────
+
+class ShippingFeeType(models.TextChoices):
+    FLAT = "flat", "Flat Rate"
+    PER_UNIT = "per_unit", "Per Unit"
+    PERCENTAGE = "percentage", "Percentage of Order"
+
+
+class ShippingFeeStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    ACTIVE = "active", "Active"
+    SUPERSEDED = "superseded", "Superseded"
+    RETIRED = "retired", "Retired"
+
+
+# ─── Vendor Regional Shipping Fee ────────────────────────────────────────────
+
+class VendorRegionalShippingFee(models.Model):
+    """
+    Per-vendor, per-region shipping fee configuration.
+    Pricing owns all commercial interpretation — other modules consume snapshots.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company_reference = models.UUIDField(db_index=True)
+    region_code = models.CharField(max_length=50, db_index=True)
+    fee_amount = models.DecimalField(max_digits=12, decimal_places=4)
+    currency = models.CharField(max_length=3, default="USD")
+    fee_type = models.CharField(max_length=30, choices=ShippingFeeType.choices, default=ShippingFeeType.FLAT)
+    status = models.CharField(max_length=20, choices=ShippingFeeStatus.choices, default=ShippingFeeStatus.DRAFT)
+    effective_from = models.DateTimeField(default=timezone.now)
+    effective_to = models.DateTimeField(null=True, blank=True)
+    superseded_by = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.PROTECT, related_name="supersedes"
+    )
+    created_by = models.UUIDField(null=True, blank=True, help_text="Actor reference")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "pricing_vendor_regional_shipping_fee"
+        indexes = [
+            models.Index(fields=["vendor_company_reference", "region_code", "status"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        is_new = not self.pk or not VendorRegionalShippingFee.objects.filter(pk=self.pk).exists()
+        super().save(*args, **kwargs)
+
+        from apps.audit.models import AuditRecord, RetentionClass, RedactionClass, AccessClass
+        event_code = "pricing.shipping_fee.created" if is_new else "pricing.shipping_fee.updated"
+        description = (
+            f"Shipping fee {'created' if is_new else 'updated'} for vendor={self.vendor_company_reference}, "
+            f"region={self.region_code}, amount={self.fee_amount}, type={self.fee_type}, status={self.status}"
+        )
+        AuditRecord.objects.create(
+            event_code=event_code,
+            event_description=description,
+            status="success",
+            actor_reference=self.created_by,
+            company_scope_reference=self.vendor_company_reference,
+            source_module="pricing",
+            source_record_type="VendorRegionalShippingFee",
+            source_record_id=self.id,
+            retention_class=RetentionClass.STANDARD,
+            redaction_class=RedactionClass.INTERNAL_OPS,
+            access_class=AccessClass.INTERNAL_OPS,
+        )
+
+    def __str__(self):
+        return f"ShippingFee({self.vendor_company_reference}: {self.region_code} {self.fee_amount} {self.currency})"
+
+
+# ─── Shipping Fee Snapshot (Immutable) ───────────────────────────────────────
+
+class ShippingFeeSnapshot(models.Model):
+    """
+    Immutable snapshot of a shipping fee captured at order time.
+    Same immutability pattern as EffectivePriceSnapshot —
+    consuming modules store the snapshot ID, never recalculate.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source_fee = models.ForeignKey(
+        VendorRegionalShippingFee, on_delete=models.PROTECT, related_name="snapshots"
+    )
+    vendor_company_reference = models.UUIDField(db_index=True)
+    region_code = models.CharField(max_length=50)
+    fee_amount = models.DecimalField(max_digits=12, decimal_places=4)
+    fee_type = models.CharField(max_length=30, choices=ShippingFeeType.choices)
+    currency = models.CharField(max_length=3, default="USD")
+    order_reference = models.UUIDField(db_index=True)
+    routed_suborder_reference = models.UUIDField(null=True, blank=True, db_index=True)
+    applied_amount = models.DecimalField(max_digits=12, decimal_places=4,
+        help_text="Final computed fee based on fee_type and order context")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "pricing_shipping_fee_snapshot"
+        indexes = [
+            models.Index(fields=["vendor_company_reference", "region_code"]),
+            models.Index(fields=["order_reference"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and ShippingFeeSnapshot.objects.filter(pk=self.pk).exists():
+            raise ValueError("ShippingFeeSnapshot is immutable. Create a new snapshot for corrections.")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"ShippingFeeSnapshot({self.vendor_company_reference}: {self.region_code} {self.applied_amount})"
+
+

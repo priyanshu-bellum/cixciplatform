@@ -316,7 +316,42 @@ class ChildOnboardingRequestSerializer(serializers.ModelSerializer):
         return value
 
 
-from .models import UserInvitation, CompanyUserMembership
+from .models import UserInvitation, CompanyUserMembership, DistributionCenter, RegionChangeEvent
+
+
+class DistributionCenterSerializer(serializers.ModelSerializer):
+    vendor_company_name = serializers.CharField(source="vendor_company.name", read_only=True)
+
+    class Meta:
+        model = DistributionCenter
+        fields = [
+            "id", "vendor_company", "vendor_company_name", "name", "status",
+            "address_line1", "address_line2", "city", "state", "zip_code",
+            "country_code", "region_code",
+            "region_configuration_required",
+            "region_configuration_reviewed_at", "region_configuration_reviewed_by",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = [
+            "id", "created_at", "updated_at",
+            "region_configuration_reviewed_at", "region_configuration_reviewed_by",
+        ]
+
+
+class RegionChangeEventSerializer(serializers.ModelSerializer):
+    vendor_company_name = serializers.CharField(source="vendor_company.name", read_only=True)
+
+    class Meta:
+        model = RegionChangeEvent
+        fields = [
+            "id", "vendor_company", "vendor_company_name",
+            "region_code", "action",
+            "regions_before", "regions_after",
+            "visibility_recalculation_triggered", "affected_buyer_count",
+            "actor_reference", "reason", "created_at",
+        ]
+        read_only_fields = fields
+
 
 class UserInvitationSerializer(serializers.ModelSerializer):
     target_company_name = serializers.CharField(source="target_company.name", read_only=True)

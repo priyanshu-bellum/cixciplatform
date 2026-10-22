@@ -798,6 +798,71 @@ def send_welcome_back_email(email: str, first_name: str = "there", user=None, ex
     )
 
 
+def handle_vendor_region_change(vendor_company_id, region_code, action, actor_reference=None, reason=""):
+    """
+    Handle vendor region activation/deactivation.
+
+    1. Snapshot regions_before
+    2. Add/remove region_code from Company.approved_regions
+    3. Save Company
+    4. Create RegionChangeEvent (append-only)
+    5. Log AuditRecord
+    6. Trigger async recalculate_affected_buyer_visibility
+    """
+    from apps.tenant.models import Company, RegionChangeEvent, RegionChangeAction
+
+    company = Company.objects.get(id=vendor_company_id)
+    regions_before = list(company.approved_regions or [])
+
+    if action == "activate":
+        if region_code not in regions_before:
+            company.approved_regions = regions_before + [region_code]
+        event_action = RegionChangeAction.REGION_ACTIVATED
+        event_code = "tenant.vendor.region_activated"
+    elif action == "deactivate":
+        company.approved_regions = [r for r in regions_before if r != region_code]
+        event_action = RegionChangeAction.REGION_DEACTIVATED
+        event_code = "tenant.vendor.region_deactivated"
+    else:
+        raise ValueError(f"Invalid action: {action}. Must be 'activate' or 'deactivate'.")
+
+    regions_after = list(company.approved_regions)
+    company.save()
+
+    event = RegionChangeEvent.objects.create(
+        vendor_company=company,
+        region_code=region_code,
+        action=event_action,
+        regions_before=regions_before,
+        regions_after=regions_after,
+        actor_reference=actor_reference,
+        reason=reason,
+    )
+
+    log_tenant_audit(
+        event_code=event_code,
+        description=f"Vendor {company.name} region {action}d: {region_code}",
+        company_id=company.id,
+        actor_id=actor_reference,
+        source_record_type="RegionChangeEvent",
+        source_record_id=event.id,
+    )
+
+    # Trigger async buyer visibility recalculation
+    try:
+        from apps.tenant.tasks import recalculate_affected_buyer_visibility
+        recalculate_affected_buyer_visibility.delay(
+            str(vendor_company_id), region_code, str(event.id)
+        )
+        event.visibility_recalculation_triggered = True
+        # Direct SQL update to avoid immutability check on the event
+        RegionChangeEvent.objects.filter(id=event.id).update(visibility_recalculation_triggered=True)
+    except Exception as e:
+        logger.error(f"Failed to trigger buyer visibility recalculation: {e}")
+
+    return event
+
+
 def is_capability_allowed_for_company(capability_code: str, company_type: str, buyer_type: Optional[str] = None) -> bool:
     """Check if a capability is allowed to be assigned to a company based on its type."""
     from apps.tenant.models import CompanyType

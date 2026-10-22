@@ -5,6 +5,7 @@ from apps.tenant.views import (
     CompanyViewSet, CompanyEntityViewSet, UserViewSet, CompanyRelationshipViewSet,
     ChildOnboardingRequestViewSet, CapabilityViewSet,
     UserInvitationViewSet, CompanyUserMembershipViewSet,
+    DistributionCenterViewSet, RegionChangeEventViewSet,
 )
 
 from apps.audit.views import AuditRecordViewSet
@@ -19,6 +20,8 @@ router.register("capabilities", CapabilityViewSet, basename="capability")
 router.register("invitations", UserInvitationViewSet, basename="invitation")
 router.register("memberships", CompanyUserMembershipViewSet, basename="membership")
 router.register("audit", AuditRecordViewSet, basename="tenant-audit")
+router.register("distribution-centers", DistributionCenterViewSet, basename="distribution-center")
+router.register("region-events", RegionChangeEventViewSet, basename="region-event")
 
 urlpatterns = [
     path("", include(router.urls)),

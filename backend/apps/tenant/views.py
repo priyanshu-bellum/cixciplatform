@@ -6,11 +6,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.filters import SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Company, CompanyEntity, User, CompanyRelationship, Capability, CompanyType, CompanyStatus
+from .models import (
+    Company, CompanyEntity, User, CompanyRelationship, Capability,
+    CompanyType, CompanyStatus, DistributionCenter, RegionChangeEvent,
+)
 from .serializers import (
     CompanySerializer, CompanyEntitySerializer,
     UserSerializer, UserCreateSerializer, CompanyRelationshipSerializer,
     ChildOnboardingRequestSerializer, CapabilitySerializer,
+    DistributionCenterSerializer, RegionChangeEventSerializer,
 )
 from .mixins import TenantScopedQuerysetMixin, CheckAccessMixin
 from .services import check_access
@@ -183,6 +187,47 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             source_record_id=company.id
         )
         return Response({"success": f"Capability {capability_code} removed successfully."})
+
+    @action(detail=True, methods=["post"], url_path="update-regions")
+    def update_regions(self, request, pk=None):
+        """
+        Activate or deactivate a region for a vendor company.
+        Payload: { "action": "activate"|"deactivate", "region_code": "US", "reason": "..." }
+        Calls handle_vendor_region_change() service.
+        """
+        company = self.get_object()
+        if company.company_type != CompanyType.VENDOR:
+            return Response(
+                {"error": "Region updates are only supported for vendor companies."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        action_value = request.data.get("action")
+        region_code = request.data.get("region_code")
+        reason = request.data.get("reason", "")
+
+        if action_value not in ("activate", "deactivate"):
+            return Response(
+                {"error": "action must be 'activate' or 'deactivate'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not region_code:
+            return Response(
+                {"error": "region_code is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.tenant.services import handle_vendor_region_change
+        event = handle_vendor_region_change(
+            vendor_company_id=company.id,
+            region_code=region_code,
+            action=action_value,
+            actor_reference=request.user.id,
+            reason=reason,
+        )
+
+        from apps.tenant.serializers import RegionChangeEventSerializer
+        return Response(RegionChangeEventSerializer(event).data, status=status.HTTP_200_OK)
 
 
 class CompanyEntityViewSet(TenantScopedQuerysetMixin, CheckAccessMixin, viewsets.ModelViewSet):
@@ -902,5 +947,104 @@ class CompanyUserMembershipViewSet(viewsets.ModelViewSet):
         return Response(CompanyUserMembershipSerializer(mem).data)
 
 
+class DistributionCenterViewSet(CheckAccessMixin, viewsets.ModelViewSet):
+    """
+    CRUD for vendor distribution centers.
+    DC creation does NOT automatically expand vendor regions.
+    """
+    queryset = DistributionCenter.objects.select_related("vendor_company")
+    serializer_class = DistributionCenterSerializer
+    action_capability_map = {
+        "list": "tenant.distribution_center.list",
+        "retrieve": "tenant.distribution_center.read",
+        "create": "tenant.distribution_center.create",
+        "update": "tenant.distribution_center.update",
+        "partial_update": "tenant.distribution_center.update",
+        "destroy": "tenant.distribution_center.delete",
+        "review_region_config": "tenant.distribution_center.update",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["vendor_company", "status", "region_code"]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return DistributionCenter.objects.none()
+        if getattr(user, "is_cixci_admin", False):
+            return qs
+        company = getattr(user, "company", None) or (
+            user.entity.company if getattr(user, "entity", None) else None
+        )
+        if not company:
+            return DistributionCenter.objects.none()
+        if company.company_type == "vendor":
+            return qs.filter(vendor_company=company)
+        return DistributionCenter.objects.none()
+
+    def perform_create(self, serializer):
+        dc = serializer.save()
+        from apps.tenant.services import log_tenant_audit
+        log_tenant_audit(
+            event_code="tenant.distribution_center.created",
+            description=f"Distribution center '{dc.name}' created for {dc.vendor_company.name}",
+            company_id=dc.vendor_company_id,
+            actor_id=self.request.user.id,
+            source_record_type="DistributionCenter",
+            source_record_id=dc.id,
+        )
+
+    @action(detail=True, methods=["post"], url_path="review-region-config")
+    def review_region_config(self, request, pk=None):
+        """Admin-only action to clear the region_configuration_required flag."""
+        if not getattr(request.user, "is_cixci_admin", False):
+            return Response(
+                {"error": "Only CIXCI system admins can review region configurations."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        dc = self.get_object()
+        from django.utils import timezone as tz
+        dc.region_configuration_required = False
+        dc.region_configuration_reviewed_at = tz.now()
+        dc.region_configuration_reviewed_by = request.user.id
+        dc.save()
+
+        from apps.tenant.services import log_tenant_audit
+        log_tenant_audit(
+            event_code="tenant.distribution_center.region_config_reviewed",
+            description=f"Region config reviewed for DC '{dc.name}'",
+            company_id=dc.vendor_company_id,
+            actor_id=request.user.id,
+            source_record_type="DistributionCenter",
+            source_record_id=dc.id,
+        )
+        return Response(DistributionCenterSerializer(dc).data)
+
+
+class RegionChangeEventViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    """Read-only access to the region change event log."""
+    queryset = RegionChangeEvent.objects.select_related("vendor_company")
+    serializer_class = RegionChangeEventSerializer
+    action_capability_map = {
+        "list": "tenant.region_event.list",
+        "retrieve": "tenant.region_event.read",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["vendor_company", "region_code", "action"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return RegionChangeEvent.objects.none()
+        if getattr(user, "is_cixci_admin", False):
+            return qs
+        company = getattr(user, "company", None) or (
+            user.entity.company if getattr(user, "entity", None) else None
+        )
+        if not company:
+            return RegionChangeEvent.objects.none()
+        if company.company_type == "vendor":
+            return qs.filter(vendor_company=company)
+        return RegionChangeEvent.objects.none()
 

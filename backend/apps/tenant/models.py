@@ -564,3 +564,99 @@ class EffectiveCompanyAdminEvidence(models.Model):
         db_table = "tenant_effective_admin_evidence"
         ordering = ["-verified_at"]
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Distribution Center (Vendor Physical Location)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class DistributionCenterStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    ACTIVE = "active", "Active"
+    SUSPENDED = "suspended", "Suspended"
+    RETIRED = "retired", "Retired"
+
+
+class DistributionCenter(models.Model):
+    """
+    Vendor physical distribution location.
+    region_configuration_required flag indicates the DC needs region config review.
+    DC creation does NOT automatically expand vendor regions.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company = models.ForeignKey(
+        Company, on_delete=models.PROTECT, related_name="distribution_centers"
+    )
+    name = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=20, choices=DistributionCenterStatus.choices,
+        default=DistributionCenterStatus.DRAFT
+    )
+    address_line1 = models.CharField(max_length=255, blank=True)
+    address_line2 = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=50, blank=True)
+    zip_code = models.CharField(max_length=20, blank=True)
+    country_code = models.CharField(max_length=3, blank=True)
+    region_code = models.CharField(max_length=50, blank=True)
+    region_configuration_required = models.BooleanField(default=True)
+    region_configuration_reviewed_at = models.DateTimeField(null=True, blank=True)
+    region_configuration_reviewed_by = models.UUIDField(null=True, blank=True,
+        help_text="Actor reference of the admin who reviewed the region config")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "tenant_distribution_center"
+        indexes = [
+            models.Index(fields=["vendor_company", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.vendor_company.name})"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Region Change Event (Append-Only)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class RegionChangeAction(models.TextChoices):
+    REGION_ACTIVATED = "region_activated", "Region Activated"
+    REGION_DEACTIVATED = "region_deactivated", "Region Deactivated"
+
+
+class RegionChangeEvent(models.Model):
+    """
+    Append-only event log for vendor region activation/deactivation.
+    Used for audit trail and triggering buyer visibility recalculation.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company = models.ForeignKey(
+        Company, on_delete=models.PROTECT, related_name="region_change_events"
+    )
+    region_code = models.CharField(max_length=50)
+    action = models.CharField(max_length=30, choices=RegionChangeAction.choices)
+    regions_before = models.JSONField(default=list,
+        help_text="Snapshot of approved_regions before the change")
+    regions_after = models.JSONField(default=list,
+        help_text="Snapshot of approved_regions after the change")
+    visibility_recalculation_triggered = models.BooleanField(default=False)
+    affected_buyer_count = models.PositiveIntegerField(default=0)
+    actor_reference = models.UUIDField(null=True, blank=True, help_text="User ID of the actor")
+    reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "tenant_region_change_event"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["vendor_company", "region_code"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and RegionChangeEvent.objects.filter(pk=self.pk).exists():
+            raise ValueError("RegionChangeEvent is append-only. Cannot modify existing events.")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"RegionChange({self.vendor_company_id}: {self.action} {self.region_code})"
+

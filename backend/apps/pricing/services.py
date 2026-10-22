@@ -1,5 +1,6 @@
 import hashlib
 from decimal import Decimal
+from django.db import models
 from django.utils import timezone
 from .models import EffectivePriceSnapshot, PricingProfile, SnapshotBindability, VendorCommissionAgreement, PricingChannel
 
@@ -193,6 +194,55 @@ def get_effective_map_price(vendor_id, sku, standard_map_price, buyer_id=None, d
     if exception:
         return exception.approved_minimum_price
     return standard_map_price
+
+
+def create_shipping_fee_snapshot(vendor_company_reference, region_code, order_reference,
+                                  routed_suborder_reference=None, quantity=1,
+                                  order_subtotal=None):
+    """
+    Look up the active VendorRegionalShippingFee for vendor+region,
+    calculate the applied_amount based on fee_type, and create an
+    immutable ShippingFeeSnapshot.
+
+    Returns the snapshot, or None if no active fee exists for this vendor-region.
+    """
+    from .models import VendorRegionalShippingFee, ShippingFeeSnapshot, ShippingFeeStatus
+
+    fee = VendorRegionalShippingFee.objects.filter(
+        vendor_company_reference=vendor_company_reference,
+        region_code=region_code,
+        status=ShippingFeeStatus.ACTIVE,
+    ).filter(
+        effective_from__lte=timezone.now(),
+    ).filter(
+        models.Q(effective_to__isnull=True) | models.Q(effective_to__gte=timezone.now())
+    ).order_by("-effective_from").first()
+
+    if not fee:
+        return None
+
+    # Calculate applied_amount based on fee_type
+    if fee.fee_type == "per_unit":
+        applied_amount = fee.fee_amount * Decimal(str(quantity))
+    elif fee.fee_type == "percentage":
+        subtotal = order_subtotal or Decimal("0.00")
+        applied_amount = subtotal * (fee.fee_amount / Decimal("100.00"))
+    else:
+        # flat rate
+        applied_amount = fee.fee_amount
+
+    snapshot = ShippingFeeSnapshot.objects.create(
+        source_fee=fee,
+        vendor_company_reference=vendor_company_reference,
+        region_code=region_code,
+        fee_amount=fee.fee_amount,
+        fee_type=fee.fee_type,
+        currency=fee.currency,
+        order_reference=order_reference,
+        routed_suborder_reference=routed_suborder_reference,
+        applied_amount=applied_amount,
+    )
+    return snapshot
 
 
 def check_pricing_exception_exists(vendor_id, sku, buyer_id=None, date=None):

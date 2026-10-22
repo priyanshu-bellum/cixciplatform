@@ -25,6 +25,7 @@ import IntegrationPage from './pages/IntegrationPage'
 import LaunchPage from './pages/LaunchPage'
 import TelcoCellularPage from './pages/TelcoCellularPage'
 import CompanyUsersPage from './pages/CompanyUsersPage'
+import RegionalPage from './pages/RegionalPage'
 import { SettingsPage } from './pages/StubPages'
 import ConfirmEmailPage from './pages/ConfirmEmailPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
@@ -108,6 +109,7 @@ function AppWithQuery() {
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="integration" element={<IntegrationPage />} />
             <Route path="launch" element={<LaunchPage />} />
+            <Route path="regions" element={<RegionalPage />} />
             <Route path="users" element={<CompanyUsersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

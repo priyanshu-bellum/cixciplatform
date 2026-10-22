@@ -29,6 +29,7 @@ const TITLES: Record<string, string> = {
   '/analytics': 'Analytics',
   '/integration': 'Integration',
   '/launch': 'Launch & Events',
+  '/regions': 'Regional Visibility',
   '/users': 'Company Users',
   '/settings': 'Settings',
 }

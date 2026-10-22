@@ -21,6 +21,7 @@ import ImageIcon from '@mui/icons-material/ImageOutlined'
 import BarChartIcon from '@mui/icons-material/BarChartOutlined'
 import PowerIcon from '@mui/icons-material/PowerOutlined'
 import RocketIcon from '@mui/icons-material/RocketLaunchOutlined'
+import PublicIcon from '@mui/icons-material/Public'
 import SettingsIcon from '@mui/icons-material/SettingsOutlined'
 import LogoutIcon from '@mui/icons-material/LogoutOutlined'
 import PeopleIcon from '@mui/icons-material/PeopleOutlined'
@@ -39,6 +40,7 @@ const NAV = [
       { to: '/devices', icon: <SmartphoneIcon fontSize="small" />, label: 'Device Catalog' },
       { to: '/catalog', icon: <ShoppingBagIcon fontSize="small" />, label: 'Product Catalog' },
       { to: '/pricing', icon: <AttachMoneyIcon fontSize="small" />, label: 'Pricing' },
+      { to: '/regions', icon: <PublicIcon fontSize="small" />, label: 'Regions' },
     ],
   },
   {
@@ -80,13 +82,13 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const filteredNav = NAV.map(section => {
     const items = section.items.filter(item => {
       if (isCixciAdmin) {
-        return ['/', '/devices', '/catalog', '/orders', '/fulfillment', '/invoicing', '/integration', '/analytics', '/notifications'].includes(item.to)
+        return ['/', '/devices', '/catalog', '/orders', '/fulfillment', '/invoicing', '/integration', '/analytics', '/notifications', '/regions'].includes(item.to)
       }
       if (isBuyer) {
-        return ['/', '/devices', '/catalog', '/pricing', '/orders', '/fulfillment', '/invoicing', '/procurement', '/notifications', '/integration'].includes(item.to)
+        return ['/', '/devices', '/catalog', '/pricing', '/orders', '/fulfillment', '/invoicing', '/procurement', '/notifications', '/integration', '/regions'].includes(item.to)
       }
       if (isVendor) {
-        return ['/', '/catalog', '/orders', '/fulfillment', '/invoicing', '/notifications'].includes(item.to)
+        return ['/', '/catalog', '/orders', '/fulfillment', '/invoicing', '/notifications', '/regions'].includes(item.to)
       }
       return true
     })

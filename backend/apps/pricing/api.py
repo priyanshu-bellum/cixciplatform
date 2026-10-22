@@ -11,6 +11,7 @@ from .models import (
     PricingProfile, EffectivePriceSnapshot,
     BuyerFacingPricingVisibilityEvidence, POPricingBindability,
     VendorCommissionAgreement, MapException,
+    VendorRegionalShippingFee, ShippingFeeSnapshot,
 )
 
 
@@ -349,6 +350,102 @@ class MapExceptionViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             return qs.filter(buyer_company_reference=company.id)
 
 
+class VendorRegionalShippingFeeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VendorRegionalShippingFee
+        fields = [
+            "id", "vendor_company_reference", "region_code",
+            "fee_amount", "currency", "fee_type", "status",
+            "effective_from", "effective_to", "superseded_by",
+            "created_by", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class ShippingFeeSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShippingFeeSnapshot
+        fields = [
+            "id", "source_fee", "vendor_company_reference", "region_code",
+            "fee_amount", "fee_type", "currency",
+            "order_reference", "routed_suborder_reference",
+            "applied_amount", "created_at",
+        ]
+        read_only_fields = fields
+
+
+class VendorRegionalShippingFeeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
+    """
+    CRUD for per-vendor per-region shipping fee configuration.
+    Vendor sees own fees, CIXCI admin sees all.
+    """
+    queryset = VendorRegionalShippingFee.objects.all()
+    serializer_class = VendorRegionalShippingFeeSerializer
+    action_capability_map = {
+        "list": "pricing.shipping_fee.list",
+        "retrieve": "pricing.shipping_fee.read",
+        "create": "pricing.shipping_fee.create",
+        "update": "pricing.shipping_fee.update",
+        "partial_update": "pricing.shipping_fee.update",
+        "destroy": "pricing.shipping_fee.delete",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["vendor_company_reference", "region_code", "status"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return VendorRegionalShippingFee.objects.none()
+        if getattr(user, "is_cixci_admin", False):
+            return qs
+        company = getattr(user, "company", None) or (
+            user.entity.company if getattr(user, "entity", None) else None
+        )
+        if not company:
+            return VendorRegionalShippingFee.objects.none()
+        if company.company_type == "vendor":
+            return qs.filter(vendor_company_reference=company.id)
+        return VendorRegionalShippingFee.objects.none()
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user.id)
+
+    def perform_update(self, serializer):
+        serializer.save(created_by=self.request.user.id)
+
+
+class ShippingFeeSnapshotViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only access to shipping fee snapshots.
+    Snapshots are created by the pricing service at order time.
+    """
+    queryset = ShippingFeeSnapshot.objects.all()
+    serializer_class = ShippingFeeSnapshotSerializer
+    action_capability_map = {
+        "list": "pricing.shipping_fee_snapshot.list",
+        "retrieve": "pricing.shipping_fee_snapshot.read",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["vendor_company_reference", "order_reference", "region_code"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return ShippingFeeSnapshot.objects.none()
+        if getattr(user, "is_cixci_admin", False):
+            return qs
+        company = getattr(user, "company", None) or (
+            user.entity.company if getattr(user, "entity", None) else None
+        )
+        if not company:
+            return ShippingFeeSnapshot.objects.none()
+        if company.company_type == "vendor":
+            return qs.filter(vendor_company_reference=company.id)
+        return ShippingFeeSnapshot.objects.none()
+
+
 # ─── URLs ─────────────────────────────────────────────────────────────────────
 
 router = DefaultRouter()
@@ -357,6 +454,8 @@ router.register("snapshots", EffectivePriceSnapshotViewSet, basename="price-snap
 router.register("buyer-prices", BuyerFacingPriceViewSet, basename="buyer-facing-price")
 router.register("agreements", VendorCommissionAgreementViewSet, basename="vendor-agreement")
 router.register("exceptions", MapExceptionViewSet, basename="map-exception")
+router.register("shipping-fees", VendorRegionalShippingFeeViewSet, basename="shipping-fee")
+router.register("shipping-fee-snapshots", ShippingFeeSnapshotViewSet, basename="shipping-fee-snapshot")
 
 urlpatterns = [path("", include(router.urls))]
 
