@@ -239,6 +239,38 @@ class TestZipUploadMatchesStagedProducts:
         assert str(product.primary_image_reference) == str(asset.id)
         assert product.status == "active"
 
+    def test_zip_replaces_legacy_primary_image(self, vendor_client, vendor_company):
+        # A legacy JPEG primary is invisible to buyers. Uploading a valid PNG
+        # by SKU must become the new primary so the product passes the gate.
+        product = _make_product(vendor_company, sku="SKU-ZIP-FIX", status="active")
+        legacy = MediaAsset.objects.create(
+            asset_type="product_image",
+            status="ready",
+            owner_module="catalog",
+            owner_record_id=product.id,
+            company_scope_reference=vendor_company.id,
+            original_filename="legacy.jpg",
+            file_extension=".jpg",
+            mime_type="image/jpeg",
+            storage_key="legacy/legacy.jpg",
+            storage_provider="local",
+            has_transparency=False,
+            review_status="approved",
+        )
+        product.primary_image_reference = legacy.id
+        product.save(update_fields=["primary_image_reference"])
+
+        resp = self._post_zip(vendor_client, {"SKU-ZIP-FIX.png": _png_bytes()})
+        assert resp.status_code == 200, resp.data
+        assert resp.data["created"] == 1
+        assert resp.data["products_now_media_ready"] == 1
+
+        product.refresh_from_db()
+        assert str(product.primary_image_reference) != str(legacy.id)
+        primary = MediaAsset.objects.get(id=product.primary_image_reference)
+        assert primary.mime_type == "image/png"
+        assert primary.has_transparency is True
+
     def test_duplicate_zip_repairs_a_stuck_product(self, vendor_client, vendor_company):
         # Re-uploading an image that is already attached must still reconcile
         # activation. This repairs products left inactive by an earlier upload

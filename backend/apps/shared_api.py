@@ -1022,6 +1022,9 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         products_now_ready = set()
         products_media_incomplete = set()
         products_activated = set()
+        # Newly created asset per product, used to replace a legacy primary
+        # image that does not satisfy the buyer media gate.
+        created_asset_by_product = {}
 
         # Build SKU lookup. Rule §8: vendor admins may only match their own
         # SKUs; CIXCI admins may match across vendors. When the same SKU exists
@@ -1185,6 +1188,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             created_count += 1
             products_updated.add(str(product.id))
+            created_asset_by_product[str(product.id)] = asset
             results.append({
                 "filename": fname,
                 "status": "created",
@@ -1205,12 +1209,31 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         for pid in list(products_updated):
             try:
                 product = Product.objects.get(id=pid)
-                assets = MediaAsset.objects.filter(
-                    owner_record_id=product.id, owner_module="catalog"
-                ).order_by("display_order", "created_at")
-                if assets.exists() and not product.primary_image_reference:
-                    product.primary_image_reference = assets.first().id
+                new_asset = created_asset_by_product.get(pid)
+                current_primary = None
+                if product.primary_image_reference:
+                    current_primary = MediaAsset.objects.filter(
+                        id=product.primary_image_reference
+                    ).first()
+                primary_is_valid = bool(
+                    current_primary
+                    and current_primary.status == "ready"
+                    and current_primary.mime_type == "image/png"
+                    and current_primary.has_transparency
+                    and current_primary.review_status == "approved"
+                )
+                # Attach a primary image, or replace a legacy primary (for
+                # example a JPEG) that the buyer media gate would hide.
+                if new_asset is not None and not primary_is_valid:
+                    product.primary_image_reference = new_asset.id
                     product.save(actor_id=request.user.id)
+                elif not product.primary_image_reference:
+                    assets = MediaAsset.objects.filter(
+                        owner_record_id=product.id, owner_module="catalog"
+                    ).order_by("display_order", "created_at")
+                    if assets.exists():
+                        product.primary_image_reference = assets.first().id
+                        product.save(actor_id=request.user.id)
                 from apps.media.readiness import compute_media_readiness
                 if compute_media_readiness(product).is_ready:
                     products_now_ready.add(pid)
