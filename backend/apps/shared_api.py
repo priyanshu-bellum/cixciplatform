@@ -1781,69 +1781,6 @@ launch_router = DefaultRouter()
 launch_router.register("events", LaunchEventViewSet, basename="launch-event")
 
 
-# ── Base62 UUID encoding (short image URLs) ──────────────────────────────────
-
-import uuid as _uuid_mod
-from django.http import HttpResponseRedirect, HttpResponseNotFound
-from django.views import View
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_control
-
-_B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-
-
-def uuid_to_b62(u) -> str:
-    """Encode a UUID to a ~22-char base62 string."""
-    n = u.int if hasattr(u, "int") else _uuid_mod.UUID(str(u)).int
-    if n == 0:
-        return _B62[0]
-    parts = []
-    while n:
-        parts.append(_B62[n % 62])
-        n //= 62
-    return "".join(reversed(parts))
-
-
-def b62_to_uuid(s: str) -> _uuid_mod.UUID:
-    """Decode a base62 string back to a UUID."""
-    n = 0
-    for c in s:
-        n = n * 62 + _B62.index(c)
-    return _uuid_mod.UUID(int=n)
-
-
-def media_short_url(asset_id) -> str:
-    """Return the short proxy URL for a media asset."""
-    return f"/api/img/{uuid_to_b62(asset_id)}"
-
-
-# ── Media Proxy View (short URL → 302 redirect to storage) ───────────────────
-
-@method_decorator(cache_control(public=True, max_age=3600), name="dispatch")
-class MediaProxyView(View):
-    """
-    Lightweight public proxy: /api/img/<base62_code>
-    Decodes base62 → UUID, looks up asset, returns 302 redirect to storage.
-    No authentication required (images are loaded via <img> tags).
-    """
-    def get(self, request, code):
-        try:
-            asset_id = b62_to_uuid(code)
-            asset = MediaAsset.objects.only("id", "status", "storage_key").get(id=asset_id)
-        except (ValueError, IndexError, MediaAsset.DoesNotExist):
-            return HttpResponseNotFound("Asset not found")
-
-        if asset.status != "ready":
-            return HttpResponseNotFound("Asset not available")
-
-        if not asset.storage_key:
-            return HttpResponseNotFound("Asset has no storage reference")
-
-        media_url = getattr(settings, "MEDIA_URL", "/media/")
-        target_url = f"{media_url}{asset.storage_key}"
-        return HttpResponseRedirect(target_url)
-
-
 media_urlpatterns = [path("", include(media_router.urls))]
 analytics_urlpatterns = [path("", include(analytics_router.urls))]
 integration_urlpatterns = [path("", include(integration_router.urls))]

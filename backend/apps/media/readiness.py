@@ -102,8 +102,7 @@ def compute_media_readiness(product) -> MediaReadiness:
 
     readiness.primary_is_valid = True
     readiness.is_ready = True
-    from apps.shared_api import media_short_url
-    readiness.primary_url = media_short_url(primary.id)
+    readiness.primary_url = _media_url(primary.storage_key)
     return readiness
 
 

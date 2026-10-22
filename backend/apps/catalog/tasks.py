@@ -3,7 +3,6 @@ from django.utils import timezone
 from celery import shared_task
 from apps.catalog.models import Product, ProductStatus
 from apps.catalog.services import log_catalog_audit
-from apps.shared_api import media_short_url
 
 @shared_task
 def update_product_statuses_by_date():
@@ -120,7 +119,8 @@ def process_buyer_export_job(job_id):
                 try:
                     asset = MediaAsset.objects.get(id=p.primary_image_reference)
                     if asset.status == "ready":
-                        image_url = media_short_url(asset.id)
+                        media_url = getattr(settings, "MEDIA_URL", "/media/")
+                        image_url = f"{media_url}{asset.storage_key}"
                 except Exception:
                     pass
             if not image_url and isinstance(p.media_references, list) and len(p.media_references) > 0:
@@ -156,7 +156,8 @@ def process_buyer_export_job(job_id):
                 try:
                     asset = MediaAsset.objects.get(id=product.primary_image_reference)
                     if asset.status == "ready":
-                        url = media_short_url(asset.id)
+                        media_url = getattr(settings, "MEDIA_URL", "/media/")
+                        url = f"{media_url}{asset.storage_key}"
                 except Exception:
                     pass
             if not url and isinstance(product.media_references, list) and len(product.media_references) > 0:
