@@ -43,6 +43,7 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # ─── Media: local filesystem ───────────────────────────────────────────────────
 USE_S3 = False
 USE_GCS = False
+MEDIA_USE_SHORT_URLS = False
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "/media/"
 

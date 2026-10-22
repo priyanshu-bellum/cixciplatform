@@ -12,6 +12,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from apps.tenant.mixins import CheckAccessMixin, BuyerScopedQuerysetMixin
+from apps.media.utils import media_short_url
 from .models import (
     Order, RoutedSuborder,
     VendorExportSchedule, VendorExportWindow,
@@ -935,11 +936,9 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                 if prod.primary_image_reference:
                     try:
                         from apps.media.models import MediaAsset
-                        from django.conf import settings
                         asset = MediaAsset.objects.get(id=prod.primary_image_reference)
                         if asset.status == "ready":
-                            media_url = getattr(settings, "MEDIA_URL", "/media/")
-                            primary_image_url = f"{media_url}{asset.storage_key}"
+                            primary_image_url = media_short_url(asset.id)
                     except Exception:
                         pass
                 if not primary_image_url and isinstance(prod.media_references, list) and len(prod.media_references) > 0:

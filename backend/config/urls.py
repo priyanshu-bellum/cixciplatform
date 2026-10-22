@@ -529,9 +529,12 @@ class BuyerSchemaView(APIView):
         
         return Response(data)
 
+from apps.media.views import MediaProxyView
+
 urlpatterns = [
     path("admin/",          admin.site.urls),
     path("api/v1/",         include(api_v1)),
+    path("api/img/<str:code>", MediaProxyView.as_view(), name="media-short-url"),
 
     # ── Internal: CIXCI System Admin only ─────────────────────────────────────
     # /api/docs/ is now restricted — only authenticated CIXCI admins can access it.

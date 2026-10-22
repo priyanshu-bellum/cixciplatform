@@ -32,6 +32,7 @@ services:
       - FRONTEND_URL=${FRONTEND_URL}
       - USE_GCS=${USE_GCS}
       - GS_BUCKET_NAME=${GS_BUCKET_NAME}
+      - MEDIA_USE_SHORT_URLS=${MEDIA_USE_SHORT_URLS:-False}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@cixci.com}
     depends_on:
@@ -58,6 +59,7 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - DEBUG=False
       - FRONTEND_URL=${FRONTEND_URL}
+      - MEDIA_USE_SHORT_URLS=${MEDIA_USE_SHORT_URLS:-False}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@cixci.com}
     depends_on:

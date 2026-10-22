@@ -1990,7 +1990,10 @@ export default function CatalogPage() {
   const totalAllProducts = totalProducts
   const totalAllProductsPages = Math.max(1, Math.ceil(totalProducts / SERVER_PAGE_SIZE))
   const allProductsPage = serverPage
-  const setAllProductsPage = (page: number) => setServerPage(page)
+  const setAllProductsPage = (page: number) => {
+    setServerPage(page)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   const paginatedAllProducts = filteredProducts
 
   // Any filter/search change invalidates the current page number.
@@ -2003,7 +2006,10 @@ export default function CatalogPage() {
   const totalCompatProducts = totalProducts
   const totalCompatPages = totalAllProductsPages
   const compatPage = serverPage
-  const setCompatPage = (page: number) => setServerPage(page)
+  const setCompatPage = (page: number) => {
+    setServerPage(page)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   const paginatedCompatProducts = filteredProducts
 
   useEffect(() => {
@@ -3522,7 +3528,7 @@ export default function CatalogPage() {
         
         <div className="telco-card-img-wrap">
           {p.primary_image_url ? (
-            <img src={getImageUrl(p.primary_image_url)} alt={p.name} loading="lazy" decoding="async" />
+            <img src={getImageUrl(p.primary_image_url)} alt={p.name} width={120} height={120} loading="lazy" decoding="async" onLoad={e => (e.target as HTMLImageElement).classList.add('loaded')} />
           ) : (
             <ShoppingBagIcon sx={{ fontSize: 32, color: 'text.disabled' }} />
           )}
@@ -3997,6 +4003,11 @@ export default function CatalogPage() {
           max-width: 90%;
           max-height: 120px;
           object-fit: contain;
+          opacity: 0;
+          transition: opacity 0.15s ease;
+        }
+        .telco-card-img-wrap img.loaded {
+          opacity: 1;
         }
         .telco-card-name {
           font-size: 13px;

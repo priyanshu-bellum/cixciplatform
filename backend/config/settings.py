@@ -197,6 +197,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 USE_GCS = config("USE_GCS", default=False, cast=bool)
 USE_S3 = config("USE_S3", default=False, cast=bool)
+MEDIA_USE_SHORT_URLS = config("MEDIA_USE_SHORT_URLS", default=False, cast=bool)
 
 if USE_GCS:
     DEFAULT_FILE_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
