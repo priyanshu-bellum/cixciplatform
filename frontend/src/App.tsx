@@ -98,7 +98,7 @@ function AppWithQuery() {
             <Route index element={<DashboardPage />} />
             <Route path="devices" element={<DevicesPage />} />
             <Route path="catalog" element={<CatalogPage />} />
-            <Route path="pricing" element={<RequireRole allow={(u) => u?.company_type !== 'buyer'}><PricingPage /></RequireRole>} />
+            <Route path="pricing" element={<PricingPage />} />
             <Route path="orders" element={<OrdersPage />} />
             <Route path="fulfillment" element={<FulfillmentPage />} />
             <Route path="invoicing" element={<InvoicingPage />} />

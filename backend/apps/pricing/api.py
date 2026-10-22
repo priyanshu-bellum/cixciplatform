@@ -66,6 +66,41 @@ class BuyerVisibilityEvidenceSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
+class BuyerFacingPriceSerializer(serializers.ModelSerializer):
+    """
+    Buyer-safe view of a price.
+
+    Exposes only what a buyer is allowed to see: the product it belongs to, the
+    channel, the price the buyer pays and its bindability. Vendor wholesale
+    price, commissions and markup are never included.
+    """
+    product_name = serializers.SerializerMethodField()
+    sku = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EffectivePriceSnapshot
+        fields = [
+            "id", "product_reference", "product_name", "sku", "channel",
+            "buyer_facing_price", "currency", "bindability_status",
+            "valid_from", "is_current",
+        ]
+        read_only_fields = fields
+
+    def _product(self, obj):
+        products = self.context.get("bulk_products")
+        if not products:
+            return None
+        return products.get(str(obj.product_reference))
+
+    def get_product_name(self, obj):
+        product = self._product(obj)
+        return product["name"] if product else ""
+
+    def get_sku(self, obj):
+        product = self._product(obj)
+        return product["sku"] if product else ""
+
+
 class VendorCommissionAgreementSerializer(serializers.ModelSerializer):
     class Meta:
         model = VendorCommissionAgreement
@@ -92,6 +127,27 @@ class PricingProfileViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["vendor_company_reference", "channel", "status"]
 
+    def get_queryset(self):
+        """
+        A pricing profile belongs to a vendor and a buyer — a user may only
+        ever see the profiles of their own company.
+        """
+        qs = super().get_queryset()
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return PricingProfile.objects.none()
+        if getattr(user, "is_cixci_admin", False):
+            return qs
+
+        company = getattr(user, "company", None) or (
+            user.entity.company if getattr(user, "entity", None) else None
+        )
+        if not company:
+            return PricingProfile.objects.none()
+        if company.company_type == "vendor":
+            return qs.filter(vendor_company_reference=company.id)
+        return qs.filter(buyer_company_reference=company.id)
+
 
 class EffectivePriceSnapshotViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
     """
@@ -107,6 +163,29 @@ class EffectivePriceSnapshotViewSet(CheckAccessMixin, viewsets.ReadOnlyModelView
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["product_reference", "channel", "bindability_status"]
 
+    def get_queryset(self):
+        """
+        Snapshots carry vendor wholesale price and commission amounts, so they
+        are scoped to the owning vendor. Buyers read prices through the
+        buyer-facing endpoint instead.
+        """
+        qs = super().get_queryset()
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return EffectivePriceSnapshot.objects.none()
+        if getattr(user, "is_cixci_admin", False):
+            return qs
+
+        company = getattr(user, "company", None) or (
+            user.entity.company if getattr(user, "entity", None) else None
+        )
+        if not company:
+            return EffectivePriceSnapshot.objects.none()
+        if company.company_type == "vendor":
+            return qs.filter(pricing_profile__vendor_company_reference=company.id)
+        # Buyers must not read the raw snapshot stream.
+        return EffectivePriceSnapshot.objects.none()
+
     @action(detail=False, methods=["get"])
     def for_product(self, request):
         """Get current price snapshots for a specific product across all channels."""
@@ -115,6 +194,81 @@ class EffectivePriceSnapshotViewSet(CheckAccessMixin, viewsets.ReadOnlyModelView
             return Response({"error": "product_id required"}, status=400)
         snapshots = self.get_queryset().filter(product_reference=product_id)
         return Response(EffectivePriceSnapshotSerializer(snapshots, many=True).data)
+
+
+class BuyerFacingPriceViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    Prices a buyer is allowed to see.
+
+    A price is visible to a buyer only when a
+    BuyerFacingPricingVisibilityEvidence row grants visibility for that
+    buyer's company and channel. There is no fallback to catalog pricing — if
+    the evidence is missing the buyer simply does not see the price.
+
+    Only buyer-safe fields are exposed (no vendor wholesale price, no
+    commission, no markup).
+    """
+    serializer_class = BuyerFacingPriceSerializer
+    action_capability_map = {
+        "list": "pricing.buyer_price.list",
+        "retrieve": "pricing.buyer_price.list",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["channel", "product_reference"]
+    _rows = None
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return EffectivePriceSnapshot.objects.none()
+
+        company = getattr(user, "company", None) or (
+            user.entity.company if getattr(user, "entity", None) else None
+        )
+        if not company or company.company_type != "buyer":
+            return EffectivePriceSnapshot.objects.none()
+
+        granted_snapshot_ids = BuyerFacingPricingVisibilityEvidence.objects.filter(
+            company_scope_reference=company.id,
+            visibility_granted=True,
+            redaction_decision="allowed",
+        ).values_list("snapshot_id", flat=True)
+
+        return EffectivePriceSnapshot.objects.filter(
+            id__in=granted_snapshot_ids
+        ).select_related("pricing_profile").order_by("-valid_from")
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        # Resolve the product name / SKU for the page in one query.
+        product_ids = {
+            str(obj.product_reference)
+            for obj in (self._rows or [])
+        }
+        products = {}
+        if product_ids:
+            from apps.catalog.models import Product
+            for product in Product.objects.filter(id__in=product_ids).values("id", "name", "sku"):
+                products[str(product["id"])] = product
+        ctx["bulk_products"] = products
+        return ctx
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        self._rows = page if page is not None else list(queryset)
+        serializer = self.get_serializer(self._rows, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        self._rows = list(self.get_queryset().filter(pk=kwargs.get("pk")))
+        serializer = self.get_serializer(self._rows, many=True)
+        if not self._rows:
+            from rest_framework.exceptions import NotFound
+            raise NotFound()
+        return Response(serializer.data[0])
 
 
 class VendorCommissionAgreementViewSet(CheckAccessMixin, viewsets.ModelViewSet):
@@ -129,6 +283,27 @@ class VendorCommissionAgreementViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "destroy": "pricing.agreement.delete",
         "approve": "pricing.agreement.approve",
     }
+
+    def get_queryset(self):
+        """
+        A commission agreement belongs to a vendor — a buyer must never see a
+        vendor's commission terms.
+        """
+        qs = super().get_queryset()
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return VendorCommissionAgreement.objects.none()
+        if getattr(user, "is_cixci_admin", False):
+            return qs
+
+        company = getattr(user, "company", None) or (
+            user.entity.company if getattr(user, "entity", None) else None
+        )
+        if not company:
+            return VendorCommissionAgreement.objects.none()
+        if company.company_type == "vendor":
+            return qs.filter(vendor_company_reference=company.id)
+        return VendorCommissionAgreement.objects.none()
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
@@ -179,6 +354,7 @@ class MapExceptionViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 router = DefaultRouter()
 router.register("profiles", PricingProfileViewSet, basename="pricing-profile")
 router.register("snapshots", EffectivePriceSnapshotViewSet, basename="price-snapshot")
+router.register("buyer-prices", BuyerFacingPriceViewSet, basename="buyer-facing-price")
 router.register("agreements", VendorCommissionAgreementViewSet, basename="vendor-agreement")
 router.register("exceptions", MapExceptionViewSet, basename="map-exception")
 

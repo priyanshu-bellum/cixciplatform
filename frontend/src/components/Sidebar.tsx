@@ -83,7 +83,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         return ['/', '/devices', '/catalog', '/orders', '/fulfillment', '/invoicing', '/integration', '/analytics', '/notifications'].includes(item.to)
       }
       if (isBuyer) {
-        return ['/', '/devices', '/catalog', '/orders', '/fulfillment', '/invoicing', '/procurement', '/notifications', '/integration'].includes(item.to)
+        return ['/', '/devices', '/catalog', '/pricing', '/orders', '/fulfillment', '/invoicing', '/procurement', '/notifications', '/integration'].includes(item.to)
       }
       if (isVendor) {
         return ['/', '/catalog', '/orders', '/fulfillment', '/invoicing', '/notifications'].includes(item.to)
