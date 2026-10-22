@@ -30,6 +30,7 @@ import TableCell from '@mui/material/TableCell'
 import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import Stack from '@mui/material/Stack'
 import CircularProgress from '@mui/material/CircularProgress'
 import BusinessIcon from '@mui/icons-material/Business'
 import ApartmentIcon from '@mui/icons-material/Apartment'
@@ -1668,30 +1669,17 @@ export function SettingsPage() {
       )}
 
       {/* ADD COMPANY MODAL */}
-      {showCompanyModal && (
-        <div className="modal-overlay" onClick={e => {
-          if (e.target === e.currentTarget) {
-            if (isCreateFormDirty()) {
-              setShowConfirmCloseCreate(true)
-            } else {
-              setShowCompanyModal(false)
-            }
-          }
-        }}>
-          <div className="modal-content" style={{ width: '640px', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Create Company Profile</h3>
+      <Dialog open={showCompanyModal} onClose={() => { if (isCreateFormDirty()) setShowConfirmCloseCreate(true); else setShowCompanyModal(false) }} maxWidth="sm" fullWidth>
+        <DialogTitle>Create Company Profile</DialogTitle>
+        <DialogContent dividers>
             {errorMsg && (
-              <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
-                <span style={{ fontSize: 12, lineHeight: '1.4' }}>{errorMsg}</span>
-              </div>
+              <Alert severity="error" sx={{ mb: 2 }}>{errorMsg}</Alert>
             )}
-            <form onSubmit={handleCreateCompany}>
-              <div className="card-grid card-grid-2">
-                <div className="form-group">
-                  <label className="label">Company Legal Name</label>
-                  <input
-                    type="text" className="input" placeholder="e.g. Acme Corp" required
+            <form id="create-company-form" onSubmit={handleCreateCompany}>
+              <Stack direction="row" spacing={2}>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    size="small" fullWidth label="Company Legal Name" placeholder="e.g. Acme Corp" required
                     value={companyName}
                     onChange={e => {
                       const val = e.target.value
@@ -1700,99 +1688,87 @@ export function SettingsPage() {
                         setCompanyDisplayName(val)
                       }
                     }}
-                    style={{
-                      borderColor: companyName.trim() && companiesList.some(
-                        (c: any) => c.name?.trim().toLowerCase() === companyName.trim().toLowerCase()
-                      ) ? 'var(--red)' : undefined
-                    }}
+                    error={!!(companyName.trim() && companiesList.some(
+                      (c: any) => c.name?.trim().toLowerCase() === companyName.trim().toLowerCase()
+                    ))}
+                    helperText={companyName.trim() && companiesList.some(
+                      (c: any) => c.name?.trim().toLowerCase() === companyName.trim().toLowerCase()
+                    ) ? 'A company with this name already exists. Each company can only be onboarded once.' : undefined}
                   />
-                  {companyName.trim() && companiesList.some(
-                    (c: any) => c.name?.trim().toLowerCase() === companyName.trim().toLowerCase()
-                  ) && (
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      marginTop: 5, fontSize: 11, color: 'var(--red)',
-                      background: 'var(--red-dim)', border: '1px solid var(--red)',
-                      padding: '5px 10px', borderRadius: 'var(--radius-sm)'
-                    }}>
-                      <ErrorOutlinedIcon sx={{ fontSize: 11 }} />
-                      A company with this name already exists. Each company can only be onboarded once.
-                    </div>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="label">Display Name</label>
-                  <input type="text" className="input" placeholder="e.g. Acme Accessories" required value={companyDisplayName} onChange={e => setCompanyDisplayName(e.target.value)} />
-                </div>
-              </div>
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField size="small" fullWidth label="Display Name" placeholder="e.g. Acme Accessories" required value={companyDisplayName} onChange={e => setCompanyDisplayName(e.target.value)} />
+                </Box>
+              </Stack>
 
-              <div className="form-group" style={{ marginTop: 10 }}>
-                <label className="label">Company Type / Category</label>
-                <select className="input" value={companyType} onChange={e => setCompanyType(e.target.value)}>
-                  <option value="">Select Company Type</option>
-                  <option value="buyer">Buyer</option>
-                  <option value="vendor">Vendor</option>
-                  <option value="device_distributor">Device Distributor</option>
-                </select>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Short name (slug) is auto-generated from the Legal Name.</div>
-              </div>
+              <Box sx={{ mt: 1.5 }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Company Type / Category</InputLabel>
+                  <Select label="Company Type / Category" value={companyType} onChange={e => setCompanyType(e.target.value as string)}>
+                    <MenuItem value="">Select Company Type</MenuItem>
+                    <MenuItem value="buyer">Buyer</MenuItem>
+                    <MenuItem value="vendor">Vendor</MenuItem>
+                    <MenuItem value="device_distributor">Device Distributor</MenuItem>
+                  </Select>
+                </FormControl>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Short name (slug) is auto-generated from the Legal Name.</Typography>
+              </Box>
 
               {/* Buyer / Vendor sub-type */}
               {companyType === 'buyer' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-                  <div className="form-group">
-                    <label className="label">Buyer Type</label>
-                    <select className="input" value={companyBuyerType} onChange={e => setCompanyBuyerType(e.target.value)}>
-                      <option value=''>Select Buyer Type</option>
-                      <option value='mvno'>MVNO</option>
-                      <option value='wireless_carrier'>Wireless Carrier</option>
-                      <option value='retailer'>Retailer</option>
-                      <option value='enterprise_corporate'>Enterprise/ Corporate</option>
-                    </select>
-                  </div>
-                  <div className="card-grid card-grid-2">
-                    <div className="form-group">
-                      <label className="label">Buyer Pricing Mode</label>
-                      <select className="input" value={companyBuyerPricingMode} onChange={e => setCompanyBuyerPricingMode(e.target.value)}>
-                        <option value="standard">Standard Buyer Commission (14%)</option>
-                        <option value="no_commission">No Buyer Commission (0%)</option>
-                        <option value="custom">Custom Buyer Commission</option>
-                      </select>
-                    </div>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1.5 }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Buyer Type</InputLabel>
+                    <Select label="Buyer Type" value={companyBuyerType} onChange={e => setCompanyBuyerType(e.target.value as string)}>
+                      <MenuItem value=''>Select Buyer Type</MenuItem>
+                      <MenuItem value='mvno'>MVNO</MenuItem>
+                      <MenuItem value='wireless_carrier'>Wireless Carrier</MenuItem>
+                      <MenuItem value='retailer'>Retailer</MenuItem>
+                      <MenuItem value='enterprise_corporate'>Enterprise/ Corporate</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Stack direction="row" spacing={2}>
+                    <Box sx={{ flex: 1 }}>
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>Buyer Pricing Mode</InputLabel>
+                        <Select label="Buyer Pricing Mode" value={companyBuyerPricingMode} onChange={e => setCompanyBuyerPricingMode(e.target.value as string)}>
+                          <MenuItem value="standard">Standard Buyer Commission (14%)</MenuItem>
+                          <MenuItem value="no_commission">No Buyer Commission (0%)</MenuItem>
+                          <MenuItem value="custom">Custom Buyer Commission</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
                     {companyBuyerPricingMode === 'custom' && (
-                      <div className="form-group">
-                        <label className="label">Commission Percentage (%)</label>
-                        <input
+                      <Box sx={{ flex: 1 }}>
+                        <TextField
+                          size="small" fullWidth label="Commission Percentage (%)"
                           type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          className="input"
+                          inputProps={{ step: '0.01', min: '0', max: '100' }}
                           placeholder="e.g. 10.00"
                           value={companyCommissionPercentage}
                           onChange={e => setCompanyCommissionPercentage(e.target.value)}
                           required
                         />
-                      </div>
+                      </Box>
                     )}
-                  </div>
-                </div>
+                  </Stack>
+                </Box>
               )}
               {companyType === 'vendor' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-                  <div className="form-group">
-                    <label className="label">Vendor Type</label>
-                    <select className="input" value={companyVendorType} onChange={e => setCompanyVendorType(e.target.value)}>
-                      <option value=''>Select Vendor Type</option>
-                      <option value='accessory_vendor'>Accessory Vendor</option>
-                    </select>
-                  </div>
-                </div>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1.5 }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Vendor Type</InputLabel>
+                    <Select label="Vendor Type" value={companyVendorType} onChange={e => setCompanyVendorType(e.target.value as string)}>
+                      <MenuItem value=''>Select Vendor Type</MenuItem>
+                      <MenuItem value='accessory_vendor'>Accessory Vendor</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
               )}
-                  
+
               {companyType === 'vendor' && (
-                <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 12, marginTop: 8 }}>
-                  <div className="label" style={{ marginBottom: 8 }}>Integration Mode</div>
+                <Box sx={{ borderTop: '1px solid var(--border-light)', pt: 1.5, mt: 1 }}>
+                  <Typography variant="caption" sx={{ mb: 1, display: 'block' }}>Integration Mode</Typography>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                     {(['api','manual'] as const).map(mode => (
                       <button key={mode} type='button' onClick={() => {
@@ -1815,71 +1791,64 @@ export function SettingsPage() {
                     ))}
                   </div>
                   {companyIntegrationMode === 'manual' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <div className="card-grid card-grid-2">
-                        <div className="form-group">
-                          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> First Send Time</label>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                      <Stack direction="row" spacing={2}>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> First Send Time</Typography>
                           <AmPmTimePicker value={companyDailyEmailTime} onChange={setCompanyDailyEmailTime} />
-                        </div>
-                        <div className="form-group">
-                          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></label>
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></Typography>
                           <AmPmTimePicker value={companyDailyEmailTime2} onChange={setCompanyDailyEmailTime2} allowEmpty />
-                        </div>
-                      </div>
-                      <div className="form-group">
-                        <label className="label">Additional Automated Digest Recipients</label>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <input
+                        </Box>
+                      </Stack>
+                      <Box>
+                        <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Additional Automated Digest Recipients</Typography>
+                        <Stack direction="row" spacing={1}>
+                          <TextField
+                            size="small" fullWidth
                             type="email"
-                            className="input"
                             placeholder="e.g. sales@vendor.com"
                             value={companyNewDigestEmail}
                             onChange={e => setCompanyNewDigestEmail(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCompanyDigestEmail(); } }}
                           />
-                          <button
+                          <Button
                             type="button"
+                            variant="contained"
+                            size="small"
                             onClick={handleAddCompanyDigestEmail}
-                            style={{
-                              background: 'var(--accent)',
-                              border: 'none',
-                              borderRadius: 6,
-                              color: '#fff',
-                              padding: '0 14px',
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: 'pointer'
-                            }}
                           >
                             + Add
-                          </button>
-                        </div>
+                          </Button>
+                        </Stack>
                         {companyOrderDigestEmails.length > 0 && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6, maxHeight: 120, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: 6, padding: 6, border: '1px solid var(--border)' }}>
                             {companyOrderDigestEmails.map(email => (
                               <div key={email} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)', padding: '4px 8px', borderRadius: 4, fontSize: 12, border: '1px solid var(--border-light)' }}>
                                 <span style={{ color: 'var(--text-primary)' }}>{email}</span>
-                                <button
-                                  type="button"
+                                <Button
+                                  size="small"
+                                  color="error"
                                   onClick={() => handleRemoveCompanyDigestEmail(email)}
-                                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}
+                                  sx={{ fontSize: 11, minWidth: 'auto', p: '0 4px' }}
                                 >
                                   Remove
-                                </button>
+                                </Button>
                               </div>
                             ))}
                           </div>
                         )}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Order digest emailed daily to the configured recipients at these UTC times.</div>
-                    </div>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">Order digest emailed daily to the configured recipients at these UTC times.</Typography>
+                    </Box>
                   )}
-                </div>
+                </Box>
               )}
 
               {/* Logo */}
-              <div className="form-group" style={{ marginTop: 10 }}>
-                <label className="label">Company Logo</label>
+              <Box sx={{ mt: 1.5 }}>
+                <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Company Logo</Typography>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   {companyLogoPreview ? (
                     <img src={companyLogoPreview} alt='Logo' style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', padding: 3 }} />
@@ -1887,43 +1856,38 @@ export function SettingsPage() {
                     <div style={{ width: 48, height: 48, borderRadius: 6, border: '2px dashed var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><CloudUploadIcon sx={{ fontSize: 18 }} /></div>
                   )}
                   <label style={{ cursor: 'pointer' }}>
-                    <span className='btn btn-secondary btn-sm'><CloudUploadIcon sx={{ fontSize: 12 }} /> Choose Logo</span>
+                    <Button component="span" size="small" startIcon={<CloudUploadIcon sx={{ fontSize: 12 }} />}>Choose Logo</Button>
                     <input type='file' accept='image/*' style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setCompanyLogoFile(f); setCompanyLogoPreview(URL.createObjectURL(f)) } }} />
                   </label>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG, JPG, WEBP or SVG</span>
+                  <Typography variant="caption" color="text.secondary">PNG, JPG, WEBP or SVG</Typography>
                 </div>
-              </div>
+              </Box>
 
-              <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                <div className="form-group">
-                  <label className="label">Website *</label>
-                  <input type="text" className="input" placeholder="e.g. https://acme.com" required value={companyWebsite} onChange={e => setCompanyWebsite(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="label">Business Email Domain *</label>
-                  <input type="text" className="input" placeholder="e.g. acme.com (no gmail.com)" required value={companyEmailDomain} onChange={e => setCompanyEmailDomain(e.target.value)} />
-                </div>
-              </div>
+              <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                <Box sx={{ flex: 1 }}>
+                  <TextField size="small" fullWidth label="Website *" placeholder="e.g. https://acme.com" required value={companyWebsite} onChange={e => setCompanyWebsite(e.target.value)} />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField size="small" fullWidth label="Business Email Domain *" placeholder="e.g. acme.com (no gmail.com)" required value={companyEmailDomain} onChange={e => setCompanyEmailDomain(e.target.value)} />
+                </Box>
+              </Stack>
 
-              <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                <div className="form-group">
-                  <label className="label">Primary Contact Name *</label>
-                  <input type="text" className="input" placeholder="John Doe" required value={companyContactName} onChange={e => setCompanyContactName(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="label">Primary Contact Email *</label>
-                  <input type="email" className="input" placeholder="john@acme.com" required value={companyContactEmail} onChange={e => setCompanyContactEmail(e.target.value)} />
-                </div>
-              </div>
+              <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                <Box sx={{ flex: 1 }}>
+                  <TextField size="small" fullWidth label="Primary Contact Name *" placeholder="John Doe" required value={companyContactName} onChange={e => setCompanyContactName(e.target.value)} />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField size="small" fullWidth label="Primary Contact Email *" type="email" placeholder="john@acme.com" required value={companyContactEmail} onChange={e => setCompanyContactEmail(e.target.value)} />
+                </Box>
+              </Stack>
 
-              <div className="form-group" style={{ marginTop: 10 }}>
-                <label className="label">Phone Number (optional)</label>
-                <input type="text" className="input" placeholder="+1-555-0199" value={companyPhone} onChange={e => setCompanyPhone(e.target.value)} />
-              </div>
+              <Box sx={{ mt: 1.5 }}>
+                <TextField size="small" fullWidth label="Phone Number (optional)" placeholder="+1-555-0199" value={companyPhone} onChange={e => setCompanyPhone(e.target.value)} />
+              </Box>
 
-              <div style={{ marginTop: 10 }}>
-                <div className="form-group" style={{ marginBottom: 8 }}>
-                  <label className="label">Address Line 1 *</label>
+              <Box sx={{ mt: 1.5 }}>
+                <Box sx={{ mb: 1 }}>
+                  <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Address Line 1 *</Typography>
                   <AddressAutocomplete
                     value={companyAddress1}
                     onChange={val => {
@@ -1947,63 +1911,59 @@ export function SettingsPage() {
                     className="input"
                     placeholder="Start typing an address…"
                   />
-                </div>
-                <div className="card-grid card-grid-3">
-                  <div className="form-group">
-                    <label className="label">Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
-                    <input type="text" className="input" placeholder="e.g. Suite 400" value={companyAddress2} onChange={e => {
+                </Box>
+                <Stack direction="row" spacing={2}>
+                  <Box sx={{ flex: 1 }}>
+                    <TextField size="small" fullWidth label={<>Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></>} placeholder="e.g. Suite 400" value={companyAddress2} onChange={e => {
                       setCompanyAddress2(e.target.value)
                       if (companySameAsCompanyAddress) setCompanyReturnAddress2(e.target.value)
                     }} />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">City</label>
-                    <input type="text" className="input" placeholder="Auto-filled" value={companyCity} onChange={e => {
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <TextField size="small" fullWidth label="City" placeholder="Auto-filled" value={companyCity} onChange={e => {
                       setCompanyCity(e.target.value)
                       if (companySameAsCompanyAddress) setCompanyReturnCity(e.target.value)
                     }} />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">ZIP / Postal Code</label>
-                    <input type="text" className="input" placeholder="Auto-filled" value={companyZip} onChange={e => {
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <TextField size="small" fullWidth label="ZIP / Postal Code" placeholder="Auto-filled" value={companyZip} onChange={e => {
                       setCompanyZip(e.target.value)
                       if (companySameAsCompanyAddress) setCompanyReturnZip(e.target.value)
                     }} />
-                  </div>
-                </div>
-              </div>
+                  </Box>
+                </Stack>
+              </Box>
 
-              <div className="card-grid card-grid-3" style={{ marginTop: 10 }}>
-                <div className="form-group">
-                  <label className="label">Country Code</label>
-                  <input type="text" className="input" value={companyCountry} onChange={e => {
+              <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                <Box sx={{ flex: 1 }}>
+                  <TextField size="small" fullWidth label="Country Code" value={companyCountry} onChange={e => {
                     setCompanyCountry(e.target.value)
                     if (companySameAsCompanyAddress) setCompanyReturnCountry(e.target.value)
                   }} />
-                </div>
-                <div className="form-group">
-                  <label className="label">State</label>
-                  <select className="input" value={companyRegion} onChange={e => {
-                    setCompanyRegion(e.target.value)
-                    if (companySameAsCompanyAddress) setCompanyReturnRegion(e.target.value)
-                  }}>
-                    <option value=''>— Select state —</option>
-                    {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="label">External ERP ID</label>
-                  <input type="text" className="input" placeholder="e.g. EXT-908" value={companyExternalId} onChange={e => setCompanyExternalId(e.target.value)} />
-                </div>
-              </div>
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>State</InputLabel>
+                    <Select label="State" value={companyRegion} onChange={e => {
+                      setCompanyRegion(e.target.value as string)
+                      if (companySameAsCompanyAddress) setCompanyReturnRegion(e.target.value as string)
+                    }}>
+                      <MenuItem value=''>-- Select state --</MenuItem>
+                      {US_STATES.map(([v,l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField size="small" fullWidth label="External ERP ID" placeholder="e.g. EXT-908" value={companyExternalId} onChange={e => setCompanyExternalId(e.target.value)} />
+                </Box>
+              </Stack>
 
               {companyType === 'vendor' && (
-                <div style={{ marginTop: 15, borderTop: '1px solid var(--border-light)', paddingTop: 15 }}>
-                  <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                      <input 
-                        type='checkbox' 
-                        checked={companySameAsCompanyAddress} 
+                <Box sx={{ mt: 2, borderTop: '1px solid var(--border-light)', pt: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={companySameAsCompanyAddress}
                         onChange={e => {
                           const checked = e.target.checked
                           setCompanySameAsCompanyAddress(checked)
@@ -2015,13 +1975,14 @@ export function SettingsPage() {
                             setCompanyReturnZip(companyZip)
                             setCompanyReturnCountry(companyCountry)
                           }
-                        }} 
+                        }}
                       />
-                      <strong>Same as company address</strong>
-                    </label>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label className="label">Return Address Line 1 *</label>
+                    }
+                    label={<strong>Same as company address</strong>}
+                    sx={{ mb: 1.5 }}
+                  />
+                  <Box sx={{ mb: 1 }}>
+                    <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Return Address Line 1 *</Typography>
                     <AddressAutocomplete
                       value={companyReturnAddress1}
                       onChange={val => {
@@ -2039,106 +2000,96 @@ export function SettingsPage() {
                       className="input"
                       placeholder="Start typing return address…"
                     />
-                  </div>
+                  </Box>
 
-                  <div className="card-grid card-grid-3" style={{ marginTop: 10 }}>
-                    <div className="form-group">
-                      <label className="label">Return Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
-                      <input type="text" className="input" placeholder="e.g. Suite 400" value={companyReturnAddress2} onChange={e => {
+                  <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <TextField size="small" fullWidth label={<>Return Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></>} placeholder="e.g. Suite 400" value={companyReturnAddress2} onChange={e => {
                         setCompanyReturnAddress2(e.target.value)
                         setCompanySameAsCompanyAddress(false)
                       }} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Return City</label>
-                      <input type="text" className="input" placeholder="Auto-filled" value={companyReturnCity} onChange={e => {
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <TextField size="small" fullWidth label="Return City" placeholder="Auto-filled" value={companyReturnCity} onChange={e => {
                         setCompanyReturnCity(e.target.value)
                         setCompanySameAsCompanyAddress(false)
                       }} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Return ZIP / Postal Code</label>
-                      <input type="text" className="input" placeholder="Auto-filled" value={companyReturnZip} onChange={e => {
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <TextField size="small" fullWidth label="Return ZIP / Postal Code" placeholder="Auto-filled" value={companyReturnZip} onChange={e => {
                         setCompanyReturnZip(e.target.value)
                         setCompanySameAsCompanyAddress(false)
                       }} />
-                    </div>
-                  </div>
+                    </Box>
+                  </Stack>
 
-                  <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                    <div className="form-group">
-                      <label className="label">Return Country Code</label>
-                      <input type="text" className="input" placeholder="USA" value={companyReturnCountry} onChange={e => {
+                  <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <TextField size="small" fullWidth label="Return Country Code" placeholder="USA" value={companyReturnCountry} onChange={e => {
                         setCompanyReturnCountry(e.target.value)
                         setCompanySameAsCompanyAddress(false)
                       }} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Return State</label>
-                      <select className="input" value={companyReturnRegion} onChange={e => {
-                        setCompanyReturnRegion(e.target.value)
-                        setCompanySameAsCompanyAddress(false)
-                      }}>
-                        <option value=''>— Select state —</option>
-                        {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                </div>
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>Return State</InputLabel>
+                        <Select label="Return State" value={companyReturnRegion} onChange={e => {
+                          setCompanyReturnRegion(e.target.value as string)
+                          setCompanySameAsCompanyAddress(false)
+                        }}>
+                          <MenuItem value=''>-- Select state --</MenuItem>
+                          {US_STATES.map(([v,l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Box>
+                  </Stack>
+                </Box>
               )}
 
-              <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                <div className="form-group">
-                  <label className="label">Status</label>
-                  <select className="input" value={companyStatus || 'draft'} onChange={e => setCompanyStatus(e.target.value)}>
-                    <option value="draft">Draft</option>
-                    <option value="active">Active (Requires full setup/admin)</option>
-                    <option value="suspended">Suspended</option>
-                  </select>
-                </div>
-                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', marginTop: 12 }}>
-                    <input
-                      type="checkbox"
-                      checked={companyIsParent}
-                      onChange={e => setCompanyIsParent(e.target.checked)}
-                    />
-                    <strong>Mark as a Parent Company</strong>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={allowPersonalEmailException}
-                      onChange={e => setAllowPersonalEmailException(e.target.checked)}
-                    />
-                    <strong>Allow personal email domain exception</strong>
-                  </label>
+              <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                <Box sx={{ flex: 1 }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Status</InputLabel>
+                    <Select label="Status" value={companyStatus || 'draft'} onChange={e => setCompanyStatus(e.target.value as string)}>
+                      <MenuItem value="draft">Draft</MenuItem>
+                      <MenuItem value="active">Active (Requires full setup/admin)</MenuItem>
+                      <MenuItem value="suspended">Suspended</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.5 }}>
+                  <FormControlLabel
+                    control={<Checkbox checked={companyIsParent} onChange={e => setCompanyIsParent(e.target.checked)} />}
+                    label={<strong>Mark as a Parent Company</strong>}
+                  />
+                  <FormControlLabel
+                    control={<Checkbox checked={allowPersonalEmailException} onChange={e => setAllowPersonalEmailException(e.target.checked)} />}
+                    label={<strong>Allow personal email domain exception</strong>}
+                  />
                   {companyType === 'vendor' && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={companyMapPricingEnforced}
-                        onChange={e => setCompanyMapPricingEnforced(e.target.checked)}
-                      />
-                      <strong>Enforce MAP Pricing</strong>
-                    </label>
+                    <FormControlLabel
+                      control={<Checkbox checked={companyMapPricingEnforced} onChange={e => setCompanyMapPricingEnforced(e.target.checked)} />}
+                      label={<strong>Enforce MAP Pricing</strong>}
+                    />
                   )}
-                </div>
-              </div>
+                </Box>
+              </Stack>
 
-              <div className="form-group" style={{ marginTop: 10 }}>
-                <label className="label">Parent Company (Optional - if not marking as parent)</label>
-                <select className="input" value={companyParentId} onChange={e => setCompanyParentId(e.target.value)} disabled={companyIsParent}>
-                  <option value="">Select one</option>
-                  {companiesList.filter((c: any) => c.is_parent).map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
+              <Box sx={{ mt: 1.5 }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Parent Company (Optional - if not marking as parent)</InputLabel>
+                  <Select label="Parent Company (Optional - if not marking as parent)" value={companyParentId} onChange={e => setCompanyParentId(e.target.value as string)} disabled={companyIsParent}>
+                    <MenuItem value="">Select one</MenuItem>
+                    {companiesList.filter((c: any) => c.is_parent).map((c: any) => (
+                      <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
 
-              <div className="form-group" style={{ marginTop: 12 }}>
-                <label className="label" style={{ marginBottom: 6 }}>Allowed Sales Channels</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Box sx={{ mt: 1.5 }}>
+                <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Allowed Sales Channels</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5 }}>
                   {[
                     { val: 'online_dtc', lbl: 'Online DTC' },
                     { val: 'bulk_po', lbl: 'Bulk PO' },
@@ -2147,73 +2098,55 @@ export function SettingsPage() {
                     { val: 'marketplace', lbl: 'Marketplace' },
                     { val: 'retail_pos', lbl: 'Retail POS' },
                   ].map(ch => (
-                    <label key={ch.val} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={companyAllowedChannels.includes(ch.val)}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            setCompanyAllowedChannels([...companyAllowedChannels, ch.val])
-                          } else {
-                            setCompanyAllowedChannels(companyAllowedChannels.filter(x => x !== ch.val))
-                          }
-                        }}
-                      />
-                      {ch.lbl}
-                    </label>
+                    <FormControlLabel
+                      key={ch.val}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={companyAllowedChannels.includes(ch.val)}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setCompanyAllowedChannels([...companyAllowedChannels, ch.val])
+                            } else {
+                              setCompanyAllowedChannels(companyAllowedChannels.filter(x => x !== ch.val))
+                            }
+                          }}
+                        />
+                      }
+                      label={ch.lbl}
+                      sx={{ '& .MuiFormControlLabel-label': { fontSize: 12 } }}
+                    />
                   ))}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => { if (isCreateFormDirty()) setShowConfirmCloseCreate(true); else setShowCompanyModal(false) }}>Cancel</button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={!!companyName.trim() && companiesList.some(
-                    (c: any) => c.name?.trim().toLowerCase() === companyName.trim().toLowerCase()
-                  )}
-                >Create Company</button>
-              </div>
+                </Box>
+              </Box>
             </form>
-
-            {showConfirmCloseCreate && (
-              <div style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'rgba(4,6,10,0.92)',
-                backdropFilter: 'blur(4px)',
-                zIndex: 3000,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 24,
-                borderRadius: 'var(--radius)'
-              }}>
-                <div style={{
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-light)',
-                  borderRadius: 8,
-                  padding: 24,
-                  maxWidth: 360,
-                  textAlign: 'center',
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
-                }}>
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
-                  <h4 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Unsaved Changes</h4>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, lineHeight: 1.4 }}>
-                    Your progress will be lost because you have unsaved changes. Are you sure you want to close?
-                  </p>
-                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                    <button type='button' className="btn btn-secondary btn-sm" onClick={() => setShowConfirmCloseCreate(false)}>No, Keep Editing</button>
-                    <button type='button' className="btn btn-danger btn-sm" style={{ background: 'var(--red)', borderColor: 'var(--red)', color: '#fff' }} onClick={() => { setShowCompanyModal(false); setShowConfirmCloseCreate(false) }}>Yes, Discard</button>
-                  </div>
-                </div>
-              </div>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { if (isCreateFormDirty()) setShowConfirmCloseCreate(true); else setShowCompanyModal(false) }}>Cancel</Button>
+          <Button
+            type="submit"
+            form="create-company-form"
+            variant="contained"
+            disabled={!!companyName.trim() && companiesList.some(
+              (c: any) => c.name?.trim().toLowerCase() === companyName.trim().toLowerCase()
             )}
-          </div>
-        </div>
-      )}
+          >Create Company</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Unsaved changes confirmation for Create */}
+      <Dialog open={showConfirmCloseCreate} onClose={() => setShowConfirmCloseCreate(false)}>
+        <DialogTitle>Unsaved Changes</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Your progress will be lost because you have unsaved changes. Are you sure you want to close?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowConfirmCloseCreate(false)}>No, Keep Editing</Button>
+          <Button color="error" variant="contained" onClick={() => { setShowCompanyModal(false); setShowConfirmCloseCreate(false) }}>Yes, Discard</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ADD ENTITY MODAL */}
       {showEntityModal && (
@@ -2470,657 +2403,616 @@ export function SettingsPage() {
       )}
 
       {/* COMPANY DETAILS & GOVERNANCE MODAL */}
-      {showCompanyDetailsModal && selectedCompany && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ width: '900px', maxWidth: '96vw', maxHeight: '92vh', overflowY: 'auto', position: 'relative' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottom: '1px solid var(--border-light)', paddingBottom: 12 }}>
-              <div>
-                <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Manage Company Profile</h3>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>ID: {selectedCompany.id} &nbsp;·&nbsp; Type: {selectedCompany.company_type}</span>
-              </div>
-              <button className="btn btn-secondary btn-sm" onClick={() => {
-                if (isEditFormDirty()) {
-                  setShowConfirmCloseManage(true)
-                } else {
-                  setShowCompanyDetailsModal(false)
-                  setSelectedCompany(null)
-                  setErrorMsg(null)
-                  setIsManageFormDirty(false)
-                }
-              }}>Close</button>
-            </div>
+      <Dialog
+        open={showCompanyDetailsModal && !!selectedCompany}
+        onClose={() => {
+          if (isEditFormDirty()) {
+            setShowConfirmCloseManage(true)
+          } else {
+            setShowCompanyDetailsModal(false)
+            setSelectedCompany(null)
+            setErrorMsg(null)
+            setIsManageFormDirty(false)
+          }
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        {selectedCompany && (
+          <>
+            <DialogTitle>
+              Manage Company Profile
+              <Typography variant="caption" display="block" color="text.secondary">
+                ID: {selectedCompany.id} &nbsp;·&nbsp; Type: {selectedCompany.company_type}
+              </Typography>
+            </DialogTitle>
+            <DialogContent dividers>
+              {errorMsg && (
+                <Alert severity="error" sx={{ mb: 2 }}>{errorMsg}</Alert>
+              )}
 
-            {errorMsg && (
-              <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
-                <span style={{ fontSize: 12, lineHeight: '1.4' }}>{errorMsg}</span>
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24 }}>
-              {/* Profile Editor */}
-              <div>
-                <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--accent)' }}>Edit Profile</h4>
-                <form onSubmit={handleUpdateCompany} onChange={() => setIsManageFormDirty(true)}>
-                  {/* Company / Buyer / Vendor sub-type */}
-                  {(selectedCompany.company_type || '').toLowerCase() === 'buyer' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
-                      <div className="form-group">
-                        <label className="label">Buyer Type</label>
-                        <select className="input" value={editBuyerType} onChange={e => setEditBuyerType(e.target.value)}>
-                          <option value=''>Select Buyer Type</option>
-                          <option value='mvno'>MVNO</option>
-                          <option value='wireless_carrier'>Wireless Carrier</option>
-                          <option value='retailer'>Retailer</option>
-                          <option value='enterprise_corporate'>Enterprise/ Corporate</option>
-                        </select>
-                      </div>
-                      <div className="card-grid card-grid-2">
-                        <div className="form-group">
-                          <label className="label">Buyer Pricing Mode</label>
-                          <select className="input" value={editBuyerPricingMode} onChange={e => setEditBuyerPricingMode(e.target.value)}>
-                            <option value="standard">Standard Buyer Commission (14%)</option>
-                            <option value="no_commission">No Buyer Commission (0%)</option>
-                            <option value="custom">Custom Buyer Commission</option>
-                          </select>
-                        </div>
-                        {editBuyerPricingMode === 'custom' && (
-                          <div className="form-group">
-                            <label className="label">Commission Percentage (%)</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="100"
-                              className="input"
-                              placeholder="e.g. 10.00"
-                              value={editCommissionPercentage}
-                              onChange={e => setEditCommissionPercentage(e.target.value)}
-                              required
-                            />
-                          </div>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 3 }}>
+                {/* Profile Editor */}
+                <div>
+                  <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'var(--accent)' }}>Edit Profile</Typography>
+                  <form onSubmit={handleUpdateCompany} onChange={() => setIsManageFormDirty(true)}>
+                    {/* Company / Buyer / Vendor sub-type */}
+                    {(selectedCompany.company_type || '').toLowerCase() === 'buyer' && (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 1.5 }}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel>Buyer Type</InputLabel>
+                          <Select label="Buyer Type" value={editBuyerType} onChange={e => setEditBuyerType(e.target.value as string)}>
+                            <MenuItem value=''>Select Buyer Type</MenuItem>
+                            <MenuItem value='mvno'>MVNO</MenuItem>
+                            <MenuItem value='wireless_carrier'>Wireless Carrier</MenuItem>
+                            <MenuItem value='retailer'>Retailer</MenuItem>
+                            <MenuItem value='enterprise_corporate'>Enterprise/ Corporate</MenuItem>
+                          </Select>
+                        </FormControl>
+                        <Stack direction="row" spacing={2}>
+                          <Box sx={{ flex: 1 }}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Buyer Pricing Mode</InputLabel>
+                              <Select label="Buyer Pricing Mode" value={editBuyerPricingMode} onChange={e => setEditBuyerPricingMode(e.target.value as string)}>
+                                <MenuItem value="standard">Standard Buyer Commission (14%)</MenuItem>
+                                <MenuItem value="no_commission">No Buyer Commission (0%)</MenuItem>
+                                <MenuItem value="custom">Custom Buyer Commission</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Box>
+                          {editBuyerPricingMode === 'custom' && (
+                            <Box sx={{ flex: 1 }}>
+                              <TextField
+                                size="small" fullWidth label="Commission Percentage (%)"
+                                type="number"
+                                inputProps={{ step: '0.01', min: '0', max: '100' }}
+                                placeholder="e.g. 10.00"
+                                value={editCommissionPercentage}
+                                onChange={e => setEditCommissionPercentage(e.target.value)}
+                                required
+                              />
+                            </Box>
+                          )}
+                        </Stack>
+                      </Box>
+                    )}
+                    {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
+                      <Box sx={{ mb: 1.5 }}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel>Vendor Type</InputLabel>
+                          <Select label="Vendor Type" value={editVendorType} onChange={e => setEditVendorType(e.target.value as string)}>
+                            <MenuItem value=''>Select Vendor Type</MenuItem>
+                            <MenuItem value='accessory_vendor'>Accessory Vendor</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Box>
+                    )}
+                    {/* Logo */}
+                    <Box sx={{ mb: 1.5 }}>
+                      <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Company Logo</Typography>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {editLogoPreview ? (
+                          <img src={editLogoPreview} alt='Logo' style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', padding: 3 }} />
+                        ) : (
+                          <div style={{ width: 48, height: 48, borderRadius: 6, border: '2px dashed var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><CloudUploadIcon sx={{ fontSize: 18 }} /></div>
                         )}
-                      </div>
-                    </div>
-                  )}
-                  {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
-                    <div className="form-group" style={{ marginBottom: 10 }}>
-                      <label className="label">Vendor Type</label>
-                      <select className="input" value={editVendorType} onChange={e => setEditVendorType(e.target.value)}>
-                        <option value=''>Select Vendor Type</option>
-                        <option value='accessory_vendor'>Accessory Vendor</option>
-                      </select>
-                    </div>
-                  )}
-                  {/* Logo */}
-                  <div className="form-group" style={{ marginBottom: 10 }}>
-                    <label className="label">Company Logo</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      {editLogoPreview ? (
-                        <img src={editLogoPreview} alt='Logo' style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', padding: 3 }} />
-                      ) : (
-                        <div style={{ width: 48, height: 48, borderRadius: 6, border: '2px dashed var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><CloudUploadIcon sx={{ fontSize: 18 }} /></div>
-                      )}
-                      <label style={{ cursor: 'pointer' }}>
-                        <span className='btn btn-secondary btn-sm'><CloudUploadIcon sx={{ fontSize: 12 }} /> Choose Logo</span>
-                        <input type='file' accept='image/*' style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEditLogoFile(f); setEditLogoPreview(URL.createObjectURL(f)); setIsManageFormDirty(true); } }} />
-                      </label>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG, JPG, WEBP or SVG</span>
-                    </div>
-                  </div>
-                  <div className="card-grid card-grid-2">
-                    <div className="form-group">
-                      <label className="label">Company Legal Name</label>
-                      <input type="text" className="input" required value={editCompanyName} onChange={e => {
-                        const val = e.target.value
-                        setEditCompanyName(val)
-                        if (!editCompanyDisplayName || editCompanyDisplayName === editCompanyName) {
-                          setEditCompanyDisplayName(val)
-                        }
-                      }} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Display Name</label>
-                      <input type="text" className="input" required value={editCompanyDisplayName} onChange={e => setEditCompanyDisplayName(e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                    <div className="form-group">
-                      <label className="label">Status</label>
-                      <select className="input" value={editCompanyStatus} onChange={e => setEditCompanyStatus(e.target.value)}>
-                        <option value="draft">Draft</option>
-                        <option value="active">Active</option>
-                        <option value="suspended">Suspended</option>
-                        <option value="archived">Archived</option>
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Business Email Domain *</label>
-                      <input type="text" className="input" placeholder="e.g. corp.com (no gmail.com)" required value={editCompanyEmailDomain} onChange={e => setEditCompanyEmailDomain(e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                    <div className="form-group">
-                      <label className="label">Website *</label>
-                      <input type="text" className="input" placeholder="e.g. https://corp.com" required value={editCompanyWebsite} onChange={e => setEditCompanyWebsite(e.target.value)} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Primary Contact Name *</label>
-                      <input type="text" className="input" required value={editCompanyContactName} onChange={e => setEditCompanyContactName(e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                    <div className="form-group">
-                      <label className="label">Primary Contact Email *</label>
-                      <input type="email" className="input" required value={editCompanyContactEmail} onChange={e => setEditCompanyContactEmail(e.target.value)} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Phone Number (optional)</label>
-                      <input type="text" className="input" placeholder="+1-555-0199" value={editCompanyPhone} onChange={e => setEditCompanyPhone(e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 10 }}>
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label className="label">Address Line 1 *</label>
-                      <AddressAutocomplete
-                        value={editCompanyAddress1}
-                        onChange={val => {
-                          setEditCompanyAddress1(val)
-                          setIsManageFormDirty(true)
-                          if (editSameAsCompanyAddress) setEditReturnAddress1(val)
-                        }}
-                        onSelect={({ address1, city, state, zip, country }) => {
-                          setIsManageFormDirty(true)
-                          setEditCompanyAddress1(address1)
-                          setEditCompanyCity(city)
-                          setEditCompanyRegion(state)
-                          setEditCompanyZip(zip)
-                          setEditCompanyCountry(country)
-                          if (editSameAsCompanyAddress) {
-                            setEditReturnAddress1(address1)
-                            setEditReturnCity(city)
-                            setEditReturnRegion(state)
-                            setEditReturnZip(zip)
-                            setEditReturnCountry(country)
-                          }
-                        }}
-                        className="input"
-                        placeholder="Start typing an address…"
-                      />
-                    </div>
-                    <div className="card-grid card-grid-3">
-                      <div className="form-group">
-                        <label className="label">Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
-                        <input type="text" className="input" placeholder="e.g. Suite 400" value={editCompanyAddress2} onChange={e => {
-                          setEditCompanyAddress2(e.target.value)
-                          if (editSameAsCompanyAddress) setEditReturnAddress2(e.target.value)
-                        }} />
-                      </div>
-                      <div className="form-group">
-                        <label className="label">City</label>
-                        <input type="text" className="input" placeholder="Auto-filled" value={editCompanyCity} onChange={e => {
-                          setEditCompanyCity(e.target.value)
-                          if (editSameAsCompanyAddress) setEditCompanyCity(e.target.value)
-                        }} />
-                      </div>
-                      <div className="form-group">
-                        <label className="label">ZIP / Postal Code</label>
-                        <input type="text" className="input" placeholder="Auto-filled" value={editCompanyZip} onChange={e => {
-                          setEditCompanyZip(e.target.value)
-                          if (editSameAsCompanyAddress) setEditCompanyZip(e.target.value)
-                        }} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="card-grid card-grid-3" style={{ marginTop: 10 }}>
-                    <div className="form-group">
-                      <label className="label">Country Code</label>
-                      <input type="text" className="input" value={editCompanyCountry} onChange={e => {
-                        setEditCompanyCountry(e.target.value)
-                        if (editSameAsCompanyAddress) setEditReturnCountry(e.target.value)
-                      }} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">State</label>
-                      <select className="input" value={editCompanyRegion} onChange={e => {
-                        setEditCompanyRegion(e.target.value)
-                        if (editSameAsCompanyAddress) setEditReturnRegion(e.target.value)
-                      }}>
-                        <option value=''>— Select state —</option>
-                        {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
-                    </div>
-                  </div>
-
-                  {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
-                    <div style={{ marginTop: 15, borderTop: '1px solid var(--border-light)', paddingTop: 15 }}>
-                      <div className="form-group" style={{ marginBottom: 12 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                          <input 
-                            type='checkbox' 
-                            checked={editSameAsCompanyAddress} 
-                            onChange={e => {
-                              const checked = e.target.checked
-                              setEditSameAsCompanyAddress(checked)
-                              if (checked) {
-                                setEditReturnAddress1(editCompanyAddress1)
-                                setEditReturnAddress2(editCompanyAddress2)
-                                setEditReturnCity(editCompanyCity)
-                                setEditReturnRegion(editCompanyRegion)
-                                setEditReturnZip(editCompanyZip)
-                                setEditReturnCountry(editCompanyCountry)
-                              }
-                            }} 
-                          />
-                          <strong>Same as company address</strong>
+                        <label style={{ cursor: 'pointer' }}>
+                          <Button component="span" size="small" startIcon={<CloudUploadIcon sx={{ fontSize: 12 }} />}>Choose Logo</Button>
+                          <input type='file' accept='image/*' style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEditLogoFile(f); setEditLogoPreview(URL.createObjectURL(f)); setIsManageFormDirty(true); } }} />
                         </label>
+                        <Typography variant="caption" color="text.secondary">PNG, JPG, WEBP or SVG</Typography>
                       </div>
-                      <div className="form-group" style={{ marginBottom: 8 }}>
-                        <label className="label">Return Address Line 1 *</label>
+                    </Box>
+                    <Stack direction="row" spacing={2}>
+                      <Box sx={{ flex: 1 }}>
+                        <TextField size="small" fullWidth label="Company Legal Name" required value={editCompanyName} onChange={e => {
+                          const val = e.target.value
+                          setEditCompanyName(val)
+                          if (!editCompanyDisplayName || editCompanyDisplayName === editCompanyName) {
+                            setEditCompanyDisplayName(val)
+                          }
+                        }} />
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <TextField size="small" fullWidth label="Display Name" required value={editCompanyDisplayName} onChange={e => setEditCompanyDisplayName(e.target.value)} />
+                      </Box>
+                    </Stack>
+
+                    <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel>Status</InputLabel>
+                          <Select label="Status" value={editCompanyStatus} onChange={e => setEditCompanyStatus(e.target.value as string)}>
+                            <MenuItem value="draft">Draft</MenuItem>
+                            <MenuItem value="active">Active</MenuItem>
+                            <MenuItem value="suspended">Suspended</MenuItem>
+                            <MenuItem value="archived">Archived</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <TextField size="small" fullWidth label="Business Email Domain *" placeholder="e.g. corp.com (no gmail.com)" required value={editCompanyEmailDomain} onChange={e => setEditCompanyEmailDomain(e.target.value)} />
+                      </Box>
+                    </Stack>
+
+                    <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <TextField size="small" fullWidth label="Website *" placeholder="e.g. https://corp.com" required value={editCompanyWebsite} onChange={e => setEditCompanyWebsite(e.target.value)} />
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <TextField size="small" fullWidth label="Primary Contact Name *" required value={editCompanyContactName} onChange={e => setEditCompanyContactName(e.target.value)} />
+                      </Box>
+                    </Stack>
+
+                    <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <TextField size="small" fullWidth label="Primary Contact Email *" type="email" required value={editCompanyContactEmail} onChange={e => setEditCompanyContactEmail(e.target.value)} />
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <TextField size="small" fullWidth label="Phone Number (optional)" placeholder="+1-555-0199" value={editCompanyPhone} onChange={e => setEditCompanyPhone(e.target.value)} />
+                      </Box>
+                    </Stack>
+
+                    <Box sx={{ mt: 1.5 }}>
+                      <Box sx={{ mb: 1 }}>
+                        <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Address Line 1 *</Typography>
                         <AddressAutocomplete
-                          value={editReturnAddress1}
+                          value={editCompanyAddress1}
                           onChange={val => {
-                            setEditReturnAddress1(val)
+                            setEditCompanyAddress1(val)
                             setIsManageFormDirty(true)
-                            setEditSameAsCompanyAddress(false)
+                            if (editSameAsCompanyAddress) setEditReturnAddress1(val)
                           }}
                           onSelect={({ address1, city, state, zip, country }) => {
-                            setEditReturnAddress1(address1)
-                            setEditReturnCity(city)
-                            setEditReturnRegion(state)
-                            setEditReturnZip(zip)
-                            setEditReturnCountry(country)
-                            setEditSameAsCompanyAddress(false)
                             setIsManageFormDirty(true)
-                          }}
-                          className="input"
-                          placeholder="Start typing return address…"
-                        />
-                      </div>
-
-                      <div className="card-grid card-grid-3" style={{ marginTop: 10 }}>
-                        <div className="form-group">
-                          <label className="label">Return Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></label>
-                          <input type="text" className="input" placeholder="e.g. Suite 400" value={editReturnAddress2} onChange={e => {
-                            setEditReturnAddress2(e.target.value)
-                            setEditSameAsCompanyAddress(false)
-                          }} />
-                        </div>
-                        <div className="form-group">
-                          <label className="label">Return City</label>
-                          <input type="text" className="input" placeholder="Auto-filled" value={editReturnCity} onChange={e => {
-                            setEditReturnCity(e.target.value)
-                            setEditSameAsCompanyAddress(false)
-                          }} />
-                        </div>
-                        <div className="form-group">
-                          <label className="label">Return ZIP / Postal Code</label>
-                          <input type="text" className="input" placeholder="Auto-filled" value={editReturnZip} onChange={e => {
-                            setEditReturnZip(e.target.value)
-                            setEditSameAsCompanyAddress(false)
-                          }} />
-                        </div>
-                      </div>
-
-                      <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                        <div className="form-group">
-                          <label className="label">Return Country Code</label>
-                          <input type="text" className="input" placeholder="USA" value={editReturnCountry} onChange={e => {
-                            setEditReturnCountry(e.target.value)
-                            setEditSameAsCompanyAddress(false)
-                          }} />
-                        </div>
-                        <div className="form-group">
-                          <label className="label">Return State</label>
-                          <select className="input" value={editReturnRegion} onChange={e => {
-                            setEditReturnRegion(e.target.value)
-                            setEditSameAsCompanyAddress(false)
-                          }}>
-                            <option value=''>— Select state —</option>
-                            {US_STATES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Vendor: Integration Mode */}
-                  {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
-                    <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 12, marginTop: 8 }}>
-                      <div className="label" style={{ marginBottom: 8 }}>Integration Mode</div>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                        {(['api','manual'] as const).map(mode => (
-                          <button key={mode} type='button' onClick={() => {
-                            setIsManageFormDirty(true)
-                            if (editIntegrationMode === mode) {
-                              if (mode === 'api') {
-                                setEditIntegrationMode('')
-                              } else if (mode === 'manual') {
-                                const isEmpty = (editDailyEmailTime === '08:00' || !editDailyEmailTime) && !editDailyEmailTime2 && editOrderDigestEmails.length === 0
-                                if (isEmpty) {
-                                  setEditIntegrationMode('')
-                                }
-                              }
-                            } else {
-                              setEditIntegrationMode(mode)
+                            setEditCompanyAddress1(address1)
+                            setEditCompanyCity(city)
+                            setEditCompanyRegion(state)
+                            setEditCompanyZip(zip)
+                            setEditCompanyCountry(country)
+                            if (editSameAsCompanyAddress) {
+                              setEditReturnAddress1(address1)
+                              setEditReturnCity(city)
+                              setEditReturnRegion(state)
+                              setEditReturnZip(zip)
+                              setEditReturnCountry(country)
                             }
                           }}
-                            style={{ flex: 1, padding: '8px 0', borderRadius: 6, border: `1.5px solid ${editIntegrationMode === mode ? 'var(--accent)' : 'var(--border)'}`, background: editIntegrationMode === mode ? 'rgba(99,102,241,.12)' : 'var(--bg-elevated)', color: editIntegrationMode === mode ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-                            {mode === 'api' ? '🔌 API' : '📋 Manual'}
-                          </button>
-                        ))}
-                      </div>
-                      {editIntegrationMode === 'manual' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          <div className="card-grid card-grid-2">
-                            <div className="form-group">
-                              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> First Send Time</label>
-                              <AmPmTimePicker value={editDailyEmailTime} onChange={val => { setEditDailyEmailTime(val); setIsManageFormDirty(true); }} />
-                            </div>
-                            <div className="form-group">
-                              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></label>
-                              <AmPmTimePicker value={editDailyEmailTime2} onChange={val => { setEditDailyEmailTime2(val); setIsManageFormDirty(true); }} allowEmpty />
-                            </div>
-                          </div>
-                          <div className="form-group">
-                            <label className="label">Additional Automated Digest Recipients</label>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <input
-                                type="email"
-                                className="input"
-                                placeholder="e.g. sales@vendor.com"
-                                value={editNewDigestEmail}
-                                onChange={e => setEditNewDigestEmail(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddEditDigestEmail(); } }}
-                              />
-                              <button
-                                type="button"
-                                onClick={handleAddEditDigestEmail}
-                                style={{
-                                  background: 'var(--accent)',
-                                  border: 'none',
-                                  borderRadius: 6,
-                                  color: '#fff',
-                                  padding: '0 14px',
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                + Add
-                              </button>
-                            </div>
-                            {editOrderDigestEmails.length > 0 && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6, maxHeight: 120, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: 6, padding: 6, border: '1px solid var(--border)' }}>
-                                {editOrderDigestEmails.map(email => (
-                                  <div key={email} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)', padding: '4px 8px', borderRadius: 4, fontSize: 12, border: '1px solid var(--border-light)' }}>
-                                    <span style={{ color: 'var(--text-primary)' }}>{email}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveEditDigestEmail(email)}
-                                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Order digest emailed daily to the configured recipients at these UTC times.</div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                          className="input"
+                          placeholder="Start typing an address…"
+                        />
+                      </Box>
+                      <Stack direction="row" spacing={2}>
+                        <Box sx={{ flex: 1 }}>
+                          <TextField size="small" fullWidth label={<>Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></>} placeholder="e.g. Suite 400" value={editCompanyAddress2} onChange={e => {
+                            setEditCompanyAddress2(e.target.value)
+                            if (editSameAsCompanyAddress) setEditReturnAddress2(e.target.value)
+                          }} />
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                          <TextField size="small" fullWidth label="City" placeholder="Auto-filled" value={editCompanyCity} onChange={e => {
+                            setEditCompanyCity(e.target.value)
+                            if (editSameAsCompanyAddress) setEditCompanyCity(e.target.value)
+                          }} />
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                          <TextField size="small" fullWidth label="ZIP / Postal Code" placeholder="Auto-filled" value={editCompanyZip} onChange={e => {
+                            setEditCompanyZip(e.target.value)
+                            if (editSameAsCompanyAddress) setEditCompanyZip(e.target.value)
+                          }} />
+                        </Box>
+                      </Stack>
+                    </Box>
 
-                  <div className="form-group" style={{ marginTop: 12 }}>
-                    <label className="label" style={{ marginBottom: 6 }}>Allowed Sales Channels</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {[
-                        { val: 'online_dtc', lbl: 'Online DTC' },
-                        { val: 'bulk_po', lbl: 'Bulk PO' },
-                        { val: 'owned_channel', lbl: 'Owned Channel' },
-                        { val: 'buyer_storefront', lbl: 'Buyer Storefront' },
-                        { val: 'marketplace', lbl: 'Marketplace' },
-                        { val: 'retail_pos', lbl: 'Retail POS' },
-                      ].map(ch => (
-                        <label key={ch.val} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={editCompanyAllowedChannels.includes(ch.val)}
-                            onChange={e => {
-                              if (e.target.checked) {
-                                setEditCompanyAllowedChannels([...editCompanyAllowedChannels, ch.val])
+                    <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <TextField size="small" fullWidth label="Country Code" value={editCompanyCountry} onChange={e => {
+                          setEditCompanyCountry(e.target.value)
+                          if (editSameAsCompanyAddress) setEditReturnCountry(e.target.value)
+                        }} />
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel>State</InputLabel>
+                          <Select label="State" value={editCompanyRegion} onChange={e => {
+                            setEditCompanyRegion(e.target.value as string)
+                            if (editSameAsCompanyAddress) setEditReturnRegion(e.target.value as string)
+                          }}>
+                            <MenuItem value=''>-- Select state --</MenuItem>
+                            {US_STATES.map(([v,l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+                          </Select>
+                        </FormControl>
+                      </Box>
+                    </Stack>
+
+                    {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
+                      <Box sx={{ mt: 2, borderTop: '1px solid var(--border-light)', pt: 2 }}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={editSameAsCompanyAddress}
+                              onChange={e => {
+                                const checked = e.target.checked
+                                setEditSameAsCompanyAddress(checked)
+                                if (checked) {
+                                  setEditReturnAddress1(editCompanyAddress1)
+                                  setEditReturnAddress2(editCompanyAddress2)
+                                  setEditReturnCity(editCompanyCity)
+                                  setEditReturnRegion(editCompanyRegion)
+                                  setEditReturnZip(editCompanyZip)
+                                  setEditReturnCountry(editCompanyCountry)
+                                }
+                              }}
+                            />
+                          }
+                          label={<strong>Same as company address</strong>}
+                          sx={{ mb: 1.5 }}
+                        />
+                        <Box sx={{ mb: 1 }}>
+                          <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Return Address Line 1 *</Typography>
+                          <AddressAutocomplete
+                            value={editReturnAddress1}
+                            onChange={val => {
+                              setEditReturnAddress1(val)
+                              setIsManageFormDirty(true)
+                              setEditSameAsCompanyAddress(false)
+                            }}
+                            onSelect={({ address1, city, state, zip, country }) => {
+                              setEditReturnAddress1(address1)
+                              setEditReturnCity(city)
+                              setEditReturnRegion(state)
+                              setEditReturnZip(zip)
+                              setEditReturnCountry(country)
+                              setEditSameAsCompanyAddress(false)
+                              setIsManageFormDirty(true)
+                            }}
+                            className="input"
+                            placeholder="Start typing return address…"
+                          />
+                        </Box>
+
+                        <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                          <Box sx={{ flex: 1 }}>
+                            <TextField size="small" fullWidth label={<>Return Address Line 2 <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(unit, suite…)</span></>} placeholder="e.g. Suite 400" value={editReturnAddress2} onChange={e => {
+                              setEditReturnAddress2(e.target.value)
+                              setEditSameAsCompanyAddress(false)
+                            }} />
+                          </Box>
+                          <Box sx={{ flex: 1 }}>
+                            <TextField size="small" fullWidth label="Return City" placeholder="Auto-filled" value={editReturnCity} onChange={e => {
+                              setEditReturnCity(e.target.value)
+                              setEditSameAsCompanyAddress(false)
+                            }} />
+                          </Box>
+                          <Box sx={{ flex: 1 }}>
+                            <TextField size="small" fullWidth label="Return ZIP / Postal Code" placeholder="Auto-filled" value={editReturnZip} onChange={e => {
+                              setEditReturnZip(e.target.value)
+                              setEditSameAsCompanyAddress(false)
+                            }} />
+                          </Box>
+                        </Stack>
+
+                        <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                          <Box sx={{ flex: 1 }}>
+                            <TextField size="small" fullWidth label="Return Country Code" placeholder="USA" value={editReturnCountry} onChange={e => {
+                              setEditReturnCountry(e.target.value)
+                              setEditSameAsCompanyAddress(false)
+                            }} />
+                          </Box>
+                          <Box sx={{ flex: 1 }}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Return State</InputLabel>
+                              <Select label="Return State" value={editReturnRegion} onChange={e => {
+                                setEditReturnRegion(e.target.value as string)
+                                setEditSameAsCompanyAddress(false)
+                              }}>
+                                <MenuItem value=''>-- Select state --</MenuItem>
+                                {US_STATES.map(([v,l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+                              </Select>
+                            </FormControl>
+                          </Box>
+                        </Stack>
+                      </Box>
+                    )}
+
+                    {/* Vendor: Integration Mode */}
+                    {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
+                      <Box sx={{ borderTop: '1px solid var(--border-light)', pt: 1.5, mt: 1 }}>
+                        <Typography variant="caption" sx={{ mb: 1, display: 'block' }}>Integration Mode</Typography>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                          {(['api','manual'] as const).map(mode => (
+                            <button key={mode} type='button' onClick={() => {
+                              setIsManageFormDirty(true)
+                              if (editIntegrationMode === mode) {
+                                if (mode === 'api') {
+                                  setEditIntegrationMode('')
+                                } else if (mode === 'manual') {
+                                  const isEmpty = (editDailyEmailTime === '08:00' || !editDailyEmailTime) && !editDailyEmailTime2 && editOrderDigestEmails.length === 0
+                                  if (isEmpty) {
+                                    setEditIntegrationMode('')
+                                  }
+                                }
                               } else {
-                                setEditCompanyAllowedChannels(editCompanyAllowedChannels.filter(x => x !== ch.val))
+                                setEditIntegrationMode(mode)
                               }
                             }}
-                          />
-                          {ch.lbl}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
+                              style={{ flex: 1, padding: '8px 0', borderRadius: 6, border: `1.5px solid ${editIntegrationMode === mode ? 'var(--accent)' : 'var(--border)'}`, background: editIntegrationMode === mode ? 'rgba(99,102,241,.12)' : 'var(--bg-elevated)', color: editIntegrationMode === mode ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                              {mode === 'api' ? '🔌 API' : '📋 Manual'}
+                            </button>
+                          ))}
+                        </div>
+                        {editIntegrationMode === 'manual' && (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                            <Stack direction="row" spacing={2}>
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> First Send Time</Typography>
+                                <AmPmTimePicker value={editDailyEmailTime} onChange={val => { setEditDailyEmailTime(val); setIsManageFormDirty(true); }} />
+                              </Box>
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}><AccessTimeIcon sx={{ fontSize: 11 }} /> Second Send Time <span style={{fontWeight:400,color:'var(--text-muted)',fontSize:10}}>(optional)</span></Typography>
+                                <AmPmTimePicker value={editDailyEmailTime2} onChange={val => { setEditDailyEmailTime2(val); setIsManageFormDirty(true); }} allowEmpty />
+                              </Box>
+                            </Stack>
+                            <Box>
+                              <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Additional Automated Digest Recipients</Typography>
+                              <Stack direction="row" spacing={1}>
+                                <TextField
+                                  size="small" fullWidth
+                                  type="email"
+                                  placeholder="e.g. sales@vendor.com"
+                                  value={editNewDigestEmail}
+                                  onChange={e => setEditNewDigestEmail(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddEditDigestEmail(); } }}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="contained"
+                                  size="small"
+                                  onClick={handleAddEditDigestEmail}
+                                >
+                                  + Add
+                                </Button>
+                              </Stack>
+                              {editOrderDigestEmails.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6, maxHeight: 120, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: 6, padding: 6, border: '1px solid var(--border)' }}>
+                                  {editOrderDigestEmails.map(email => (
+                                    <div key={email} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)', padding: '4px 8px', borderRadius: 4, fontSize: 12, border: '1px solid var(--border-light)' }}>
+                                      <span style={{ color: 'var(--text-primary)' }}>{email}</span>
+                                      <Button
+                                        size="small"
+                                        color="error"
+                                        onClick={() => handleRemoveEditDigestEmail(email)}
+                                        sx={{ fontSize: 11, minWidth: 'auto', p: '0 4px' }}
+                                      >
+                                        Remove
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </Box>
+                            <Typography variant="caption" color="text.secondary">Order digest emailed daily to the configured recipients at these UTC times.</Typography>
+                          </Box>
+                        )}
+                      </Box>
+                    )}
 
-                  <div className="form-group" style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={editCompanyIsParent}
-                        onChange={e => setEditCompanyIsParent(e.target.checked)}
+                    <Box sx={{ mt: 1.5 }}>
+                      <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>Allowed Sales Channels</Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5 }}>
+                        {[
+                          { val: 'online_dtc', lbl: 'Online DTC' },
+                          { val: 'bulk_po', lbl: 'Bulk PO' },
+                          { val: 'owned_channel', lbl: 'Owned Channel' },
+                          { val: 'buyer_storefront', lbl: 'Buyer Storefront' },
+                          { val: 'marketplace', lbl: 'Marketplace' },
+                          { val: 'retail_pos', lbl: 'Retail POS' },
+                        ].map(ch => (
+                          <FormControlLabel
+                            key={ch.val}
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={editCompanyAllowedChannels.includes(ch.val)}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setEditCompanyAllowedChannels([...editCompanyAllowedChannels, ch.val])
+                                  } else {
+                                    setEditCompanyAllowedChannels(editCompanyAllowedChannels.filter(x => x !== ch.val))
+                                  }
+                                }}
+                              />
+                            }
+                            label={ch.lbl}
+                            sx={{ '& .MuiFormControlLabel-label': { fontSize: 12 } }}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <FormControlLabel
+                        control={<Checkbox checked={editCompanyIsParent} onChange={e => setEditCompanyIsParent(e.target.checked)} />}
+                        label={<strong>Mark as a Parent Company</strong>}
                       />
-                      <strong>Mark as a Parent Company</strong>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={editCompanyAllowPersonalEmailException}
-                        onChange={e => setEditCompanyAllowPersonalEmailException(e.target.checked)}
+                      <FormControlLabel
+                        control={<Checkbox checked={editCompanyAllowPersonalEmailException} onChange={e => setEditCompanyAllowPersonalEmailException(e.target.checked)} />}
+                        label={<strong>Allow personal email domain exception</strong>}
                       />
-                      <strong>Allow personal email domain exception</strong>
-                    </label>
-                    {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={editMapPricingEnforced}
-                          onChange={e => setEditMapPricingEnforced(e.target.checked)}
+                      {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
+                        <FormControlLabel
+                          control={<Checkbox checked={editMapPricingEnforced} onChange={e => setEditMapPricingEnforced(e.target.checked)} />}
+                          label={<strong>Enforce MAP Pricing</strong>}
                         />
-                        <strong>Enforce MAP Pricing</strong>
-                      </label>
+                      )}
+                    </Box>
+
+                    <Box sx={{ mt: 1.5 }}>
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>Parent Company (If child)</InputLabel>
+                        <Select label="Parent Company (If child)" value={editCompanyParentId} onChange={e => setEditCompanyParentId(e.target.value as string)} disabled={editCompanyIsParent}>
+                          <MenuItem value="">Select one</MenuItem>
+                          {companiesList.filter((c: any) => c.is_parent && c.id !== selectedCompany.id).map((c: any) => (
+                            <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Box>
+
+                    <Box sx={{ mt: 2, display: 'flex', gap: 1.5, justifyContent: 'flex-end', alignItems: 'center' }}>
+                      {isEditFormDirty() && <Typography variant="caption" sx={{ color: 'var(--amber)' }}>Unsaved changes</Typography>}
+                      <Button type="submit" variant="contained">Save Profile Changes</Button>
+                    </Box>
+                  </form>
+                </div>
+
+                {/* Governance & Capabilities */}
+                <Box sx={{ borderLeft: '1px solid var(--border-light)', pl: 3 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'var(--accent)' }}>Assigned Capabilities</Typography>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '240px', overflowY: 'auto', marginBottom: 16, background: 'rgba(0,0,0,0.2)', padding: 10, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
+                    {(!selectedCompany.capabilities || selectedCompany.capabilities.length === 0) ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 2.5 }}>No capabilities assigned</Typography>
+                    ) : (
+                      selectedCompany.capabilities.map((cap: any) => {
+                        const info = getCapabilityInfo(cap.code)
+                        return (
+                          <div key={cap.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '6px 10px', borderRadius: '4px' }}>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{info.name}</div>
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)' }} className="mono">{cap.code}</div>
+                            </div>
+                            <Button size="small" color="error" sx={{ minWidth: 'auto', p: '2px 6px', fontSize: 11 }} onClick={() => handleRemoveCapability(cap.code)}>Remove</Button>
+                          </div>
+                        )
+                      })
                     )}
                   </div>
 
-                  <div className="form-group" style={{ marginTop: 10 }}>
-                    <label className="label">Parent Company (If child)</label>
-                    <select className="input" value={editCompanyParentId} onChange={e => setEditCompanyParentId(e.target.value)} disabled={editCompanyIsParent}>
-                      <option value="">Select one</option>
-                      {companiesList.filter((c: any) => c.is_parent && c.id !== selectedCompany.id).map((c: any) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'var(--accent)' }}>Assign New Capability</Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Stack direction="row" spacing={1.5}>
+                      {(() => {
+                        const availableCaps = allCapabilitiesList
+                          .filter((cap: any) => !selectedCompany.capabilities?.some((c: any) => c.code === cap.code))
+                          .filter((cap: any) => isCapabilityAllowedForCompany(cap.code, selectedCompany.company_type, editBuyerType))
 
-                  <div style={{ marginTop: 16, display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center' }}>
-                    {isEditFormDirty() && <span style={{ fontSize: 11, color: 'var(--amber)' }}>⚠ Unsaved changes</span>}
-                    <button type="submit" className="btn btn-primary">Save Profile Changes</button>
-                  </div>
-                </form>
-              </div>
-
-               {/* Governance & Capabilities */}
-              <div style={{ borderLeft: '1px solid var(--border-light)', paddingLeft: 24 }}>
-                <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--accent)' }}>Assigned Capabilities</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '240px', overflowY: 'auto', marginBottom: 16, background: 'rgba(0,0,0,0.2)', padding: 10, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                  {(!selectedCompany.capabilities || selectedCompany.capabilities.length === 0) ? (
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '20px 0' }}>No capabilities assigned</div>
-                  ) : (
-                    selectedCompany.capabilities.map((cap: any) => {
-                      const info = getCapabilityInfo(cap.code)
-                      return (
-                        <div key={cap.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '6px 10px', borderRadius: '4px' }}>
-                          <div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{info.name}</div>
-                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }} className="mono">{cap.code}</div>
-                          </div>
-                          <button type="button" className="btn btn-red btn-xs" style={{ padding: '2px 6px' }} onClick={() => handleRemoveCapability(cap.code)}>Remove</button>
+                        return (
+                          <FormControl size="small" sx={{ flex: 1 }}>
+                            <InputLabel>Capability</InputLabel>
+                            <Select label="Capability" value={selectedCapabilityCode} onChange={e => setSelectedCapabilityCode(e.target.value as string)}>
+                              <MenuItem value="">{availableCaps.length === 0 ? (allCapabilitiesList.length === 0 ? 'Loading capabilities...' : 'No additional capabilities available') : 'Select one'}</MenuItem>
+                              {availableCaps.map((cap: any) => {
+                                const info = getCapabilityInfo(cap.code)
+                                return (
+                                  <MenuItem key={cap.id} value={cap.code}>{info.name}</MenuItem>
+                                )
+                              })}
+                            </Select>
+                          </FormControl>
+                        )
+                      })()}
+                      <Button variant="contained" onClick={() => {
+                        handleAssignCapability(selectedCapabilityCode)
+                        setSelectedCapabilityCode('')
+                      }} disabled={!selectedCapabilityCode}>Assign</Button>
+                    </Stack>
+                    {selectedCapabilityCode && (
+                      <div style={{ padding: 12, borderRadius: 6, border: '1px solid var(--border-light)', background: 'rgba(255,255,255,0.02)', fontSize: 12 }}>
+                        <div style={{ fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>
+                          {getCapabilityInfo(selectedCapabilityCode).name}
                         </div>
-                      )
-                    })
-                  )}
-                </div>
+                        <div style={{ color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                          {getCapabilityInfo(selectedCapabilityCode).desc}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, fontFamily: 'monospace' }}>
+                          Permission Code: {selectedCapabilityCode}
+                        </div>
+                      </div>
+                    )}
+                  </Box>
 
-                <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--accent)' }}>Assign New Capability</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    {(() => {
-                      const availableCaps = allCapabilitiesList
-                        .filter((cap: any) => !selectedCompany.capabilities?.some((c: any) => c.code === cap.code))
-                        .filter((cap: any) => isCapabilityAllowedForCompany(cap.code, selectedCompany.company_type, editBuyerType))
+                  {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
+                    <Box sx={{ borderTop: '1px solid var(--border-light)', pt: 2.5, mt: 2.5 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        MAP Pricing Exceptions
+                      </Typography>
 
-                      return (
-                        <select className="input" style={{ flex: 1 }} value={selectedCapabilityCode} onChange={e => setSelectedCapabilityCode(e.target.value)}>
-                          <option value="">{availableCaps.length === 0 ? (allCapabilitiesList.length === 0 ? 'Loading capabilities...' : 'No additional capabilities available') : 'Select one'}</option>
-                          {availableCaps.map((cap: any) => {
-                            const info = getCapabilityInfo(cap.code)
+                      {/* List of exceptions */}
+                      <div style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {mapExceptionsLoading ? (
+                          <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 1.5 }}>Loading MAP exceptions...</Typography>
+                        ) : mapExceptions.length === 0 ? (
+                          <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 1.5 }}>No active MAP exceptions</Typography>
+                        ) : (
+                          mapExceptions.map((exc: any) => {
+                            const buyerName = companiesList.find((c: any) => c.id === exc.buyer_company_reference)?.name || 'Global / All Buyers'
                             return (
-                              <option key={cap.id} value={cap.code}>{info.name}</option>
-                            )
-                          })}
-                        </select>
-                      )
-                    })()}
-                    <button type="button" className="btn btn-primary" onClick={() => {
-                      handleAssignCapability(selectedCapabilityCode)
-                      setSelectedCapabilityCode('')
-                    }} disabled={!selectedCapabilityCode}>Assign</button>
-                  </div>
-                  {selectedCapabilityCode && (
-                    <div style={{ padding: 12, borderRadius: 6, border: '1px solid var(--border-light)', background: 'rgba(255,255,255,0.02)', fontSize: 12 }}>
-                      <div style={{ fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>
-                        {getCapabilityInfo(selectedCapabilityCode).name}
-                      </div>
-                      <div style={{ color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                        {getCapabilityInfo(selectedCapabilityCode).desc}
-                      </div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, fontFamily: 'monospace' }}>
-                        Permission Code: {selectedCapabilityCode}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {(selectedCompany.company_type || '').toLowerCase() === 'vendor' && (
-                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 20, marginTop: 20 }}>
-                    <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      🏷️ MAP Pricing Exceptions
-                    </h4>
-                    
-                    {/* List of exceptions */}
-                    <div style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {mapExceptionsLoading ? (
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '10px 0' }}>Loading MAP exceptions...</div>
-                      ) : mapExceptions.length === 0 ? (
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '10px 0' }}>No active MAP exceptions</div>
-                      ) : (
-                        mapExceptions.map((exc: any) => {
-                          const buyerName = companiesList.find((c: any) => c.id === exc.buyer_company_reference)?.name || 'Global / All Buyers'
-                          return (
-                            <div key={exc.id} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: 6, padding: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div>
-                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>SKU: {exc.sku}</div>
-                                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Buyer: {buyerName}</div>
-                                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Min Price: ${exc.approved_minimum_price}</div>
-                                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{exc.start_date} to {exc.end_date}</div>
+                              <div key={exc.id} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-light)', borderRadius: 6, padding: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>SKU: {exc.sku}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Buyer: {buyerName}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Min Price: ${exc.approved_minimum_price}</div>
+                                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{exc.start_date} to {exc.end_date}</div>
+                                </div>
+                                <Button size="small" color="error" variant="contained" sx={{ minWidth: 'auto', p: '4px 8px', fontSize: 11 }} onClick={() => handleDeleteMapException(exc.id)}>Delete</Button>
                               </div>
-                              <button type="button" className="btn btn-red btn-xs" style={{ background: 'var(--red)', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: 4, cursor: 'pointer' }} onClick={() => handleDeleteMapException(exc.id)}>Delete</button>
-                            </div>
-                          )
-                        })
-                      )}
-                    </div>
-                    
-                    {/* Add exception form */}
-                    <form onSubmit={handleAddMapException} style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-light)', borderRadius: 8, padding: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>Add New MAP Exception</div>
-                      <div className="card-grid card-grid-2">
-                        <div className="form-group">
-                          <label className="label" style={{ fontSize: 11 }}>SKU</label>
-                          <input type="text" className="input" placeholder="e.g. iPhone SKU" required value={newExcSku} onChange={e => setNewExcSku(e.target.value)} style={{ padding: '6px 10px', fontSize: 12 }} />
-                        </div>
-                        <div className="form-group">
-                          <label className="label" style={{ fontSize: 11 }}>Buyer Company</label>
-                          <select className="input" value={newExcBuyerId} onChange={e => setNewExcBuyerId(e.target.value)} style={{ padding: '6px 10px', fontSize: 12 }}>
-                            <option value="">All Buyers (Global)</option>
-                            {companiesList.filter((c: any) => (c.company_type || '').toLowerCase() === 'buyer').map((c: any) => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
-                        </div>
+                            )
+                          })
+                        )}
                       </div>
-                      <div className="form-group">
-                        <label className="label" style={{ fontSize: 11 }}>Approved Minimum Price ($)</label>
-                        <input type="number" step="0.01" min="0" className="input" placeholder="0.00" required value={newExcMinPrice} onChange={e => setNewExcMinPrice(e.target.value)} style={{ padding: '6px 10px', fontSize: 12 }} />
-                      </div>
-                      <div className="card-grid card-grid-2">
-                        <div className="form-group">
-                          <label className="label" style={{ fontSize: 11 }}>Start Date</label>
-                          <input type="date" className="input" required value={newExcStartDate} onChange={e => setNewExcStartDate(e.target.value)} style={{ padding: '6px 10px', fontSize: 12 }} />
-                        </div>
-                        <div className="form-group">
-                          <label className="label" style={{ fontSize: 11 }}>End Date</label>
-                          <input type="date" className="input" required value={newExcEndDate} onChange={e => setNewExcEndDate(e.target.value)} style={{ padding: '6px 10px', fontSize: 12 }} />
-                        </div>
-                      </div>
-                      <button type="submit" className="btn btn-primary btn-sm" style={{ alignSelf: 'flex-end', marginTop: 4 }}>Add Exception</button>
-                    </form>
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {showConfirmCloseManage && (
-              <div style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'rgba(4,6,10,0.92)',
-                backdropFilter: 'blur(4px)',
-                zIndex: 3000,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 24,
-                borderRadius: 'var(--radius)'
-              }}>
-                <div style={{
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-light)',
-                  borderRadius: 8,
-                  padding: 24,
-                  maxWidth: 360,
-                  textAlign: 'center',
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
-                }}>
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
-                  <h4 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Unsaved Changes</h4>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, lineHeight: 1.4 }}>
-                    Your progress will be lost because you have unsaved changes. Are you sure you want to close?
-                  </p>
-                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                    <button type='button' className="btn btn-secondary btn-sm" onClick={() => setShowConfirmCloseManage(false)}>No, Keep Editing</button>
-                    <button type='button' className="btn btn-danger btn-sm" style={{ background: 'var(--red)', borderColor: 'var(--red)', color: '#fff' }} onClick={() => { setShowCompanyDetailsModal(false); setSelectedCompany(null); setErrorMsg(null); setShowConfirmCloseManage(false); setIsManageFormDirty(false); }}>Yes, Discard</button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+                      {/* Add exception form */}
+                      <form onSubmit={handleAddMapException} style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-light)', borderRadius: 8, padding: 12 }}>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>Add New MAP Exception</Typography>
+                        <Stack direction="row" spacing={2}>
+                          <Box sx={{ flex: 1 }}>
+                            <TextField size="small" fullWidth label="SKU" placeholder="e.g. iPhone SKU" required value={newExcSku} onChange={e => setNewExcSku(e.target.value)} />
+                          </Box>
+                          <Box sx={{ flex: 1 }}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Buyer Company</InputLabel>
+                              <Select label="Buyer Company" value={newExcBuyerId} onChange={e => setNewExcBuyerId(e.target.value as string)}>
+                                <MenuItem value="">All Buyers (Global)</MenuItem>
+                                {companiesList.filter((c: any) => (c.company_type || '').toLowerCase() === 'buyer').map((c: any) => (
+                                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Box>
+                        </Stack>
+                        <TextField size="small" fullWidth label="Approved Minimum Price ($)" type="number" inputProps={{ step: '0.01', min: '0' }} placeholder="0.00" required value={newExcMinPrice} onChange={e => setNewExcMinPrice(e.target.value)} />
+                        <Stack direction="row" spacing={2}>
+                          <Box sx={{ flex: 1 }}>
+                            <TextField size="small" fullWidth label="Start Date" type="date" required value={newExcStartDate} onChange={e => setNewExcStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+                          </Box>
+                          <Box sx={{ flex: 1 }}>
+                            <TextField size="small" fullWidth label="End Date" type="date" required value={newExcEndDate} onChange={e => setNewExcEndDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+                          </Box>
+                        </Stack>
+                        <Button type="submit" variant="contained" size="small" sx={{ alignSelf: 'flex-end', mt: 0.5 }}>Add Exception</Button>
+                      </form>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            </DialogContent>
+          </>
+        )}
+      </Dialog>
+
+      {/* Unsaved changes confirmation for Manage */}
+      <Dialog open={showConfirmCloseManage} onClose={() => setShowConfirmCloseManage(false)}>
+        <DialogTitle>Unsaved Changes</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Your progress will be lost because you have unsaved changes. Are you sure you want to close?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowConfirmCloseManage(false)}>No, Keep Editing</Button>
+          <Button color="error" variant="contained" onClick={() => { setShowCompanyDetailsModal(false); setSelectedCompany(null); setErrorMsg(null); setShowConfirmCloseManage(false); setIsManageFormDirty(false); }}>Yes, Discard</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
