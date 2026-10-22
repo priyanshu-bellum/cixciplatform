@@ -220,6 +220,13 @@ else:
     MEDIA_URL = "/media/"
     MEDIA_ROOT = BASE_DIR / "media"
 
+# Allow explicit MEDIA_URL override from environment (used when USE_S3/USE_GCS
+# env vars are not passed to the container but the proxy still needs the real
+# storage base URL for redirects).
+_media_url_override = config("MEDIA_URL", default="")
+if _media_url_override:
+    MEDIA_URL = _media_url_override
+
 # ─── Media / Image Asset Validation limits (Rule §4-§6) ───────────────────────
 MEDIA_IMAGE_MAX_SIZE = config("MEDIA_IMAGE_MAX_SIZE", default=10 * 1024 * 1024, cast=int)
 MEDIA_IMAGE_MIN_BYTES = config("MEDIA_IMAGE_MIN_BYTES", default=100, cast=int)
