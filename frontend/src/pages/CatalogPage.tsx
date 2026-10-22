@@ -1784,11 +1784,25 @@ export default function CatalogPage() {
   // TanStack Queries
   // The product list is paginated and filtered on the server so the browser
   // never has to download the whole catalog to render one page.
-  const { data: projection, refetch: refreshProjection, isRefetching: isRefetchingProj } = useQuery({
+  const { data: projectionResponse, error: projectionError, isLoading: isProjectionLoading, refetch: refreshProjection, isRefetching: isRefetchingProj } = useQuery<{ projection: any | null; reason: string | null }>({
     queryKey: ['my-projection'],
-    queryFn: () => api.get('/catalog/my-projection/my_projection/').then(r => r.data).catch(() => null),
+    queryFn: async () => {
+      try {
+        const res = await api.get('/catalog/my-projection/my_projection/')
+        return { projection: res.data, reason: null }
+      } catch (err: any) {
+        // 404 = the buyer has no portfolio devices yet. It is a valid empty
+        // state, not a load failure, so it must not be surfaced as an error.
+        if (err?.response?.status === 404) {
+          return { projection: null, reason: err.response?.data?.reason ?? 'no_portfolio_devices' }
+        }
+        throw err
+      }
+    },
     enabled: tab === 'projection' && isBuyer,
+    retry: false,
   })
+  const projection = projectionResponse?.projection ?? null
 
   // On the "My Compatibility" tab the visible set is the buyer's projected
   // product list. The projection is resolved server-side (projection_scope)
@@ -1819,7 +1833,7 @@ export default function CatalogPage() {
     queryKey: [
       'products', tab, debouncedActiveSearch, activeFilterDeviceId,
       activeFilterCategories, activeFilterBrands, activeFilterColors, activeFilterMsrps,
-      projectionScope, serverPage,
+      projectionScope, projection?.last_recalculated_at, serverPage,
     ],
     queryFn: () =>
       api.get('/catalog/products/', {
@@ -1829,6 +1843,10 @@ export default function CatalogPage() {
           page_size: SERVER_PAGE_SIZE,
         },
       }).then(r => r.data),
+    // On My Compatibility the server resolves the projection server-side, so
+    // wait until it exists — otherwise the first paint races the projection
+    // request and renders an empty (but compatible) catalog.
+    enabled: tab !== 'projection' || !!projection,
     placeholderData: (previous) => previous,
   })
 
@@ -1912,6 +1930,32 @@ export default function CatalogPage() {
   // On the compatibility tab the server already restricted the page to the
   // buyer's projected products, so no further client-side narrowing is needed.
   const compatibleProducts = filteredProducts
+  const portfolioDeviceCount = (() => {
+    if (!Array.isArray(portfolio)) return 0
+    const ids = new Set<string>()
+    portfolio.forEach((ref: any) => {
+      if (ref?.active_flag && ref?.device) ids.add(ref.device)
+    })
+    return ids.size
+  })()
+  const compatHasActiveFilters = Boolean(
+    compatFilterDeviceId || compatSearch || compatFilterCategories.length > 0 ||
+    compatFilterBrands.length > 0 || compatFilterColors.length > 0 || compatFilterMsrps.length > 0
+  )
+  const compatEmptyState = compatHasActiveFilters
+    ? {
+        title: 'No compatible products match your filters',
+        hint: 'Clear the filters to see all compatible accessories.',
+      }
+    : portfolioDeviceCount === 0
+      ? {
+          title: 'No devices in your portfolio yet',
+          hint: 'Add devices in My Devices to see accessories that fit them.',
+        }
+      : {
+          title: 'No compatible accessories yet',
+          hint: `No accessories in the catalog are mapped to your ${portfolioDeviceCount} portfolio device${portfolioDeviceCount === 1 ? '' : 's'} yet.`,
+        }
   const jobs = Array.isArray(exportJobs) ? exportJobs : (exportJobs?.results ?? [])
   const devices = devicesData?.results ?? devicesData ?? []
 
@@ -2970,7 +3014,7 @@ export default function CatalogPage() {
     setRefreshingProj(true)
     try {
       await api.post('/catalog/my-projection/refresh/')
-      refreshProjection()
+      await refreshProjection()
     } catch (err: any) {
       showSnackbar("Failed to refresh compatibility projection: " + (err.response?.data?.detail || err.message), 'error')
     } finally {
@@ -4395,9 +4439,30 @@ export default function CatalogPage() {
           </div>
           {!projection ? (
             <div className="empty-state">
-              <ShoppingBagIcon sx={{ fontSize: 40 }} />
-              <div>No projection available</div>
-              <div style={{ fontSize: 12 }}>Add devices to your portfolio to generate a projection</div>
+              {isProjectionLoading ? (
+                <>
+                  <RefreshIcon sx={{ fontSize: 40 }} className="spin" />
+                  <div>Loading your compatibility projection…</div>
+                </>
+              ) : projectionError ? (
+                <>
+                  <ShoppingBagIcon sx={{ fontSize: 40 }} />
+                  <div>Could not load your compatibility projection</div>
+                  <div style={{ fontSize: 12 }}>Check your connection and try again.</div>
+                  <button className="btn btn-secondary btn-sm" style={{ marginTop: 12 }} onClick={() => refreshProjection()}>
+                    Retry
+                  </button>
+                </>
+              ) : (
+                <>
+                  <ShoppingBagIcon sx={{ fontSize: 40 }} />
+                  <div>No devices in your portfolio yet</div>
+                  <div style={{ fontSize: 12 }}>Add devices in My Devices to see accessories that fit them.</div>
+                  <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => navigate('/devices')}>
+                    Go to My Devices
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <>
@@ -4637,7 +4702,13 @@ export default function CatalogPage() {
                   compatibleProducts.length === 0 ? (
                     <div className="empty-state" style={{ padding: '32px 0' }}>
                       <ShoppingBagIcon sx={{ fontSize: 32 }} />
-                      <div>No compatible products found</div>
+                      <div>{compatEmptyState.title}</div>
+                      <div style={{ fontSize: 12 }}>{compatEmptyState.hint}</div>
+                      {portfolioDeviceCount === 0 && !compatHasActiveFilters && (
+                        <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => navigate('/devices')}>
+                          Go to My Devices
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="telco-grid" style={{ marginBottom: 24 }}>
@@ -4663,7 +4734,13 @@ export default function CatalogPage() {
                     {compatibleProducts.length === 0 ? (
                       <div className="empty-state" style={{ padding: '32px 0' }}>
                         <ShoppingBagIcon sx={{ fontSize: 32 }} />
-                        <div>No compatible products found</div>
+                        <div>{compatEmptyState.title}</div>
+                        <div style={{ fontSize: 12 }}>{compatEmptyState.hint}</div>
+                        {portfolioDeviceCount === 0 && !compatHasActiveFilters && (
+                          <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => navigate('/devices')}>
+                            Go to My Devices
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <table>

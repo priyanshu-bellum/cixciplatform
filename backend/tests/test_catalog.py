@@ -172,17 +172,47 @@ class TestCompatibilityProjection:
         assert resp.status_code == 404
 
     def test_my_projection_returns_data_when_exists(self, buyer_client, buyer_user):
-        proj = BuyerScopedCompatibilityProjection.objects.create(
-            buyer_reference=buyer_user.id,
-            company_scope_reference=buyer_user.entity.company_id,
-            buyer_entity_reference=buyer_user.entity_id,
-            status="active",
-            compatible_product_count=3,
-            portfolio_snapshot_reference=uuid.uuid4(),
+        from apps.catalog.models import ProductCompatibilityAssertion
+        from apps.devices.models import Device, DeviceType, Manufacturer
+        from apps.devices.services import add_device_to_portfolio
+
+        dt, _ = DeviceType.objects.get_or_create(
+            name="Smartphone", code="smartphone", defaults={"status": "active"}
         )
+        dt.status = "active"
+        dt.save(update_fields=["status"])
+        mfr, _ = Manufacturer.objects.get_or_create(name="ProjectionMfr")
+        device = Device.objects.create(
+            name="Projection Device",
+            sku="PROJ-DEV-1",
+            device_type=dt,
+            manufacturer=mfr,
+            lifecycle_status="available",
+        )
+        product = Product.objects.create(
+            name="Projection Accessory",
+            sku="PROJ-ACC-1",
+            brand="Acme",
+            product_type="accessory",
+            status="active",
+            selling_status="for_sale",
+            launch_date="2026-01-15",
+            compatibility_status="complete",
+            company_scope_reference=buyer_user.entity.company_id,
+            vendor_company_reference=uuid.uuid4(),
+        )
+        ProductCompatibilityAssertion.objects.create(
+            product=product,
+            device_reference=device.id,
+            is_compatible=True,
+            is_excluded=False,
+        )
+        add_device_to_portfolio(buyer_user, device.id)
+
         resp = buyer_client.get("/api/v1/catalog/my-projection/my_projection/")
         assert resp.status_code == 200
-        assert resp.data["compatible_product_count"] == 3
+        assert resp.data["compatible_product_count"] == 1
+        assert str(product.id) in resp.data["compatible_product_ids"]
         assert resp.data["status"] == "active"
 
 

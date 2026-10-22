@@ -660,8 +660,10 @@ class BuyerPortfolioViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
     """
     My Devices — buyer portfolio management.
 
-    All reads/writes are automatically scoped to the requesting buyer.
-    Cross-buyer access is architecturally impossible.
+    The portfolio is company-scoped (per buyer entity), so every user of the
+    same buyer company sees and manages the same device list. Reads/writes are
+    still scoped to the caller's company + entity: cross-buyer access is
+    architecturally impossible.
     Portfolio mutations go through services.py (non-collapsible state chain enforced there).
     """
     permission_classes = [IsAuthenticated]
@@ -674,13 +676,21 @@ class BuyerPortfolioViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
 
         return BuyerDevicePortfolioReference.objects.filter(
             company_scope_reference=user.entity.company_id,
+            buyer_entity_reference=user.entity_id,
         ).select_related("device__manufacturer", "device__device_type")
 
     @action(detail=False, methods=["get"])
     def my_devices(self, request):
-        """List all active devices in the buyer's portfolio."""
-        qs = self.get_queryset().filter(active_flag=True)
-        return Response(BuyerPortfolioReferenceSerializer(qs, many=True).data)
+        """List all active devices in the buyer's (company-scoped) portfolio."""
+        qs = self.get_queryset().filter(active_flag=True).order_by("created_at", "id")
+        seen = set()
+        unique_refs = []
+        for ref in qs:
+            if ref.device_id in seen:
+                continue
+            seen.add(ref.device_id)
+            unique_refs.append(ref)
+        return Response(BuyerPortfolioReferenceSerializer(unique_refs, many=True).data)
 
     @action(detail=False, methods=["post"])
     def add(self, request):
@@ -708,18 +718,18 @@ class BuyerPortfolioViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
 
     @action(detail=False, methods=["get"])
     def history(self, request):
-        """Append-only change history for buyer's portfolio."""
+        """Append-only change history for the buyer's (company-scoped) portfolio."""
         changes = BuyerDevicePortfolioChangeRecord.objects.filter(
-            buyer_reference=request.user.id,
             company_scope_reference=request.user.entity.company_id,
+            buyer_entity_reference=request.user.entity_id,
         ).select_related("device").order_by("-created_at")[:50]
         return Response(BuyerPortfolioChangeRecordSerializer(changes, many=True).data)
 
     @action(detail=False, methods=["get"])
     def snapshots(self, request):
-        """List portfolio snapshots for the buyer."""
+        """List portfolio snapshots for the buyer's company portfolio."""
         snaps = BuyerDevicePortfolioSnapshot.objects.filter(
-            buyer_reference=request.user.id,
             company_scope_reference=request.user.entity.company_id,
+            buyer_entity_reference=request.user.entity_id,
         ).order_by("-created_at")[:20]
         return Response(BuyerPortfolioSnapshotSerializer(snaps, many=True).data)

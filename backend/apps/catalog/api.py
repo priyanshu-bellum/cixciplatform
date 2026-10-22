@@ -3717,45 +3717,46 @@ class BuyerCompatibilityProjectionViewSet(BuyerScopedQuerysetMixin, viewsets.Gen
         return BuyerScopedCompatibilityProjection.objects.filter(
             buyer_reference=self.request.user.id,
             company_scope_reference=self.request.user.entity.company_id,
+            buyer_entity_reference=self.request.user.entity_id,
         )
 
     @action(detail=False, methods=["get"])
     def my_projection(self, request):
         """Get the buyer's current compatibility projection."""
-        try:
-            proj = BuyerScopedCompatibilityProjection.objects.get(
-                buyer_reference=request.user.id,
-                company_scope_reference=request.user.entity.company_id,
-                buyer_entity_reference=request.user.entity_id,
+        from apps.catalog.services import ensure_buyer_compatibility_projection
+
+        proj = ensure_buyer_compatibility_projection(request.user, trigger="lazy_sync")
+        if proj is None:
+            return Response(
+                {
+                    "detail": "No projection yet. Add devices to your portfolio first.",
+                    "reason": "no_portfolio_devices",
+                },
+                status=404,
             )
-            return Response(BuyerCompatibilityProjectionSerializer(proj).data)
-        except BuyerScopedCompatibilityProjection.DoesNotExist:
-            return Response({"detail": "No projection yet. Add devices to your portfolio first."}, status=404)
+        return Response(BuyerCompatibilityProjectionSerializer(proj).data)
 
     @action(detail=False, methods=["post"])
     def refresh(self, request):
         """
         Manually trigger projection recalculation (Workflow 4).
-        Uses the buyer's current portfolio snapshot.
+        Uses the buyer's current company portfolio.
         """
-        from apps.devices.models import BuyerDevicePortfolioReference
-        latest_ref = BuyerDevicePortfolioReference.objects.filter(
-            buyer_reference=request.user.id,
-            company_scope_reference=request.user.entity.company_id,
-            buyer_entity_reference=request.user.entity_id,
-        ).order_by("-last_change_timestamp").first()
+        from apps.catalog.services import ensure_buyer_compatibility_projection
 
-        if not latest_ref or not latest_ref.current_portfolio_snapshot_reference:
+        proj = ensure_buyer_compatibility_projection(
+            request.user, trigger="manual_refresh", force=True
+        )
+        if proj is None:
             return Response({"detail": "No portfolio snapshot available."}, status=400)
 
-        result = recalculate_buyer_compatibility_projection(
-            buyer_reference=request.user.id,
-            company_scope_reference=request.user.entity.company_id,
-            buyer_entity_reference=request.user.entity_id,
-            portfolio_snapshot_reference=latest_ref.current_portfolio_snapshot_reference,
-            trigger="manual_refresh",
+        return Response(
+            {
+                "status": proj.status,
+                "compatible_count": proj.compatible_product_count,
+                "last_recalculated_at": proj.last_recalculated_at,
+            }
         )
-        return Response(result)
 
 
 class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):

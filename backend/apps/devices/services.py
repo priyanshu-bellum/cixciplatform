@@ -16,18 +16,52 @@ from apps.tenant.services import check_access
 logger = logging.getLogger(__name__)
 
 
+def get_company_portfolio_device_ids(company_scope_reference, buyer_entity_reference) -> list:
+    """
+    Active device ids in the buyer company's My Devices portfolio.
+
+    The portfolio is company-scoped business data (every user of the buyer
+    entity sees the same My Devices list), so reads must not be restricted to
+    the user who happened to add the device.
+    """
+    from .models import BuyerDevicePortfolioReference
+
+    filters = {
+        "company_scope_reference": company_scope_reference,
+        "active_flag": True,
+    }
+    if buyer_entity_reference is not None:
+        filters["buyer_entity_reference"] = buyer_entity_reference
+
+    device_ids = []
+    seen = set()
+    rows = (
+        BuyerDevicePortfolioReference.objects.filter(**filters)
+        .order_by("created_at", "id")
+        .values_list("device_id", flat=True)
+    )
+    for device_id in rows:
+        if device_id in seen:
+            continue
+        seen.add(device_id)
+        device_ids.append(device_id)
+    return device_ids
+
+
 def add_device_to_portfolio(user, device_id: UUID, admin_on_behalf: bool = False) -> dict:
     """
     Add a device to a buyer's My Devices portfolio.
+
+    The portfolio is company-scoped business data: every user of the buyer
+    entity reads and manages the same list. The buyer-scope triad is still
+    enforced (company_scope + buyer_entity), so cross-buyer interference
+    remains architecturally impossible; only the per-user keying was dropped.
 
     State chain:
       BuyerDevicePortfolioReference (created/activated)
       → BuyerDevicePortfolioSnapshot (immutable; frozen at this moment)
       → BuyerDevicePortfolioChangeRecord (append-only; triggers event)
       → emit device-catalog.my-devices.portfolio-changed
-
-    Architecture rule: cross-buyer interference is architecturally impossible —
-    all operations are scoped to buyer_reference + company_scope + entity.
     """
     from .models import (
         Device, BuyerDevicePortfolioReference, BuyerDevicePortfolioSnapshot,
@@ -51,41 +85,48 @@ def add_device_to_portfolio(user, device_id: UUID, admin_on_behalf: bool = False
         if device.launch_date and device.launch_date > timezone.localdate():
             raise ValueError("Device is not yet launched and cannot be added to portfolio.")
 
+    company_id = user.entity.company_id
+    entity_id = user.entity_id
+    change_source = ChangeSource.ADMIN_ON_BEHALF if admin_on_behalf else ChangeSource.BUYER_ACTION
+
     with transaction.atomic():
-        # Get or create portfolio reference (buyer-scope triad enforced)
-        ref, created = BuyerDevicePortfolioReference.objects.get_or_create(
+        # The portfolio is company-scoped: any buyer user of the entity may
+        # manage the same device list. Match on device + company + entity so a
+        # colleague adding an existing device does not create a duplicate entry.
+        existing_refs = BuyerDevicePortfolioReference.objects.filter(
             device=device,
-            buyer_reference=user.id,
-            company_scope_reference=user.entity.company_id,
-            buyer_entity_reference=user.entity_id,
-            defaults={
-                "active_flag": True,
-                "change_source": ChangeSource.BUYER_ACTION,
-            }
-        )
+            company_scope_reference=company_id,
+            buyer_entity_reference=entity_id,
+        ).order_by("created_at", "id")
 
-        if not created and ref.active_flag:
-            return {"status": "already_active", "portfolio_reference_id": str(ref.id)}
+        active_ref = existing_refs.filter(active_flag=True).first()
+        if active_ref is not None:
+            return {"status": "already_active", "portfolio_reference_id": str(active_ref.id)}
 
-        if not created:
+        ref = existing_refs.first()
+        if ref is None:
+            ref = BuyerDevicePortfolioReference.objects.create(
+                device=device,
+                buyer_reference=user.id,
+                company_scope_reference=company_id,
+                buyer_entity_reference=entity_id,
+                active_flag=True,
+                change_source=change_source,
+            )
+            created = True
+        else:
             ref.active_flag = True
-            ref.change_source = ChangeSource.ADMIN_ON_BEHALF if admin_on_behalf else ChangeSource.BUYER_ACTION
+            ref.change_source = change_source
             ref.last_change_timestamp = timezone.now()
             ref.save(update_fields=["active_flag", "change_source", "last_change_timestamp"])
+            created = False
 
-        # Create immutable snapshot
-        active_device_ids = list(
-            BuyerDevicePortfolioReference.objects.filter(
-                buyer_reference=user.id,
-                company_scope_reference=user.entity.company_id,
-                buyer_entity_reference=user.entity_id,
-                active_flag=True,
-            ).values_list("device_id", flat=True)
-        )
+        # Create immutable snapshot of the company portfolio
+        active_device_ids = get_company_portfolio_device_ids(company_id, entity_id)
         snapshot = BuyerDevicePortfolioSnapshot.objects.create(
             buyer_reference=user.id,
-            company_scope_reference=user.entity.company_id,
-            buyer_entity_reference=user.entity_id,
+            company_scope_reference=company_id,
+            buyer_entity_reference=entity_id,
             device_ids=[str(d) for d in active_device_ids],
             device_count=len(active_device_ids),
             snapshot_reason="device_added",
@@ -141,53 +182,56 @@ def remove_device_from_portfolio(user, device_id: UUID, admin_on_behalf: bool = 
 
     device = Device.objects.get(id=device_id)
 
+    company_id = user.entity.company_id
+    entity_id = user.entity_id
+    change_source = ChangeSource.ADMIN_ON_BEHALF if admin_on_behalf else ChangeSource.BUYER_ACTION
+
     with transaction.atomic():
-        try:
-            ref = BuyerDevicePortfolioReference.objects.get(
-                device=device,
-                buyer_reference=user.id,
-                company_scope_reference=user.entity.company_id,
-                buyer_entity_reference=user.entity_id,
-            )
-        except BuyerDevicePortfolioReference.DoesNotExist:
+        refs = BuyerDevicePortfolioReference.objects.filter(
+            device=device,
+            company_scope_reference=company_id,
+            buyer_entity_reference=entity_id,
+        ).order_by("created_at", "id")
+
+        ref = refs.first()
+        if ref is None:
             return {"status": "not_in_portfolio"}
 
-        if not ref.active_flag:
+        active_refs = list(refs.filter(active_flag=True))
+        if not active_refs:
             return {"status": "already_inactive"}
 
-        ref.active_flag = False
-        ref.change_source = ChangeSource.ADMIN_ON_BEHALF if admin_on_behalf else ChangeSource.BUYER_ACTION
-        ref.last_change_timestamp = timezone.now()
-        ref.save(update_fields=["active_flag", "change_source", "last_change_timestamp"])
-
-        active_device_ids = list(
-            BuyerDevicePortfolioReference.objects.filter(
-                buyer_reference=user.id,
-                company_scope_reference=user.entity.company_id,
-                buyer_entity_reference=user.entity_id,
-                active_flag=True,
-            ).values_list("device_id", flat=True)
+        now = timezone.now()
+        BuyerDevicePortfolioReference.objects.filter(
+            id__in=[r.id for r in active_refs]
+        ).update(
+            active_flag=False,
+            change_source=change_source,
+            last_change_timestamp=now,
         )
+
+        # Create immutable snapshot of the company portfolio
+        active_device_ids = get_company_portfolio_device_ids(company_id, entity_id)
         snapshot = BuyerDevicePortfolioSnapshot.objects.create(
             buyer_reference=user.id,
-            company_scope_reference=user.entity.company_id,
-            buyer_entity_reference=user.entity_id,
+            company_scope_reference=company_id,
+            buyer_entity_reference=entity_id,
             device_ids=[str(d) for d in active_device_ids],
             device_count=len(active_device_ids),
             snapshot_reason="device_removed",
         )
 
-        BuyerDevicePortfolioReference.objects.filter(id=ref.id).update(
-            current_portfolio_snapshot_reference=snapshot.id
-        )
+        BuyerDevicePortfolioReference.objects.filter(
+            id__in=[r.id for r in active_refs]
+        ).update(current_portfolio_snapshot_reference=snapshot.id)
 
         change_record = BuyerDevicePortfolioChangeRecord.objects.create(
             portfolio_reference=ref,
             buyer_reference=user.id,
-            company_scope_reference=user.entity.company_id,
-            buyer_entity_reference=user.entity_id,
+            company_scope_reference=company_id,
+            buyer_entity_reference=entity_id,
             change_type=PortfolioChangeType.DEVICE_REMOVED,
-            change_source=ChangeSource.ADMIN_ON_BEHALF if admin_on_behalf else ChangeSource.BUYER_ACTION,
+            change_source=change_source,
             device=device,
             actor_reference=user.id,
             actor_is_admin_on_behalf=admin_on_behalf,
@@ -217,14 +261,33 @@ def _emit_portfolio_changed_event(user, change_record, snapshot):
         user.id, change_record.change_type, snapshot.id,
     )
     try:
+        from django.contrib.auth import get_user_model
         from apps.catalog.services import recalculate_buyer_compatibility_projection
-        recalculate_buyer_compatibility_projection(
-            buyer_reference=user.id,
-            company_scope_reference=user.entity.company_id,
-            buyer_entity_reference=user.entity_id,
-            portfolio_snapshot_reference=snapshot.id,
-            trigger="portfolio_changed",
+
+        company_id = user.entity.company_id
+        entity_id = user.entity_id
+
+        # The portfolio is company-scoped, but the projection is keyed by user.
+        # Recalculate every buyer user of the entity so colleagues never see a
+        # stale (or missing) projection.
+        buyer_user_ids = set(
+            get_user_model().objects.filter(entity_id=entity_id).values_list("id", flat=True)
         )
+        buyer_user_ids.add(user.id)
+
+        for buyer_user_id in buyer_user_ids:
+            try:
+                recalculate_buyer_compatibility_projection(
+                    buyer_reference=buyer_user_id,
+                    company_scope_reference=company_id,
+                    buyer_entity_reference=entity_id,
+                    portfolio_snapshot_reference=snapshot.id,
+                    trigger="portfolio_changed",
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to recalculate projection for buyer %s: %s", buyer_user_id, e
+                )
     except Exception as e:
         logger.error(f"Failed to recalculate projection on portfolio change: {e}")
 

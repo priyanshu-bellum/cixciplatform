@@ -229,6 +229,103 @@ def recalculate_buyer_compatibility_projection(
         return {"status": "active", "compatible_count": len(compatible_ids)}
 
 
+def _resolve_company_portfolio_snapshot(company_scope_reference, buyer_entity_reference, device_ids, buyer_reference):
+    """
+    Return a Device Catalog snapshot whose frozen device list matches the
+    company's current portfolio, creating one when no match exists.
+
+    Snapshots are immutable, so a new row is created whenever the portfolio
+    device set has changed since the last one.
+    """
+    from apps.devices.models import BuyerDevicePortfolioSnapshot
+
+    wanted = sorted(str(d) for d in device_ids)
+    candidates = BuyerDevicePortfolioSnapshot.objects.filter(
+        company_scope_reference=company_scope_reference,
+    )
+    if buyer_entity_reference is not None:
+        candidates = candidates.filter(buyer_entity_reference=buyer_entity_reference)
+
+    for snapshot in candidates.order_by("-created_at")[:20]:
+        if sorted(str(d) for d in (snapshot.device_ids or [])) == wanted:
+            return snapshot
+
+    return BuyerDevicePortfolioSnapshot.objects.create(
+        buyer_reference=buyer_reference,
+        company_scope_reference=company_scope_reference,
+        buyer_entity_reference=buyer_entity_reference,
+        device_ids=wanted,
+        device_count=len(wanted),
+        snapshot_reason="projection_sync",
+    )
+
+
+def ensure_buyer_compatibility_projection(user, trigger="lazy_sync", force=False):
+    """
+    Return the buyer's compatibility projection, rebuilding it from the current
+    company portfolio when it is missing or stale.
+
+    The My Devices portfolio is company-scoped, but projections are keyed by
+    user. A buyer who never mutated the portfolio personally (for example a
+    colleague added the devices) would otherwise have no projection and see an
+    empty "My Compatibility" section.
+
+    Returns None when the buyer has no portfolio devices and no projection.
+    """
+    from .models import BuyerScopedCompatibilityProjection, ProjectionStatus
+    from apps.devices.models import BuyerDevicePortfolioSnapshot
+    from apps.devices.services import get_company_portfolio_device_ids
+
+    entity = getattr(user, "entity", None)
+    if entity is None:
+        return None
+
+    company_id = entity.company_id
+    entity_id = entity.id
+    device_ids = [str(d) for d in get_company_portfolio_device_ids(company_id, entity_id)]
+
+    projection = BuyerScopedCompatibilityProjection.objects.filter(
+        buyer_reference=user.id,
+        company_scope_reference=company_id,
+        buyer_entity_reference=entity_id,
+    ).first()
+
+    if not device_ids and projection is None:
+        return None
+
+    if projection is not None and not force:
+        snapshot = BuyerDevicePortfolioSnapshot.objects.filter(
+            id=projection.portfolio_snapshot_reference
+        ).first()
+        same_devices = (
+            snapshot is not None
+            and sorted(str(d) for d in (snapshot.device_ids or [])) == sorted(device_ids)
+        )
+        if same_devices and projection.status in (
+            ProjectionStatus.ACTIVE,
+            ProjectionStatus.EMPTY_PORTFOLIO,
+        ):
+            return projection
+
+    snapshot = _resolve_company_portfolio_snapshot(
+        company_id, entity_id, device_ids, buyer_reference=user.id
+    )
+
+    recalculate_buyer_compatibility_projection(
+        buyer_reference=user.id,
+        company_scope_reference=company_id,
+        buyer_entity_reference=entity_id,
+        portfolio_snapshot_reference=snapshot.id,
+        trigger=trigger,
+    )
+
+    return BuyerScopedCompatibilityProjection.objects.filter(
+        buyer_reference=user.id,
+        company_scope_reference=company_id,
+        buyer_entity_reference=entity_id,
+    ).first()
+
+
 def _emit_projection_changed_notification_intent(buyer_ref, company_ref, new_count, prev_count):
     """Workflow 14: Notification intent — NPS owns delivery."""
     # TODO: wire to Celery task → NPS NotificationRequest in Phase 4
