@@ -376,6 +376,18 @@ def run_universal_device_type_mapping(product, actor_id=None, change_source="Uni
         to_create = []
         to_update = []
 
+        # Archive/remove stale universal assertions for devices whose type is
+        # no longer in compatible_device_types (e.g. tablet removed).
+        for dev_ref, assertion in list(existing.items()):
+            if dev_ref not in matched_device_ids and assertion.compatibility_basis == "universal_device_type":
+                if not assertion.is_locked and not assertion.is_excluded:
+                    log_compatibility_change(
+                        assertion, assertion.match_status, "Archived",
+                        actor_id=actor_id, change_source=change_source,
+                    )
+                    assertion.delete()
+                    existing.pop(dev_ref)
+
         for dev_id, dev in device_map.items():
             assertion = existing.get(dev_id)
             dev_type_name = dev.device_type.name if dev.device_type else "Device"

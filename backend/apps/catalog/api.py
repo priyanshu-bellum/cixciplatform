@@ -3465,6 +3465,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         product.compatible_watch_case_size = watch_val
                 elif mode == "hidden":
                     product.compatible_watch_case_size = "Not Compatible"
+                else:
+                    product.compatible_watch_case_size = watch_val or "Not Compatible"
                 # 8. Universal Device Types
                 if row_universal_device_types:
                     if compatibility_update_type == "add":
@@ -3475,6 +3477,12 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         product.compatible_device_types = [t for t in existing_udt if t not in row_universal_device_types]
                     else:  # replace
                         product.compatible_device_types = row_universal_device_types
+                    # Set compatibility_mode so subsequent API/form updates also
+                    # trigger run_universal_device_type_mapping correctly.
+                    if product.compatible_device_types:
+                        product.compatibility_mode = "universal_device_type"
+                    else:
+                        product.compatibility_mode = "direct_device"
                 
                 try:
                     product.save(actor_id=request.user.id)

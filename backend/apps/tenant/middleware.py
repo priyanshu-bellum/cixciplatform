@@ -20,6 +20,21 @@ EXEMPT_PATHS = {
     "/api/schema/",
     "/api/docs/",
     "/api/redoc/",
+    "/api/v1/schema/",
+    "/api/v1/docs/",
+    "/api/v1/redoc/",
+    "/api/buyer-schema/",
+    "/api/buyer-docs/",
+    "/api/buyer-redoc/",
+    "/api/v1/buyer-schema/",
+    "/api/v1/buyer-docs/",
+    "/api/v1/buyer-redoc/",
+    "/api/vendor-schema/",
+    "/api/vendor-docs/",
+    "/api/vendor-redoc/",
+    "/api/v1/vendor-schema/",
+    "/api/v1/vendor-docs/",
+    "/api/v1/vendor-redoc/",
 }
 
 

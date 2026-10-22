@@ -27,7 +27,11 @@
       "Bash(git show:*)",
       "Bash(git log:*)",
       "Bash(grep:*)",
-      "WebFetch(domain:testnew.cixci.com)"
+      "WebFetch(domain:testnew.cixci.com)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(find:*)"
     ]
   }
 }

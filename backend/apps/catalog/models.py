@@ -739,6 +739,14 @@ class Product(models.Model):
             run_compatibility_automapping(self)
         except Exception:
             pass
+
+        # Run universal device-type mapping when applicable
+        if self.compatibility_mode == "universal_device_type" and self.compatible_device_types:
+            try:
+                from apps.catalog.compatibility_engine import run_universal_device_type_mapping
+                run_universal_device_type_mapping(self, actor_id=actor_id)
+            except Exception:
+                pass
         
         # Log changes
         changes = []

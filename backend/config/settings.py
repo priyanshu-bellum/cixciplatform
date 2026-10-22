@@ -189,6 +189,10 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    # Pin CDN versions — redoc@latest (v2.2+) uses ES-module import.meta syntax
+    # which crashes in a regular <script> tag and renders a blank page.
+    "REDOC_DIST": "https://cdn.jsdelivr.net/npm/redoc@2.1.5",
+    "SWAGGER_UI_DIST": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14",
 }
 
 # ─── Static & Media Files ─────────────────────────────────────────────────────
