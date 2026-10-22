@@ -208,6 +208,14 @@ def create_shipping_fee_snapshot(vendor_company_reference, region_code, order_re
     """
     from .models import VendorRegionalShippingFee, ShippingFeeSnapshot, ShippingFeeStatus
 
+    # Hard server-side check: vendor must be approved for the given region.
+    from apps.tenant.models import Company
+    vendor = Company.objects.filter(id=vendor_company_reference).first()
+    if vendor:
+        approved = vendor.approved_regions or []
+        if approved and region_code not in approved:
+            return None  # vendor not approved for this region — no snapshot
+
     fee = VendorRegionalShippingFee.objects.filter(
         vendor_company_reference=vendor_company_reference,
         region_code=region_code,

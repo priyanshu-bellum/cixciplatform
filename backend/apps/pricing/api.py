@@ -408,10 +408,42 @@ class VendorRegionalShippingFeeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             return qs.filter(vendor_company_reference=company.id)
         return VendorRegionalShippingFee.objects.none()
 
+    def _validate_region(self, serializer):
+        """
+        Hard server-side check: vendor can only create/update shipping fees
+        for regions in their approved_regions list.  Admins bypass.
+        """
+        if getattr(self.request.user, "is_cixci_admin", False):
+            return
+        region_code = serializer.validated_data.get(
+            "region_code",
+            getattr(serializer.instance, "region_code", None) if serializer.instance else None,
+        )
+        if not region_code:
+            return
+        vendor_id = serializer.validated_data.get(
+            "vendor_company_reference",
+            getattr(serializer.instance, "vendor_company_reference", None) if serializer.instance else None,
+        )
+        if not vendor_id:
+            return
+        from apps.tenant.models import Company
+        vendor = Company.objects.filter(id=vendor_id).first()
+        if vendor:
+            approved = vendor.approved_regions or []
+            if region_code not in approved:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError(
+                    {"region_code": f"Vendor is not approved for region '{region_code}'. "
+                     f"Approved regions: {approved}"}
+                )
+
     def perform_create(self, serializer):
+        self._validate_region(serializer)
         serializer.save(created_by=self.request.user.id)
 
     def perform_update(self, serializer):
+        self._validate_region(serializer)
         serializer.save(created_by=self.request.user.id)
 
 

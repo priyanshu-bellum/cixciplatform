@@ -614,6 +614,37 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             line["vendor_id"] = str(line_vendor_id)
             vendor_grouped.setdefault(line_vendor_id, []).append(line)
 
+        # ── Region overlap validation ────────────────────────────────────
+        # Hard server-side check: every vendor in the order must share at
+        # least one approved region with the buyer.  Without this, a
+        # crafted API call could bypass the queryset-level visibility
+        # filters and place an order with an out-of-region vendor.
+        if buyer_company:
+            buyer_regions = set(buyer_company.approved_regions or [])
+            if buyer_regions:                         # skip check for buyers with no regions configured
+                region_errors = []
+                vendor_cache = {}                     # avoid duplicate DB hits
+                for v_id in vendor_grouped:
+                    try:
+                        v_uuid_check = uuid.UUID(str(v_id))
+                    except Exception:
+                        continue                      # non-UUID vendor id, skip (will be caught later)
+                    if v_uuid_check not in vendor_cache:
+                        vendor_cache[v_uuid_check] = Company.objects.filter(id=v_uuid_check).first()
+                    vendor_co = vendor_cache[v_uuid_check]
+                    if not vendor_co:
+                        continue                      # unknown vendor, routing will handle
+                    vendor_regions = set(vendor_co.approved_regions or [])
+                    if not buyer_regions & vendor_regions:
+                        region_errors.append(
+                            f"Vendor '{vendor_co.name}' is not approved for any of your regions "
+                            f"({', '.join(sorted(buyer_regions))}). "
+                            f"Vendor regions: {', '.join(sorted(vendor_regions)) or 'none'}."
+                        )
+                if region_errors:
+                    order.delete()                    # clean up the just-created order
+                    raise serializers.ValidationError({"region": region_errors})
+
         # Create RoutedSuborder per vendor
         for v_id, lines in vendor_grouped.items():
             snap = {

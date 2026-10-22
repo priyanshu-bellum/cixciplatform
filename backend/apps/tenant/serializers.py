@@ -337,6 +337,33 @@ class DistributionCenterSerializer(serializers.ModelSerializer):
             "region_configuration_reviewed_at", "region_configuration_reviewed_by",
         ]
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        # Admins bypass region check
+        if user and getattr(user, "is_cixci_admin", False):
+            return attrs
+
+        region_code = attrs.get("region_code") or (
+            self.instance.region_code if self.instance else None
+        )
+        if not region_code:
+            return attrs
+
+        vendor_company = attrs.get("vendor_company") or (
+            self.instance.vendor_company if self.instance else None
+        )
+        if not vendor_company:
+            return attrs
+
+        approved = vendor_company.approved_regions or []
+        if region_code not in approved:
+            raise serializers.ValidationError(
+                {"region_code": f"Vendor is not approved for region '{region_code}'. "
+                 f"Approved regions: {approved}"}
+            )
+        return attrs
+
 
 class RegionChangeEventSerializer(serializers.ModelSerializer):
     vendor_company_name = serializers.CharField(source="vendor_company.name", read_only=True)
