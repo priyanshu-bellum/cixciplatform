@@ -534,7 +534,7 @@ from apps.shared_api import MediaProxyView
 urlpatterns = [
     path("admin/",          admin.site.urls),
     path("api/v1/",         include(api_v1)),
-    path("img/<str:code>",  MediaProxyView.as_view(), name="media-proxy"),
+    path("api/img/<str:code>",  MediaProxyView.as_view(), name="media-proxy"),
 
     # ── Internal: CIXCI System Admin only ─────────────────────────────────────
     # /api/docs/ is now restricted — only authenticated CIXCI admins can access it.

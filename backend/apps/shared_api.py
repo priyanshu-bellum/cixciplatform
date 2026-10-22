@@ -1814,7 +1814,7 @@ def b62_to_uuid(s: str) -> _uuid_mod.UUID:
 
 def media_short_url(asset_id) -> str:
     """Return the short proxy URL for a media asset."""
-    return f"/img/{uuid_to_b62(asset_id)}"
+    return f"/api/img/{uuid_to_b62(asset_id)}"
 
 
 # ── Media Proxy View (short URL → 302 redirect to storage) ───────────────────
@@ -1822,7 +1822,7 @@ def media_short_url(asset_id) -> str:
 @method_decorator(cache_control(public=True, max_age=3600), name="dispatch")
 class MediaProxyView(View):
     """
-    Lightweight public proxy: /img/<base62_code>
+    Lightweight public proxy: /api/img/<base62_code>
     Decodes base62 → UUID, looks up asset, returns 302 redirect to storage.
     No authentication required (images are loaded via <img> tags).
     """
