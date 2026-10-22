@@ -97,9 +97,13 @@ class ProductSerializerBase(serializers.ModelSerializer):
             for url in asset_urls:
                 if url not in combined:
                     combined.append(url)
-            for url in existing:
-                if isinstance(url, str) and url not in combined:
-                    combined.append(url)
+            # Only fall back to stored media_references when no MediaAsset
+            # records exist (legacy products).  When assets exist, asset_urls
+            # is the canonical source and the stored URLs are redundant.
+            if not asset_urls:
+                for url in existing:
+                    if isinstance(url, str) and url not in combined:
+                        combined.append(url)
 
             ret["media_references"] = combined
         except Exception:
