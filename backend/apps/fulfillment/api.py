@@ -453,11 +453,23 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         def parse_date(val):
             if not val:
                 return None
-            for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%m-%d-%Y"):
+            for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%m-%d-%Y", "%m.%d.%Y"):
                 try:
                     return datetime.strptime(val.strip(), fmt).date()
                 except ValueError:
                     continue
+            # Handle partial dates without year (e.g. "10/2", "10.2", "10-2")
+            import re
+            partial = re.match(r'^(\d{1,2})[/.\-](\d{1,2})$', val.strip())
+            if partial:
+                month_val, day_val = int(partial.group(1)), int(partial.group(2))
+                if 1 <= month_val <= 12 and 1 <= day_val <= 31:
+                    from django.utils import timezone as _tz
+                    current_year = _tz.now().year
+                    try:
+                        return datetime(current_year, month_val, day_val).date()
+                    except ValueError:
+                        pass
             return None
 
         # Determine company scope
@@ -638,12 +650,24 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     row_status = "rejected"
 
                 today = timezone.now().date()
+                placed_date = None
+                if sub and sub.order:
+                    placed_date = (sub.order.placed_at or sub.order.created_at).date() if hasattr(sub.order, 'placed_at') and sub.order.placed_at else sub.order.created_at.date()
+
                 if shipped_date and shipped_date > today:
                     row_errors.append(f"Invalid chronology: Shipped Date ({shipped_date}) cannot be in the future")
                     row_status = "rejected"
 
+                if shipped_date and placed_date and shipped_date < placed_date:
+                    row_errors.append(f"Invalid chronology: Shipped Date ({shipped_date}) cannot be before Order Placed Date ({placed_date})")
+                    row_status = "rejected"
+
                 if delivered_date and delivered_date > today:
                     row_errors.append(f"Invalid chronology: Delivered Date ({delivered_date}) cannot be in the future")
+                    row_status = "rejected"
+
+                if delivered_date and placed_date and delivered_date < placed_date:
+                    row_errors.append(f"Invalid chronology: Delivered Date ({delivered_date}) cannot be before Order Placed Date ({placed_date})")
                     row_status = "rejected"
 
                 effective_shipped_date = shipped_date or (handoff.shipped_date if handoff else None)

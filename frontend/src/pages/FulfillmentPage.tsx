@@ -58,7 +58,7 @@ type TabKey = 'handoffs' | 'sla' | 'policies' | 'exportLogs' | 'returns' | 'retu
 
 const ALL_TABS: TabKey[] = ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs', 'shippingLogs']
 const BUYER_TABS: TabKey[] = ['handoffs', 'returns']
-const VENDOR_TABS: TabKey[] = ['handoffs', 'returns', 'returnLogs', 'shippingLogs']
+const VENDOR_TABS: TabKey[] = ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs', 'shippingLogs']
 
 const TAB_LABELS: Record<TabKey, string> = {
   handoffs: 'Handoffs',

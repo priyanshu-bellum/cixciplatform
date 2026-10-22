@@ -26,6 +26,14 @@ export const formatCurrency = (amount: number | string | null | undefined, curre
 
 export const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return '\u2014';
+  // Handle date-only strings (YYYY-MM-DD) without timezone shift by parsing
+  // components directly.  new Date("2026-10-02") interprets the value as UTC
+  // midnight, but getDate() uses local time, causing off-by-one in US timezones.
+  const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const [, y, m, d] = dateOnlyMatch;
+    return `${m}-${d}-${y}`;
+  }
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return dateStr;
   const month = String(date.getMonth() + 1).padStart(2, '0');

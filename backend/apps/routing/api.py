@@ -1472,10 +1472,34 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                     db_delivered = None
                     db_status = "received"
                     
+                def _parse_date_multi(val):
+                    """Parse dates in multiple formats: MM/DD/YYYY, YYYY-MM-DD, MM-DD-YYYY, MM.DD.YYYY, and partial M/D."""
+                    if not val:
+                        return None
+                    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%m-%d-%Y", "%m.%d.%Y"):
+                        try:
+                            return datetime.strptime(val.strip(), fmt).date()
+                        except ValueError:
+                            continue
+                    # Handle partial dates without year (e.g. "10/2", "10.2", "10-2")
+                    partial = re.match(r'^(\d{1,2})[/.\-](\d{1,2})$', val.strip())
+                    if partial:
+                        month_val, day_val = int(partial.group(1)), int(partial.group(2))
+                        if 1 <= month_val <= 12 and 1 <= day_val <= 31:
+                            current_year = timezone.now().year
+                            try:
+                                return datetime(current_year, month_val, day_val).date()
+                            except ValueError:
+                                pass
+                    return None
+
                 row_shipped_parsed = None
                 if row_shipped_date:
-                    try:
-                        row_shipped_parsed = datetime.strptime(row_shipped_date, "%Y-%m-%d").date()
+                    row_shipped_parsed = _parse_date_multi(row_shipped_date)
+                    if row_shipped_parsed is None:
+                        row_errors.append(f"Invalid shipped date format: {row_shipped_date} (use MM/DD/YYYY)")
+                        row_status = "rejected"
+                    else:
                         placed_date = (sub.order.placed_at or sub.order.created_at).date()
                         today = timezone.now().date()
                         if row_shipped_parsed < placed_date:
@@ -1484,21 +1508,22 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                         elif row_shipped_parsed > today:
                             row_errors.append(f"Invalid chronology: Shipped Date ({row_shipped_date}) cannot be in the future")
                             row_status = "rejected"
-                    except ValueError:
-                        row_errors.append(f"Invalid shipped date format: {row_shipped_date}")
-                        row_status = "rejected"
-                        
+
                 row_delivered_parsed = None
                 if row_delivered_date:
-                    try:
-                        row_delivered_parsed = datetime.strptime(row_delivered_date, "%Y-%m-%d").date()
+                    row_delivered_parsed = _parse_date_multi(row_delivered_date)
+                    if row_delivered_parsed is None:
+                        row_errors.append(f"Invalid delivered date format: {row_delivered_date} (use MM/DD/YYYY)")
+                        row_status = "rejected"
+                    else:
+                        placed_date = (sub.order.placed_at or sub.order.created_at).date()
                         today = timezone.now().date()
                         if row_delivered_parsed > today:
                             row_errors.append(f"Invalid chronology: Delivered Date ({row_delivered_date}) cannot be in the future")
                             row_status = "rejected"
-                    except ValueError:
-                        row_errors.append(f"Invalid delivered date format: {row_delivered_date}")
-                        row_status = "rejected"
+                        elif row_delivered_parsed < placed_date:
+                            row_errors.append(f"Invalid chronology: Delivered Date ({row_delivered_date}) cannot be before Order Placed Date ({placed_date})")
+                            row_status = "rejected"
 
                 effective_shipped = row_shipped_parsed if row_shipped_parsed else db_shipped
                 if row_delivered_parsed and effective_shipped and row_delivered_parsed < effective_shipped:
