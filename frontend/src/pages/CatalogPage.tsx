@@ -742,7 +742,8 @@ export default function CatalogPage() {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string>('')
   const [prodPrimaryImageUrl, setProdPrimaryImageUrl] = useState<string>('')
-  const [uploadedZipImages, setUploadedZipImages] = useState<{ name: string; url: string }[]>([])
+  const [uploadedZipImages, setUploadedZipImages] = useState<{ name: string; url: string; id: string }[]>([])
+  const [uploadedPrimaryAssetId, setUploadedPrimaryAssetId] = useState<string | null>(null)
 
   // Device Compatibility Selection State
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([])
@@ -899,6 +900,11 @@ export default function CatalogPage() {
   const [csvHeaders, setCsvHeaders] = useState<string[]>([])
   const [csvPreviewRows, setCsvPreviewRows] = useState<string[][]>([])
   const [updateMode, setUpdateMode] = useState<string>('create_only')
+  // Bulk import — step 2: product images
+  const [bulkZipFile, setBulkZipFile] = useState<File | null>(null)
+  const [bulkZipResult, setBulkZipResult] = useState<any | null>(null)
+  const [bulkZipError, setBulkZipError] = useState<string | null>(null)
+  const [uploadingBulkZip, setUploadingBulkZip] = useState(false)
 
   const handleWirelessChargingChange = (val: string) => {
     if (val === 'Not Compatible') {
@@ -1313,6 +1319,7 @@ export default function CatalogPage() {
     setImagePreviewUrl('')
     setProdPrimaryImageUrl('')
     setUploadedZipImages([])
+    setUploadedPrimaryAssetId(null)
     setSelectedDeviceIds([])
     setCompBluetooth('')
     setCompHeadphoneJack('')
@@ -1336,22 +1343,25 @@ export default function CatalogPage() {
   }
 
   const handleCloseBulkModal = async () => {
-    // After a successful import, prompt the user to take the next step and
-    // upload product images before discarding the dialog state.
+    // After a successful import the dialog now shows "Step 2 — Upload product
+    // images" so the vendor can attach the images without leaving the flow.
     if (bulkResult && bulkResult.rows_passed > 0) {
       const ok = await confirm({
         title: 'Upload product images',
-        message: `You imported ${bulkResult.rows_passed} product(s). Products need a transparent PNG image to be visible to buyers. Upload images now?`,
-        confirmLabel: 'Upload Images',
+        message: `You imported ${bulkResult.rows_passed} product(s). Products need a transparent PNG image to be visible to buyers. Upload the images in Step 2 before closing?`,
+        confirmLabel: 'Upload Images Now',
         cancelLabel: 'Not now',
       })
+      if (ok) return
       setShowBulkModal(false)
       setBulkFile(null)
       setBulkResult(null)
       setBulkError(null)
+      setBulkZipFile(null)
+      setBulkZipResult(null)
+      setBulkZipError(null)
       setCsvHeaders([])
       setCsvPreviewRows([])
-      if (ok) navigate('/media')
       return
     }
     if (isBulkFormDirty()) {
@@ -1997,7 +2007,7 @@ export default function CatalogPage() {
   }
 
   // Handle local file uploads
-  const handleUploadImage = async (file: File): Promise<{ id: string; storage_key: string }> => {
+  const handleUploadImage = async (file: File, ownerRecordId?: string | null, setAsPrimary = true): Promise<{ id: string; storage_key: string }> => {
     // Rule §3: only PNG with a transparent background is allowed.
     if (file.type !== 'image/png' || !/\.png$/i.test(file.name)) {
       throw new Error(`"${file.name}" is not a PNG. Only transparent PNG images are allowed.`)
@@ -2007,6 +2017,8 @@ export default function CatalogPage() {
       mime_type: 'image/png',
       asset_type: 'product_image',
       owner_module: 'catalog',
+      // Rule §10: a single upload must attach to the selected product only.
+      ...(ownerRecordId ? { owner_record_id: ownerRecordId } : {}),
     })
     const { presigned_url, id: assetId, storage_key } = reqRes.data
 
@@ -2014,9 +2026,12 @@ export default function CatalogPage() {
       presigned_url.includes('placeholder-upload.cixci.com') || 
       presigned_url.includes('placeholder')
 
-    if (isPlaceholder) {
+    const uploadDirect = async (confirmReplace: boolean) => {
       const formData = new FormData()
       formData.append('file', file)
+      // The product form always uploads the PRIMARY image (Rule §16).
+      if (setAsPrimary) formData.append('set_as_primary', 'true')
+      if (confirmReplace) formData.append('confirm_replace', 'true')
       const uploadRes = await api.post(`/media/assets/${assetId}/upload_file/`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -2026,7 +2041,9 @@ export default function CatalogPage() {
         id: assetId,
         storage_key: uploadRes.data.storage_key
       }
-    } else {
+    }
+
+    const uploadPresigned = async (confirmReplace: boolean) => {
       const uploadRes = await fetch(presigned_url, {
         method: 'PUT',
         headers: {
@@ -2037,14 +2054,41 @@ export default function CatalogPage() {
       if (!uploadRes.ok) {
         throw new Error(`Direct upload failed with status ${uploadRes.status}`)
       }
-      await api.patch(`/media/assets/${assetId}/`, {
-        status: 'ready',
-        file_size_bytes: file.size,
+      // Rule §15/§20: the asset is validated server-side before it can
+      // become Ready/Approved. It is never marked ready from the client.
+      const finalizeRes = await api.post(`/media/assets/${assetId}/finalize_upload/`, {
+        ...(setAsPrimary ? { set_as_primary: 'true' } : {}),
+        ...(confirmReplace ? { confirm_replace: 'true' } : {}),
       })
       return {
         id: assetId,
-        storage_key: storage_key
+        storage_key: finalizeRes.data.storage_key || storage_key
       }
+    }
+
+    const run = async (confirmReplace: boolean) =>
+      isPlaceholder ? uploadDirect(confirmReplace) : uploadPresigned(confirmReplace)
+
+    try {
+      return await run(false)
+    } catch (err: any) {
+      // Rule §16: replacing the primary image of an Active product requires an
+      // explicit confirmation from the vendor.
+      const status = err?.response?.status
+      const data = err?.response?.data
+      if (status === 409 && data?.requires_confirmation) {
+        const ok = await confirm({
+          title: 'Replace primary image?',
+          message: 'This product is Active. Replacing its primary image archives the current image and is recorded in the audit log. Continue?',
+          confirmLabel: 'Replace image',
+          cancelLabel: 'Cancel',
+        })
+        if (!ok) {
+          throw new Error('Image replacement cancelled. The existing primary image was kept.')
+        }
+        return await run(true)
+      }
+      throw err
     }
   }
 
@@ -2078,17 +2122,20 @@ export default function CatalogPage() {
             setSelectedImageFile(null)
             setImagePreviewUrl('')
             setUploadedZipImages([])
+            setUploadedPrimaryAssetId(null)
             return
           }
           
-          const uploadedList: { name: string; url: string }[] = []
-          for (const f of imageFiles) {
-            const uploadRes = await handleUploadImage(f)
+          const uploadedList: { name: string; url: string; id: string }[] = []
+          for (const [i, f] of imageFiles.entries()) {
+            // Only the first image becomes the product's primary image.
+            const uploadRes = await handleUploadImage(f, editingProduct?.id ?? null, i === 0)
             const absoluteUrl = getImageUrl('/media/' + uploadRes.storage_key)
-            uploadedList.push({ name: f.name, url: absoluteUrl })
+            uploadedList.push({ name: f.name, url: absoluteUrl, id: uploadRes.id })
           }
 
           setUploadedZipImages(uploadedList)
+          setUploadedPrimaryAssetId(uploadedList[0]?.id || null)
           setImagePreviewUrl(uploadedList[0].url)
           setProdPrimaryImageUrl(uploadedList[0].url)
           
@@ -2103,19 +2150,22 @@ export default function CatalogPage() {
           setSelectedImageFile(null)
           setImagePreviewUrl('')
           setUploadedZipImages([])
+          setUploadedPrimaryAssetId(null)
         }
       } else {
         const files = Array.from(e.target.files)
         setFormError(null)
         try {
           setFormError('Uploading selected images... Please wait.')
-          const uploadedList: { name: string; url: string }[] = []
-          for (const f of files) {
-            const uploadRes = await handleUploadImage(f)
+          const uploadedList: { name: string; url: string; id: string }[] = []
+          for (const [i, f] of files.entries()) {
+            // Only the first image becomes the product's primary image.
+            const uploadRes = await handleUploadImage(f, editingProduct?.id ?? null, i === 0)
             const absoluteUrl = getImageUrl('/media/' + uploadRes.storage_key)
-            uploadedList.push({ name: f.name, url: absoluteUrl })
+            uploadedList.push({ name: f.name, url: absoluteUrl, id: uploadRes.id })
           }
           setUploadedZipImages(uploadedList)
+          setUploadedPrimaryAssetId(uploadedList[0]?.id || null)
           setImagePreviewUrl(uploadedList[0].url)
           setProdPrimaryImageUrl(uploadedList[0].url)
           
@@ -2132,6 +2182,7 @@ export default function CatalogPage() {
           setSelectedImageFile(null)
           setImagePreviewUrl('')
           setUploadedZipImages([])
+          setUploadedPrimaryAssetId(null)
         }
       }
     }
@@ -2196,7 +2247,11 @@ export default function CatalogPage() {
         prodImageUrl5
       ].filter(url => url.trim() !== '')
 
-      if (prodPrimaryImageUrl) {
+      if (uploadedPrimaryAssetId) {
+        // The uploaded asset id is used directly — the asset is already
+        // attached to the product by the upload endpoint (Rule §10).
+        imageRef = uploadedPrimaryAssetId
+      } else if (prodPrimaryImageUrl) {
         const uuid = extractUuid(prodPrimaryImageUrl)
         if (uuid) {
           imageRef = uuid
@@ -2343,7 +2398,11 @@ export default function CatalogPage() {
         prodImageUrl5
       ].filter(url => url.trim() !== '')
 
-      if (prodPrimaryImageUrl) {
+      if (uploadedPrimaryAssetId) {
+        // The uploaded asset id is used directly — the asset is already
+        // attached to the product by the upload endpoint (Rule §10).
+        imageRef = uploadedPrimaryAssetId
+      } else if (prodPrimaryImageUrl) {
         const uuid = extractUuid(prodPrimaryImageUrl)
         if (uuid) {
           imageRef = uuid
@@ -2352,7 +2411,7 @@ export default function CatalogPage() {
           return
         }
       } else if (selectedImageFile) {
-        const uploadRes = await handleUploadImage(selectedImageFile)
+        const uploadRes = await handleUploadImage(selectedImageFile, editingProduct?.id ?? null)
         imageRef = uploadRes.id
       }
 
@@ -2447,6 +2506,7 @@ export default function CatalogPage() {
       setProdMetaDescription('')
       setSelectedImageFile(null)
       setImagePreviewUrl('')
+      setUploadedPrimaryAssetId(null)
       setSelectedDeviceIds([])
       setCompBluetooth('')
       setCompHeadphoneJack('')
@@ -2780,6 +2840,36 @@ export default function CatalogPage() {
       setBulkError(err.response?.data?.error || err.response?.data?.detail || 'Failed to upload catalog.')
     } finally {
       setUploadingBulk(false)
+    }
+  }
+
+  const handleBulkImageUpload = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!bulkZipFile) return
+
+    setBulkZipError(null)
+    setBulkZipResult(null)
+    setUploadingBulkZip(true)
+
+    const formData = new FormData()
+    formData.append('file', bulkZipFile)
+
+    try {
+      const res = await api.post('/media/assets/upload_zip/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      setBulkZipResult(res.data)
+      setBulkZipFile(null)
+      refreshProducts()
+    } catch (err: any) {
+      setBulkZipError(
+        err.response?.data?.error ||
+        err.response?.data?.detail ||
+        err.message ||
+        'Failed to upload product images.'
+      )
+    } finally {
+      setUploadingBulkZip(false)
     }
   }
 
@@ -5011,6 +5101,7 @@ export default function CatalogPage() {
                         onChange={e => {
                           setProdPrimaryImageUrl(e.target.value)
                           setImagePreviewUrl(e.target.value)
+                          setUploadedPrimaryAssetId(null)
                         }}
                       />
                     </div>
@@ -5562,6 +5653,7 @@ export default function CatalogPage() {
                         onChange={e => {
                           setProdPrimaryImageUrl(e.target.value)
                           setImagePreviewUrl(e.target.value)
+                          setUploadedPrimaryAssetId(null)
                         }}
                       />
                     </div>
@@ -6743,20 +6835,77 @@ export default function CatalogPage() {
                   {bulkResult.rows_passed > 0 && (
                     <div style={{ marginTop: 10, padding: '10px 12px', background: 'rgba(var(--accent-rgb), 0.08)', border: '1px solid rgba(var(--accent-rgb), 0.25)', borderRadius: 6 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                        Products imported without images
+                        Step 2 — Upload product images
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                        Your products are saved but not yet retail-ready. Upload product images via the Media Manager to make them visible to buyers.
+                        Your products are imported but stay out of buyer visibility until they have a valid
+                        transparent PNG primary image. Upload a ZIP of PNGs named after the SKU
+                        (e.g. <strong>SKU123.png</strong> or <strong>VENDOR-SKU123-primary.png</strong>) and the
+                        images are attached to the matching products automatically.
                       </div>
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                        onClick={() => navigate('/media')}
-                      >
-                        <ImageIcon sx={{ fontSize: 14 }} />
-                        Upload Images in Media Manager
-                      </button>
+
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                          type="file"
+                          accept=".zip"
+                          key="bulk-image-zip-input"
+                          onChange={e => {
+                            const f = e.target.files && e.target.files[0]
+                            setBulkZipFile(f || null)
+                            setBulkZipResult(null)
+                            setBulkZipError(null)
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                          disabled={!bulkZipFile || uploadingBulkZip}
+                          onClick={handleBulkImageUpload}
+                        >
+                          <ImageIcon sx={{ fontSize: 14 }} />
+                          {uploadingBulkZip ? 'Uploading images...' : 'Upload Images (ZIP)'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                          onClick={() => navigate('/media')}
+                        >
+                          <ImageIcon sx={{ fontSize: 14 }} />
+                          Open Media Manager
+                        </button>
+                      </div>
+
+                      {bulkZipError && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--red)' }}>
+                          {bulkZipError}
+                        </div>
+                      )}
+
+                      {bulkZipResult && (
+                        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-secondary)' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                            Images: {bulkZipResult.created} attached | {bulkZipResult.matched} matched |{' '}
+                            {bulkZipResult.unmatched} unmatched | {bulkZipResult.failed} failed
+                          </div>
+                          <div style={{ marginBottom: 6 }}>
+                            Products now media-ready: {bulkZipResult.products_now_media_ready} | Media incomplete:{' '}
+                            {bulkZipResult.products_still_media_incomplete} | Activated: {bulkZipResult.products_now_active}
+                          </div>
+                          {Array.isArray(bulkZipResult.results) && bulkZipResult.results.some((r: any) => r.status !== 'created') && (
+                            <div style={{ maxHeight: 140, overflowY: 'auto' }}>
+                              {bulkZipResult.results
+                                .filter((r: any) => r.status !== 'created')
+                                .map((r: any, i: number) => (
+                                  <div key={i} style={{ marginBottom: 4, paddingLeft: 8, borderLeft: '2px solid var(--red)' }}>
+                                    {r.filename} — {r.reason || r.status}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                   {bulkResult.errors && bulkResult.errors.length > 0 && (

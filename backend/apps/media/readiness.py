@@ -86,8 +86,11 @@ def compute_media_readiness(product) -> MediaReadiness:
         readiness.issues.append("primary_not_ready")
         return readiness
 
-    # Primary must be a transparent PNG
-    if primary.file_extension != ".png" or primary.mime_type != "image/png":
+    # Primary must be a transparent PNG (Rule §3). Legacy assets may store the
+    # extension without the leading dot ("png"), so normalise before comparing.
+    primary_ext = (getattr(primary, "file_extension", "") or "").strip().lower().lstrip(".")
+    primary_mime = (getattr(primary, "mime_type", "") or "").strip().lower()
+    if primary_ext != "png" or primary_mime != "image/png":
         readiness.reason = "Primary image is not a PNG."
         readiness.issues.append("primary_not_png")
         return readiness

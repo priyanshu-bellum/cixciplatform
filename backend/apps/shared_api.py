@@ -93,6 +93,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "renditions": "media.asset.read", "request_upload": "media.asset.upload",
         "upload_file": "media.asset.upload", "upload_zip": "media.asset.upload",
         "review": "media.asset.manage", "reorder": "media.asset.manage",
+        "finalize_upload": "media.asset.upload",
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["asset_type", "status", "owner_module", "company_scope_reference"]
@@ -424,7 +425,9 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         filename = request.data.get("filename", "upload")
         mime_type = request.data.get("mime_type", "application/octet-stream")
         asset_type = request.data.get("asset_type", "other")
-        
+        owner_module = request.data.get("owner_module", "")
+        owner_record_id = request.data.get("owner_record_id") or None
+
         company_id = None
         if request.user.entity:
             company_id = request.user.entity.company_id
@@ -492,14 +495,31 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if not presigned_url:
             presigned_url = f"https://placeholder-upload.cixci.com/{asset_id}"
 
+        # Rule §10/§13: a single upload must attach to the selected product only.
+        # The product is resolved (and vendor-isolation checked) BEFORE the
+        # asset is created so the asset is never left orphaned.
+        target_product = None
+        if owner_record_id:
+            target_product = self._resolve_target_product(owner_record_id)
+            if target_product.status == "archived":
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({
+                    "owner_record_id": (
+                        "Images cannot be assigned to an archived product (Rule §13)."
+                    )
+                })
+
+        from apps.media.validation import extension_of
+
         asset = MediaAsset.objects.create(
             id=asset_id,
             asset_type=asset_type,
             original_filename=filename,
-            file_extension=filename.rsplit(".", 1)[-1] if "." in filename else "",
+            file_extension=extension_of(filename),
             mime_type=mime_type,
             company_scope_reference=company_id,
-            owner_module=request.data.get("owner_module", ""),
+            owner_module=owner_module,
+            owner_record_id=target_product.id if target_product else None,
             uploaded_by=request.user.id,
             storage_key=storage_key,
             storage_provider=storage_provider,
@@ -507,6 +527,18 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             is_public=bool(request.data.get("is_public", False)),
         )
         
+        if target_product:
+            from apps.media.services import log_media_audit, emit_media_change_events
+            log_media_audit(
+                event_code="media.asset.attached",
+                description=f"Asset {asset.id} attached to product {target_product.id}",
+                asset_id=asset.id,
+                company_id=company_id,
+                actor_id=request.user.id,
+            )
+            emit_media_change_events(target_product.id, company_id, actor_id=request.user.id,
+                                     detail="Media asset attached to product.")
+
         session = UploadSession.objects.create(
             asset=asset,
             expected_filename=filename,
@@ -561,11 +593,48 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         file_obj.seek(0)
 
         sanitized_name = validation.sanitize_filename(getattr(file_obj, "name", asset.original_filename))
-        v = validation.validate_image_bytes(
+        payload, status_code = self._finalize_asset_bytes(
+            asset=asset,
             data=data,
             filename=sanitized_name,
-            asset_type=asset.asset_type or "product_image",
             mime_hint=file_obj.content_type or asset.mime_type,
+            company_id=company_id,
+            actor_id=request.user.id,
+            confirm_replace=str(request.data.get("confirm_replace", "")).lower() in ("1", "true", "yes"),
+            set_as_primary=str(request.data.get("set_as_primary", "")).lower() in ("1", "true", "yes"),
+        )
+        return Response(payload, status=status_code)
+
+    def _finalize_asset_bytes(
+        self,
+        asset,
+        data,
+        filename,
+        mime_hint=None,
+        company_id=None,
+        actor_id=None,
+        confirm_replace=False,
+        set_as_primary=False,
+    ):
+        """
+        Validate raw image bytes for an asset and finalise it (Rule §15, §20).
+
+        Shared by the direct upload endpoint and the presigned-upload
+        finalisation endpoint so both paths apply exactly the same PNG /
+        transparency / duplicate / replacement rules.
+
+        Returns (payload, status_code).
+        """
+        import os
+        from django.conf import settings
+        from apps.media import validation
+        from apps.media.services import log_media_audit, generate_renditions, emit_media_change_events
+
+        v = validation.validate_image_bytes(
+            data=data,
+            filename=filename,
+            asset_type=asset.asset_type or "product_image",
+            mime_hint=mime_hint or asset.mime_type,
             company_id=company_id,
         )
         if not v.ok:
@@ -575,21 +644,21 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             asset.save(update_fields=["status", "review_status", "rejection_reason", "updated_at"])
             log_media_audit(
                 event_code="media.asset.validation_failed",
-                description=f"Single upload validation failed: {asset.rejection_reason}",
+                description=f"Upload validation failed: {asset.rejection_reason}",
                 asset_id=asset.id,
                 company_id=company_id,
-                actor_id=request.user.id,
+                actor_id=actor_id,
                 status="failure",
             )
             from apps.media.services import emit_media_event
             emit_media_event("product.media.failed", asset.owner_record_id, company_id,
-                             actor_id=request.user.id, status="failure",
+                             actor_id=actor_id, status="failure",
                              detail=f"Upload validation failed: {asset.rejection_reason}")
-            return Response({
+            return ({
                 "error": "Image validation failed",
                 "details": v.errors,
                 "warnings": v.warnings,
-            }, status=400)
+            }, 400)
 
         # Rule §12: hard-block an exact duplicate already attached to the SAME
         # product (same content hash). Cross-product reuse is a warning.
@@ -601,13 +670,13 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 status="ready",
             ).exclude(id=asset.id).first()
             if dup_same_product:
-                return Response({
+                return ({
                     "error": "Duplicate image",
                     "details": [
                         "This exact image is already attached to this product "
                         f"(asset {dup_same_product.id})."
                     ],
-                }, status=400)
+                }, 400)
 
         # Rule §16: replacing an image on an Active/buyer-visible product needs
         # explicit confirmation, and the replacement must be a valid PNG.
@@ -616,17 +685,33 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if asset.owner_module == "catalog" and asset.owner_record_id:
             from apps.catalog.models import Product
             product = Product.objects.filter(id=asset.owner_record_id).first()
-        if is_replacement and product and product.status == "active":
-            confirm = str(request.data.get("confirm_replace", "")).lower() in ("1", "true", "yes")
-            if not confirm:
-                return Response({
-                    "error": "Replacing the primary image of an Active product requires confirmation.",
-                    "requires_confirmation": True,
-                    "details": [
-                        "Re-send the upload with confirm_replace=true. The previous "
-                        "image is archived and an audit event is recorded (Rule §16)."
-                    ],
-                }, status=409)
+        if is_replacement and product and product.status == "active" and not confirm_replace:
+            return ({
+                "error": "Replacing the primary image of an Active product requires confirmation.",
+                "requires_confirmation": True,
+                "details": [
+                    "Re-send the upload with confirm_replace=true. The previous "
+                    "image is archived and an audit event is recorded (Rule §16)."
+                ],
+            }, 409)
+
+        # Rule §16: a NEW image that is meant to become the primary image of a
+        # product that already has one is a replacement too — it needs the same
+        # confirmation when the product is Active / buyer-visible. The check
+        # happens before the file is written so the client can retry the same
+        # asset with confirm_replace=true.
+        replacing_primary = False
+        if set_as_primary and product and product.primary_image_reference:
+            replacing_primary = str(product.primary_image_reference) != str(asset.id)
+        if replacing_primary and product.status == "active" and not confirm_replace:
+            return ({
+                "error": "Replacing the primary image of an Active product requires confirmation.",
+                "requires_confirmation": True,
+                "details": [
+                    "Re-send the upload with confirm_replace=true. The previous "
+                    "image is archived and an audit event is recorded (Rule §16)."
+                ],
+            }, 409)
 
         # Archive previous version (Rule §16) instead of overwriting in place.
         from apps.media.models import MediaAssetVersion, Rendition
@@ -644,11 +729,17 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             destination.write(data)
                 
         # Update asset metadata
+        from apps.media.validation import extension_of
         asset.status = "ready"
         asset.review_status = "approved"
         asset.file_size_bytes = len(data)
         asset.content_hash = v.content_hash
-        asset.original_filename = sanitized_name
+        asset.original_filename = filename
+        # Rule §3/§21: the stored extension must be the dot-prefixed ".png"
+        # form used by the media readiness gate.
+        asset.file_extension = extension_of(filename)
+        if asset.file_extension == ".png":
+            asset.mime_type = "image/png"
         asset.width = v.width
         asset.height = v.height
         asset.has_transparency = v.has_transparency
@@ -687,12 +778,185 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             description=f"Asset {asset.id} {'replaced' if is_replacement else 'uploaded'} (single)",
             asset_id=asset.id,
             company_id=company_id,
-            actor_id=request.user.id,
+            actor_id=actor_id,
         )
         if asset.owner_record_id and asset.owner_module == "catalog":
-            emit_media_change_events(asset.owner_record_id, company_id, actor_id=request.user.id,
+            emit_media_change_events(asset.owner_record_id, company_id, actor_id=actor_id,
                                      detail="Product image uploaded/replaced.")
-        return Response(MediaAssetSerializer(asset).data)
+            # Rule §2/§13: the uploaded asset becomes the product's primary
+            # image when the product does not have one yet, and a product that
+            # was staged for missing media is reconciled afterwards.
+            self._link_primary_and_reconcile(
+                asset, company_id, actor_id, set_as_primary=set_as_primary
+            )
+        return (MediaAssetSerializer(asset).data, 200)
+
+    @action(detail=True, methods=["post"])
+    def finalize_upload(self, request, pk=None):
+        """
+        Finalise an asset that was uploaded through a presigned URL.
+
+        The stored object is read back and validated with exactly the same
+        rules as the direct upload path (PNG only, true transparency, size /
+        dimension limits, duplicate detection) before the asset is allowed to
+        become Ready / Approved (Rule §15, §20).
+        """
+        import os
+        from django.conf import settings
+
+        asset = self.get_object()
+        self._assert_can_manage_asset(asset)
+
+        company_id = asset.company_scope_reference
+        if not company_id:
+            return Response({"error": "Could not resolve company scope for upload."}, status=400)
+
+        if asset.owner_module == "catalog" and asset.owner_record_id:
+            self._resolve_target_product(asset.owner_record_id)
+
+        data = None
+        try:
+            provider = (asset.storage_provider or "local").lower()
+            if provider == "gcs":
+                bucket_name = getattr(settings, "GS_BUCKET_NAME", None)
+                if not bucket_name:
+                    raise ValueError("GS_BUCKET_NAME not configured")
+                client = get_gcs_client()
+                blob = client.bucket(bucket_name).blob(asset.storage_key)
+                data = blob.download_as_bytes()
+            elif provider == "s3":
+                import boto3
+                s3_client = boto3.client(
+                    "s3",
+                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                    region_name=getattr(settings, "AWS_S3_REGION_NAME", "us-east-1"),
+                    endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+                )
+                obj = s3_client.get_object(
+                    Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=asset.storage_key
+                )
+                data = obj["Body"].read()
+            else:
+                full_path = os.path.join(settings.MEDIA_ROOT, asset.storage_key)
+                if os.path.exists(full_path):
+                    with open(full_path, "rb") as fh:
+                        data = fh.read()
+        except Exception as exc:
+            return Response({
+                "error": "Could not read the uploaded object from storage.",
+                "details": [str(exc)],
+            }, status=400)
+
+        if not data:
+            return Response({
+                "error": "No uploaded object found for this asset.",
+                "details": [
+                    "Upload the file with the presigned URL before finalising the asset."
+                ],
+            }, status=400)
+
+        from apps.media import validation
+        filename = validation.sanitize_filename(asset.original_filename or "upload.png")
+        payload, status_code = self._finalize_asset_bytes(
+            asset=asset,
+            data=data,
+            filename=filename,
+            mime_hint=asset.mime_type,
+            company_id=company_id,
+            actor_id=request.user.id,
+            confirm_replace=str(request.data.get("confirm_replace", "")).lower() in ("1", "true", "yes"),
+            set_as_primary=str(request.data.get("set_as_primary", "")).lower() in ("1", "true", "yes"),
+        )
+        return Response(payload, status=status_code)
+
+    def _link_primary_and_reconcile(self, asset, company_id, actor_id, set_as_primary=False):
+        """
+        Attach a freshly uploaded asset to its product as the primary image
+        and re-evaluate the product's media readiness / activation state.
+
+        When the product has no primary image yet, the uploaded asset becomes
+        the primary one. When the upload was explicitly flagged as a primary
+        replacement (``set_as_primary``) the previous primary image is
+        archived — never hard-deleted (Rule §16) — and the replacement is
+        recorded in the audit log.
+
+        Returns a dict describing what happened (used by the upload endpoints
+        to report per-product outcomes).
+        """
+        from apps.catalog.models import Product
+        from apps.media.models import MediaAsset
+        from apps.media.readiness import compute_media_readiness
+        from apps.media.services import log_media_audit
+
+        outcome = {
+            "product_id": str(asset.owner_record_id),
+            "primary_set": False,
+            "primary_replaced": False,
+            "activated": False,
+            "status": None,
+            "reason": None,
+        }
+
+        product = Product.objects.filter(id=asset.owner_record_id).first()
+        if not product:
+            return outcome
+
+        current_primary_id = product.primary_image_reference
+        is_new_primary = (
+            not current_primary_id
+            or (set_as_primary and str(current_primary_id) != str(asset.id))
+        )
+
+        if is_new_primary:
+            previous_asset = None
+            if current_primary_id:
+                previous_asset = MediaAsset.objects.filter(id=current_primary_id).first()
+            product.primary_image_reference = asset.id
+            try:
+                product.save(actor_id=actor_id)
+                outcome["primary_set"] = True
+                outcome["primary_replaced"] = bool(previous_asset)
+                log_media_audit(
+                    event_code="media.asset.primary_set",
+                    description=f"Asset {asset.id} set as primary image of product {product.id}",
+                    asset_id=asset.id,
+                    company_id=company_id,
+                    actor_id=actor_id,
+                )
+                if previous_asset:
+                    # Rule §16: the previous image is archived, not deleted.
+                    previous_asset.status = "archived"
+                    previous_asset.save(update_fields=["status", "updated_at"])
+                    log_media_audit(
+                        event_code="media.asset.replaced",
+                        description=(
+                            f"Asset {previous_asset.id} archived and replaced by "
+                            f"asset {asset.id} on product {product.id}"
+                        ),
+                        asset_id=previous_asset.id,
+                        company_id=company_id,
+                        actor_id=actor_id,
+                    )
+            except Exception:
+                pass
+
+        readiness = compute_media_readiness(product)
+        outcome["media_ready"] = readiness.is_ready
+        outcome["media_reason"] = readiness.reason
+
+        if readiness.is_ready:
+            from apps.catalog.services import reconcile_product_activation
+            result = reconcile_product_activation(
+                product, actor_id=actor_id, source="media_upload"
+            )
+            outcome["activated"] = bool(result.get("activated"))
+            outcome["status"] = result.get("status")
+            outcome["reason"] = result.get("reason")
+
+        product.refresh_from_db()
+        outcome["status"] = outcome["status"] or product.status
+        return outcome
 
     @action(detail=False, methods=["post"])
     def upload_zip(self, request):
@@ -756,13 +1020,21 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         wrong_vendor_count = 0
         products_updated = set()
         products_now_ready = set()
+        products_media_incomplete = set()
+        products_activated = set()
 
         # Build SKU lookup. Rule §8: vendor admins may only match their own
         # SKUs; CIXCI admins may match across vendors. When the same SKU exists
         # for multiple vendors, Vendor+SKU filename form is required.
         from apps.catalog.models import Product
         is_admin = self._is_admin()
-        product_qs = Product.objects.filter(status="active").only(
+        # Rule §8: bulk images must match an existing product SKU. The match is
+        # NOT restricted to Active products — a product that was staged as
+        # media-incomplete (Inactive) or is still a Draft must be able to
+        # receive its images. Rule §13 forbids attaching to archived products.
+        product_qs = Product.objects.exclude(
+            status__in=("archived", "eol")
+        ).only(
             "id", "sku", "vendor_company_reference", "primary_image_reference", "status"
         )
         if not is_admin and user_company_type == "vendor":
@@ -938,6 +1210,16 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 from apps.media.readiness import compute_media_readiness
                 if compute_media_readiness(product).is_ready:
                     products_now_ready.add(pid)
+                    # A product that was staged for missing media can now be
+                    # reconciled towards Active (Rule §21/§31 gate satisfied).
+                    from apps.catalog.services import reconcile_product_activation
+                    recon = reconcile_product_activation(
+                        product, actor_id=request.user.id, source="media_bulk_upload"
+                    )
+                    if recon.get("activated"):
+                        products_activated.add(pid)
+                else:
+                    products_media_incomplete.add(pid)
                 emit_media_change_events(product.id, company_id, actor_id=request.user.id,
                                          detail="Bulk ZIP images attached to product.")
             except Exception:
@@ -964,6 +1246,8 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             "wrong_vendor": wrong_vendor_count,
             "products_updated": len(products_updated),
             "products_now_media_ready": len(products_now_ready),
+            "products_still_media_incomplete": len(products_media_incomplete),
+            "products_now_active": len(products_activated),
         })
 
         return Response({
@@ -976,6 +1260,8 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             "wrong_vendor": wrong_vendor_count,
             "products_updated": len(products_updated),
             "products_now_media_ready": len(products_now_ready),
+            "products_still_media_incomplete": len(products_media_incomplete),
+            "products_now_active": len(products_activated),
             "summary": summary,
             "results": results,
         })

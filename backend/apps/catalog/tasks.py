@@ -16,8 +16,15 @@ def update_product_statuses_by_date():
     
     # 1. Inactive -> Active
     inactive_products = Product.objects.filter(status=ProductStatus.INACTIVE, launch_date__lte=today_est)
+    from apps.media.readiness import compute_media_readiness
     for prod in inactive_products:
         if prod.launch_date.year == 9999:
+            continue
+        # Rule §31: a product cannot become Active, buyer-facing, downloadable,
+        # exportable or orderable until it has at least one valid, approved,
+        # transparent PNG primary image. A product that is still media
+        # incomplete stays Inactive until its images are uploaded.
+        if not compute_media_readiness(prod).is_ready:
             continue
         prod.status = ProductStatus.ACTIVE
         # Save updating only status to trigger signals and log

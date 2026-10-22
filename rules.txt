@@ -1,0 +1,422 @@
+CIXCI Media / Image Asset Management Validation Rules
+Module: Media / Image Asset Management
+Purpose
+The Media / Image Asset Management module controls how product images and related media are uploaded, imported, validated, stored, attached to products, reviewed, and used for buyer visibility.
+Media validation must apply to:
+Manual product image upload
+Single image upload
+Bulk ZIP image upload
+Image URL import, if supported
+Product CSV import with image references
+Product API create/update with image references
+Product edit workflow
+Buyer product visibility
+Buyer API export/download readiness
+Audit history
+A product can be saved as Draft without complete media if Draft rules allow it, but it cannot become Active, buyer-facing, downloadable, exportable, or orderable until it has at least one valid Active/Approved primary PNG image with a true transparent background and all required image validation passes.
+1. Required Image Validation
+Validation Rules
+At least one valid PNG product image with a true transparent background is required before a product can become buyer-ready.
+Draft products may be saved without images if Draft rules allow it.
+Pending Review products may be submitted without images only if CIXCI allows review of incomplete media.
+Active products must have at least one valid Active/Approved primary PNG image with a true transparent background.
+Products with missing required media should be marked Media Incomplete or equivalent.
+Products with failed media validation, including non-PNG images or PNG images without true transparency, should not be buyer-visible.
+Products with missing, non-PNG, failed, rejected, archived, or non-transparent images should not be included in buyer API export or downloadable catalog feeds.
+Expected Result
+No buyer-facing product appears without at least one approved valid PNG image with a true transparent background.
+2. Primary Image Validation
+Validation Rules
+Each buyer-ready product must have one primary PNG image with a true transparent background.
+Only one image can be marked as Primary at a time.
+If the current primary image is removed, another valid transparent PNG image must be selected as Primary before the product remains buyer-ready.
+If no valid transparent PNG primary image exists, product becomes Media Incomplete.
+Primary image must belong to the same product/SKU.
+Primary image must be a PNG, must have a true transparent background, and must be Active or Approved, depending on the media workflow.
+Expected Result
+Every buyer-facing product has one clear primary PNG image with a true transparent background.
+3. Image File Type Validation
+Approved File Types
+PNG only
+Validation Rules
+All non-PNG file types should be rejected.
+Files such as JPG, JPEG, WEBP, GIF, SVG, HEIC, PDF, DOCX, TXT, XLSX, AI, PSD, executable files, and all other non-PNG formats should not be accepted.
+File extension and actual MIME type should both be validated as PNG/image/png.
+A file renamed from an unsupported type to .png should still be rejected if the actual MIME type is not PNG/image/png.
+Corrupted PNG files should be rejected.
+Expected Result
+Only valid PNG files with true transparent backgrounds are accepted into the product media library.
+4. Image Size Validation
+Validation Rules
+Image file size must not exceed the platformâ€™s approved maximum.
+Image file size must not be zero bytes.
+Images below minimum usable size should be rejected or flagged.
+Oversized files should return a clear error message.
+Bulk uploads should identify which files failed size validation.
+Expected Result
+Images are large enough to be usable but not so large that they create performance or storage problems.
+5. Image Dimension / Resolution Validation
+Validation Rules
+Images should meet minimum width and height requirements, if defined.
+Images below minimum resolution should be rejected or flagged for review.
+Images should support clean display in buyer-facing product cards and product detail pages.
+Extremely narrow, stretched, or unusually shaped images should be flagged.
+Product images should not be accepted if the platform cannot generate required thumbnails or resized versions.
+Expected Result
+Product images display properly across buyer-facing pages and exports.
+6. Transparent Background Validation
+Validation Rules
+PNG is the only supported image format, and every product image must have a true transparent background.
+Non-transparent PNG images should be rejected, marked Failed, or staged for review based on CIXCI workflow rules.
+The system must validate actual alpha transparency, not just file type.
+Images with white, gray, black, or solid-color backgrounds should not be treated as transparent unless actual alpha transparency exists.
+The transparent background requirement applies globally to all product images and should not be bypassed by category, vendor, or buyer export rules unless CIXCI approves a formal exception workflow.
+Expected Result
+All product images meet PNG-only and true transparent background standards before they can support media readiness.
+7. Image Filename Validation
+Validation Rules
+Image filename should be required.
+Filename should not contain unsupported characters.
+Filename should not contain leading/trailing spaces.
+Filename should not contain unsafe path characters.
+Filename should not exceed approved length.
+Filename should be unique within the upload batch when required.
+Filename should follow CIXCI naming rules if bulk matching depends on filename.
+Recommended Filename Matching Rules
+For bulk ZIP upload, filenames should support matching by:
+SKU
+Vendor + SKU
+SKU + image sequence
+UPC, if approved
+Product ID, if generated already
+Example Filename Patterns
+SKU123.png
+SKU123_1.png
+SKU123_2.png
+VENDOR-SKU123-primary.png
+SKU123_alt1.png
+Expected Result
+Image filenames can be safely stored and correctly matched to products.
+8. SKU-to-Image Matching Validation
+Validation Rules
+Bulk images must match an existing product SKU or a SKU included in the same import batch.
+Images that do not match a SKU should be staged as unmatched media or failed, based on CIXCI rules.
+One image cannot be attached to the wrong vendorâ€™s SKU.
+Vendor Admin can only upload images for their own SKUs.
+CIXCI Admin can upload or assign images across vendors.
+If multiple vendors use the same SKU, matching must include Vendor + SKU.
+Unmatched image report should identify filename and reason.
+Expected Result
+Images attach to the correct vendor product and cannot cross vendor boundaries.
+9. Bulk ZIP Upload Validation
+Validation Rules
+ZIP file type must be validated.
+ZIP file must not be corrupted.
+ZIP file must not be password-protected unless supported.
+ZIP file must not exceed approved size limit.
+ZIP must contain only PNG image files.
+Nested folders should be supported or rejected based on approved rules.
+Duplicate filenames inside ZIP should be flagged.
+Non-PNG files inside ZIP should fail or be skipped with error reporting; non-transparent PNG files should fail transparency validation or be staged for review based on CIXCI rules.
+ZIP processing should produce an upload summary.
+ZIP Upload Summary Should Include
+Total files processed
+Images successfully attached
+Images failed
+Images skipped
+Duplicate images
+Unsupported file types
+Unmatched filenames
+Non-PNG files rejected
+PNG files failed for missing/invalid transparency
+Products updated
+Products now media-ready
+Products still Media Incomplete
+Expected Result
+Bulk ZIP image upload is controlled, traceable, and does not attach images incorrectly.
+10. Single Image Upload Validation
+Validation Rules
+Single image upload must attach to the selected product only.
+Vendor Admin can upload images only to products owned by their vendor company.
+CIXCI Admin can upload images to any vendor product.
+Single image upload should validate PNG file type, MIME type, transparent background, size, dimensions, and filename.
+User should be able to mark image as Primary if authorized.
+Replacing an image should not break product compatibility, pricing, or category data.
+Expected Result
+Single image upload safely updates one productâ€™s media.
+11. Image URL Validation
+If CIXCI supports image URLs in product import/API workflows:
+Validation Rules
+URL must be valid format.
+URL must use approved protocols, such as HTTPS.
+URL must be reachable at processing time.
+URL must return PNG/image/png MIME type.
+URL must not point to unsupported content type or any non-PNG image format.
+Broken URLs should fail validation.
+Redirect behavior should follow approved security rules.
+Expiring/private URLs should be flagged.
+The platform should store a copied/managed image asset rather than relying forever on external image URL, if that is the approved architecture.
+Expected Result
+Image URLs do not create broken, non-PNG, or non-transparent product media records.
+12. Duplicate Image Validation
+Validation Rules
+Exact duplicate files should be detected by checksum/hash where possible.
+Duplicate images on the same product should be blocked or flagged.
+Same image may be allowed across different color variants only if approved.
+Same image may be allowed across related products only if intentionally assigned.
+Duplicate primary images across unrelated products should be flagged for review.
+Expected Result
+The media library avoids unnecessary duplicate images and accidental reuse.
+13. Image Assignment Validation
+Validation Rules
+Image must be assigned to a valid product.
+Product must belong to the same vendor as the uploader unless CIXCI Admin assigns it.
+Image cannot be assigned to archived/deleted product unless admin workflow allows it.
+Image assignment changes should be audited.
+Product image order should be saved correctly.
+Primary image assignment should be saved correctly.
+Removed images should not appear in buyer-facing views.
+Expected Result
+Images are attached only to the correct product records.
+14. Image Status Validation
+Recommended Status Values
+Uploaded
+Processing
+Active
+Failed
+Rejected
+Archived
+Validation Rules
+Image status must be tracked.
+Processing images should not be buyer-facing until processing completes.
+Failed images should not be buyer-facing.
+Rejected images should not be buyer-facing.
+Archived images should remain available for history but not display to buyers.
+Active/Approved PNG images with true transparent backgrounds can display buyer-facing if all other media rules pass.
+Expected Result
+Only valid Active/Approved media is used in buyer-facing product views.
+15. Image Processing Validation
+Validation Rules
+Uploaded PNG image should be scanned and validated for file type, MIME type, transparency, security, and processing readiness before becoming Active.
+Platform should generate thumbnails or resized versions if needed.
+Processing failure should mark image as Failed.
+Product should remain Media Incomplete if processing fails and no other valid image exists.
+Processing errors should be visible to authorized users.
+Processing events should be logged.
+Expected Result
+Images are not used before PNG validation, transparent background validation, and processing finish.
+16. Image Replacement Validation
+Validation Rules
+Replacing the primary image should require confirmation if product is Active.
+Replacing image on Active, exported, or buyer-visible products should create an audit event and the replacement image must be a valid transparent PNG.
+Replacing image should update buyer visibility/export readiness if required.
+Previous image should be archived, not hard-deleted, if historical retention is required.
+Existing orders, reports, or audit history should retain historical references where needed.
+Expected Result
+Image replacement is controlled and traceable.
+17. Image Removal Validation
+Validation Rules
+Vendor Admin may remove images only from their own products, if permitted.
+CIXCI Admin may remove or archive images.
+Removing non-primary image should not affect buyer readiness if at least one valid transparent PNG primary image remains.
+Removing the only valid transparent PNG image should mark product Media Incomplete.
+Removing the primary image should require selecting another primary image.
+Removed image should not appear buyer-facing.
+Removal should be audited.
+Expected Result
+Image removal does not accidentally leave buyer-facing products without valid media.
+18. Media Review Validation
+If CIXCI requires media review:
+Validation Rules
+Vendor-uploaded images may be staged for CIXCI review.
+Images pending review should not be buyer-facing unless approved rules allow it.
+CIXCI Admin can approve, reject, or request changes.
+Rejection should require reason.
+Product should remain Media Incomplete if no approved transparent PNG image exists.
+Review actions should be audited.
+Vendor should be able to see image review status.
+Expected Result
+CIXCI can control image quality before products become buyer-facing.
+19. Alt Text Validation
+Validation Rules
+Alt text should be required if CIXCI uses accessibility/SEO fields.
+Alt text should be descriptive.
+Alt text should not be blank when required.
+Alt text should not exceed approved character limit.
+Alt text should not be keyword-stuffed.
+Alt text should not contain unsupported characters.
+Alt text should not contain inaccurate device compatibility claims.
+Alt text should default from product name only if approved.
+Expected Result
+Product images support accessibility and clean metadata.
+20. Image Order / Sort Validation
+Validation Rules
+Product should support image display order.
+Image order must be saved correctly.
+Primary image should display first unless another approved rule exists.
+Vendor Admin can reorder their own product images if permitted.
+CIXCI Admin can reorder images.
+Reordering images should be audited if product is Active or buyer-visible.
+Expected Result
+Buyer-facing image order displays correctly.
+21. Product Readiness Validation
+Validation Rules
+A product cannot become Active, buyer-facing, downloadable, exportable, or orderable unless:
+At least one valid PNG image with a true transparent background exists.
+One image is marked Primary.
+Primary image is Active/Approved and has a true transparent background.
+Image file type is PNG and MIME type validates as PNG/image/png.
+Image processing and transparent background validation have completed successfully.
+Image has true alpha transparency and no solid background.
+Image is assigned to the correct product.
+Image is not Failed, Rejected, or Archived.
+Any required media review is complete.
+Any required alt text is complete.
+PNG-only and transparent background rules pass.
+Expected Result
+Media validation acts as a product-readiness gate.
+22. Product Import Media Validation
+When importing product data by CSV/XLSX:
+Validation Rules
+Image reference columns should be validated.
+Image URL references should be checked if supported.
+Image filename references should match uploaded PNG images in ZIP files where applicable.
+Product import should identify products missing required media.
+Import summary should show media validation results.
+Product rows with missing required media may import as Draft/Pending Review but cannot become buyer-ready.
+Product rows with invalid media, including non-PNG files or non-transparent PNG files, should be staged or failed based on severity.
+Expected Result
+Product imports cannot silently create buyer-ready products without valid media.
+23. Product API Media Validation
+When creating or updating products through API:
+Validation Rules
+API media references must be valid.
+API image URLs must pass URL validation, PNG MIME validation, and transparent background validation if supported.
+API should reject unsupported file/media references, non-PNG media, and PNG files without true transparent backgrounds.
+API should not allow a vendor to attach media to another vendorâ€™s product.
+API response should include media validation errors and media readiness status.
+API product cannot become buyer-ready without valid transparent PNG media.
+Expected Result
+Vendor API cannot bypass media validation.
+24. Buyer Visibility Validation
+Validation Rules
+Products missing required transparent PNG images should not appear in buyer-facing product views.
+Products with failed media processing should not appear.
+Products with rejected images should not appear unless another approved transparent PNG image exists.
+Products with no valid transparent PNG primary image should not appear.
+Products with images still processing should remain hidden or staged.
+Media readiness must be checked along with product status, pricing, inventory, MAP, compatibility, region, buyer assignment, vendor visibility, and My Devices rules.
+Expected Result
+Buyers only see products with valid media.
+25. Export / Download Readiness Validation
+Validation Rules
+Buyer API export should include only products with valid transparent PNG media unless the buyerâ€™s export rules explicitly allow media-missing records.
+Exported product image URLs/assets should be valid and accessible.
+Export should include the valid transparent PNG primary image.
+Export should include additional images if supported.
+Export should not include Failed, Rejected, Archived, unauthorized, non-PNG, or non-transparent image assets.
+Export should respect buyer/vendor visibility and tenant isolation.
+If product becomes Media Incomplete after export, platform should trigger export-required or catalog-refresh event if supported.
+Expected Result
+Buyer exports contain usable, authorized, transparent PNG image assets.
+26. Tenant / Vendor Isolation Validation
+Validation Rules
+Vendor Admin can upload, edit, replace, reorder, or remove images only for their own vendor products.
+Vendor Admin cannot view or manage another vendorâ€™s media library.
+Buyer users cannot edit vendor product media.
+CIXCI Admin can manage media across vendors.
+Media URLs should not expose unauthorized tenant/vendor data.
+Direct API access must enforce the same rules as the UI.
+Expected Result
+Media management respects tenant and vendor boundaries.
+27. Security Validation
+Validation Rules
+Uploaded files should be scanned for malicious content where supported.
+Executable files must be rejected.
+File extension spoofing should be detected.
+MIME type mismatch should be rejected.
+Image metadata should be handled safely.
+Path traversal in filenames should be blocked.
+ZIP bombs or suspicious compressed files should be blocked.
+Public media URLs should not expose private storage paths if that is not approved.
+Upload endpoints should require authentication and authorization.
+Expected Result
+Media uploads do not create platform security risks.
+28. Audit Log Validation
+Media Actions That Should Be Audited
+Image uploaded
+Image bulk uploaded
+Image attached to product
+Image detached from product
+Image set as Primary
+Primary image changed
+Image replaced
+Image removed
+Image archived
+Image failed processing
+Image approved
+Image rejected
+Image reordered
+Alt text changed
+Media readiness status changed
+Audit Details Should Include
+Product ID
+Vendor ID
+SKU
+Image ID
+Filename
+Previous status
+New status
+Previous primary image, if changed
+New primary image, if changed
+Changed by
+Change source
+Date/time
+Reason, if rejected/removed/replaced
+Affected buyer visibility, if changed
+Expected Result
+CIXCI can trace all meaningful media changes.
+29. Error Reporting Validation
+Manual Upload Errors Should Show
+Field/file causing issue
+Reason for failure
+Accepted file types
+Accepted size limits
+Accepted dimension requirements, if applicable
+Recommended fix
+Bulk ZIP Error Report Should Show
+Filename
+Matched SKU, if any
+Vendor
+Error type
+Error reason
+Upload status
+Product media readiness status
+API Error Response Should Show
+Media validation errors
+Invalid file or URL references
+Product/SKU affected
+Media readiness status
+Whether product is staged, rejected, or still Draft
+Expected Result
+Media errors are clear enough for vendors, testers, and CIXCI Admins to correct.
+30. Downstream Event Validation
+Recommended Events
+product.media.changed
+product.media.failed
+product.media.approved
+product.media.rejected
+catalog.visibility.changed
+catalog.export.required
+Validation Rules
+Media changes that affect buyer visibility should trigger catalog.visibility.changed.
+Media changes that affect buyer export should trigger catalog.export.required.
+Events should be tenant-scoped.
+Events should not expose unauthorized vendor or buyer data.
+Failed media processing should trigger notification or review workflow if configured.
+Expected Result
+Media changes properly update catalog visibility, export readiness, and operational alerts.
+31. Final Media Readiness Rule
+A product may be saved as Draft with incomplete or missing media only if Draft rules allow it.
+A product cannot become Active, buyer-facing, downloadable, exportable, or orderable until it has at least one valid Active/Approved primary PNG image with a true transparent background and all media validation rules pass.
+Manual upload, ZIP upload, CSV import, and API create/update must all enforce the same PNG-only and transparent background media validation rules.

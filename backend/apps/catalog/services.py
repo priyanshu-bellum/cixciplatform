@@ -284,6 +284,124 @@ def log_catalog_audit(event_code: str, description: str, product_id, actor_id, s
         logger.error(f"Failed to log catalog audit record for {event_code}: {e}")
 
 
+def reconcile_product_activation(product, actor_id=None, source="media_upload"):
+    """
+    Promote a media-staged product to Active once its media is complete.
+
+    Background
+    ----------
+    A product row that is imported (or edited) without a valid, approved,
+    transparent PNG primary image is staged as Inactive so that it can never
+    become buyer-facing without media (Rule §1, §22, §31). Once the missing
+    media is uploaded, the staging must be cleared, otherwise the product stays
+    invisible to buyers forever.
+
+    The promotion re-uses the platform's own activation rules instead of
+    inventing new ones:
+      - media readiness must pass (Rule §21, §31)
+      - the product must not be under an explicit deactivation hold
+      - the launch date must have been reached
+      - the release date must have been reached
+
+    Price, inventory and device compatibility are NOT checked here: they are
+    separate gates (Product.save() automation and the buyer-visibility
+    queryset) and must not block the clearing of a media staging.
+
+    Only Inactive products are promoted. Out-of-stock, Draft, Pending Review,
+    EOL and Archived products are never touched by this helper.
+
+    Returns a dict: {"activated": bool, "status": str, "reason": str}
+    """
+    from apps.catalog.models import ProductStatus
+    from apps.media.readiness import compute_media_readiness
+    import pytz
+
+    result = {
+        "activated": False,
+        "status": getattr(product, "status", None),
+        "reason": None,
+        "product_id": str(getattr(product, "id", "")),
+    }
+
+    if getattr(product, "status", None) != ProductStatus.INACTIVE:
+        result["reason"] = f"status is {getattr(product, 'status', None)}; only Inactive products are reconciled"
+        return result
+
+    if getattr(product, "deactivation_reason", None):
+        result["reason"] = f"product is on hold ({product.deactivation_reason})"
+        return result
+
+    readiness = compute_media_readiness(product)
+    if not readiness.is_ready:
+        result["reason"] = readiness.reason or "media is not ready"
+        return result
+
+    est = pytz.timezone("US/Eastern")
+    today_est = timezone.now().astimezone(est).date()
+
+    launch_date = getattr(product, "launch_date", None)
+    if launch_date:
+        if launch_date.year == 9999:
+            result["reason"] = "launch date is a placeholder (9999)"
+            return result
+        if launch_date > today_est:
+            result["reason"] = "launch date has not been reached"
+            return result
+
+    release_date = getattr(product, "release_date", None)
+    if release_date and release_date > today_est:
+        result["reason"] = "release date has not been reached"
+        return result
+
+    previous_status = product.status
+    product.status = ProductStatus.ACTIVE
+    if not getattr(product, "selling_status", None) or product.selling_status == "not_for_sale":
+        product.selling_status = "for_sale"
+
+    try:
+        product.save(actor_id=actor_id)
+    except Exception as exc:
+        logger.error("Failed to activate product %s after media upload: %s", product.id, exc)
+        result["status"] = previous_status
+        result["reason"] = f"save failed: {exc}"
+        return result
+
+    product.refresh_from_db()
+    result["status"] = product.status
+    if product.status != ProductStatus.ACTIVE:
+        result["reason"] = (
+            f"media is ready but the product stayed {product.status} "
+            "(inventory or platform automation applied)"
+        )
+        return result
+
+    result["activated"] = True
+    result["reason"] = "media complete; product activated"
+
+    log_catalog_audit(
+        event_code="catalog.product.activated_on_media",
+        description=(
+            f"Product {product.sku} moved {previous_status} -> {product.status} "
+            f"after media upload ({source})."
+        ),
+        product_id=product.id,
+        actor_id=actor_id,
+    )
+
+    try:
+        from apps.media.services import emit_media_change_events
+        emit_media_change_events(
+            product.id,
+            product.company_scope_reference,
+            actor_id=actor_id,
+            detail="Product activated after its media became complete.",
+        )
+    except Exception:
+        pass
+
+    return result
+
+
 def trigger_catalog_recalculation_for_product(product_id):
     """Trigger buyer catalog visibility recalculation for all existing projections."""
     from apps.catalog.models import BuyerScopedCompatibilityProjection

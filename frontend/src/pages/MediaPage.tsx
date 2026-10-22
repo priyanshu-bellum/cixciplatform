@@ -39,6 +39,8 @@ import StatusChip from '../components/data-display/StatusChip'
 import DataTable, { type Column } from '../components/data-display/DataTable'
 import FileUploadField from '../components/forms/FileUploadField'
 import { useSnackbar } from '../components/feedback/SnackbarProvider'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import ConfirmDialog from '../components/feedback/ConfirmDialog'
 
 const ASSET_TYPE_COLOR: Record<string, 'primary' | 'secondary' | 'warning' | 'default'> = {
   product_image: 'primary',
@@ -70,8 +72,13 @@ export default function MediaPage() {
   const [showZipModal, setShowZipModal] = useState(false)
   const [zipFile, setZipFile] = useState<File | null>(null)
   const [zipResult, setZipResult] = useState<any>(null)
+  // Rule §10: a single upload must attach to the selected product only.
+  const [productSearch, setProductSearch] = useState('')
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; sku: string; name: string } | null>(null)
+  const [setAsPrimary, setSetAsPrimary] = useState(true)
 
   const { showSnackbar } = useSnackbar()
+  const { confirm, dialogProps } = useConfirmDialog()
   const queryClient = useQueryClient()
 
   const { data: assetData, isLoading: aLoading, refetch: refetchAssets } = useQuery({
@@ -85,6 +92,21 @@ export default function MediaPage() {
       api.get('/media/upload-sessions/').then(r => r.data),
     enabled: tab === 'sessions',
   })
+
+  // Product search for the single-upload product picker (Rule §10).
+  const { data: productSearchData, isFetching: searchingProducts } = useQuery({
+    queryKey: ['media-product-search', productSearch],
+    queryFn: () =>
+      api.get('/catalog/products/', {
+        params: { search: productSearch.trim(), page_size: 10 },
+      }).then(r => r.data),
+    enabled: ownerModule === 'catalog' && productSearch.trim().length >= 2,
+  })
+  const productMatches: any[] = useMemo(() => {
+    const data = productSearchData
+    if (!data) return []
+    return Array.isArray(data) ? data : (data.results ?? [])
+  }, [productSearchData])
 
   const assets = assetData?.results ?? (Array.isArray(assetData) ? assetData : [])
   const sessions = sessionData?.results ?? (Array.isArray(sessionData) ? sessionData : [])
@@ -129,6 +151,8 @@ export default function MediaPage() {
         mime_type: 'image/png',
         asset_type: assetType,
         owner_module: ownerModule,
+        // Rule §10: attach the upload to the selected product only.
+        ...(ownerModule === 'catalog' && selectedProduct ? { owner_record_id: selectedProduct.id } : {}),
         is_public: isPublic,
         alt_text: altText.trim() || undefined,
       })
@@ -141,14 +165,18 @@ export default function MediaPage() {
         presigned_url.includes('placeholder-upload.cixci.com') ||
         presigned_url.includes('placeholder')
 
-      if (isPlaceholder) {
+      const uploadDirect = async (confirmReplace: boolean) => {
         // 2a. Server-side upload (validates PNG + transparency, sets metadata/status)
         const formData = new FormData()
         formData.append('file', file)
+        if (setAsPrimary) formData.append('set_as_primary', 'true')
+        if (confirmReplace) formData.append('confirm_replace', 'true')
         await api.post(`/media/assets/${resolvedAssetId}/upload_file/`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
-      } else {
+      }
+
+      const uploadPresigned = async (confirmReplace: boolean) => {
         // 2b. Direct binary upload to GCS/S3 presigned PUT URL
         const uploadRes = await fetch(presigned_url, {
           method: 'PUT',
@@ -162,11 +190,36 @@ export default function MediaPage() {
           throw new Error(`Direct upload failed with status ${uploadRes.status}`)
         }
 
-        // 3. Inform backend the asset is ready for consumption
-        await api.patch(`/media/assets/${resolvedAssetId}/`, {
-          status: 'ready',
-          file_size_bytes: file.size,
+        // 3. Validate the uploaded object server-side before it can be used
+        //    (Rule §15/§20) — the client never marks an asset ready itself.
+        await api.post(`/media/assets/${resolvedAssetId}/finalize_upload/`, {
+          ...(setAsPrimary ? { set_as_primary: 'true' } : {}),
+          ...(confirmReplace ? { confirm_replace: 'true' } : {}),
         })
+      }
+
+      const run = async (confirmReplace: boolean) =>
+        isPlaceholder ? uploadDirect(confirmReplace) : uploadPresigned(confirmReplace)
+
+      try {
+        await run(false)
+      } catch (err: any) {
+        // Rule §16: replacing the primary image of an Active product needs an
+        // explicit confirmation.
+        if (err?.response?.status === 409 && err?.response?.data?.requires_confirmation) {
+          const ok = await confirm({
+            title: 'Replace primary image?',
+            message: 'This product is Active. Replacing its primary image archives the current image and is recorded in the audit log. Continue?',
+            confirmLabel: 'Replace image',
+            cancelLabel: 'Cancel',
+          })
+          if (!ok) {
+            throw new Error('Image replacement cancelled. The existing primary image was kept.')
+          }
+          await run(true)
+        } else {
+          throw err
+        }
       }
 
       setProgress(100)
@@ -174,6 +227,8 @@ export default function MediaPage() {
         setUploading(false)
         setShowModal(false)
         setFile(null)
+        setProductSearch('')
+        setSelectedProduct(null)
         showSnackbar('Asset uploaded successfully', 'success')
         refetchAssets()
         if (tab === 'sessions') {
@@ -193,6 +248,8 @@ export default function MediaPage() {
       setFile(null)
       setAltText('')
       setError(null)
+      setProductSearch('')
+      setSelectedProduct(null)
     }
   }
 
@@ -523,6 +580,63 @@ export default function MediaPage() {
             />
           </Box>
 
+          <Box sx={{ mb: 2.5 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Attach to product
+            </Typography>
+            <TextField
+              size="small"
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              placeholder="Search by SKU or product name"
+              disabled={uploading}
+              fullWidth
+              helperText={
+                selectedProduct
+                  ? `Attached to ${selectedProduct.sku} — ${selectedProduct.name}`
+                  : 'A product image must be attached to a product (Rule §10).'
+              }
+            />
+            {searchingProducts && (
+              <Typography variant="caption" color="text.secondary">
+                Searching…
+              </Typography>
+            )}
+            {!selectedProduct && productMatches.length > 0 && (
+              <Box sx={{ mt: 1, maxHeight: 140, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                {productMatches.map((p: any) => (
+                  <Box
+                    key={p.id}
+                    onClick={() => {
+                      setSelectedProduct({ id: p.id, sku: p.sku, name: p.name })
+                      setProductSearch(p.sku)
+                    }}
+                    sx={{ px: 1, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
+                  >
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {p.sku}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {p.name}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={setAsPrimary}
+                onChange={(e) => setSetAsPrimary(e.target.checked)}
+                disabled={uploading || !selectedProduct}
+                size="small"
+              />
+            }
+            label="Set as the product's primary image"
+          />
+
           <TextField
             label="Alt Text (accessibility)"
             size="small"
@@ -793,6 +907,8 @@ export default function MediaPage() {
           )}
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog {...dialogProps} />
     </Box>
   )
 }
