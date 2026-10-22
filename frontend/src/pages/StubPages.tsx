@@ -1743,7 +1743,7 @@ export function SettingsPage() {
                         <TextField
                           size="small" fullWidth label="Commission Percentage (%)"
                           type="number"
-                          inputProps={{ step: '0.01', min: '0', max: '100' }}
+                          slotProps={{ htmlInput: { step: '0.01', min: '0', max: '100' } }}
                           placeholder="e.g. 10.00"
                           value={companyCommissionPercentage}
                           onChange={e => setCompanyCommissionPercentage(e.target.value)}
@@ -2422,7 +2422,7 @@ export function SettingsPage() {
           <>
             <DialogTitle>
               Manage Company Profile
-              <Typography variant="caption" display="block" color="text.secondary">
+              <Typography variant="caption" sx={{ display: 'block' }} color="text.secondary">
                 ID: {selectedCompany.id} &nbsp;·&nbsp; Type: {selectedCompany.company_type}
               </Typography>
             </DialogTitle>
@@ -2465,7 +2465,7 @@ export function SettingsPage() {
                               <TextField
                                 size="small" fullWidth label="Commission Percentage (%)"
                                 type="number"
-                                inputProps={{ step: '0.01', min: '0', max: '100' }}
+                                slotProps={{ htmlInput: { step: '0.01', min: '0', max: '100' } }}
                                 placeholder="e.g. 10.00"
                                 value={editCommissionPercentage}
                                 onChange={e => setEditCommissionPercentage(e.target.value)}
@@ -2980,13 +2980,13 @@ export function SettingsPage() {
                             </FormControl>
                           </Box>
                         </Stack>
-                        <TextField size="small" fullWidth label="Approved Minimum Price ($)" type="number" inputProps={{ step: '0.01', min: '0' }} placeholder="0.00" required value={newExcMinPrice} onChange={e => setNewExcMinPrice(e.target.value)} />
+                        <TextField size="small" fullWidth label="Approved Minimum Price ($)" type="number" slotProps={{ htmlInput: { step: '0.01', min: '0' } }} placeholder="0.00" required value={newExcMinPrice} onChange={e => setNewExcMinPrice(e.target.value)} />
                         <Stack direction="row" spacing={2}>
                           <Box sx={{ flex: 1 }}>
-                            <TextField size="small" fullWidth label="Start Date" type="date" required value={newExcStartDate} onChange={e => setNewExcStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+                            <TextField size="small" fullWidth label="Start Date" type="date" required value={newExcStartDate} onChange={e => setNewExcStartDate(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
                           </Box>
                           <Box sx={{ flex: 1 }}>
-                            <TextField size="small" fullWidth label="End Date" type="date" required value={newExcEndDate} onChange={e => setNewExcEndDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+                            <TextField size="small" fullWidth label="End Date" type="date" required value={newExcEndDate} onChange={e => setNewExcEndDate(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
                           </Box>
                         </Stack>
                         <Button type="submit" variant="contained" size="small" sx={{ alignSelf: 'flex-end', mt: 0.5 }}>Add Exception</Button>
