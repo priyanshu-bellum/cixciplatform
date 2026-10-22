@@ -44,6 +44,7 @@ import HistoryIcon from '@mui/icons-material/History'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import api from '../lib/apiClient'
+import { useAuthStore } from '../stores/authStore'
 import Pagination, { usePagination } from '../components/Pagination'
 import PageHeader from '../components/layout/PageHeader'
 import StatusChip from '../components/data-display/StatusChip'
@@ -56,6 +57,8 @@ import { formatCurrency, formatDate, formatETDate } from '../lib/formatters'
 type TabKey = 'handoffs' | 'sla' | 'policies' | 'exportLogs' | 'returns' | 'returnLogs' | 'shippingLogs'
 
 const ALL_TABS: TabKey[] = ['handoffs', 'sla', 'policies', 'exportLogs', 'returns', 'returnLogs', 'shippingLogs']
+const BUYER_TABS: TabKey[] = ['handoffs', 'returns']
+const VENDOR_TABS: TabKey[] = ['handoffs', 'returns', 'returnLogs', 'shippingLogs']
 
 const TAB_LABELS: Record<TabKey, string> = {
   handoffs: 'Handoffs',
@@ -136,21 +139,29 @@ function attemptDeliveryColor(status: string): 'success' | 'info' | 'error' | 'd
 
 export default function FulfillmentPage() {
   const location = useLocation()
+  const { user } = useAuthStore()
   const { showSnackbar } = useSnackbar()
   const { dialogProps, confirm } = useConfirmDialog()
+  const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
+  const isBuyer = user?.company_type === 'buyer'
+  const isVendor = user?.company_type === 'vendor'
+  const visibleTabs = isCixciAdmin ? ALL_TABS : isVendor ? VENDOR_TABS : isBuyer ? BUYER_TABS : ALL_TABS
+  const canManageFulfillment = isCixciAdmin || isVendor
   const queryTab = new URLSearchParams(location.search).get('tab')
   const initialTab = (queryTab as any) || location.state?.tab || 'handoffs'
   const [tab, setTab] = useState<TabKey>(
-    ALL_TABS.includes(initialTab) ? (initialTab as TabKey) : 'handoffs'
+    visibleTabs.includes(initialTab) ? (initialTab as TabKey) : visibleTabs[0]
   )
   const [selectedHandoff, setSelectedHandoff] = useState<any | null>(null)
 
   useEffect(() => {
     const activeTab = new URLSearchParams(location.search).get('tab') || location.state?.tab
-    if (activeTab && ALL_TABS.includes(activeTab)) {
+    if (activeTab && visibleTabs.includes(activeTab)) {
       setTab(activeTab as TabKey)
+      return
     }
-  }, [location])
+    setTab(prev => visibleTabs.includes(prev) ? prev : visibleTabs[0])
+  }, [location, visibleTabs])
 
   const { data: handoffData, isLoading: hLoading, refetch: refetchHandoffs } = useQuery({
     queryKey: ['fulfillment-handoffs'],
@@ -462,7 +473,7 @@ export default function FulfillmentPage() {
   }
 
   // Build header actions depending on active tab
-  const headerActions = (
+  const headerActions = canManageFulfillment ? (
     <>
       {(tab === 'returns' || tab === 'returnLogs') && (
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -498,7 +509,7 @@ export default function FulfillmentPage() {
         </Button>
       )}
     </>
-  )
+  ) : null
 
   // Loading spinner helper
   const LoadingState = () => (
@@ -542,7 +553,13 @@ export default function FulfillmentPage() {
     <Box>
       <PageHeader
         title="Fulfillment & Returns"
-        subtitle="Vendor handoffs, SLA evaluation records, and response policies"
+        subtitle={
+          isBuyer
+            ? 'Shipment tracking and return status for your orders'
+            : isVendor
+              ? 'Vendor handoffs, shipping updates, and returns'
+              : 'Vendor handoffs, SLA evaluation records, and response policies'
+        }
         actions={headerActions}
       />
 
@@ -553,7 +570,7 @@ export default function FulfillmentPage() {
         scrollButtons="auto"
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
-        {ALL_TABS.map(t => (
+        {visibleTabs.map(t => (
           <Tab key={t} label={TAB_LABELS[t]} value={t} />
         ))}
       </Tabs>

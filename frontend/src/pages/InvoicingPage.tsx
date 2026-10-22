@@ -159,7 +159,7 @@ const ISSUABLE_STATUSES = new Set(['draft', 'ready'])
 
 // Invoice types visible per user type (Rule: users see only types associated
 // with their role; vendors must not see buyer invoices).
-const VENDOR_TYPES = ['vendor_statement', 'vendor_payable_package', 'commission_report', 'adjustment_report']
+const VENDOR_TYPES = ['vendor_statement', 'vendor_payable_package']
 const BUYER_TYPES = ['buyer_invoice']
 const ADMIN_TYPES = [
   'buyer_invoice', 'vendor_statement', 'vendor_payable_package',
@@ -217,6 +217,7 @@ export default function InvoicingPage() {
   const rawInvoices: InvoiceListItem[] = invoiceData?.results ?? (Array.isArray(invoiceData) ? invoiceData : [])
 
   const filteredInvoices = rawInvoices.filter((inv) => {
+    if (!allowedTypes.includes(inv.invoice_type)) return false
     if (filterType !== 'all' && inv.invoice_type !== filterType) return false
     if (filterStatus !== 'all' && inv.status !== filterStatus) return false
     if (searchQuery.trim()) {
