@@ -208,7 +208,7 @@ export default function DistributionCenterDialog({ open, onClose, onSaved, editI
                 size="small"
                 value={countryCode}
                 onChange={(e) => setCountryCode(e.target.value.toUpperCase())}
-                inputProps={{ maxLength: 3 }}
+                slotProps={{ htmlInput: { maxLength: 3 } }}
               />
             </Stack>
             <TextField

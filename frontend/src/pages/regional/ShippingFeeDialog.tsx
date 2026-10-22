@@ -130,7 +130,7 @@ export default function ShippingFeeDialog({ open, onClose, onSaved, editItem }: 
               fullWidth
               size="small"
               type="number"
-              inputProps={{ step: '0.01', min: '0' }}
+              slotProps={{ htmlInput: { step: '0.01', min: '0' } }}
               value={feeAmount}
               onChange={(e) => setFeeAmount(e.target.value)}
             />
@@ -141,7 +141,7 @@ export default function ShippingFeeDialog({ open, onClose, onSaved, editItem }: 
                 size="small"
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                inputProps={{ maxLength: 3 }}
+                slotProps={{ htmlInput: { maxLength: 3 } }}
               />
               <FormControl size="small" fullWidth>
                 <InputLabel>Fee Type</InputLabel>
