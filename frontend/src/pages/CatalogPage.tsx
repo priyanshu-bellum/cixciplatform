@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
@@ -901,10 +901,14 @@ export default function CatalogPage() {
   const [csvPreviewRows, setCsvPreviewRows] = useState<string[][]>([])
   const [updateMode, setUpdateMode] = useState<string>('create_only')
   // Bulk import — step 2: product images
+  const [bulkStep, setBulkStep] = useState<1 | 2>(1)
+  const [bulkImportedSkus, setBulkImportedSkus] = useState<string[]>([])
   const [bulkZipFile, setBulkZipFile] = useState<File | null>(null)
   const [bulkZipResult, setBulkZipResult] = useState<any | null>(null)
   const [bulkZipError, setBulkZipError] = useState<string | null>(null)
   const [uploadingBulkZip, setUploadingBulkZip] = useState(false)
+  const [bulkZipDragging, setBulkZipDragging] = useState(false)
+  const bulkZipInputRef = useRef<HTMLInputElement | null>(null)
 
   const handleWirelessChargingChange = (val: string) => {
     if (val === 'Not Compatible') {
@@ -1342,26 +1346,42 @@ export default function CatalogPage() {
     setEditingProduct(null)
   }
 
+  const resetBulkState = () => {
+    setBulkStep(1)
+    setBulkImportedSkus([])
+    setBulkFile(null)
+    setBulkResult(null)
+    setBulkError(null)
+    setBulkZipFile(null)
+    setBulkZipResult(null)
+    setBulkZipError(null)
+    setBulkZipDragging(false)
+    setCsvHeaders([])
+    setCsvPreviewRows([])
+  }
+
+  const openBulkModal = () => {
+    resetBulkState()
+    setShowBulkModal(true)
+  }
+
   const handleCloseBulkModal = async () => {
-    // After a successful import the dialog now shows "Step 2 — Upload product
-    // images" so the vendor can attach the images without leaving the flow.
-    if (bulkResult && bulkResult.rows_passed > 0) {
+    // After an import some products are staged until they get a transparent
+    // PNG, so keep the vendor inside the flow and take them to Step 2.
+    const importedCount = (bulkResult?.rows_passed || 0) + (bulkResult?.rows_staged || 0)
+    if (bulkResult && importedCount > 0) {
       const ok = await confirm({
         title: 'Upload product images',
-        message: `You imported ${bulkResult.rows_passed} product(s). Products need a transparent PNG image to be visible to buyers. Upload the images in Step 2 before closing?`,
-        confirmLabel: 'Upload Images Now',
-        cancelLabel: 'Not now',
+        message: `You imported ${importedCount} product(s). Until each one has a valid transparent PNG primary image it stays hidden from buyers. Upload the images in Step 2 now?`,
+        confirmLabel: 'Go to Step 2',
+        cancelLabel: 'Close anyway',
       })
-      if (ok) return
+      if (ok) {
+        setBulkStep(2)
+        return
+      }
       setShowBulkModal(false)
-      setBulkFile(null)
-      setBulkResult(null)
-      setBulkError(null)
-      setBulkZipFile(null)
-      setBulkZipResult(null)
-      setBulkZipError(null)
-      setCsvHeaders([])
-      setCsvPreviewRows([])
+      resetBulkState()
       return
     }
     if (isBulkFormDirty()) {
@@ -1369,13 +1389,7 @@ export default function CatalogPage() {
       if (!ok) return
     }
     setShowBulkModal(false)
-    setTimeout(() => {
-      setBulkFile(null)
-      setBulkResult(null)
-      setBulkError(null)
-      setCsvHeaders([])
-      setCsvPreviewRows([])
-    }, 300)
+    setTimeout(resetBulkState, 300)
   }
 
   const { data: dropdownConfigsData, refetch: refetchDropdownConfigs } = useQuery({
@@ -1405,6 +1419,10 @@ export default function CatalogPage() {
   const allowedBrands: string[] = useMemo(() => {
     return dropdownConfigs.filter((c: any) => c.field_name === 'brand').map((c: any) => c.value)
   }, [dropdownConfigs])
+
+  // Dropdowns come from the API; until they load, do not reject values the
+  // backend may accept (this caused false "invalid system color" errors).
+  const dropdownsLoaded = dropdownConfigs.length > 0
 
   // Runs inline validation checks on all rows and cells.
   const validation = useMemo(() => {
@@ -1461,7 +1479,7 @@ export default function CatalogPage() {
         } else if (isVendor && user?.company_name && val.toLowerCase() !== user.company_name.toLowerCase()) {
           errors.push(`Brand must match your company name '${user.company_name}'.`)
           cellErrors[`${rowIdx}-${brandColIdx}`] = true
-        } else if (!isVendor && allowedBrands.length > 0 && !allowedBrands.some((b: string) => b.toLowerCase() === val.toLowerCase())) {
+        } else if (!isVendor && dropdownsLoaded && allowedBrands.length > 0 && !allowedBrands.some((b: string) => b.toLowerCase() === val.toLowerCase())) {
           errors.push(`Brand must be one of: ${allowedBrands.join(', ')}`)
           cellErrors[`${rowIdx}-${brandColIdx}`] = true
         }
@@ -1526,7 +1544,7 @@ export default function CatalogPage() {
           cellErrors[`${rowIdx}-${categoryColIdx}`] = true
         } else {
           const match = allowedCategories.some((cat: string) => cat.toLowerCase() === val.toLowerCase())
-          if (!match) {
+          if (dropdownsLoaded && !match) {
             errors.push(`Product Category must be one of: ${allowedCategories.join(', ')}`)
             cellErrors[`${rowIdx}-${categoryColIdx}`] = true
           }
@@ -1569,7 +1587,7 @@ export default function CatalogPage() {
         } else {
           const sysColors = val.replace(/;/g, ',').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
           const invalid = sysColors.filter(sc => !allowedColors.some((ac: string) => ac.toLowerCase() === sc))
-          if (invalid.length > 0) {
+          if (dropdownsLoaded && invalid.length > 0) {
             errors.push(`Invalid system colors: ${invalid.join(', ')}. Must be from: ${allowedColors.join(', ')}`)
             cellErrors[`${rowIdx}-${sysColorColIdx}`] = true
           }
@@ -1762,7 +1780,7 @@ export default function CatalogPage() {
     })
 
     return { hasErrors, rowErrors, cellErrors }
-  }, [csvHeaders, csvPreviewRows, isVendor, user?.company_name, allowedCategories, allowedColors, allowedBrands])
+  }, [csvHeaders, csvPreviewRows, isVendor, user?.company_name, allowedCategories, allowedColors, allowedBrands, dropdownsLoaded])
 
   // Export Job Form State
   const [exportFormat, setExportFormat] = useState('csv')
@@ -2848,36 +2866,37 @@ export default function CatalogPage() {
     formData.append('file', finalFile)
     formData.append('update_mode', updateMode)
 
+    const applyBulkResult = (data: any) => {
+      setBulkResult({
+        total_rows_processed: data.total_rows_processed || 0,
+        rows_passed: data.rows_passed || 0,
+        rows_failed: data.rows_failed || 0,
+        rows_staged: data.rows_staged || 0,
+        errors: data.errors || [],
+      })
+      const importedSkus = Array.isArray(data.products)
+        ? data.products.map((p: any) => p.sku).filter(Boolean)
+        : []
+      setBulkImportedSkus(importedSkus)
+      setBulkFile(null)
+      setCsvHeaders([])
+      setCsvPreviewRows([])
+      // Move straight to the image step — staged products stay hidden from
+      // buyers until their images are attached.
+      setBulkStep(2)
+      refreshProducts()
+    }
+
     try {
       const res = await api.post('/catalog/products/bulk_upload/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
-      setBulkResult({
-        total_rows_processed: res.data.total_rows_processed,
-        rows_passed: res.data.rows_passed,
-        rows_failed: res.data.rows_failed,
-        rows_staged: res.data.rows_staged,
-        errors: res.data.errors || [],
-      })
-      setBulkFile(null)
-      setCsvHeaders([])
-      setCsvPreviewRows([])
-      refreshProducts()
+      applyBulkResult(res.data)
     } catch (err: any) {
       if (err.response?.status === 207 || err.response?.status === 400) {
         const data = err.response.data
         if (data && typeof data === 'object' && ('total_rows_processed' in data || 'errors' in data)) {
-          setBulkResult({
-            total_rows_processed: data.total_rows_processed || 0,
-            rows_passed: data.rows_passed || 0,
-            rows_failed: data.rows_failed || 0,
-            rows_staged: data.rows_staged || 0,
-            errors: data.errors || [],
-          })
-          setBulkFile(null)
-          setCsvHeaders([])
-          setCsvPreviewRows([])
-          refreshProducts()
+          applyBulkResult(data)
           return
         }
       }
@@ -4073,7 +4092,7 @@ export default function CatalogPage() {
             )}
             {isVendor && (
               <>
-                <Button variant="outlined" startIcon={<CloudUploadIcon />} onClick={() => setShowBulkModal(true)}>
+                <Button variant="outlined" startIcon={<CloudUploadIcon />} onClick={openBulkModal}>
                   Bulk Upload
                 </Button>
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetProductForm(); setShowAddModal(true); }}>
@@ -6881,12 +6900,19 @@ export default function CatalogPage() {
       {/* ─── BULK UPLOAD MODAL ─────────────────────────────────────────────────── */}
       <Dialog open={showBulkModal} onClose={handleCloseBulkModal} fullWidth maxWidth="md" scroll="paper" slotProps={{ paper: { component: 'form', onSubmit: handleBulkUploadSubmit } }}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          Bulk Import Products
+          <span>
+            Bulk Import Products
+            <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
+              Step {bulkStep} of 2 — {bulkStep === 1 ? 'Catalog file' : 'Product images'}
+            </span>
+          </span>
           <IconButton size="small" onClick={handleCloseBulkModal}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
         <DialogContent dividers>
+              {bulkStep === 1 && (
+                <>
               {bulkError && (
                 <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ErrorOutlinedIcon sx={{ fontSize: 14 }} />
@@ -6895,114 +6921,213 @@ export default function CatalogPage() {
               )}
 
               {validation.hasErrors && (
-                <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <ErrorOutlinedIcon sx={{ fontSize: 14 }} />
-                  <span>Validation failed. Please correct the highlighted cells in the data grid below before uploading.</span>
-                </div>
-              )}
-
-              {bulkResult && (
-                <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8, marginBottom: 14 }}>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--green)', fontWeight: 600, fontSize: 14 }}>
-                    <CheckIcon sx={{ fontSize: 16 }} />
+                <div style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 13 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 600 }}>
+                    <ErrorOutlinedIcon sx={{ fontSize: 14 }} />
                     <span>
-                      Bulk upload complete. Processed: {bulkResult.total_rows_processed} | Passed: {bulkResult.rows_passed} | Failed: {bulkResult.rows_failed} | Staged: {bulkResult.rows_staged}
+                      Validation failed: {Object.values(validation.rowErrors).reduce((n, errs) => n + errs.length, 0)} issue(s)
+                      in {Object.keys(validation.rowErrors).length} row(s). Fix the highlighted cells below.
                     </span>
                   </div>
-                  {bulkResult.rows_passed > 0 && (
-                    <div style={{ marginTop: 10, padding: '10px 12px', background: 'rgba(var(--accent-rgb), 0.08)', border: '1px solid rgba(var(--accent-rgb), 0.25)', borderRadius: 6 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                        Step 2 — Upload product images
+                  <div style={{ marginTop: 6, maxHeight: 110, overflowY: 'auto', fontSize: 12 }}>
+                    {Object.entries(validation.rowErrors).slice(0, 10).map(([rowIdx, errs]) => (
+                      <div key={rowIdx} style={{ marginBottom: 2 }}>
+                        Row {Number(rowIdx) + 2}: {errs[0]}
+                        {errs.length > 1 ? ` (+${errs.length - 1} more)` : ''}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                        Your products are imported but stay out of buyer visibility until they have a valid
-                        transparent PNG primary image. Upload a ZIP of PNGs named after the SKU
-                        (e.g. <strong>SKU123.png</strong> or <strong>VENDOR-SKU123-primary.png</strong>) and the
-                        images are attached to the matching products automatically.
-                      </div>
-
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <input
-                          type="file"
-                          accept=".zip"
-                          key="bulk-image-zip-input"
-                          onChange={e => {
-                            const f = e.target.files && e.target.files[0]
-                            setBulkZipFile(f || null)
-                            setBulkZipResult(null)
-                            setBulkZipError(null)
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                          disabled={!bulkZipFile || uploadingBulkZip}
-                          onClick={handleBulkImageUpload}
-                        >
-                          <ImageIcon sx={{ fontSize: 14 }} />
-                          {uploadingBulkZip ? 'Uploading images...' : 'Upload Images (ZIP)'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                          onClick={() => navigate('/media')}
-                        >
-                          <ImageIcon sx={{ fontSize: 14 }} />
-                          Open Media Manager
-                        </button>
-                      </div>
-
-                      {bulkZipError && (
-                        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--red)' }}>
-                          {bulkZipError}
-                        </div>
-                      )}
-
-                      {bulkZipResult && (
-                        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-secondary)' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                            Images: {bulkZipResult.created} attached | {bulkZipResult.matched} matched |{' '}
-                            {bulkZipResult.unmatched} unmatched | {bulkZipResult.failed} failed
-                          </div>
-                          <div style={{ marginBottom: 6 }}>
-                            Products now media-ready: {bulkZipResult.products_now_media_ready} | Media incomplete:{' '}
-                            {bulkZipResult.products_still_media_incomplete} | Activated: {bulkZipResult.products_now_active}
-                          </div>
-                          {Array.isArray(bulkZipResult.results) && bulkZipResult.results.some((r: any) => r.status !== 'created') && (
-                            <div style={{ maxHeight: 140, overflowY: 'auto' }}>
-                              {bulkZipResult.results
-                                .filter((r: any) => r.status !== 'created')
-                                .map((r: any, i: number) => (
-                                  <div key={i} style={{ marginBottom: 4, paddingLeft: 8, borderLeft: '2px solid var(--red)' }}>
-                                    {r.filename} — {r.reason || r.status}
-                                  </div>
-                                ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {bulkResult.errors && bulkResult.errors.length > 0 && (
-                    <div style={{ marginTop: 8, fontSize: 12, maxHeight: 150, overflowY: 'auto' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--red)', marginBottom: 4 }}>Errors encountered:</div>
-                      {bulkResult.errors.map((err: any, i: number) => {
-                        const errMsg = typeof err === 'object' && err !== null
-                          ? `Row ${err.row_number || '?'}${err.column_name ? ` (Col: ${err.column_name})` : ''}: ${err.validation_error || JSON.stringify(err)}${err.recommended_correction ? ` [Correction: ${err.recommended_correction}]` : ''}`
-                          : String(err);
-                        return (
-                          <div key={i} style={{ color: 'var(--text-secondary)', marginBottom: 4, paddingLeft: 8, borderLeft: '2px solid var(--red)' }}>
-                            {errMsg}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                    ))}
+                  </div>
                 </div>
               )}
+                </>
+              )}
 
+              {bulkStep === 2 && (
+                <>
+              <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8, marginBottom: 14, border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--green)', fontWeight: 600, fontSize: 14 }}>
+                  <CheckIcon sx={{ fontSize: 16 }} />
+                  <span>
+                    Catalog import finished. Imported: {(bulkResult?.rows_passed || 0) + (bulkResult?.rows_staged || 0)} of {bulkResult?.total_rows_processed || 0}
+                    {bulkResult?.rows_failed ? ` — ${bulkResult.rows_failed} row(s) failed validation` : ''}
+                  </span>
+                </div>
+                {(bulkResult?.rows_staged || 0) > 0 && (
+                  <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 6, background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: 12, color: 'var(--text-primary)' }}>
+                    <strong>{bulkResult.rows_staged} product(s)</strong> were imported as <strong>Inactive (staged)</strong> because
+                    they have no image yet. Upload the ZIP below — each product activates automatically once its transparent PNG passes validation.
+                  </div>
+                )}
+                {bulkResult?.errors && bulkResult.errors.length > 0 && (
+                  <div style={{ marginTop: 10, fontSize: 12, maxHeight: 160, overflowY: 'auto' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--red)', marginBottom: 4 }}>
+                      Validation errors ({bulkResult.errors.length}):
+                    </div>
+                    {bulkResult.errors.map((err: any, i: number) => {
+                      const errMsg = typeof err === 'object' && err !== null
+                        ? `Row ${err.row_number || '?'}${err.column_name ? ` (${err.column_name})` : ''}: ${err.validation_error || JSON.stringify(err)}${err.recommended_correction ? ` — ${err.recommended_correction}` : ''}`
+                        : String(err);
+                      return (
+                        <div key={i} style={{ color: 'var(--text-secondary)', marginBottom: 4, paddingLeft: 8, borderLeft: '2px solid var(--red)' }}>
+                          {errMsg}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {bulkImportedSkus.length > 0 && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-secondary)' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Imported SKUs</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 80, overflowY: 'auto' }}>
+                      {bulkImportedSkus.map(sku => (
+                        <span key={sku} style={{ padding: '2px 8px', borderRadius: 10, background: 'var(--bg-main)', border: '1px solid var(--border)', fontSize: 11 }}>
+                          {sku}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ padding: '10px 12px', background: 'rgba(var(--accent-rgb), 0.08)', border: '1px solid rgba(var(--accent-rgb), 0.25)', borderRadius: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  Upload product images (ZIP)
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                  PNG files must be named after the SKU — <strong>SKU123.png</strong> or <strong>VENDOR-SKU123-primary.png</strong>.
+                  Each image is validated (transparent PNG) and attached to its product automatically, no manual editing needed.
+                </div>
+
+                <input
+                  ref={bulkZipInputRef}
+                  type="file"
+                  accept=".zip,application/zip,application/x-zip-compressed"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = e.target.files && e.target.files[0]
+                    setBulkZipFile(f || null)
+                    setBulkZipResult(null)
+                    setBulkZipError(null)
+                    e.target.value = ''
+                  }}
+                />
+
+                <div
+                  onClick={() => { if (!uploadingBulkZip) bulkZipInputRef.current?.click() }}
+                  onDragOver={e => { e.preventDefault(); setBulkZipDragging(true) }}
+                  onDragLeave={() => setBulkZipDragging(false)}
+                  onDrop={e => {
+                    e.preventDefault()
+                    setBulkZipDragging(false)
+                    const f = e.dataTransfer.files && e.dataTransfer.files[0]
+                    if (!f) return
+                    if (!/\.zip$/i.test(f.name)) {
+                      setBulkZipError('Only .zip archives are allowed.')
+                      return
+                    }
+                    setBulkZipFile(f)
+                    setBulkZipResult(null)
+                    setBulkZipError(null)
+                  }}
+                  style={{
+                    border: `2px dashed ${bulkZipDragging ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 8,
+                    padding: '18px 12px',
+                    textAlign: 'center',
+                    cursor: uploadingBulkZip ? 'default' : 'pointer',
+                    background: bulkZipDragging ? 'rgba(var(--accent-rgb), 0.06)' : 'var(--bg-main)',
+                  }}
+                >
+                  <CloudUploadIcon sx={{ fontSize: 28, color: 'var(--text-secondary)' }} />
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 4 }}>
+                    {bulkZipFile ? bulkZipFile.name : 'Click or drag & drop a ZIP of product images'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    {bulkZipFile
+                      ? `${(bulkZipFile.size / (1024 * 1024)).toFixed(1)} MB — click to choose a different file`
+                      : 'Max 100 MB. Only transparent PNG files are accepted.'}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                    disabled={!bulkZipFile || uploadingBulkZip}
+                    onClick={handleBulkImageUpload}
+                  >
+                    <ImageIcon sx={{ fontSize: 14 }} />
+                    {uploadingBulkZip ? 'Uploading images...' : 'Upload Images (ZIP)'}
+                  </button>
+                  {bulkZipFile && !uploadingBulkZip && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => { setBulkZipFile(null); setBulkZipResult(null); setBulkZipError(null) }}
+                    >
+                      Remove file
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}
+                    onClick={() => navigate('/media')}
+                  >
+                    <ImageIcon sx={{ fontSize: 14 }} />
+                    Open Media Manager
+                  </button>
+                </div>
+
+                {bulkZipError && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--red)' }}>
+                    {bulkZipError}
+                  </div>
+                )}
+
+                {bulkZipResult && (
+                  <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                      Images attached: {bulkZipResult.created} | matched: {bulkZipResult.matched} | unmatched: {bulkZipResult.unmatched} | failed: {bulkZipResult.failed}
+                    </div>
+                    <div style={{ marginBottom: 6 }}>
+                      Products now media-ready: {bulkZipResult.products_now_media_ready} | Media incomplete: {bulkZipResult.products_still_media_incomplete} | Activated: {bulkZipResult.products_now_active}
+                    </div>
+                    {Array.isArray(bulkZipResult.results) && bulkZipResult.results.length > 0 && (
+                      <div style={{ maxHeight: 160, overflowY: 'auto' }}>
+                        {bulkZipResult.results.map((r: any, i: number) => (
+                          <div
+                            key={i}
+                            style={{
+                              marginBottom: 4,
+                              paddingLeft: 8,
+                              borderLeft: `2px solid ${r.status === 'created' ? 'var(--green)' : 'var(--red)'}`,
+                            }}
+                          >
+                            {r.filename}{r.product_sku ? ` → ${r.product_sku}` : ''} — {r.reason || r.status}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {bulkZipResult.products_now_active > 0 && (
+                      <div style={{ marginTop: 8, color: 'var(--green)' }}>
+                        {bulkZipResult.products_now_active} product(s) are now active and visible to buyers.
+                      </div>
+                    )}
+                    {bulkZipResult.products_still_media_incomplete > 0 && (
+                      <div style={{ marginTop: 8, color: 'var(--text-secondary)' }}>
+                        Upload a ZIP with the missing SKU files to finish the remaining products.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+                </>
+              )}
+
+              {bulkStep === 1 && (
+                <>
               <div className="form-group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <label className="label">Catalog Template Guidelines</label>
@@ -7205,15 +7330,39 @@ export default function CatalogPage() {
                   </div>
                 </div>
               )}
+                </>
+              )}
 
         </DialogContent>
-        <DialogActions>
-          <Button variant="outlined" onClick={handleCloseBulkModal}>
-            Close
-          </Button>
-          <Button variant="contained" type="submit" disabled={uploadingBulk || csvPreviewRows.length === 0 || validation.hasErrors}>
-            {uploadingBulk ? 'Uploading…' : 'Upload Catalog'}
-          </Button>
+        <DialogActions sx={{ justifyContent: 'space-between' }}>
+          {bulkStep === 2 ? (
+            <>
+              <Button variant="outlined" onClick={() => setBulkStep(1)} disabled={uploadingBulkZip}>
+                Back to Import
+              </Button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <Button variant="outlined" onClick={handleCloseBulkModal} disabled={uploadingBulkZip}>
+                  Close
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={handleBulkImageUpload}
+                  disabled={!bulkZipFile || uploadingBulkZip}
+                >
+                  {uploadingBulkZip ? 'Uploading…' : 'Upload Images (ZIP)'}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Button variant="outlined" onClick={handleCloseBulkModal} disabled={uploadingBulk}>
+                Close
+              </Button>
+              <Button variant="contained" type="submit" disabled={uploadingBulk || csvPreviewRows.length === 0 || validation.hasErrors}>
+                {uploadingBulk ? 'Uploading…' : 'Upload Catalog'}
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
 
