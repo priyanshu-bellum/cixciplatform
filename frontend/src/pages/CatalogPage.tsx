@@ -902,6 +902,7 @@ export default function CatalogPage() {
   const [updateMode, setUpdateMode] = useState<string>('create_only')
   // Bulk import — step 2: product images
   const [bulkStep, setBulkStep] = useState<1 | 2>(1)
+  const [bulkImagesOnly, setBulkImagesOnly] = useState(false)
   const [bulkImportedSkus, setBulkImportedSkus] = useState<string[]>([])
   const [bulkZipFile, setBulkZipFile] = useState<File | null>(null)
   const [bulkZipResult, setBulkZipResult] = useState<any | null>(null)
@@ -1348,6 +1349,7 @@ export default function CatalogPage() {
 
   const resetBulkState = () => {
     setBulkStep(1)
+    setBulkImagesOnly(false)
     setBulkImportedSkus([])
     setBulkFile(null)
     setBulkResult(null)
@@ -1362,6 +1364,13 @@ export default function CatalogPage() {
 
   const openBulkModal = () => {
     resetBulkState()
+    setShowBulkModal(true)
+  }
+
+  const openBulkImagesModal = () => {
+    resetBulkState()
+    setBulkImagesOnly(true)
+    setBulkStep(2)
     setShowBulkModal(true)
   }
 
@@ -4094,6 +4103,9 @@ export default function CatalogPage() {
               <>
                 <Button variant="outlined" startIcon={<CloudUploadIcon />} onClick={openBulkModal}>
                   Bulk Upload
+                </Button>
+                <Button variant="outlined" startIcon={<ImageIcon />} onClick={openBulkImagesModal}>
+                  Upload Images (ZIP)
                 </Button>
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetProductForm(); setShowAddModal(true); }}>
                   Add Product
@@ -6901,9 +6913,11 @@ export default function CatalogPage() {
       <Dialog open={showBulkModal} onClose={handleCloseBulkModal} fullWidth maxWidth="md" scroll="paper" slotProps={{ paper: { component: 'form', onSubmit: handleBulkUploadSubmit } }}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>
-            Bulk Import Products
+            {bulkImagesOnly ? 'Upload Product Images' : 'Bulk Import Products'}
             <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
-              Step {bulkStep} of 2 — {bulkStep === 1 ? 'Catalog file' : 'Product images'}
+              {bulkImagesOnly
+                ? 'ZIP of transparent PNGs named by SKU'
+                : `Step ${bulkStep} of 2 — ${bulkStep === 1 ? 'Catalog file' : 'Product images'}`}
             </span>
           </span>
           <IconButton size="small" onClick={handleCloseBulkModal}>
@@ -6944,7 +6958,15 @@ export default function CatalogPage() {
 
               {bulkStep === 2 && (
                 <>
-              <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8, marginBottom: 14, border: '1px solid var(--border)' }}>
+              {bulkImagesOnly && (
+                <div style={{ background: 'rgba(var(--accent-rgb), 0.08)', border: '1px solid rgba(var(--accent-rgb), 0.25)', padding: '10px 12px', borderRadius: 6, marginBottom: 14, fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Upload one transparent PNG per SKU. Name each file after the product SKU
+                  (for example <strong>STEP2CBL01.png</strong>). Images are matched case-insensitively,
+                  attached as the primary image, and each product activates automatically once validation passes.
+                  Already attached images are skipped.
+                </div>
+              )}
+              <div style={{ display: bulkImagesOnly ? 'none' : 'block', background: 'var(--bg-elevated)', padding: 12, borderRadius: 8, marginBottom: 14, border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--green)', fontWeight: 600, fontSize: 14 }}>
                   <CheckIcon sx={{ fontSize: 16 }} />
                   <span>
@@ -7337,9 +7359,11 @@ export default function CatalogPage() {
         <DialogActions sx={{ justifyContent: 'space-between' }}>
           {bulkStep === 2 ? (
             <>
-              <Button variant="outlined" onClick={() => setBulkStep(1)} disabled={uploadingBulkZip}>
-                Back to Import
-              </Button>
+              {bulkImagesOnly ? <span /> : (
+                <Button variant="outlined" onClick={() => setBulkStep(1)} disabled={uploadingBulkZip}>
+                  Back to Import
+                </Button>
+              )}
               <div style={{ display: 'flex', gap: 10 }}>
                 <Button variant="outlined" onClick={handleCloseBulkModal} disabled={uploadingBulkZip}>
                   Close

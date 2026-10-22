@@ -239,6 +239,31 @@ class TestZipUploadMatchesStagedProducts:
         assert str(product.primary_image_reference) == str(asset.id)
         assert product.status == "active"
 
+    def test_duplicate_zip_repairs_a_stuck_product(self, vendor_client, vendor_company):
+        # Re-uploading an image that is already attached must still reconcile
+        # activation. This repairs products left inactive by an earlier upload
+        # that attached the image without running the activation gate.
+        product = _make_product(vendor_company, sku="SKU-ZIP-DUP", status="inactive")
+
+        first = self._post_zip(vendor_client, {"SKU-ZIP-DUP.png": _png_bytes()})
+        assert first.status_code == 200, first.data
+        assert first.data["created"] == 1
+        product.refresh_from_db()
+        assert product.status == "active"
+
+        product.status = "inactive"
+        product.save(update_fields=["status"])
+
+        second = self._post_zip(vendor_client, {"SKU-ZIP-DUP.png": _png_bytes()})
+        assert second.status_code == 200, second.data
+        assert second.data["duplicates"] == 1
+        assert second.data["created"] == 0
+        assert second.data["products_now_media_ready"] == 1
+        assert second.data["products_now_active"] == 1
+
+        product.refresh_from_db()
+        assert product.status == "active"
+
     def test_archived_sku_is_not_matched(self, vendor_client, vendor_company):
         _make_product(vendor_company, sku="SKU-DEAD", status="archived")
 

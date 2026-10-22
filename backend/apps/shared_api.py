@@ -1105,6 +1105,10 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 content_hash=entry["content_hash"], status="ready",
             ).exists():
                 duplicate_count += 1
+                # Still reconcile the product: the image was already attached in
+                # an earlier upload, and that upload may have failed to activate
+                # the product. This makes a re-upload an idempotent repair.
+                products_updated.add(str(product.id))
                 results.append({
                     "filename": fname,
                     "status": "failed",
