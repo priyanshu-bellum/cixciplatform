@@ -7,6 +7,7 @@ import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
 import { parseWirelessCharging } from './DevicesPage'
 import Pagination, { usePagination } from '../components/Pagination'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -75,6 +76,17 @@ const SELL_BADGE: Record<string, string> = {
   selling: 'badge-green', stop_selling: 'badge-red',
   not_listed: 'badge-muted', under_review: 'badge-amber',
   for_sale: 'badge-green',
+}
+
+// Server-side pagination for the product list.
+const SERVER_PAGE_SIZE = 50
+
+// Shape of the paginated product list returned by /catalog/products/.
+interface ProductsPageResponse {
+  count: number
+  next?: string | null
+  previous?: string | null
+  results: any[]
 }
 
 function CellInput({
@@ -469,6 +481,8 @@ export default function CatalogPage() {
   const initialTab = (tabParam === 'my-compatibility' || searchParams.has('compatibility_device') || searchParams.has('device')) ? 'projection' : (tabParam === 'export-jobs' ? 'export_jobs' : 'products')
   const [tab, setTabState] = useState<'products' | 'projection' | 'export_jobs'>(initialTab)
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
+  // Server-side page cursor for the product list (1-based).
+  const [serverPage, setServerPage] = useState(1)
 
   const setTab = (newTab: 'products' | 'projection' | 'export_jobs') => {
     setTabState(newTab)
@@ -1749,6 +1763,8 @@ export default function CatalogPage() {
   const [refreshingProj, setRefreshingProj] = useState(false)
 
   const activeSearch = tab === 'projection' ? compatSearch : allSearch
+  // Typing should not fire a request per keystroke.
+  const debouncedActiveSearch = useDebouncedValue(activeSearch, 400)
   const activeFilterDeviceId = tab === 'projection' ? compatFilterDeviceId : allFilterDeviceId
   const activeFilterCategories = tab === 'projection' ? compatFilterCategories : allFilterCategories
   const activeFilterBrands = tab === 'projection' ? compatFilterBrands : allFilterBrands
@@ -1756,9 +1772,54 @@ export default function CatalogPage() {
   const activeFilterMsrps = tab === 'projection' ? compatFilterMsrps : allFilterMsrps
 
   // TanStack Queries
-  const { data, isLoading, refetch: refreshProducts } = useQuery({
-    queryKey: ['products', tab, activeSearch, activeFilterDeviceId],
-    queryFn: () => api.get('/catalog/products/', { params: { search: activeSearch || undefined, device_id: activeFilterDeviceId || undefined, paginate: 'false' } }).then(r => r.data),
+  // The product list is paginated and filtered on the server so the browser
+  // never has to download the whole catalog to render one page.
+  const { data: projection, refetch: refreshProjection, isRefetching: isRefetchingProj } = useQuery({
+    queryKey: ['my-projection'],
+    queryFn: () => api.get('/catalog/my-projection/my_projection/').then(r => r.data).catch(() => null),
+    enabled: tab === 'projection' && isBuyer,
+  })
+
+  // On the "My Compatibility" tab the visible set is the buyer's projected
+  // product list. The projection is resolved server-side (projection_scope)
+  // because a buyer can have thousands of compatible products — sending the
+  // id list as a query parameter would exceed the request-line limit.
+  const projectionScope = tab === 'projection' ? true : undefined
+
+  // Shared filter params for the product list and the "matching ids" lookup.
+  const productsFilterParams = useMemo(() => ({
+    search: debouncedActiveSearch || undefined,
+    device_id: activeFilterDeviceId || undefined,
+    product_category: activeFilterCategories.length ? activeFilterCategories.join(',') : undefined,
+    brand: activeFilterBrands.length ? activeFilterBrands.join(',') : undefined,
+    color: activeFilterColors.length ? activeFilterColors.join(',') : undefined,
+    msrp_range: activeFilterMsrps.length ? activeFilterMsrps.join(',') : undefined,
+    projection_scope: projectionScope,
+  }), [
+    debouncedActiveSearch, activeFilterDeviceId, activeFilterCategories, activeFilterBrands,
+    activeFilterColors, activeFilterMsrps, projectionScope,
+  ])
+
+  const {
+    data: productsPage,
+    isLoading,
+    isFetching: isProductsFetching,
+    refetch: refreshProducts,
+  } = useQuery<ProductsPageResponse>({
+    queryKey: [
+      'products', tab, debouncedActiveSearch, activeFilterDeviceId,
+      activeFilterCategories, activeFilterBrands, activeFilterColors, activeFilterMsrps,
+      projectionScope, serverPage,
+    ],
+    queryFn: () =>
+      api.get('/catalog/products/', {
+        params: {
+          ...productsFilterParams,
+          page: serverPage,
+          page_size: SERVER_PAGE_SIZE,
+        },
+      }).then(r => r.data),
+    placeholderData: (previous) => previous,
   })
 
 
@@ -1774,12 +1835,6 @@ export default function CatalogPage() {
     enabled: !!selectedManageProduct && showManageModal,
   })
 
-  const { data: projection, refetch: refreshProjection, isRefetching: isRefetchingProj } = useQuery({
-    queryKey: ['my-projection'],
-    queryFn: () => api.get('/catalog/my-projection/my_projection/').then(r => r.data).catch(() => null),
-    enabled: tab === 'projection' && isBuyer,
-  })
-
   const { data: exportJobs, refetch: refreshJobs, isRefetching: isRefetchingJobs } = useQuery({
     queryKey: ['export-jobs'],
     queryFn: () => api.get('/catalog/export-jobs/list_jobs/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => []),
@@ -1792,7 +1847,12 @@ export default function CatalogPage() {
     enabled: isBuyer,
   })
 
-  const products = data?.results ?? data ?? []
+  // The API returns one page of already-filtered products.
+  const products = useMemo(() => {
+    if (!productsPage) return []
+    return Array.isArray(productsPage) ? productsPage : (productsPage.results ?? [])
+  }, [productsPage])
+  const totalProducts = productsPage?.count ?? products.length
 
   const [activeDetailImageUrl, setActiveDetailImageUrl] = useState<string | null>(null)
 
@@ -1826,27 +1886,9 @@ export default function CatalogPage() {
     }
   }, [selectedManageProduct, allImages])
 
-  const filteredProducts = useMemo(() => {
-    if (!products) return []
-    return products.filter((p: any) => {
-      if (activeFilterCategories.length > 0 && !activeFilterCategories.includes(p.product_category)) return false
-      if (activeFilterBrands.length > 0 && !activeFilterBrands.includes(p.brand)) return false
-      if (activeFilterColors.length > 0 && !activeFilterColors.includes(p.color) && !activeFilterColors.includes(p.system_color)) return false
-      if (activeFilterMsrps.length > 0) {
-        const msrpVal = p.msrp ? parseFloat(p.msrp) : (p.buyer_wholesale_price ? parseFloat(p.buyer_wholesale_price) : 0)
-        const matchesAny = activeFilterMsrps.some(range => {
-          if (range === '0-25') return msrpVal < 25
-          if (range === '25-50') return msrpVal >= 25 && msrpVal <= 50
-          if (range === '50-100') return msrpVal >= 50 && msrpVal <= 100
-          if (range === '100-200') return msrpVal >= 100 && msrpVal <= 200
-          if (range === '200+') return msrpVal > 200
-          return false
-        })
-        if (!matchesAny) return false
-      }
-      return true
-    })
-  }, [products, activeFilterCategories, activeFilterBrands, activeFilterColors, activeFilterMsrps])
+  // Category / brand / color / MSRP filters are applied server-side (see the
+  // products query), so the page we received is already the filtered result.
+  const filteredProducts = products
 
   const brandsList = useMemo(() => {
     const unique = new Set<string>()
@@ -1857,37 +1899,46 @@ export default function CatalogPage() {
 
   const filteredDeviceRef = portfolio?.find((ref: any) => ref.device === activeFilterDeviceId)
   const filteredDeviceName = filteredDeviceRef ? filteredDeviceRef.device_name : 'Selected Device'
-  const compatibleProducts = filteredProducts.filter((p: any) =>
-    projection?.compatible_product_ids?.includes(p.id)
-  )
+  // On the compatibility tab the server already restricted the page to the
+  // buyer's projected products, so no further client-side narrowing is needed.
+  const compatibleProducts = filteredProducts
   const jobs = Array.isArray(exportJobs) ? exportJobs : (exportJobs?.results ?? [])
   const devices = devicesData?.results ?? devicesData ?? []
 
-  // 1. All Products pagination (50 items per page)
-  const {
-    currentPage: allProductsPage,
-    setCurrentPage: setAllProductsPage,
-    totalPages: totalAllProductsPages,
-    totalItems: totalAllProducts,
-    paginatedItems: paginatedAllProducts,
-  } = usePagination(filteredProducts, 50)
+  // 1. All Products pagination — driven by the server (one page per request).
+  const totalAllProducts = totalProducts
+  const totalAllProductsPages = Math.max(1, Math.ceil(totalProducts / SERVER_PAGE_SIZE))
+  const allProductsPage = serverPage
+  const setAllProductsPage = (page: number) => setServerPage(page)
+  const paginatedAllProducts = filteredProducts
+
+  // Any filter/search change invalidates the current page number.
+  useEffect(() => {
+    setServerPage(1)
+  }, [debouncedActiveSearch, allFilterCategories, allFilterBrands, allFilterColors, allFilterMsrps, activeFilterDeviceId, tab])
+
+  // 2. My Compatibility pagination — same server query, scoped by the buyer's
+  //    compatibility projection.
+  const totalCompatProducts = totalProducts
+  const totalCompatPages = totalAllProductsPages
+  const compatPage = serverPage
+  const setCompatPage = (page: number) => setServerPage(page)
+  const paginatedCompatProducts = filteredProducts
 
   useEffect(() => {
-    setAllProductsPage(1)
-  }, [allSearch, allFilterCategories, allFilterBrands, allFilterColors, allFilterMsrps, activeFilterDeviceId, setAllProductsPage])
+    setServerPage(1)
+  }, [debouncedActiveSearch, compatFilterCategories, compatFilterBrands, compatFilterColors, compatFilterMsrps, projection])
 
-  // 2. My Compatibility pagination (50 items per page)
-  const {
-    currentPage: compatPage,
-    setCurrentPage: setCompatPage,
-    totalPages: totalCompatPages,
-    totalItems: totalCompatProducts,
-    paginatedItems: paginatedCompatProducts,
-  } = usePagination(compatibleProducts, 50)
-
-  useEffect(() => {
-    setCompatPage(1)
-  }, [compatSearch, compatFilterCategories, compatFilterBrands, compatFilterColors, compatFilterMsrps, projection, setCompatPage])
+  // "Select all" spans every page, so the full id set for the active filters
+  // is fetched from the API (ids only — no product payload).
+  const fetchMatchingIds = async (): Promise<string[]> => {
+    try {
+      const res = await api.get('/catalog/products/ids/', { params: productsFilterParams })
+      return res.data?.ids ?? []
+    } catch {
+      return []
+    }
+  }
 
   // 3. Export Jobs pagination (50 items per page)
   const {
@@ -3309,7 +3360,7 @@ export default function CatalogPage() {
         
         <div className="telco-card-img-wrap">
           {p.primary_image_url ? (
-            <img src={getImageUrl(p.primary_image_url)} alt={p.name} />
+            <img src={getImageUrl(p.primary_image_url)} alt={p.name} loading="lazy" decoding="async" />
           ) : (
             <ShoppingBagIcon sx={{ fontSize: 32, color: 'text.disabled' }} />
           )}
@@ -4071,6 +4122,13 @@ export default function CatalogPage() {
             </div>
           </Box>
 
+          {isProductsFetching && !isLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+              <CircularProgress size={12} />
+              Updating results…
+            </div>
+          )}
+
           {viewMode === 'grid' ? (
             isLoading ? (
               <div className="loading-overlay"><div className="spinner" /> Loading products…</div>
@@ -4126,16 +4184,13 @@ export default function CatalogPage() {
                           <input
                             type="checkbox"
                             checked={filteredProducts.length > 0 && filteredProducts.every((p: any) => allProductsSelectedIds.includes(p.id))}
-                            onChange={() => {
-                              const allSelected = filteredProducts.every((p: any) => allProductsSelectedIds.includes(p.id))
+                            onChange={async () => {
+                              const allSelected = filteredProducts.length > 0 && filteredProducts.every((p: any) => allProductsSelectedIds.includes(p.id))
                               if (allSelected) {
                                 setAllProductsSelectedIds(allProductsSelectedIds.filter(id => !filteredProducts.some((p: any) => p.id === id)))
                               } else {
-                                const newIds = [...allProductsSelectedIds]
-                                filteredProducts.forEach((p: any) => {
-                                  if (!newIds.includes(p.id)) newIds.push(p.id)
-                                })
-                                setAllProductsSelectedIds(newIds)
+                                const matchingIds = await fetchMatchingIds()
+                                setAllProductsSelectedIds(Array.from(new Set([...allProductsSelectedIds, ...matchingIds])))
                               }
                             }}
                           />
@@ -4188,6 +4243,8 @@ export default function CatalogPage() {
                             <img
                               src={getImageUrl(p.primary_image_url)}
                               alt={p.name}
+                              loading="lazy"
+                              decoding="async"
                               style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }}
                             />
                           ) : (
@@ -4408,9 +4465,9 @@ export default function CatalogPage() {
                               el.indeterminate = isSome
                             }
                           }}
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             if (e.target.checked) {
-                              const allIds = compatibleProducts.map((p: any) => p.id)
+                              const allIds = await fetchMatchingIds()
                               setMyCompatibilitySelectedIds(allIds)
                             } else {
                               setMyCompatibilitySelectedIds([])
@@ -4526,16 +4583,13 @@ export default function CatalogPage() {
                               <input
                                 type="checkbox"
                                 checked={compatibleProducts.length > 0 && compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))}
-                                onChange={() => {
-                                  const allSelected = compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))
+                                onChange={async () => {
+                                  const allSelected = compatibleProducts.length > 0 && compatibleProducts.every((p: any) => myCompatibilitySelectedIds.includes(p.id))
                                   if (allSelected) {
                                     setMyCompatibilitySelectedIds(myCompatibilitySelectedIds.filter(id => !compatibleProducts.some((p: any) => p.id === id)))
                                   } else {
-                                    const newIds = [...myCompatibilitySelectedIds]
-                                    compatibleProducts.forEach((p: any) => {
-                                      if (!newIds.includes(p.id)) newIds.push(p.id)
-                                    })
-                                    setMyCompatibilitySelectedIds(newIds)
+                                    const matchingIds = await fetchMatchingIds()
+                                    setMyCompatibilitySelectedIds(Array.from(new Set([...myCompatibilitySelectedIds, ...matchingIds])))
                                   }
                                 }}
                               />
@@ -4584,6 +4638,8 @@ export default function CatalogPage() {
                                   <img
                                     src={getImageUrl(p.primary_image_url)}
                                     alt={p.name}
+                                    loading="lazy"
+                                    decoding="async"
                                     style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }}
                                   />
                                 ) : (

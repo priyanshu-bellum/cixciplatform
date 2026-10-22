@@ -1,9 +1,12 @@
 """Product Catalog — Serializers + ViewSets + URLs"""
 from rest_framework import serializers, viewsets, status, filters
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
+from django_filters import rest_framework as django_filters
+from django.db.models import Q
 from django.urls import path, include
 from django.utils import timezone
 from rest_framework.routers import DefaultRouter
@@ -28,6 +31,10 @@ class ProductSerializerBase(serializers.ModelSerializer):
 
     def get_vendor_name(self, obj):
         try:
+            bulk = self.context.get("bulk_companies")
+            if bulk is not None:
+                vendor = bulk.get(obj.vendor_company_reference)
+                return vendor["name"] if vendor else None
             from apps.tenant.models import Company
             vendor = Company.objects.filter(id=obj.vendor_company_reference).first()
             return vendor.name if vendor else None
@@ -36,6 +43,10 @@ class ProductSerializerBase(serializers.ModelSerializer):
 
     def get_vendor_map_pricing_enforced(self, obj):
         try:
+            bulk = self.context.get("bulk_companies")
+            if bulk is not None:
+                vendor = bulk.get(obj.vendor_company_reference)
+                return vendor["map_pricing_enforced"] if vendor else False
             from apps.tenant.models import Company
             vendor = Company.objects.filter(id=obj.vendor_company_reference).first()
             return vendor.map_pricing_enforced if vendor else False
@@ -65,12 +76,20 @@ class ProductSerializerBase(serializers.ModelSerializer):
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         try:
-            from apps.media.models import MediaAsset
             from django.conf import settings
             media_url = getattr(settings, "MEDIA_URL", "/media/")
-            
-            assets = MediaAsset.objects.filter(owner_record_id=instance.id, status="ready").order_by("created_at")
-            asset_urls = [f"{media_url}{asset.storage_key}" for asset in assets]
+
+            bulk_owned = self.context.get("bulk_owned_media")
+            if bulk_owned is not None:
+                assets = [
+                    a for a in bulk_owned.get(instance.id, [])
+                    if a.get("status") == "ready"
+                ]
+                asset_urls = [f"{media_url}{a['storage_key']}" for a in assets]
+            else:
+                from apps.media.models import MediaAsset
+                assets = MediaAsset.objects.filter(owner_record_id=instance.id, status="ready").order_by("created_at")
+                asset_urls = [f"{media_url}{asset.storage_key}" for asset in assets]
             
             existing = ret.get("media_references")
             if not isinstance(existing, list):
@@ -218,12 +237,18 @@ class ProductListSerializer(ProductSerializerBase):
     def get_primary_image_url(self, obj):
         if obj.primary_image_reference:
             try:
-                from apps.media.models import MediaAsset
                 from django.conf import settings
-                asset = MediaAsset.objects.get(id=obj.primary_image_reference)
-                if asset.status == "ready":
-                    media_url = getattr(settings, "MEDIA_URL", "/media/")
-                    return f"{media_url}{asset.storage_key}"
+                media_url = getattr(settings, "MEDIA_URL", "/media/")
+                bulk = self.context.get("bulk_primary_media")
+                if bulk is not None:
+                    asset = bulk.get(obj.primary_image_reference)
+                    if asset and asset.get("status") == "ready":
+                        return f"{media_url}{asset['storage_key']}"
+                else:
+                    from apps.media.models import MediaAsset
+                    asset = MediaAsset.objects.get(id=obj.primary_image_reference)
+                    if asset.status == "ready":
+                        return f"{media_url}{asset.storage_key}"
             except Exception:
                 pass
         if isinstance(obj.media_references, list) and len(obj.media_references) > 0:
@@ -238,6 +263,9 @@ class ProductListSerializer(ProductSerializerBase):
         intentionally excluded from buyer-facing responses.
         """
         try:
+            bulk = self.context.get("bulk_compatibility")
+            if bulk is not None:
+                return bulk.get(obj.id, [])
             from apps.catalog.models import ProductCompatibilityAssertion
             from apps.devices.models import Device
             assertions = ProductCompatibilityAssertion.objects.filter(
@@ -268,6 +296,22 @@ class ProductListSerializer(ProductSerializerBase):
                 if emitted[vendor_id]["product_id"] == product_id:
                     return emitted[vendor_id]["data"]
                 return None
+
+            bulk = self.context.get("bulk_companies")
+            if bulk is not None:
+                vendor = bulk.get(obj.vendor_company_reference)
+                if not vendor:
+                    emitted[vendor_id] = {"product_id": product_id, "data": None}
+                    return None
+                data = {
+                    "vendor_return_address1": vendor.get("return_address_line1") or "",
+                    "vendor_return_address2": vendor.get("return_address_line2") or "",
+                    "vendor_return_city": vendor.get("return_city") or "",
+                    "vendor_return_state": vendor.get("return_state") or "",
+                    "vendor_return_zip_code": vendor.get("return_zip_code") or "",
+                }
+                emitted[vendor_id] = {"product_id": product_id, "data": data}
+                return data
 
             from apps.tenant.models import Company
             vendor = Company.objects.filter(id=obj.vendor_company_reference).first()
@@ -705,12 +749,154 @@ class DynamicDropdownConfigSerializer(serializers.ModelSerializer):
         return attrs
 
 
+# ─── Product list filtering + pagination ─────────────────────────────────────
+
+class CSVInFilter(django_filters.BaseInFilter):
+    """
+    Comma-separated multi-value filter (e.g. ?brand=Apple,Samsung).
+    django-filter's BaseInFilter expects a list; query strings arrive as CSV.
+    """
+    def filter(self, qs, value):
+        if value in (None, "", []):
+            return qs
+        if isinstance(value, str):
+            value = [v.strip() for v in value.split(",") if v.strip()]
+            if not value:
+                return qs
+        return super().filter(qs, value)
+
+
+class ProductFilterSet(django_filters.FilterSet):
+    """
+    Server-side filters for the Product Catalog list.
+
+    These mirror the filters the Catalog UI applies client-side, so that the
+    list can be paginated server-side without the client needing every row.
+    """
+    product_category = CSVInFilter(field_name="product_category", lookup_expr="in")
+    brand = CSVInFilter(field_name="brand", lookup_expr="in")
+    color = CSVInFilter(method="filter_color")
+    msrp_range = CSVInFilter(method="filter_msrp_range")
+    projection_scope = django_filters.BooleanFilter(method="filter_projection_scope")
+    product_ids = django_filters.CharFilter(method="filter_product_ids")
+
+    class Meta:
+        model = Product
+        fields = [
+            "product_type", "status", "selling_status", "vendor_company_reference",
+        ]
+
+    def filter_color(self, queryset, name, value):
+        """A product matches when its color OR its system_color is selected."""
+        if not value:
+            return queryset
+        if isinstance(value, str):
+            value = [v.strip() for v in value.split(",") if v.strip()]
+        if not value:
+            return queryset
+        from django.db.models import Q
+        return queryset.filter(Q(color__in=value) | Q(system_color__in=value))
+
+    def filter_msrp_range(self, queryset, name, value):
+        """
+        MSRP band filter. Bands match the UI options:
+        0-25, 25-50, 50-100, 100-200, 200+ (values are inclusive of the
+        lower bound and the upper bound except for the open-ended top band).
+        """
+        if not value:
+            return queryset
+        if isinstance(value, str):
+            value = [v.strip() for v in value.split(",") if v.strip()]
+        if not value:
+            return queryset
+
+        from decimal import Decimal
+        from django.db.models import Q
+
+        bands = {
+            "0-25": (Decimal("0"), Decimal("25"), False),
+            "25-50": (Decimal("25"), Decimal("50"), True),
+            "50-100": (Decimal("50"), Decimal("100"), True),
+            "100-200": (Decimal("100"), Decimal("200"), True),
+            "200+": (Decimal("200"), None, True),
+        }
+
+        query = Q()
+        matched = False
+        for band in value:
+            if band not in bands:
+                continue
+            low, high, low_inclusive = bands[band]
+            if high is None:
+                cond = Q(msrp__gte=low) if low_inclusive else Q(msrp__gt=low)
+            else:
+                cond = Q(msrp__gte=low, msrp__lte=high) if low_inclusive else Q(msrp__gt=low, msrp__lte=high)
+            query = query | cond
+            matched = True
+
+        if not matched:
+            return queryset
+        return queryset.filter(query)
+
+    def filter_product_ids(self, queryset, name, value):
+        """Restrict to an explicit set of product UUIDs (buyer projection scope)."""
+        if not value:
+            return queryset
+        ids = [v.strip() for v in str(value).split(",") if v.strip()]
+        if not ids:
+            return queryset
+        return queryset.filter(id__in=ids)
+
+    def filter_projection_scope(self, queryset, name, value):
+        """
+        Restrict to the buyer's own compatibility projection.
+
+        The projection id set is resolved on the server rather than sent as a
+        query parameter — a buyer can have thousands of compatible products and
+        the resulting URL would exceed the request-line limit.
+        """
+        if not value:
+            return queryset
+        user = getattr(self.request, "user", None)
+        if not user or user.is_anonymous or not getattr(user, "entity", None):
+            return queryset.none()
+
+        from apps.catalog.models import BuyerScopedCompatibilityProjection
+        try:
+            projection = BuyerScopedCompatibilityProjection.objects.get(
+                buyer_reference=user.id,
+                company_scope_reference=user.entity.company_id,
+                buyer_entity_reference=user.entity_id,
+            )
+        except BuyerScopedCompatibilityProjection.DoesNotExist:
+            return queryset.none()
+
+        ids = [str(i) for i in (projection.compatible_product_ids or [])]
+        if not ids:
+            return queryset.none()
+        return queryset.filter(id__in=ids)
+
+
+class ProductPagination(PageNumberPagination):
+    """
+    Numbered pagination for the catalog list.
+
+    The Catalog UI shows "Page X of Y" with prev/next controls, so a
+    page-number scheme is used rather than the platform-wide cursor scheme.
+    `paginate=false` still returns the full list for internal/export callers.
+    """
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
 # ─── ViewSets ─────────────────────────────────────────────────────────────────
 
 class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = Product.objects.all()
     action_capability_map = {
         "list": "catalog.product.list",
+        "matching_ids": "catalog.product.list",
         "retrieve": "catalog.product.read",
         "create": "catalog.product.create",
         "update": "catalog.product.update",
@@ -724,7 +910,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "audit_history": "catalog.product.read",
     }
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["product_type", "status", "selling_status", "vendor_company_reference", "product_category"]
+    filterset_class = ProductFilterSet
     search_fields = [
         "name",
         "sku",
@@ -763,7 +949,139 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         # Only needed for list action; dict is mutated in-place by the serializer
         if getattr(self, "action", None) == "list":
             ctx["vendor_address_emitted"] = {}
+        # Bulk-prefetched maps (media / vendors / compatibility) — built in list()
+        # to avoid the N+1 query pattern in the serializer.
+        bulk = getattr(self, "_bulk_ctx", None)
+        if bulk:
+            ctx.update(bulk)
         return ctx
+
+    @property
+    def pagination_class(self):
+        """
+        Numbered pagination for the catalog list.
+
+        `paginate=false` returns the complete list (used by internal/export
+        callers that need every row).
+        """
+        request = getattr(self, "request", None)
+        if request is not None and request.query_params.get("paginate") == "false":
+            return None
+        return ProductPagination
+
+    def _build_bulk_context(self, products):
+        """
+        Pre-load the related rows needed by ProductListSerializer in a fixed
+        number of queries, instead of one query per product per relation.
+
+        Without this the catalog list issued ~5 queries per row (media assets,
+        vendor company x2, primary image, compatibility assertions + devices),
+        which is what made the Catalog page slow to load.
+        """
+        if not products:
+            return {}
+
+        from apps.media.models import MediaAsset
+        from apps.tenant.models import Company
+        from apps.catalog.models import ProductCompatibilityAssertion
+        from apps.devices.models import Device
+        from django.conf import settings
+
+        product_ids = [p.id for p in products]
+        media_url = getattr(settings, "MEDIA_URL", "/media/")
+
+        # ── Media assets: primary images (by id) + owned assets (by owner id) ──
+        primary_ids = [p.primary_image_reference for p in products if p.primary_image_reference]
+        assets = MediaAsset.objects.filter(
+            Q(id__in=primary_ids) | Q(owner_record_id__in=product_ids)
+        ).order_by("created_at").values("id", "owner_record_id", "status", "storage_key")
+
+        primary_map = {}
+        owned_map = {}
+        for a in assets:
+            if a["id"] in primary_ids and a["id"] not in primary_map:
+                primary_map[a["id"]] = a
+            owner_id = a["owner_record_id"]
+            if owner_id:
+                owned_map.setdefault(owner_id, []).append(a)
+
+        # ── Vendor companies (name + MAP enforcement) ──────────────────────────
+        vendor_ids = list({p.vendor_company_reference for p in products if p.vendor_company_reference})
+        company_map = {
+            c.id: {
+                "name": c.name,
+                "map_pricing_enforced": c.map_pricing_enforced,
+                "return_address_line1": c.return_address_line1,
+                "return_address_line2": c.return_address_line2,
+                "return_city": c.return_city,
+                "return_state": c.return_state,
+                "return_zip_code": c.return_zip_code,
+            }
+            for c in Company.objects.filter(id__in=vendor_ids)
+        }
+
+        # ── Device compatibility (assertions + devices in one pass each) ───────
+        assertions = ProductCompatibilityAssertion.objects.filter(
+            product_id__in=product_ids,
+            is_compatible=True,
+            is_excluded=False,
+        ).values_list("product_id", "device_reference")
+
+        device_ids = {d for (_pid, d) in assertions}
+        devices = {
+            d.id: d
+            for d in Device.objects.filter(id__in=device_ids).select_related("manufacturer")
+        }
+        compat_map = {}
+        for pid, device_ref in assertions:
+            dev = devices.get(device_ref)
+            if not dev:
+                continue
+            compat_map.setdefault(pid, []).append({
+                "device_id": str(dev.id),
+                "name": f"{dev.manufacturer.name} {dev.name}",
+                "model_number": dev.model_number or "",
+            })
+
+        return {
+            "bulk_primary_media": primary_map,
+            "bulk_owned_media": owned_map,
+            "bulk_companies": company_map,
+            "bulk_compatibility": compat_map,
+            "bulk_media_url": media_url,
+        }
+
+    def list(self, request, *args, **kwargs):
+        """
+        Paginated product list.
+
+        The page of products is resolved first, then the related rows needed
+        for serialization are loaded in bulk (see _build_bulk_context) so the
+        response cost is proportional to the page size, not to the catalog size.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        rows = page if page is not None else list(queryset)
+
+        self._bulk_ctx = self._build_bulk_context(rows)
+
+        serializer = self.get_serializer(rows, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="ids")
+    def matching_ids(self, request):
+        """
+        Ids of every product matching the current filters (no pagination).
+
+        The catalog list is paged server-side, so "select all" needs the full
+        id set for the active filters. Only ids are returned — no product
+        payload is serialized.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        ids = list(queryset.values_list("id", flat=True))
+        return Response({"ids": [str(i) for i in ids], "count": len(ids)})
 
     def get_queryset(self):
         qs = super().get_queryset()
