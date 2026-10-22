@@ -13,6 +13,7 @@ from rest_framework.routers import DefaultRouter
 
 from apps.tenant.mixins import CheckAccessMixin, BuyerScopedQuerysetMixin
 from apps.tenant.services import check_access
+from apps.shared_api import media_short_url
 
 from .models import (
     Product, ProductCompatibilityAssertion,
@@ -76,49 +77,30 @@ class ProductSerializerBase(serializers.ModelSerializer):
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         try:
-            from django.conf import settings
-            media_url = getattr(settings, "MEDIA_URL", "/media/")
-
             bulk_owned = self.context.get("bulk_owned_media")
             if bulk_owned is not None:
                 assets = [
                     a for a in bulk_owned.get(instance.id, [])
                     if a.get("status") == "ready"
                 ]
-                asset_urls = [f"{media_url}{a['storage_key']}" for a in assets]
+                asset_urls = [media_short_url(a['id']) for a in assets]
             else:
                 from apps.media.models import MediaAsset
                 assets = MediaAsset.objects.filter(owner_record_id=instance.id, status="ready").order_by("created_at")
-                asset_urls = [f"{media_url}{asset.storage_key}" for asset in assets]
-            
+                asset_urls = [media_short_url(asset.id) for asset in assets]
+
             existing = ret.get("media_references")
             if not isinstance(existing, list):
                 existing = []
-            
+
             combined = []
             for url in asset_urls:
                 if url not in combined:
                     combined.append(url)
             for url in existing:
-                if isinstance(url, str):
-                    cleaned = url
-                    # Look for known media path patterns to extract storage key
-                    for base in [media_url, "/media/"]:
-                        if base in cleaned:
-                            idx = cleaned.find(base)
-                            if idx != -1:
-                                cleaned = cleaned[idx + len(base):]
-                                cleaned = f"{media_url}{cleaned}"
-                                break
-                    else:
-                        if not (cleaned.startswith("http://") or cleaned.startswith("https://")):
-                            if cleaned.startswith("/"):
-                                cleaned = cleaned.lstrip("/")
-                            cleaned = f"{media_url}{cleaned}"
-                    url = cleaned
-                if url not in combined:
+                if isinstance(url, str) and url not in combined:
                     combined.append(url)
-            
+
             ret["media_references"] = combined
         except Exception:
             pass
@@ -237,18 +219,16 @@ class ProductListSerializer(ProductSerializerBase):
     def get_primary_image_url(self, obj):
         if obj.primary_image_reference:
             try:
-                from django.conf import settings
-                media_url = getattr(settings, "MEDIA_URL", "/media/")
                 bulk = self.context.get("bulk_primary_media")
                 if bulk is not None:
                     asset = bulk.get(obj.primary_image_reference)
                     if asset and asset.get("status") == "ready":
-                        return f"{media_url}{asset['storage_key']}"
+                        return media_short_url(asset['id'])
                 else:
                     from apps.media.models import MediaAsset
                     asset = MediaAsset.objects.get(id=obj.primary_image_reference)
                     if asset.status == "ready":
-                        return f"{media_url}{asset.storage_key}"
+                        return media_short_url(asset.id)
             except Exception:
                 pass
         if isinstance(obj.media_references, list) and len(obj.media_references) > 0:
@@ -600,11 +580,9 @@ class ProductDetailSerializer(ProductSerializerBase):
         if obj.primary_image_reference:
             try:
                 from apps.media.models import MediaAsset
-                from django.conf import settings
                 asset = MediaAsset.objects.get(id=obj.primary_image_reference)
                 if asset.status == "ready":
-                    media_url = getattr(settings, "MEDIA_URL", "/media/")
-                    return f"{media_url}{asset.storage_key}"
+                    return media_short_url(asset.id)
             except Exception:
                 pass
         # Fallback to external media_references URLs if available
@@ -681,11 +659,7 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
             from apps.media.models import MediaAsset
             asset = MediaAsset.objects.filter(id=obj.output_file_reference).first()
             if asset and asset.storage_key:
-                from django.conf import settings
-                media_url = settings.MEDIA_URL
-                if not media_url.endswith("/"):
-                    media_url += "/"
-                return f"{media_url}{asset.storage_key}"
+                return media_short_url(asset.id)
         return None
 
     def get_buyer_company_name(self, obj):
@@ -708,11 +682,9 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
                 if p.primary_image_reference:
                     try:
                         from apps.media.models import MediaAsset
-                        from django.conf import settings
                         asset = MediaAsset.objects.get(id=p.primary_image_reference)
                         if asset.status == "ready":
-                            media_url = getattr(settings, "MEDIA_URL", "/media/")
-                            primary_image_url = f"{media_url}{asset.storage_key}"
+                            primary_image_url = media_short_url(asset.id)
                     except Exception:
                         pass
                 if not primary_image_url and isinstance(p.media_references, list) and len(p.media_references) > 0:
@@ -3614,7 +3586,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         )
                         if idx == 0 or first_asset_id is None:
                             first_asset_id = asset_id
-                        cixci_media_refs.append(f"{media_url}{storage_key}")
+                        cixci_media_refs.append(media_short_url(asset_id))
                     
                     product.media_references = cixci_media_refs
                     if first_asset_id:
