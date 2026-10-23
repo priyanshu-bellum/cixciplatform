@@ -823,6 +823,45 @@ export default function CatalogPage() {
     setSearchParams(newParams)
   }
 
+  // Admin-only filters: Vendor, MAP Price, Wholesale Price
+  const [allFilterVendor, setAllFilterVendorState] = useState(searchParams.get('all_vendor') || '')
+  const setAllFilterVendor = (val: string) => {
+    setAllFilterVendorState(val)
+    const newParams = new URLSearchParams(searchParams)
+    if (val) {
+      newParams.set('all_vendor', val)
+    } else {
+      newParams.delete('all_vendor')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allFilterMapPrice, setAllFilterMapPriceState] = useState(searchParams.get('all_map_price') || '')
+  const setAllFilterMapPrice = (val: string) => {
+    setAllFilterMapPriceState(val)
+    const newParams = new URLSearchParams(searchParams)
+    if (val) {
+      newParams.set('all_map_price', val)
+    } else {
+      newParams.delete('all_map_price')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [allFilterWholesalePrice, setAllFilterWholesalePriceState] = useState(searchParams.get('all_wholesale_price') || '')
+  const setAllFilterWholesalePrice = (val: string) => {
+    setAllFilterWholesalePriceState(val)
+    const newParams = new URLSearchParams(searchParams)
+    if (val) {
+      newParams.set('all_wholesale_price', val)
+    } else {
+      newParams.delete('all_wholesale_price')
+    }
+    setSearchParams(newParams)
+  }
+
+  const [exporting, setExporting] = useState(false)
+
   // My Compatibility filters state
   const [compatFilterCategories, setCompatFilterCategoriesState] = useState<string[]>(
     searchParams.get('compatibility_category')?.split(',').filter(Boolean) || []
@@ -1846,9 +1885,13 @@ export default function CatalogPage() {
     color: activeFilterColors.length ? activeFilterColors.join(',') : undefined,
     msrp_range: activeFilterMsrps.length ? activeFilterMsrps.join(',') : undefined,
     projection_scope: projectionScope,
+    vendor_company_reference: allFilterVendor || undefined,
+    has_map_price: allFilterMapPrice === 'has' ? 'true' : allFilterMapPrice === 'missing' ? 'false' : undefined,
+    has_wholesale_price: allFilterWholesalePrice === 'has' ? 'true' : allFilterWholesalePrice === 'missing' ? 'false' : undefined,
   }), [
     debouncedActiveSearch, activeFilterDeviceId, activeFilterCategories, activeFilterBrands,
     activeFilterColors, activeFilterMsrps, projectionScope,
+    allFilterVendor, allFilterMapPrice, allFilterWholesalePrice,
   ])
 
   const {
@@ -1861,6 +1904,7 @@ export default function CatalogPage() {
       'products', tab, debouncedActiveSearch, activeFilterDeviceId,
       activeFilterCategories, activeFilterBrands, activeFilterColors, activeFilterMsrps,
       projectionScope, projection?.last_recalculated_at, serverPage,
+      allFilterVendor, allFilterMapPrice, allFilterWholesalePrice,
     ],
     queryFn: () =>
       api.get('/catalog/products/', {
@@ -1882,6 +1926,12 @@ export default function CatalogPage() {
   const { data: devicesData } = useQuery({
     queryKey: ['devices'],
     queryFn: () => api.get('/devices/devices/?paginate=false').then(r => r.data),
+  })
+
+  const { data: vendorCompaniesData } = useQuery({
+    queryKey: ['vendor-companies'],
+    queryFn: () => api.get('/tenant/companies/', { params: { company_type: 'vendor', paginate: 'false' } }).then(r => r.data),
+    enabled: !!isCixciAdmin,
   })
 
   const { data: activeCompatibilities, refetch: refetchCompatibilities } = useQuery({
@@ -1999,7 +2049,7 @@ export default function CatalogPage() {
   // Any filter/search change invalidates the current page number.
   useEffect(() => {
     setServerPage(1)
-  }, [debouncedActiveSearch, allFilterCategories, allFilterBrands, allFilterColors, allFilterMsrps, activeFilterDeviceId, tab])
+  }, [debouncedActiveSearch, allFilterCategories, allFilterBrands, allFilterColors, allFilterMsrps, activeFilterDeviceId, tab, allFilterVendor, allFilterMapPrice, allFilterWholesalePrice])
 
   // 2. My Compatibility pagination — same server query, scoped by the buyer's
   //    compatibility projection.
@@ -4216,7 +4266,54 @@ export default function CatalogPage() {
               onChange={setAllFilterMsrps}
             />
 
-            {(allFilterDeviceId || allFilterCategories.length > 0 || allFilterBrands.length > 0 || allFilterColors.length > 0 || allFilterMsrps.length > 0) && (
+            {isCixciAdmin && (
+              <>
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Vendor</InputLabel>
+                  <Select
+                    value={allFilterVendor}
+                    label="Vendor"
+                    onChange={(e) => setAllFilterVendor(e.target.value as string)}
+                  >
+                    <MenuItem value="">All Vendors</MenuItem>
+                    {(Array.isArray(vendorCompaniesData) ? vendorCompaniesData : vendorCompaniesData?.results ?? [])
+                      .slice()
+                      .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''))
+                      .map((c: any) => (
+                        <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 130 }}>
+                  <InputLabel>MAP Price</InputLabel>
+                  <Select
+                    value={allFilterMapPrice}
+                    label="MAP Price"
+                    onChange={(e) => setAllFilterMapPrice(e.target.value as string)}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    <MenuItem value="has">Has Value</MenuItem>
+                    <MenuItem value="missing">Missing</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Wholesale Price</InputLabel>
+                  <Select
+                    value={allFilterWholesalePrice}
+                    label="Wholesale Price"
+                    onChange={(e) => setAllFilterWholesalePrice(e.target.value as string)}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    <MenuItem value="has">Has Value</MenuItem>
+                    <MenuItem value="missing">Missing</MenuItem>
+                  </Select>
+                </FormControl>
+              </>
+            )}
+
+            {(allFilterDeviceId || allFilterCategories.length > 0 || allFilterBrands.length > 0 || allFilterColors.length > 0 || allFilterMsrps.length > 0 || allFilterVendor || allFilterMapPrice || allFilterWholesalePrice) && (
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -4226,6 +4323,9 @@ export default function CatalogPage() {
                   setAllFilterBrands([])
                   setAllFilterColors([])
                   setAllFilterMsrps([])
+                  setAllFilterVendor('')
+                  setAllFilterMapPrice('')
+                  setAllFilterWholesalePrice('')
                   const newParams = new URLSearchParams(searchParams)
                   newParams.delete('all_device')
                   setSearchParams(newParams)
@@ -4233,6 +4333,50 @@ export default function CatalogPage() {
               >
                 Clear Filters
               </button>
+            )}
+
+            {isCixciAdmin && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<DownloadIcon />}
+                disabled={exporting}
+                sx={{ alignSelf: 'flex-end', height: 38 }}
+                onClick={async () => {
+                  setExporting(true)
+                  try {
+                    const res = await api.get('/catalog/products/', {
+                      params: { ...productsFilterParams, paginate: 'false' },
+                    })
+                    const allProducts = Array.isArray(res.data) ? res.data : (res.data.results ?? [])
+                    const rows = allProducts.map((p: any) => ({
+                      SKU: p.sku || '',
+                      Name: p.name || '',
+                      Brand: p.brand || '',
+                      Vendor: p.vendor_name || '',
+                      Category: p.product_category || '',
+                      Status: p.status || '',
+                      'Selling Status': p.selling_status || '',
+                      'MAP Price': p.map_price ?? '',
+                      'Wholesale Price': p.vendor_wholesale_price_amount ?? '',
+                      MSRP: p.msrp ?? '',
+                      Color: p.color || '',
+                      UPC: p.upc || '',
+                    }))
+                    const ws = XLSX.utils.json_to_sheet(rows)
+                    const wb = XLSX.utils.book_new()
+                    XLSX.utils.book_append_sheet(wb, ws, 'Products')
+                    XLSX.writeFile(wb, 'products_export.xlsx')
+                  } catch (err) {
+                    console.error('Export failed', err)
+                    showSnackbar?.('Export failed. Please try again.', 'error')
+                  } finally {
+                    setExporting(false)
+                  }
+                }}
+              >
+                {exporting ? 'Exporting…' : 'Export Excel'}
+              </Button>
             )}
 
             {!isCixciAdmin && !isVendor && !isBuyer && allProductsSelectedIds.length > 0 && (

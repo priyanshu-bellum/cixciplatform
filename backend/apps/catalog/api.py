@@ -755,6 +755,9 @@ class ProductFilterSet(django_filters.FilterSet):
     msrp_range = CSVInFilter(method="filter_msrp_range")
     projection_scope = django_filters.BooleanFilter(method="filter_projection_scope")
     product_ids = django_filters.CharFilter(method="filter_product_ids")
+    vendor_name = django_filters.CharFilter(method="filter_vendor_name")
+    has_map_price = django_filters.BooleanFilter(method="filter_has_map_price")
+    has_wholesale_price = django_filters.BooleanFilter(method="filter_has_wholesale_price")
 
     class Meta:
         model = Product
@@ -822,6 +825,38 @@ class ProductFilterSet(django_filters.FilterSet):
         if not ids:
             return queryset
         return queryset.filter(id__in=ids)
+
+    def filter_vendor_name(self, queryset, name, value):
+        """Filter products whose vendor company name contains the search term."""
+        if not value:
+            return queryset
+        from apps.tenant.models import Company
+        vendor_ids = Company.objects.filter(
+            name__icontains=value, company_type="vendor"
+        ).values_list("id", flat=True)
+        return queryset.filter(vendor_company_reference__in=vendor_ids)
+
+    def filter_has_map_price(self, queryset, name, value):
+        """True → has a MAP price; False → MAP price is null."""
+        if value is None:
+            return queryset
+        if value:
+            return queryset.filter(map_price__isnull=False)
+        return queryset.filter(map_price__isnull=True)
+
+    def filter_has_wholesale_price(self, queryset, name, value):
+        """True → has a positive wholesale price; False → missing or zero."""
+        if value is None:
+            return queryset
+        if value:
+            return queryset.filter(
+                vendor_wholesale_price_amount__isnull=False,
+                vendor_wholesale_price_amount__gt=0,
+            )
+        return queryset.filter(
+            Q(vendor_wholesale_price_amount__isnull=True)
+            | Q(vendor_wholesale_price_amount=0)
+        )
 
     def filter_projection_scope(self, queryset, name, value):
         """
