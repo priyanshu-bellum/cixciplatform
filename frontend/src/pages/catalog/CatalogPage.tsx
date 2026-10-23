@@ -265,13 +265,14 @@ export default function CatalogPage() {
 
       <BulkUploadDialog
         open={showBulkDialog}
-        onClose={() => setShowBulkDialog(false)}
-        onUploaded={() => { setShowBulkDialog(false) }}
+        onClose={() => { setShowBulkDialog(false); setBulkImagesOnly(false) }}
+        onUploaded={() => { setShowBulkDialog(false); setBulkImagesOnly(false) }}
         user={user}
         allowedCategories={allowedCategories}
         allowedColors={allowedColors}
         allowedBrands={allowedBrands}
         dropdownsLoaded={dropdownsLoaded}
+        imagesOnly={bulkImagesOnly}
       />
 
       <DropdownManagerDialog

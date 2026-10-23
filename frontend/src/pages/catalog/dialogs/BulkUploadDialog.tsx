@@ -124,6 +124,7 @@ interface BulkUploadDialogProps {
   allowedColors: string[]
   allowedBrands: string[]
   dropdownsLoaded: boolean
+  imagesOnly?: boolean
 }
 
 const STEPS = ['Upload & Preview CSV', 'Upload Images (ZIP)']
@@ -146,6 +147,7 @@ export default function BulkUploadDialog({
   allowedColors,
   allowedBrands,
   dropdownsLoaded,
+  imagesOnly = false,
 }: BulkUploadDialogProps) {
   const [activeStep, setActiveStep] = useState(0)
 
@@ -176,7 +178,7 @@ export default function BulkUploadDialog({
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (open) {
-      setActiveStep(0)
+      setActiveStep(imagesOnly ? 1 : 0)
       setCsvFile(null)
       setCsvHeaders([])
       setCsvPreviewRows([])
@@ -192,7 +194,7 @@ export default function BulkUploadDialog({
       setZipSuccess(null)
       setDragOver(false)
     }
-  }, [open])
+  }, [open, imagesOnly])
 
   // ---------------------------------------------------------------------------
   // CSV / XLSX parsing
@@ -420,25 +422,27 @@ export default function BulkUploadDialog({
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
-      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        Bulk Upload Products
+    <Dialog open={open} onClose={onClose} maxWidth={imagesOnly ? 'sm' : 'xl'} fullWidth>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
+        {imagesOnly ? 'Upload Product Images' : 'Bulk Upload Products'}
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>
       </DialogTitle>
 
-      <Box sx={{ px: 3, pb: 1 }}>
-        <Stepper activeStep={activeStep} alternativeLabel>
-          {STEPS.map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
-      </Box>
+      {!imagesOnly && (
+        <Box sx={{ px: 3, pb: 1 }}>
+          <Stepper activeStep={activeStep} alternativeLabel>
+            {STEPS.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+        </Box>
+      )}
 
-      <DialogContent dividers sx={{ minHeight: 350 }}>
+      <DialogContent dividers sx={{ minHeight: imagesOnly ? 'auto' : 350 }}>
         {/* ---------------------------------------------------------------- */}
         {/* Step 1: CSV Upload & Preview                                      */}
         {/* ---------------------------------------------------------------- */}
@@ -504,10 +508,10 @@ export default function BulkUploadDialog({
             </Box>
 
             {/* Errors / Success */}
-            {uploadError && <Alert severity="error">{uploadError}</Alert>}
-            {uploadSuccess && <Alert severity="success">{uploadSuccess}</Alert>}
+            {uploadError && <Alert severity="error" sx={{ py: 0.5 }}>{uploadError}</Alert>}
+            {uploadSuccess && <Alert severity="success" sx={{ py: 0.5 }}>{uploadSuccess}</Alert>}
             {csvErrors.hasErrors && (
-              <Alert severity="warning">
+              <Alert severity="warning" sx={{ py: 0.5 }}>
                 Validation errors found. Fix the highlighted cells or upload will proceed
                 with the server performing its own validation.
               </Alert>
@@ -625,11 +629,18 @@ export default function BulkUploadDialog({
         {/* Step 2: ZIP Image Upload                                          */}
         {/* ---------------------------------------------------------------- */}
         {activeStep === 1 && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             {importedCount > 0 && (
-              <Alert severity="info" sx={{ width: '100%' }}>
+              <Alert severity="info" sx={{ py: 0.5 }}>
                 {importedCount} product(s) were imported. Upload a ZIP file containing product
                 images to associate them with your products.
+              </Alert>
+            )}
+
+            {imagesOnly && (
+              <Alert severity="info" sx={{ py: 0.5 }}>
+                Upload a ZIP file containing product images. Images are matched to products
+                by filename (e.g., SKU.jpg or product_name.png).
               </Alert>
             )}
 
@@ -641,8 +652,7 @@ export default function BulkUploadDialog({
               onClick={() => zipInputRef.current?.click()}
               sx={{
                 width: '100%',
-                maxWidth: 500,
-                minHeight: 200,
+                minHeight: 160,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -653,11 +663,11 @@ export default function BulkUploadDialog({
                 cursor: 'pointer',
                 background: dragOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent',
                 transition: 'all 0.2s ease',
-                p: 2,
+                p: 3,
               }}
             >
-              <CloudUploadIcon sx={{ fontSize: 48, color: 'var(--text-muted)' }} />
-              <Typography variant="body1" color="textSecondary">
+              <CloudUploadIcon sx={{ fontSize: 40, color: 'var(--text-muted)' }} />
+              <Typography variant="body2" color="textSecondary">
                 Drag & drop a ZIP file here, or click to browse
               </Typography>
               <Typography variant="caption" color="textSecondary">
@@ -685,18 +695,19 @@ export default function BulkUploadDialog({
                   setZipError(null)
                   setZipSuccess(null)
                 }}
+                size="small"
               />
             )}
 
-            {zipError && <Alert severity="error" sx={{ width: '100%' }}>{zipError}</Alert>}
-            {zipSuccess && <Alert severity="success" sx={{ width: '100%' }}>{zipSuccess}</Alert>}
-            {zipUploading && <LinearProgress sx={{ width: '100%' }} />}
+            {zipError && <Alert severity="error" sx={{ py: 0.5 }}>{zipError}</Alert>}
+            {zipSuccess && <Alert severity="success" sx={{ py: 0.5 }}>{zipSuccess}</Alert>}
+            {zipUploading && <LinearProgress />}
           </Box>
         )}
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 1.5 }}>
-        {activeStep === 1 && (
+        {activeStep === 1 && !imagesOnly && (
           <Button onClick={() => setActiveStep(0)} disabled={zipUploading}>
             Back
           </Button>
