@@ -685,11 +685,13 @@ export default function ProductFormDialog({
         onClose={handleClose}
         maxWidth="md"
         fullWidth
-        PaperProps={{
-          sx: {
-            background: 'var(--bg-card, #fff)',
-            color: 'var(--text-primary)',
-            borderRadius: 3,
+        slotProps={{
+          paper: {
+            sx: {
+              background: 'var(--bg-card, #fff)',
+              color: 'var(--text-primary)',
+              borderRadius: 3,
+            },
           },
         }}
       >

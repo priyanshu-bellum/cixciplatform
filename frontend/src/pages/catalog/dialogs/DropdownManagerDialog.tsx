@@ -318,7 +318,7 @@ export default function DropdownManagerDialog({
 
             {/* Eligible Device Types */}
             <Box>
-              <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
                 Eligible Device Types
               </Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5 }}>
@@ -344,7 +344,7 @@ export default function DropdownManagerDialog({
 
             {/* Accessory Fields with Rule Modes */}
             <Box>
-              <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
                 Accessory Compatibility Fields
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -371,7 +371,7 @@ export default function DropdownManagerDialog({
                           />
                         }
                         label={
-                          <Typography variant="body2" fontWeight={550}>
+                          <Typography variant="body2" sx={{ fontWeight: 550 }}>
                             {opt.label}
                           </Typography>
                         }
@@ -401,7 +401,7 @@ export default function DropdownManagerDialog({
 
             {/* Compatibility Rules JSON Editor (simplified) */}
             <Box>
-              <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
                 Compatibility Rules (JSON)
               </Typography>
               <TextField
@@ -420,7 +420,7 @@ export default function DropdownManagerDialog({
                     // Allow typing without error -- validation on save
                   }
                 }}
-                inputProps={{ style: { fontFamily: 'monospace', fontSize: 13 } }}
+                slotProps={{ htmlInput: { style: { fontFamily: 'monospace', fontSize: 13 } } }}
                 helperText="Edit raw JSON for advanced rule configuration"
               />
             </Box>
@@ -501,7 +501,7 @@ export default function DropdownManagerDialog({
                         >
                           <ListItemText
                             primary={item.value}
-                            primaryTypographyProps={{ variant: 'body2', fontWeight: 550 }}
+                            slotProps={{ primary: { variant: 'body2', sx: { fontWeight: 550 } } }}
                           />
                           {manageField === 'product_category' && item.compatibility_mode && (
                             <Chip

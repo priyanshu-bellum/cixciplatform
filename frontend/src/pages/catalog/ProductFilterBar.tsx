@@ -116,8 +116,8 @@ export default function ProductFilterBar({
         <MultiSelect
           label="Filter by Device"
           placeholder="All Devices (My Portfolio)"
-          selected={filters.filterDeviceId ? filters.filterDeviceId.split(',').filter(Boolean) : []}
-          options={portfolio.filter((d: any) => d.active_flag).map((d: any) => ({ value: d.device, label: d.device_name }))}
+          value={filters.filterDeviceId ? filters.filterDeviceId.split(',').filter(Boolean) : []}
+          options={portfolio.filter((d: any) => d.active_flag).map((d: any) => d.device_name)}
           onChange={(vals: string[]) => filters.setFilterDeviceId(vals.join(','))}
         />
       )}
@@ -125,7 +125,7 @@ export default function ProductFilterBar({
       <MultiSelect
         label="Category"
         placeholder="All Categories"
-        selected={filters.filterCategories}
+        value={filters.filterCategories}
         options={allowedCategories}
         onChange={filters.setFilterCategories}
       />
@@ -133,7 +133,7 @@ export default function ProductFilterBar({
       <MultiSelect
         label="Brand"
         placeholder="All Brands"
-        selected={filters.filterBrands}
+        value={filters.filterBrands}
         options={brandsList}
         onChange={filters.setFilterBrands}
       />
@@ -141,7 +141,7 @@ export default function ProductFilterBar({
       <MultiSelect
         label="Color"
         placeholder="All Colors"
-        selected={filters.filterColors}
+        value={filters.filterColors}
         options={allowedColors}
         onChange={filters.setFilterColors}
       />
@@ -149,8 +149,8 @@ export default function ProductFilterBar({
       <MultiSelect
         label="MSRP (Wholesale)"
         placeholder="All Prices"
-        selected={filters.filterMsrps}
-        options={MSRP_OPTIONS}
+        value={filters.filterMsrps}
+        options={MSRP_OPTIONS.map(o => o.label)}
         onChange={filters.setFilterMsrps}
       />
 

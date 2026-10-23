@@ -834,7 +834,7 @@ export default function ManageProductDialog({
                               <strong>Exclusion Reason:</strong> {c.exclusion_reason} ({c.exclusion_type} level)
                             </Typography>
                             {c.notes && (
-                              <Typography variant="caption" display="block"><strong>Notes:</strong> {c.notes}</Typography>
+                              <Typography variant="caption" sx={{ display: 'block' }}><strong>Notes:</strong> {c.notes}</Typography>
                             )}
                           </Box>
                         )}
@@ -986,13 +986,13 @@ export default function ManageProductDialog({
                         </Typography>
                         <Box sx={{ color: 'text.secondary', pl: 0.75, borderLeft: '2px solid', borderColor: 'divider' }}>
                           {p.exclusion_reason && p.exclusion_reason !== 'None' && (
-                            <Typography variant="caption" display="block">&bull; <strong>Exclusion Reason:</strong> {p.exclusion_reason}</Typography>
+                            <Typography variant="caption" sx={{ display: 'block' }}>&bull; <strong>Exclusion Reason:</strong> {p.exclusion_reason}</Typography>
                           )}
                           {p.changed_by && (
-                            <Typography variant="caption" display="block">&bull; <strong>Actor:</strong> {p.changed_by}</Typography>
+                            <Typography variant="caption" sx={{ display: 'block' }}>&bull; <strong>Actor:</strong> {p.changed_by}</Typography>
                           )}
                           {p.change_source && (
-                            <Typography variant="caption" display="block">&bull; <strong>Details:</strong> {p.change_source}</Typography>
+                            <Typography variant="caption" sx={{ display: 'block' }}>&bull; <strong>Details:</strong> {p.change_source}</Typography>
                           )}
                         </Box>
                       </Box>
@@ -1044,8 +1044,8 @@ export default function ManageProductDialog({
         open={showExcludeModal && !!excludeDevice}
         onClose={() => { setShowExcludeModal(false); setExcludeDevice(null) }}
         device={excludeDevice}
-        productId={product.id}
-        onExclusionSubmitted={handleExclusionSubmitted}
+        product={product}
+        onSaved={handleExclusionSubmitted}
       />
 
       {/* ── Confirm Dialog ─────────────────────────────────────────────────── */}
