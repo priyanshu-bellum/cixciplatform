@@ -35,7 +35,8 @@
       "Bash(python manage.py makemigrations:*)",
       "Bash(docker exec:*)",
       "Bash(python manage.py showmigrations:*)",
-      "Bash(python -m py_compile:*)"
+      "Bash(python -m py_compile:*)",
+      "Bash(sort:*)"
     ]
   }
 }
