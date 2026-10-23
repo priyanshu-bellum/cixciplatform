@@ -419,20 +419,32 @@ export default function BulkUploadDialog({
   }, [])
 
   // ---------------------------------------------------------------------------
+  // Derived — has a CSV been parsed?
+  // ---------------------------------------------------------------------------
+  const hasCsvPreview = csvHeaders.length > 0 && csvPreviewRows.length > 0
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <Dialog open={open} onClose={onClose} maxWidth={imagesOnly ? 'sm' : 'xl'} fullWidth>
-      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth={hasCsvPreview ? 'lg' : 'sm'}
+      fullWidth
+      PaperProps={{ sx: { transition: 'max-width 0.25s ease' } }}
+    >
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5 }}>
         {imagesOnly ? 'Upload Product Images' : 'Bulk Upload Products'}
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>
       </DialogTitle>
 
+      {/* Stepper — only for bulk (not imagesOnly), and only when on CSV step or moving between */}
       {!imagesOnly && (
         <Box sx={{ px: 3, pb: 1 }}>
-          <Stepper activeStep={activeStep} alternativeLabel>
+          <Stepper activeStep={activeStep}>
             {STEPS.map((label) => (
               <Step key={label}>
                 <StepLabel>{label}</StepLabel>
@@ -442,206 +454,263 @@ export default function BulkUploadDialog({
         </Box>
       )}
 
-      <DialogContent dividers sx={{ minHeight: imagesOnly ? 'auto' : 350 }}>
-        {/* ---------------------------------------------------------------- */}
-        {/* Step 1: CSV Upload & Preview                                      */}
-        {/* ---------------------------------------------------------------- */}
+      <DialogContent dividers sx={{ p: 2.5 }}>
+        {/* ============================================================== */}
+        {/* Step 1: CSV Upload & Preview                                    */}
+        {/* ============================================================== */}
         {activeStep === 0 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {/* Controls row */}
-            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Button
-                variant="outlined"
-                startIcon={<CloudUploadIcon />}
+            {/* Hidden file input */}
+            <input
+              ref={csvInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleCsvFileSelect(file)
+                e.target.value = ''
+              }}
+            />
+
+            {/* ---- Before file selected: centered drop zone ------------ */}
+            {!csvFile && !uploadSuccess && (
+              <Box
                 onClick={() => csvInputRef.current?.click()}
-              >
-                Select CSV / XLSX
-              </Button>
-              <input
-                ref={csvInputRef}
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) handleCsvFileSelect(file)
-                  e.target.value = ''
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1.5,
+                  border: '2px dashed var(--border, #ccc)',
+                  borderRadius: 2,
+                  cursor: 'pointer',
+                  p: 4,
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    borderColor: 'primary.main',
+                    background: 'rgba(25, 118, 210, 0.04)',
+                  },
                 }}
-              />
-
-              <Button
-                variant="text"
-                startIcon={<DownloadIcon />}
-                onClick={handleDownloadTemplate}
-                size="small"
               >
-                Download Template
-              </Button>
-
-              <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel>Update Mode</InputLabel>
-                <Select
-                  value={updateMode}
-                  label="Update Mode"
-                  onChange={(e) => setUpdateMode(e.target.value)}
-                >
-                  {UPDATE_MODE_OPTIONS.map((opt) => (
-                    <MenuItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              {csvFile && (
-                <Chip
-                  label={csvFile.name}
-                  onDelete={() => {
-                    setCsvFile(null)
-                    setCsvHeaders([])
-                    setCsvPreviewRows([])
-                    setCsvErrors({ hasErrors: false, rowErrors: {}, cellErrors: {} })
-                  }}
-                  size="small"
-                />
-              )}
-            </Box>
-
-            {/* Errors / Success */}
-            {uploadError && <Alert severity="error" sx={{ py: 0.5 }}>{uploadError}</Alert>}
-            {uploadSuccess && <Alert severity="success" sx={{ py: 0.5 }}>{uploadSuccess}</Alert>}
-            {csvErrors.hasErrors && (
-              <Alert severity="warning" sx={{ py: 0.5 }}>
-                Validation errors found. Fix the highlighted cells or upload will proceed
-                with the server performing its own validation.
-              </Alert>
+                <CloudUploadIcon sx={{ fontSize: 40, color: 'var(--text-muted)' }} />
+                <Typography variant="body2" color="textSecondary">
+                  Drag & drop a CSV / XLSX file here, or click to browse
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                  <Button variant="outlined" size="small" startIcon={<CloudUploadIcon />}>
+                    Select File
+                  </Button>
+                  <Button
+                    variant="text"
+                    size="small"
+                    startIcon={<DownloadIcon />}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDownloadTemplate()
+                    }}
+                  >
+                    Download Template
+                  </Button>
+                </Box>
+              </Box>
             )}
 
-            {/* Preview table */}
-            {csvHeaders.length > 0 && csvPreviewRows.length > 0 && (
-              <Box sx={{ overflow: 'auto', maxHeight: 420, border: '1px solid var(--border)', borderRadius: 1 }}>
-                <table
-                  style={{
-                    borderCollapse: 'collapse',
-                    width: '100%',
-                    fontSize: 12,
+            {/* ---- After file selected: toolbar + preview -------------- */}
+            {(csvFile || uploadSuccess) && (
+              <>
+                {/* Controls bar */}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 1,
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    background: 'var(--bg-elevated, #fafafa)',
+                    border: '1px solid var(--border, #e0e0e0)',
+                    borderRadius: 1.5,
+                    px: 1.5,
+                    py: 1,
                   }}
                 >
-                  <thead>
-                    <tr>
-                      <th
-                        style={{
-                          position: 'sticky',
-                          top: 0,
-                          background: 'var(--bg-elevated, #f5f5f5)',
-                          padding: '6px 8px',
-                          textAlign: 'left',
-                          borderBottom: '2px solid var(--border)',
-                          fontSize: 11,
-                          fontWeight: 600,
-                          minWidth: 30,
-                        }}
-                      >
-                        #
-                      </th>
-                      {csvHeaders.map((h, i) => (
-                        <th
-                          key={i}
-                          style={{
-                            position: 'sticky',
-                            top: 0,
-                            background: 'var(--bg-elevated, #f5f5f5)',
-                            padding: '6px 8px',
-                            textAlign: 'left',
-                            borderBottom: '2px solid var(--border)',
-                            fontSize: 11,
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                            minWidth: 100,
-                          }}
-                        >
-                          {h}
-                        </th>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<CloudUploadIcon />}
+                    onClick={() => csvInputRef.current?.click()}
+                  >
+                    Change File
+                  </Button>
+
+                  <FormControl size="small" sx={{ minWidth: 170 }}>
+                    <InputLabel>Update Mode</InputLabel>
+                    <Select
+                      value={updateMode}
+                      label="Update Mode"
+                      onChange={(e) => setUpdateMode(e.target.value)}
+                    >
+                      {UPDATE_MODE_OPTIONS.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </MenuItem>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {csvPreviewRows.map((row, rowIdx) => (
-                      <tr key={rowIdx}>
-                        <td
-                          style={{
-                            padding: '2px 8px',
-                            borderBottom: '1px solid var(--border)',
-                            color: 'var(--text-muted)',
-                            fontSize: 11,
-                            verticalAlign: 'top',
-                          }}
-                        >
-                          {rowIdx + 1}
-                          {csvErrors.rowErrors[rowIdx] && (
-                            <span
-                              style={{ color: '#ef4444', marginLeft: 4, cursor: 'help' }}
-                              title={csvErrors.rowErrors[rowIdx].join('\n')}
-                            >
-                              !
-                            </span>
-                          )}
-                        </td>
-                        {csvHeaders.map((_, colIdx) => (
-                          <td
-                            key={colIdx}
+                    </Select>
+                  </FormControl>
+
+                  <Box sx={{ flex: 1 }} />
+
+                  {csvFile && (
+                    <Chip
+                      label={csvFile.name}
+                      onDelete={() => {
+                        setCsvFile(null)
+                        setCsvHeaders([])
+                        setCsvPreviewRows([])
+                        setCsvErrors({ hasErrors: false, rowErrors: {}, cellErrors: {} })
+                      }}
+                      size="small"
+                      variant="outlined"
+                    />
+                  )}
+
+                  {hasCsvPreview && (
+                    <Typography variant="caption" color="textSecondary">
+                      {csvPreviewRows.length} row(s)
+                    </Typography>
+                  )}
+                </Box>
+
+                {/* Alerts */}
+                {uploadError && <Alert severity="error" sx={{ py: 0.5 }}>{uploadError}</Alert>}
+                {uploadSuccess && <Alert severity="success" sx={{ py: 0.5 }}>{uploadSuccess}</Alert>}
+                {csvErrors.hasErrors && (
+                  <Alert severity="warning" sx={{ py: 0.5 }}>
+                    Validation errors found. Fix highlighted cells or the server will validate on upload.
+                  </Alert>
+                )}
+
+                {/* Preview table */}
+                {hasCsvPreview && (
+                  <Box sx={{ overflow: 'auto', maxHeight: 400, border: '1px solid var(--border)', borderRadius: 1 }}>
+                    <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <th
                             style={{
-                              padding: '1px 2px',
-                              borderBottom: '1px solid var(--border)',
-                              verticalAlign: 'top',
+                              position: 'sticky',
+                              top: 0,
+                              background: 'var(--bg-elevated, #f5f5f5)',
+                              padding: '6px 8px',
+                              textAlign: 'left',
+                              borderBottom: '2px solid var(--border)',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              minWidth: 30,
+                              zIndex: 1,
                             }}
                           >
-                            <CellInput
-                              value={row[colIdx] ?? ''}
-                              onChange={(v) => handleCellEdit(rowIdx, colIdx, v)}
-                              isError={!!csvErrors.cellErrors[`${rowIdx}-${colIdx}`]}
-                            />
-                          </td>
+                            #
+                          </th>
+                          {csvHeaders.map((h, i) => (
+                            <th
+                              key={i}
+                              style={{
+                                position: 'sticky',
+                                top: 0,
+                                background: 'var(--bg-elevated, #f5f5f5)',
+                                padding: '6px 8px',
+                                textAlign: 'left',
+                                borderBottom: '2px solid var(--border)',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                whiteSpace: 'nowrap',
+                                minWidth: 100,
+                                zIndex: 1,
+                              }}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {csvPreviewRows.map((row, rowIdx) => (
+                          <tr key={rowIdx}>
+                            <td
+                              style={{
+                                padding: '2px 8px',
+                                borderBottom: '1px solid var(--border)',
+                                color: 'var(--text-muted)',
+                                fontSize: 11,
+                                verticalAlign: 'top',
+                              }}
+                            >
+                              {rowIdx + 1}
+                              {csvErrors.rowErrors[rowIdx] && (
+                                <span
+                                  style={{ color: '#ef4444', marginLeft: 4, cursor: 'help' }}
+                                  title={csvErrors.rowErrors[rowIdx].join('\n')}
+                                >
+                                  !
+                                </span>
+                              )}
+                            </td>
+                            {csvHeaders.map((_, colIdx) => (
+                              <td
+                                key={colIdx}
+                                style={{
+                                  padding: '1px 2px',
+                                  borderBottom: '1px solid var(--border)',
+                                  verticalAlign: 'top',
+                                }}
+                              >
+                                <CellInput
+                                  value={row[colIdx] ?? ''}
+                                  onChange={(v) => handleCellEdit(rowIdx, colIdx, v)}
+                                  isError={!!csvErrors.cellErrors[`${rowIdx}-${colIdx}`]}
+                                />
+                              </td>
+                            ))}
+                          </tr>
                         ))}
-                      </tr>
+                      </tbody>
+                    </table>
+                  </Box>
+                )}
+
+                {/* Row error details */}
+                {Object.keys(csvErrors.rowErrors).length > 0 && (
+                  <Box sx={{ maxHeight: 120, overflow: 'auto' }}>
+                    {Object.entries(csvErrors.rowErrors).map(([rowIdx, errors]) => (
+                      <Alert key={rowIdx} severity="error" sx={{ mb: 0.5, py: 0, fontSize: 12 }}>
+                        <strong>Row {Number(rowIdx) + 1}:</strong> {errors.join(' | ')}
+                      </Alert>
                     ))}
-                  </tbody>
-                </table>
-              </Box>
-            )}
+                  </Box>
+                )}
 
-            {/* Row error details */}
-            {Object.keys(csvErrors.rowErrors).length > 0 && (
-              <Box sx={{ maxHeight: 160, overflow: 'auto' }}>
-                {Object.entries(csvErrors.rowErrors).map(([rowIdx, errors]) => (
-                  <Alert key={rowIdx} severity="error" sx={{ mb: 0.5, py: 0, fontSize: 12 }}>
-                    <strong>Row {Number(rowIdx) + 1}:</strong> {errors.join(' | ')}
-                  </Alert>
-                ))}
-              </Box>
+                {uploading && <LinearProgress />}
+              </>
             )}
-
-            {uploading && <LinearProgress />}
           </Box>
         )}
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Step 2: ZIP Image Upload                                          */}
-        {/* ---------------------------------------------------------------- */}
+        {/* ============================================================== */}
+        {/* Step 2: ZIP Image Upload                                        */}
+        {/* ============================================================== */}
         {activeStep === 1 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {importedCount > 0 && (
+            {importedCount > 0 && !imagesOnly && (
               <Alert severity="info" sx={{ py: 0.5 }}>
-                {importedCount} product(s) were imported. Upload a ZIP file containing product
-                images to associate them with your products.
+                {importedCount} product(s) imported. Upload a ZIP of product images to match them.
               </Alert>
             )}
 
             {imagesOnly && (
-              <Alert severity="info" sx={{ py: 0.5 }}>
-                Upload a ZIP file containing product images. Images are matched to products
-                by filename (e.g., SKU.jpg or product_name.png).
-              </Alert>
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 0.5 }}>
+                Upload a ZIP file containing product images. Images are matched by filename (e.g. SKU.jpg).
+              </Typography>
             )}
 
             {/* Drag-and-drop zone */}
@@ -652,7 +721,7 @@ export default function BulkUploadDialog({
               onClick={() => zipInputRef.current?.click()}
               sx={{
                 width: '100%',
-                minHeight: 160,
+                py: 5,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -663,7 +732,10 @@ export default function BulkUploadDialog({
                 cursor: 'pointer',
                 background: dragOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent',
                 transition: 'all 0.2s ease',
-                p: 3,
+                '&:hover': {
+                  borderColor: 'primary.main',
+                  background: 'rgba(25, 118, 210, 0.04)',
+                },
               }}
             >
               <CloudUploadIcon sx={{ fontSize: 40, color: 'var(--text-muted)' }} />
@@ -696,6 +768,7 @@ export default function BulkUploadDialog({
                   setZipSuccess(null)
                 }}
                 size="small"
+                variant="outlined"
               />
             )}
 
@@ -706,7 +779,7 @@ export default function BulkUploadDialog({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 1.5 }}>
+      <DialogActions sx={{ px: 2.5, py: 1.5 }}>
         {activeStep === 1 && !imagesOnly && (
           <Button onClick={() => setActiveStep(0)} disabled={zipUploading}>
             Back
@@ -716,7 +789,7 @@ export default function BulkUploadDialog({
         <Button onClick={onClose} disabled={uploading || zipUploading}>
           {uploadSuccess || zipSuccess ? 'Done' : 'Cancel'}
         </Button>
-        {activeStep === 0 && (
+        {activeStep === 0 && csvFile && (
           <Button
             variant="contained"
             onClick={handleCsvUpload}
