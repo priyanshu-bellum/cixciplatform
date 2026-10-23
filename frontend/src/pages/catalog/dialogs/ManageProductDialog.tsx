@@ -337,7 +337,7 @@ export default function ManageProductDialog({
 
         <DialogContent dividers>
           {/* ── Header: product thumbnail + name/brand/sku ─────────────────── */}
-          <Box sx={{ display: 'flex', gap: 2, mb: 2.25 }}>
+          <Box sx={{ display: 'flex', gap: 2, mb: 1.5 }}>
             {product.primary_image_url ? (
               <Box
                 component="img"
@@ -375,13 +375,13 @@ export default function ManageProductDialog({
           {/* 1. DETAILS TAB                                                  */}
           {/* ════════════════════════════════════════════════════════════════ */}
           {activeTab === 'details' && (
-            <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               {/* ── Left Column: Image Gallery ─────────────────────────────── */}
-              <Box sx={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary' }}>Images</Typography>
-                <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 1.5, bgcolor: 'action.hover', display: 'flex', flexDirection: 'column', gap: 1.5, alignItems: 'center' }}>
+              <Box sx={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', fontSize: 10 }}>Images</Typography>
+                <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, p: 1, bgcolor: 'action.hover', display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
                   {/* Active Image */}
-                  <Box sx={{ width: '100%', height: 240, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', borderRadius: 1.5, overflow: 'hidden', border: 1, borderColor: 'divider' }}>
+                  <Box sx={{ width: '100%', height: 200, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', borderRadius: 1.5, overflow: 'hidden', border: 1, borderColor: 'divider' }}>
                     {activeDetailImageUrl ? (
                       <>
                         <Box component="img" src={activeDetailImageUrl} alt={product.name} sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
@@ -441,8 +441,8 @@ export default function ManageProductDialog({
 
                 {/* Image URLs */}
                 <Box>
-                  <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', display: 'block', mb: 0.75 }}>Image URLs</Typography>
-                  <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 1.5, bgcolor: 'action.hover', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', display: 'block', mb: 0.25, fontSize: 10 }}>Image URLs</Typography>
+                  <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, p: 1, bgcolor: 'action.hover', display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                     {allImages.length === 0 ? (
                       <Typography variant="caption" color="text.disabled">{'\u2014'}</Typography>
                     ) : (
@@ -467,8 +467,8 @@ export default function ManageProductDialog({
               </Box>
 
               {/* ── Right Column: Product Info ─────────────────────────────── */}
-              <Box sx={{ flex: '2 2 400px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px 16px' }}>
+              <Box sx={{ flex: '2 2 400px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px 12px' }}>
                   <DetailField label="Product Status">
                     <Chip label={(product.status || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} size="small" color={product.status === 'active' ? 'success' : product.status === 'inactive' ? 'error' : 'default'} />
                   </DetailField>
@@ -596,14 +596,14 @@ export default function ManageProductDialog({
 
                 {/* Vendor Return Address */}
                 {isCixciAdmin && (product.vendor_return_address1 || product.vendor_return_address) && (
-                  <Box sx={{ bgcolor: 'action.hover', border: 1, borderColor: 'divider', borderRadius: 2, p: 1.75, mt: 0.5 }}>
+                  <Box sx={{ bgcolor: 'action.hover', border: 1, borderColor: 'divider', borderRadius: 1.5, p: 1.25, mt: 0.25 }}>
                     <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
                       Vendor Return Address
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
                       Vendor return shipping information (sent once per vendor, per buyer in export response).
                     </Typography>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px 12px', fontSize: 12 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '4px 10px', fontSize: 12 }}>
                       <Box>
                         <Typography variant="caption" color="text.secondary">Address 1: </Typography>
                         <Typography variant="caption" sx={{ fontWeight: 500 }}>
@@ -638,27 +638,27 @@ export default function ManageProductDialog({
                   </Box>
                 )}
 
-                <Divider sx={{ my: 1 }} />
+                <Divider sx={{ my: 0.5 }} />
 
                 {/* Product Description */}
                 <Box>
-                  <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>Product Description</Typography>
-                  <Box sx={{ bgcolor: 'action.hover', p: 1.5, borderRadius: 1.5, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'text.secondary' }}>
+                  <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.25, fontSize: 10 }}>Product Description</Typography>
+                  <Box sx={{ bgcolor: 'action.hover', p: 1, borderRadius: 1, fontSize: 12, lineHeight: 1.4, whiteSpace: 'pre-wrap', color: 'text.secondary' }}>
                     {product.description || '\u2014'}
                   </Box>
                 </Box>
 
                 {/* Meta Title & Description */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
                   <Box>
-                    <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>Meta Title</Typography>
-                    <Box sx={{ bgcolor: 'action.hover', p: 1.25, borderRadius: 1.5, fontSize: 12, color: 'text.secondary' }}>
+                    <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.25, fontSize: 10 }}>Meta Title</Typography>
+                    <Box sx={{ bgcolor: 'action.hover', p: 0.75, borderRadius: 1, fontSize: 12, color: 'text.secondary' }}>
                       {product.meta_title || '\u2014'}
                     </Box>
                   </Box>
                   <Box>
-                    <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>Meta Description</Typography>
-                    <Box sx={{ bgcolor: 'action.hover', p: 1.25, borderRadius: 1.5, fontSize: 12, color: 'text.secondary' }}>
+                    <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.25, fontSize: 10 }}>Meta Description</Typography>
+                    <Box sx={{ bgcolor: 'action.hover', p: 0.75, borderRadius: 1, fontSize: 12, color: 'text.secondary' }}>
                       {product.meta_description || '\u2014'}
                     </Box>
                   </Box>
@@ -667,8 +667,8 @@ export default function ManageProductDialog({
                 {/* Short Description */}
                 {product.short_description && (
                   <Box>
-                    <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>Short Description</Typography>
-                    <Box sx={{ bgcolor: 'action.hover', p: 1.5, borderRadius: 1.5, fontSize: 13, lineHeight: 1.5, color: 'text.secondary' }}>
+                    <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.25, fontSize: 10 }}>Short Description</Typography>
+                    <Box sx={{ bgcolor: 'action.hover', p: 1, borderRadius: 1, fontSize: 12, lineHeight: 1.4, color: 'text.secondary' }}>
                       {product.short_description}
                     </Box>
                   </Box>
@@ -677,8 +677,8 @@ export default function ManageProductDialog({
                 {/* Promo Information */}
                 {product.promo_information && (
                   <Box>
-                    <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>Promo Description</Typography>
-                    <Box sx={{ bgcolor: 'action.hover', p: 1.5, borderRadius: 1.5, fontSize: 13, lineHeight: 1.5, color: 'text.secondary' }}>
+                    <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', mb: 0.25, fontSize: 10 }}>Promo Description</Typography>
+                    <Box sx={{ bgcolor: 'action.hover', p: 1, borderRadius: 1, fontSize: 12, lineHeight: 1.4, color: 'text.secondary' }}>
                       {product.promo_information}
                     </Box>
                   </Box>
@@ -694,7 +694,7 @@ export default function ManageProductDialog({
             <Box sx={{ maxHeight: 400, overflowY: 'auto', pr: 0.5 }}>
               {/* Universal Product Mapping Banner */}
               {Array.isArray(product.compatible_device_types) && product.compatible_device_types.length > 0 && (
-                <Alert severity="info" sx={{ mb: 1.75, fontSize: 13 }}>
+                <Alert severity="info" sx={{ mb: 1, fontSize: 12, py: 0.25 }}>
                   <strong>Universal Product Mapping Active:</strong> This product universally supports all{' '}
                   <strong>{product.compatible_device_types.join(' & ')}</strong>{' '}
                   devices. All current models and any newly launched models added to CIXCI are mapped automatically.
@@ -703,7 +703,7 @@ export default function ManageProductDialog({
 
               {/* Quick-add device dropdown */}
               {!isCixciAdmin && !isBuyer && (
-                <Box sx={{ display: 'flex', gap: 1.25, mb: 2, bgcolor: 'action.hover', p: 1.25, borderRadius: 1.5 }}>
+                <Box sx={{ display: 'flex', gap: 1, mb: 1, bgcolor: 'action.hover', p: 1, borderRadius: 1 }}>
                   <Box
                     component="select"
                     value={quickAddDeviceId}
@@ -726,7 +726,7 @@ export default function ManageProductDialog({
               )}
 
               {/* Compatibility List */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
                 {(() => {
                   const compatList = (activeCompatibilities && activeCompatibilities.length > 0)
                     ? activeCompatibilities
@@ -754,8 +754,8 @@ export default function ManageProductDialog({
                       <Box
                         key={c.id}
                         sx={{
-                          display: 'flex', flexDirection: 'column', p: 1.25,
-                          border: 1, borderColor: 'divider', borderRadius: 1.5,
+                          display: 'flex', flexDirection: 'column', p: 1,
+                          border: 1, borderColor: 'divider', borderRadius: 1,
                           bgcolor: c.is_excluded ? 'error.50' : 'action.hover',
                           ...(c.is_excluded && { bgcolor: 'rgba(239, 68, 68, 0.05)' }),
                         }}
@@ -855,8 +855,8 @@ export default function ManageProductDialog({
           {/* 3. BULK TAB                                                     */}
           {/* ════════════════════════════════════════════════════════════════ */}
           {activeTab === 'bulk' && !isBuyer && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 400, overflowY: 'auto' }}>
-              <Typography variant="body2" color="text.secondary">
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 400, overflowY: 'auto' }}>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12 }}>
                 Select devices and choose the update type.
               </Typography>
               {product.status === 'active' && !isCixciAdmin && (
@@ -866,7 +866,7 @@ export default function ManageProductDialog({
               )}
 
               {/* Update type selector */}
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', bgcolor: 'action.hover', p: 1.25, borderRadius: 1.5 }}>
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', bgcolor: 'action.hover', p: 1, borderRadius: 1 }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                   <Typography variant="overline" sx={{ fontWeight: 600, color: 'text.secondary', fontSize: 11 }}>Update Type</Typography>
                   <Box sx={{ display: 'flex', gap: 1 }}>
@@ -891,7 +891,7 @@ export default function ManageProductDialog({
               </Box>
 
               {/* Device selection */}
-              <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, p: 1.25 }}>
+              <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                   <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
                     Select Devices ({bulkSelectedDevices.length} selected)
@@ -971,17 +971,17 @@ export default function ManageProductDialog({
                   No compatibility audit records found for this product.
                 </Typography>
               ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
                   {auditHistory.map((item: any) => {
                     const dateStr = formatETDate(item.created_at)
                     const p = item.payload || {}
                     return (
-                      <Box key={item.id} sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, p: 1.25, bgcolor: 'action.hover', fontSize: 12 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.disabled', mb: 0.5, fontSize: 11 }}>
+                      <Box key={item.id} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1, bgcolor: 'action.hover', fontSize: 12 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.disabled', mb: 0.25, fontSize: 11 }}>
                           <span>{dateStr}</span>
                           <span>Source: {item.change_source || 'System'}</span>
                         </Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.25, fontSize: 12 }}>
                           Device compatibility status transitioned from <strong>{p.previous_mapping_status}</strong> to <strong>{p.new_mapping_status}</strong> for <strong>{p.device_name}</strong>
                         </Typography>
                         <Box sx={{ color: 'text.secondary', pl: 0.75, borderLeft: '2px solid', borderColor: 'divider' }}>

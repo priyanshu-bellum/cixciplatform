@@ -260,7 +260,7 @@ export default function DropdownManagerDialog({
 
         {editingCategoryConfig ? (
           /* ---------- Category Compatibility Config Editor ---------- */
-          <Box component="form" onSubmit={handleSaveCategoryConfig} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box component="form" onSubmit={handleSaveCategoryConfig} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             <Typography variant="subtitle2" color="text.secondary">
               Configuring Category:{' '}
               <Typography component="span" variant="subtitle2" color="primary">
@@ -442,14 +442,14 @@ export default function DropdownManagerDialog({
             <Tabs
               value={tabIndex}
               onChange={handleTabChange}
-              sx={{ mb: 2, borderBottom: '1px solid', borderColor: 'divider' }}
+              sx={{ mb: 1, borderBottom: '1px solid', borderColor: 'divider' }}
             >
               {FIELD_TAB_MAP.map((tab) => (
                 <Tab key={tab.value} label={tab.label} />
               ))}
             </Tabs>
 
-            <Box sx={{ display: 'flex', gap: 2, flex: 1, minHeight: 0 }}>
+            <Box sx={{ display: 'flex', gap: 1.5, flex: 1, minHeight: 0 }}>
               {/* Right section: list of current values */}
               <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <Box

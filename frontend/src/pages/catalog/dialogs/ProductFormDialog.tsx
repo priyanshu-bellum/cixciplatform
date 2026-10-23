@@ -169,36 +169,36 @@ function MultiSelectColor({ selected, options, onChange, label }: MultiSelectCol
 
 const fieldStyle: React.CSSProperties = {
   width: '100%',
-  padding: '8px 12px',
+  padding: '6px 10px',
   border: '1px solid var(--border)',
-  borderRadius: 8,
+  borderRadius: 6,
   background: 'var(--bg)',
   color: 'var(--text-primary)',
-  fontSize: 14,
+  fontSize: 13,
   outline: 'none',
 }
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  marginBottom: 4,
-  fontSize: 13,
+  marginBottom: 2,
+  fontSize: 12,
   color: 'var(--text-secondary)',
 }
 
 const twoColGrid: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
-  gap: 12,
+  gap: 8,
 }
 
 const sectionTitle: React.CSSProperties = {
-  fontSize: 15,
+  fontSize: 13,
   fontWeight: 600,
   color: 'var(--text-primary)',
-  marginTop: 16,
-  marginBottom: 8,
+  marginTop: 6,
+  marginBottom: 3,
   borderBottom: '1px solid var(--border)',
-  paddingBottom: 4,
+  paddingBottom: 2,
 }
 
 // ---------------------------------------------------------------------------
@@ -593,7 +593,7 @@ export default function ProductFormDialog({
 
     if (cat === 'headphones') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Typography sx={sectionTitle}>Category Compatibility (Headphones)</Typography>
           <div style={twoColGrid}>
             {renderSelect('Headphone Jack', form.compHeadphoneJack, form.setCompHeadphoneJack, headphoneJackOptions)}
@@ -605,7 +605,7 @@ export default function ProductFormDialog({
 
     if (cat === 'speakers') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Typography sx={sectionTitle}>Category Compatibility (Speakers)</Typography>
           <div style={twoColGrid}>
             {renderSelect('Charging Interface', form.compChargingInterface, form.setCompChargingInterface, chargingInterfaceOptions)}
@@ -617,7 +617,7 @@ export default function ProductFormDialog({
 
     if (cat === 'chargers_and_cables' || cat === 'chargers' || cat === 'cables') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Typography sx={sectionTitle}>Category Compatibility (Chargers & Cables)</Typography>
           {renderSelect('Charging Interface', form.compChargingInterface, form.setCompChargingInterface, chargingInterfaceOptions)}
           {renderWirelessChargingCheckboxes()}
@@ -627,7 +627,7 @@ export default function ProductFormDialog({
 
     if (cat === 'memory' || cat === 'memory_cards') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Typography sx={sectionTitle}>Category Compatibility (Memory)</Typography>
           <div style={twoColGrid}>
             {renderSelect('Storage Expansion', form.compStorageExpansion, form.setCompStorageExpansion, storageExpansionOptions)}
@@ -654,7 +654,7 @@ export default function ProductFormDialog({
 
     if (cat === 'wearable_tech' || cat === 'wearables') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Typography sx={sectionTitle}>Category Compatibility (Wearable Tech)</Typography>
           {renderSelect('Charging Interface', form.compChargingInterface, form.setCompChargingInterface, chargingInterfaceOptions)}
           {renderWirelessChargingCheckboxes()}
@@ -664,7 +664,7 @@ export default function ProductFormDialog({
 
     if (cat === 'watch_accessories') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Typography sx={sectionTitle}>Category Compatibility (Watch Accessories)</Typography>
           {renderSelect('Watch Case Size', form.compWatchCaseSize, form.setCompWatchCaseSize, watchCaseSizeOptions)}
           {renderWirelessChargingCheckboxes()}
@@ -712,7 +712,7 @@ export default function ProductFormDialog({
           </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ pt: 2, pb: 1 }}>
+        <DialogContent sx={{ pt: 1.5, pb: 1, px: 2.5 }}>
           {form.formError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => form.setFormError(null)}>
               {form.formError}
@@ -721,7 +721,7 @@ export default function ProductFormDialog({
 
           {/* ---- Basic Info ---- */}
           <Typography sx={sectionTitle}>Basic Information</Typography>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={twoColGrid}>
               <div>
                 <label style={labelStyle}>Product Name *</label>
@@ -800,7 +800,7 @@ export default function ProductFormDialog({
                 value={form.prodDescription}
                 onChange={e => form.setProdDescription(e.target.value)}
                 placeholder="Product description"
-                rows={3}
+                rows={2}
                 style={{ ...fieldStyle, resize: 'vertical' }}
               />
             </div>
@@ -811,7 +811,7 @@ export default function ProductFormDialog({
                 value={form.prodShortDescription}
                 onChange={e => form.setProdShortDescription(e.target.value)}
                 placeholder="Short description"
-                rows={2}
+                rows={1}
                 style={{ ...fieldStyle, resize: 'vertical' }}
               />
             </div>
@@ -819,7 +819,7 @@ export default function ProductFormDialog({
 
           {/* ---- Pricing ---- */}
           <Typography sx={sectionTitle}>Pricing</Typography>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={twoColGrid}>
               <div>
                 <label style={labelStyle}>Vendor Wholesale Price {isVendor ? '*' : ''}</label>
@@ -878,7 +878,7 @@ export default function ProductFormDialog({
                   style={fieldStyle}
                 />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
                 <input
                   type="checkbox"
                   checked={form.prodRecommendedAccessory}
@@ -914,7 +914,7 @@ export default function ProductFormDialog({
               />
             </div>
           </div>
-          <div style={{ ...twoColGrid, marginTop: 12 }}>
+          <div style={{ ...twoColGrid, marginTop: 6 }}>
             <div>
               <label style={labelStyle}>EOL Date</label>
               <input
@@ -950,7 +950,7 @@ export default function ProductFormDialog({
 
           {/* ---- Dimensions & Weight ---- */}
           <Typography sx={sectionTitle}>Dimensions & Weight</Typography>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
             <div>
               <label style={labelStyle}>Length {isVendor ? '*' : ''}</label>
               <input
@@ -1073,7 +1073,7 @@ export default function ProductFormDialog({
 
           {/* ---- Images ---- */}
           <Typography sx={sectionTitle}>Images</Typography>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div>
               <label style={labelStyle}>Primary Image (PNG with transparent background, or ZIP of PNGs)</label>
               <input
@@ -1091,7 +1091,7 @@ export default function ProductFormDialog({
             </div>
 
             {form.imagePreviewUrl && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.5 }}>
                 <img
                   src={form.imagePreviewUrl}
                   alt="Preview"
@@ -1186,7 +1186,7 @@ export default function ProductFormDialog({
 
           {/* ---- SEO / Meta ---- */}
           <Typography sx={sectionTitle}>SEO / Meta</Typography>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div>
               <label style={labelStyle}>Meta Title</label>
               <input
@@ -1213,7 +1213,7 @@ export default function ProductFormDialog({
           {form.prodType === 'accessory' && (
             <>
               <Typography sx={sectionTitle}>Device Compatibility</Typography>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {/* Universal Device Types */}
                 <div>
                   <label style={labelStyle}>Universal Device Types</label>

@@ -438,14 +438,14 @@ export default function BulkUploadDialog({
         </Stepper>
       </Box>
 
-      <DialogContent dividers sx={{ minHeight: 400 }}>
+      <DialogContent dividers sx={{ minHeight: 350 }}>
         {/* ---------------------------------------------------------------- */}
         {/* Step 1: CSV Upload & Preview                                      */}
         {/* ---------------------------------------------------------------- */}
         {activeStep === 0 && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             {/* Controls row */}
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
               <Button
                 variant="outlined"
                 startIcon={<CloudUploadIcon />}
@@ -625,7 +625,7 @@ export default function BulkUploadDialog({
         {/* Step 2: ZIP Image Upload                                          */}
         {/* ---------------------------------------------------------------- */}
         {activeStep === 1 && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, alignItems: 'center' }}>
             {importedCount > 0 && (
               <Alert severity="info" sx={{ width: '100%' }}>
                 {importedCount} product(s) were imported. Upload a ZIP file containing product
@@ -653,7 +653,7 @@ export default function BulkUploadDialog({
                 cursor: 'pointer',
                 background: dragOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent',
                 transition: 'all 0.2s ease',
-                p: 3,
+                p: 2,
               }}
             >
               <CloudUploadIcon sx={{ fontSize: 48, color: 'var(--text-muted)' }} />

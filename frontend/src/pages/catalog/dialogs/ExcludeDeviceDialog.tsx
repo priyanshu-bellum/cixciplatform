@@ -105,7 +105,7 @@ export default function ExcludeDeviceDialog({
       </DialogTitle>
 
       <DialogContent dividers>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
           {/* Context info */}
           <Box>
             <Typography variant="body2" color="textSecondary" gutterBottom>

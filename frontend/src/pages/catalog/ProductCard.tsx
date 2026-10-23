@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import Card from '@mui/material/Card'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
+import Skeleton from '@mui/material/Skeleton'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import ImageIcon from '@mui/icons-material/Image'
 import { getColorSwatchBg, formatExportedDate } from './utils'
@@ -364,6 +365,67 @@ export default function ProductCard({
         </div>
       </Card>
     </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton variant – matches the card layout for a smooth loading experience
+// ---------------------------------------------------------------------------
+export function ProductCardSkeleton() {
+  return (
+    <Card
+      variant="outlined"
+      sx={{
+        borderRadius: '12px',
+        p: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1,
+      }}
+    >
+      {/* Image placeholder */}
+      <Skeleton
+        variant="rounded"
+        width="100%"
+        sx={{ aspectRatio: '1', borderRadius: '8px' }}
+      />
+      {/* Angle thumbnails */}
+      <Box sx={{ display: 'flex', gap: 0.75 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} variant="rounded" width={40} height={40} sx={{ borderRadius: '6px' }} />
+        ))}
+      </Box>
+      {/* Brand */}
+      <Skeleton variant="text" width="35%" sx={{ fontSize: 10 }} />
+      {/* Title */}
+      <Skeleton variant="text" width="80%" sx={{ fontSize: 15 }} />
+      {/* Category pill */}
+      <Skeleton variant="rounded" width={90} height={22} sx={{ borderRadius: '12px' }} />
+      {/* SKU / UPC row */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+        <Skeleton variant="text" width="40%" sx={{ fontSize: 12 }} />
+        <Skeleton variant="text" width="40%" sx={{ fontSize: 12 }} />
+      </Box>
+      {/* Color row */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Skeleton variant="circular" width={14} height={14} />
+        <Skeleton variant="text" width="30%" sx={{ fontSize: 12 }} />
+      </Box>
+      {/* Pricing rows */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+        <Skeleton variant="text" width="30%" sx={{ fontSize: 13 }} />
+        <Skeleton variant="text" width="25%" sx={{ fontSize: 13 }} />
+      </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+        <Skeleton variant="text" width="40%" sx={{ fontSize: 12 }} />
+        <Skeleton variant="text" width="20%" sx={{ fontSize: 12 }} />
+      </Box>
+      {/* Status row */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
+        <Skeleton variant="text" width="35%" sx={{ fontSize: 12 }} />
+        <Skeleton variant="rounded" width={60} height={20} sx={{ borderRadius: '10px' }} />
+      </Box>
+    </Card>
   )
 }
 

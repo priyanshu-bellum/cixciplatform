@@ -104,7 +104,7 @@ export default function ExportDialog({
       </DialogTitle>
 
       <DialogContent dividers>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
           {/* Selection info */}
           <Typography variant="body2" color="textSecondary">
             {selectedProductIds.length > 0

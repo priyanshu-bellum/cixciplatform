@@ -8,13 +8,11 @@ interface PageHeaderProps {
   actions?: ReactNode;
 }
 
-export default function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
+export default function PageHeader({ title: _title, subtitle, actions }: PageHeaderProps) {
+  // Title is rendered in the AppBar (AppLayout.tsx) — only render subtitle + actions here
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
       <Box>
-        <Typography variant="h3" gutterBottom={!!subtitle}>
-          {title}
-        </Typography>
         {subtitle && (
           <Typography variant="body2" color="text.secondary">
             {subtitle}

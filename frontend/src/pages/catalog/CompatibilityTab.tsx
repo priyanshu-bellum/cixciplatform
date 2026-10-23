@@ -8,7 +8,7 @@ import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
-import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import Button from '@mui/material/Button'
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag'
 import RefreshIcon from '@mui/icons-material/Refresh'
@@ -17,7 +17,7 @@ import { getImageUrl, formatCurrency } from '../../lib/formatters'
 import { SERVER_PAGE_SIZE } from './constants'
 import { useCatalogFilters } from './hooks/useCatalogFilters'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
-import ProductCard from './ProductCard'
+import ProductCard, { ProductCardSkeleton } from './ProductCard'
 import ProductFilterBar from './ProductFilterBar'
 import { Pagination } from '../../components/Pagination'
 import StatusChip from '../../components/data-display/StatusChip'
@@ -145,8 +145,16 @@ export default function CompatibilityTab({
 
   if (isProjectionLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Skeleton variant="text" width={180} sx={{ fontSize: 12 }} />
+          <Skeleton variant="rounded" width={90} height={30} sx={{ borderRadius: 1 }} />
+        </Box>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2.5 }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <ProductCardSkeleton key={i} />
+          ))}
+        </Box>
       </Box>
     )
   }
@@ -196,12 +204,6 @@ export default function CompatibilityTab({
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />
-
-      {isFetching && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
-          <CircularProgress size={20} />
-        </Box>
-      )}
 
       {products.length === 0 && !isLoading ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>

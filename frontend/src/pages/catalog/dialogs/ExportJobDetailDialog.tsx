@@ -80,13 +80,13 @@ export default function ExportJobDetailDialog({
       </DialogTitle>
 
       <DialogContent dividers>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {/* Job metadata */}
           <Box
             sx={{
               display: 'grid',
               gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-              gap: 2,
+              gap: 1,
             }}
           >
             <DetailRow label="Job ID" value={job.id} />

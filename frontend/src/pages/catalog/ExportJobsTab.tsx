@@ -9,7 +9,7 @@ import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
-import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import DescriptionIcon from '@mui/icons-material/Description'
 import api from '../../lib/apiClient'
@@ -31,7 +31,7 @@ const STATUS_CHIP_COLOR: Record<string, 'success' | 'warning' | 'error' | 'defau
 export default function ExportJobsTab({ user }: ExportJobsTabProps) {
   const [selectedJob, setSelectedJob] = useState<any>(null)
 
-  const { data: exportJobs, refetch: refreshJobs, isRefetching } = useQuery({
+  const { data: exportJobs, refetch: refreshJobs, isRefetching, isLoading } = useQuery({
     queryKey: ['export-jobs'],
     queryFn: () => api.get('/catalog/export-jobs/list_jobs/', { params: { paginate: 'false' } }).then(r => r.data).catch(() => []),
   })
@@ -61,7 +61,36 @@ export default function ExportJobsTab({ user }: ExportJobsTabProps) {
         </Button>
       </Box>
 
-      {jobs.length === 0 ? (
+      {isLoading ? (
+        <Box sx={{ overflowX: 'auto' }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Job ID</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Format</TableCell>
+                <TableCell align="center">Products</TableCell>
+                <TableCell>Created</TableCell>
+                <TableCell>Completed</TableCell>
+                <TableCell align="center">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton variant="text" width={70} /></TableCell>
+                  <TableCell><Skeleton variant="rounded" width={70} height={22} sx={{ borderRadius: '10px' }} /></TableCell>
+                  <TableCell><Skeleton variant="text" width={40} /></TableCell>
+                  <TableCell align="center"><Skeleton variant="text" width={30} sx={{ mx: 'auto' }} /></TableCell>
+                  <TableCell><Skeleton variant="text" width={130} /></TableCell>
+                  <TableCell><Skeleton variant="text" width={130} /></TableCell>
+                  <TableCell align="center"><Skeleton variant="text" width={80} sx={{ mx: 'auto' }} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+      ) : jobs.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <DescriptionIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h6" color="text.secondary">No export jobs yet</Typography>

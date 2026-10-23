@@ -7,7 +7,7 @@ import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
-import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import Button from '@mui/material/Button'
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag'
 import api from '../../lib/apiClient'
@@ -15,7 +15,7 @@ import { getImageUrl, formatCurrency } from '../../lib/formatters'
 import { SERVER_PAGE_SIZE } from './constants'
 import { useCatalogFilters } from './hooks/useCatalogFilters'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
-import ProductCard from './ProductCard'
+import ProductCard, { ProductCardSkeleton } from './ProductCard'
 import ProductFilterBar from './ProductFilterBar'
 import { Pagination } from '../../components/Pagination'
 import StatusChip from '../../components/data-display/StatusChip'
@@ -159,8 +159,60 @@ export default function AllProductsTab({
 
   if (isLoading && !products.length) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
+      <Box>
+        <ProductFilterBar
+          filters={filters}
+          user={user}
+          vendorCompanies={vendorCompaniesData}
+          portfolio={portfolio}
+          allowedCategories={allowedCategories}
+          allowedBrands={allowedBrands}
+          allowedColors={allowedColors}
+          brandsList={brandsList}
+          onExportExcel={isCixciAdmin ? handleExportExcel : undefined}
+          exporting={exporting}
+          selectedCount={0}
+          showSelectAll={isBuyer}
+          totalProducts={0}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+        />
+        {viewMode === 'grid' ? (
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2.5 }}>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <ProductCardSkeleton key={i} />
+            ))}
+          </Box>
+        ) : (
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ width: 60 }}>Image</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>SKU</TableCell>
+                  <TableCell>Brand</TableCell>
+                  <TableCell>Category</TableCell>
+                  <TableCell align="right">MSRP</TableCell>
+                  <TableCell>Status</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton variant="rounded" width={40} height={40} /></TableCell>
+                    <TableCell><Skeleton variant="text" width="70%" /></TableCell>
+                    <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+                    <TableCell><Skeleton variant="text" width="50%" /></TableCell>
+                    <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+                    <TableCell align="right"><Skeleton variant="text" width="40%" sx={{ ml: 'auto' }} /></TableCell>
+                    <TableCell><Skeleton variant="rounded" width={60} height={22} sx={{ borderRadius: '10px' }} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
+        )}
       </Box>
     )
   }
@@ -196,12 +248,6 @@ export default function AllProductsTab({
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />
-
-      {isFetching && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
-          <CircularProgress size={20} />
-        </Box>
-      )}
 
       {products.length === 0 && !isLoading ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
