@@ -436,14 +436,9 @@ def validate_zip_archive(
 
                 if validation.is_duplicate:
                     summary["duplicates"] += 1
-                    entries.append({
-                        "filename": base_name,
-                        "source_name": info.filename,
-                        "status": "failed",
-                        "reason": validation.warnings[0],
-                        "data": None,
-                    })
-                    continue
+                    # Downgrade to warning: cross-product image reuse is legitimate
+                    # (e.g. cables of different lengths sharing the same photo).
+                    # Per-product duplicate blocking is handled later in upload_zip.
 
                 entries.append({
                     "filename": base_name,

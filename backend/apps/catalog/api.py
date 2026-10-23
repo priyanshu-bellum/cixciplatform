@@ -1266,7 +1266,14 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         {"detail": "Active products that are live and being sold by buyers cannot be deleted."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-        return super().destroy(request, *args, **kwargs)
+        from django.db.models.deletion import ProtectedError
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {"detail": "Cannot delete this product because it has dependent records (e.g. compatibility assertions, export snapshots). Remove those first."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     def get_required_capability(self):
         action = getattr(self, "action", None)
@@ -1821,12 +1828,12 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         def match_devices_by_feature_string(comp_str):
             if not comp_str:
                 return []
-            
+
             # Check direct exact or lookup device match first (e.g. "Samsung Galaxy S26+")
             direct_dev = lookup_device(comp_str.strip())
             if direct_dev:
                 return [direct_dev]
-            
+
             import re
             g_item_clean = re.sub(r'\s*\bplus\b\s*', ' + ', comp_str, flags=re.IGNORECASE)
             # Split by both semicolon and comma first
@@ -1848,6 +1855,38 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     dev = lookup_device(dev_name)
                     if dev:
                         return [dev]
+
+            # Separate feature keywords from device-name tokens
+            feature_parts = [p for p in parts if p.lower() in FEATURE_KEYWORDS
+                             or p.lower() in ("magsafe", "qi", "qi2", "lightning",
+                                               "type-c", "usb-c", "usb c", "bluetooth")]
+            name_parts = [p for p in parts if p not in feature_parts]
+
+            # If no feature keywords are present, this is purely a device name
+            # (e.g. "iPhone 18 Pro"). Use strict substring matching on the full
+            # original string instead of matching each word independently — this
+            # prevents "iPhone 18 Pro" from matching "iPhone 18 Pro Max".
+            if name_parts and not feature_parts:
+                from apps.devices.models import Device
+                from django.utils import timezone
+                now_date = timezone.now().date()
+                all_devices = Device.objects.filter(
+                    device_type__status='active'
+                ).exclude(
+                    lifecycle_status='retired'
+                )
+                all_devices = [d for d in all_devices if not (d.launch_date and d.launch_date > now_date)]
+
+                full_name_lower = comp_str.strip().lower()
+                matched_devices = []
+                for dev in all_devices:
+                    dev_name_lower = dev.name.lower()
+                    mfg_prefix = (dev.manufacturer.name.lower() + " ") if dev.manufacturer else ""
+                    full_dev_name = mfg_prefix + dev_name_lower
+                    # Require the full input string to appear as a substring of the device name
+                    if full_name_lower in full_dev_name or full_name_lower in dev_name_lower:
+                        matched_devices.append(dev)
+                return matched_devices
 
             from apps.devices.models import Device
             from django.utils import timezone
