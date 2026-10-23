@@ -432,7 +432,7 @@ export default function BulkUploadDialog({
       onClose={onClose}
       maxWidth={hasCsvPreview ? 'lg' : 'sm'}
       fullWidth
-      PaperProps={{ sx: { transition: 'max-width 0.25s ease' } }}
+      slotProps={{ paper: { sx: { transition: 'max-width 0.25s ease' } } }}
     >
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5 }}>
         {imagesOnly ? 'Upload Product Images' : 'Bulk Upload Products'}
