@@ -206,7 +206,12 @@ class Command(BaseCommand):
 
             if apply:
                 try:
-                    product.save(update_fields=update_fields)
+                    # Use queryset.update() to bypass model clean/save validation
+                    # (some products may lack launch_date which blocks model.save())
+                    update_kwargs = {}
+                    for field in update_fields:
+                        update_kwargs[field] = getattr(product, field)
+                    Product.objects.filter(pk=product.pk).update(**update_kwargs)
                     updated += 1
                 except Exception as e:
                     self.stderr.write(self.style.ERROR(
