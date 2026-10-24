@@ -30,6 +30,7 @@ resend==2.47.0
 python-decouple==3.8
 Pillow==10.4.0
 python-dateutil==2.9.0
+openpyxl==3.1.5
 
 # Dev
 pytest==8.3.2

@@ -162,32 +162,38 @@ class Command(BaseCommand):
             changes = []
             update_fields = []
 
-            # MAP Price
+            # MAP Price (skip if cell is empty — keep current value)
             if map_col is not None and map_col < len(cells):
-                new_map = parse_decimal(cells[map_col])
-                old_map = product.map_price
-                if new_map != old_map:
-                    changes.append(f"map_price: {old_map} → {new_map}")
-                    product.map_price = new_map
-                    update_fields.append("map_price")
+                raw_val = cells[map_col]
+                if raw_val is not None and str(raw_val).strip() != "":
+                    new_map = parse_decimal(raw_val)
+                    old_map = product.map_price
+                    if new_map != old_map:
+                        changes.append(f"map_price: {old_map} → {new_map}")
+                        product.map_price = new_map
+                        update_fields.append("map_price")
 
-            # Wholesale Price
+            # Wholesale Price (skip if cell is empty — keep current value)
             if wholesale_col is not None and wholesale_col < len(cells):
-                new_ws = parse_decimal(cells[wholesale_col])
-                old_ws = product.vendor_wholesale_price_amount
-                if new_ws != old_ws:
-                    changes.append(f"wholesale: {old_ws} → {new_ws}")
-                    product.vendor_wholesale_price_amount = new_ws
-                    update_fields.append("vendor_wholesale_price_amount")
+                raw_val = cells[wholesale_col]
+                if raw_val is not None and str(raw_val).strip() != "":
+                    new_ws = parse_decimal(raw_val)
+                    old_ws = product.vendor_wholesale_price_amount
+                    if new_ws != old_ws:
+                        changes.append(f"wholesale: {old_ws} → {new_ws}")
+                        product.vendor_wholesale_price_amount = new_ws
+                        update_fields.append("vendor_wholesale_price_amount")
 
-            # MSRP
+            # MSRP (skip if cell is empty — keep current value)
             if msrp_col is not None and msrp_col < len(cells):
-                new_msrp = parse_decimal(cells[msrp_col])
-                old_msrp = product.msrp
-                if new_msrp != old_msrp:
-                    changes.append(f"msrp: {old_msrp} → {new_msrp}")
-                    product.msrp = new_msrp
-                    update_fields.append("msrp")
+                raw_val = cells[msrp_col]
+                if raw_val is not None and str(raw_val).strip() != "":
+                    new_msrp = parse_decimal(raw_val)
+                    old_msrp = product.msrp
+                    if new_msrp != old_msrp:
+                        changes.append(f"msrp: {old_msrp} → {new_msrp}")
+                        product.msrp = new_msrp
+                        update_fields.append("msrp")
 
             if not changes:
                 self.stdout.write(f"  Row {row_idx}: SKU '{sku}' — no changes needed")
