@@ -123,6 +123,9 @@ class ProductSerializerBase(serializers.ModelSerializer):
             if not (is_admin or is_vendor):
                 ret.pop("vendor_wholesale_price_amount", None)
                 ret.pop("vendor_wholesale_price_currency", None)
+            # Vendors must not see CIXCI's internal buyer wholesale price
+            if is_vendor:
+                ret.pop("buyer_wholesale_price", None)
             if not is_admin:
                 ret.pop("vendor_name", None)
                 ret.pop("selling_status", None)

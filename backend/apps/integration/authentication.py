@@ -32,11 +32,20 @@ class CompanyAPIKeyAuthentication(BaseAuthentication):
         api_key.last_used_at = timezone.now()
         api_key.save(update_fields=["last_used_at"])
 
-        user = User.objects.filter(entity__company_id=api_key.company_scope_reference, email="sklein@telcocellular.com", is_active=True).first()
+        # Prefer a company admin, then fall back to any active user in the company
+        from apps.tenant.models import CompanyUserMembership
+        company_id = api_key.company_scope_reference
+        admin_membership = CompanyUserMembership.objects.filter(
+            company_id=company_id, is_company_admin=True, user__is_active=True,
+        ).select_related("user").first()
+        user = admin_membership.user if admin_membership else None
         if not user:
-            user = User.objects.filter(entity__company_id=api_key.company_scope_reference, email="buyer@cixci.com", is_active=True).first()
+            membership = CompanyUserMembership.objects.filter(
+                company_id=company_id, user__is_active=True,
+            ).select_related("user").first()
+            user = membership.user if membership else None
         if not user:
-            user = User.objects.filter(entity__company_id=api_key.company_scope_reference, is_active=True).first()
+            user = User.objects.filter(entity__company_id=company_id, is_active=True).first()
 
         if not user:
             raise AuthenticationFailed("No active user found for the company entity associated with this API key")

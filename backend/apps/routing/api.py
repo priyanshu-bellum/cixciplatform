@@ -156,6 +156,18 @@ class OrderSerializer(serializers.ModelSerializer):
                 instance.status = "shipped"
                 instance.save(update_fields=["status"])
                 ret["status"] = "shipped"
+
+        # Vendors must not see customer email
+        request = self.context.get("request")
+        if request and hasattr(request, "user") and request.user:
+            user = request.user
+            is_vendor = (
+                hasattr(user, "company") and user.company
+                and user.company.company_type == "vendor"
+            )
+            if is_vendor:
+                ret.pop("email", None)
+
         return ret
 
     def _get_primary_suborder(self, obj):
