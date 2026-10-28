@@ -23,6 +23,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import CloseIcon from '@mui/icons-material/Close'
+import MenuItem from '@mui/material/MenuItem'
 import api from '../lib/apiClient'
 import PageHeader from '../components/layout/PageHeader'
 import DataTable, { type Column } from '../components/data-display/DataTable'
@@ -31,6 +32,7 @@ import { formatDate, formatETDate } from '../lib/formatters'
 import { useSnackbar } from '../components/feedback/SnackbarProvider'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import ConfirmDialog from '../components/feedback/ConfirmDialog'
+import { useAuthStore } from '../stores/authStore'
 
 /* ── connector type chip colour mapping ── */
 const CONNECTOR_COLOR: Record<string, 'success' | 'info' | 'secondary' | 'default'> = {
@@ -49,10 +51,13 @@ export default function IntegrationPage() {
   const [tab, setTab] = useState<TabValue>('connections')
   const { showSnackbar } = useSnackbar()
   const { confirm, dialogProps } = useConfirmDialog()
+  const { user } = useAuthStore()
+  const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
 
   // API Key creation / modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [keyLabel, setKeyLabel] = useState('')
+  const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [generatedKey, setGeneratedKey] = useState<string | null>(null)
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null)
   const [isCreatingKey, setIsCreatingKey] = useState(false)
@@ -82,6 +87,13 @@ export default function IntegrationPage() {
     enabled: tab === 'api-keys',
   })
 
+  const { data: companiesData } = useQuery({
+    queryKey: ['integration-companies'],
+    queryFn: () => api.get('/tenant/companies/', { params: { paginate: 'false' } }).then(r => r.data),
+    enabled: tab === 'api-keys' && isCixciAdmin,
+  })
+  const companies = Array.isArray(companiesData) ? companiesData : companiesData?.results ?? []
+
   const connections = connData?.results ?? (Array.isArray(connData) ? connData : [])
   const webhooks = whData?.results ?? (Array.isArray(whData) ? whData : [])
   const inbound = inbData?.results ?? (Array.isArray(inbData) ? inbData : [])
@@ -90,16 +102,20 @@ export default function IntegrationPage() {
   /* ── handlers ── */
   const handleGenerateKey = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!keyLabel.trim()) return
+    if (!keyLabel.trim() || !selectedCompanyId) return
     setIsCreatingKey(true)
     setModalError('')
     try {
-      const res = await api.post('/integration/api-keys/', { label: keyLabel })
+      const res = await api.post('/integration/api-keys/', {
+        label: keyLabel,
+        company_scope_reference: selectedCompanyId,
+      })
       setGeneratedKey(res.data.token)
       refetchKeys()
     } catch (err: any) {
       console.error(err)
-      setModalError('Failed to generate API Key. Please try again.')
+      const detail = err?.response?.data?.detail || err?.response?.data?.company_scope_reference?.[0]
+      setModalError(detail || 'Failed to generate API Key. Please try again.')
     } finally {
       setIsCreatingKey(false)
     }
@@ -132,6 +148,7 @@ export default function IntegrationPage() {
 
   const openGenerateModal = () => {
     setKeyLabel('')
+    setSelectedCompanyId('')
     setGeneratedKey(null)
     setModalError('')
     setIsModalOpen(true)
@@ -270,83 +287,93 @@ export default function IntegrationPage() {
     },
   ], [])
 
-  const apiKeyColumns: Column<any>[] = useMemo(() => [
-    {
-      id: 'label',
-      label: 'Label',
-      render: (row) => (
-        <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
-          {row.label}
-        </Typography>
-      ),
-    },
-    {
-      id: 'token',
-      label: 'API Key / Token',
-      sortable: false,
-      render: (row) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography
-            component="code"
-            variant="body2"
-            sx={{
-              fontFamily: 'monospace',
-              fontSize: 12,
-              bgcolor: 'action.hover',
-              px: 0.75,
-              py: 0.25,
-              borderRadius: 1,
-            }}
-          >
-            {row.token}
+  const apiKeyColumns: Column<any>[] = useMemo(() => {
+    const cols: Column<any>[] = [
+      {
+        id: 'label',
+        label: 'Label',
+        render: (row) => (
+          <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
+            {row.label}
           </Typography>
-          <Tooltip title="Copy API Key">
-            <IconButton size="small" onClick={() => handleCopy(row.token, row.id)}>
-              {copiedKeyId === row.id ? (
-                <CheckIcon fontSize="small" color="success" />
-              ) : (
-                <ContentCopyIcon fontSize="small" />
-              )}
+        ),
+      },
+      {
+        id: 'company_name',
+        label: 'Company',
+        render: (row) => row.company_name || '\u2014',
+      },
+      {
+        id: 'token',
+        label: 'API Key / Token',
+        sortable: false,
+        render: (row) => (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography
+              component="code"
+              variant="body2"
+              sx={{
+                fontFamily: 'monospace',
+                fontSize: 12,
+                bgcolor: 'action.hover',
+                px: 0.75,
+                py: 0.25,
+                borderRadius: 1,
+              }}
+            >
+              {row.token}
+            </Typography>
+            <Tooltip title="Copy API Key">
+              <IconButton size="small" onClick={() => handleCopy(row.token, row.id)}>
+                {copiedKeyId === row.id ? (
+                  <CheckIcon fontSize="small" color="success" />
+                ) : (
+                  <ContentCopyIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
+          </Box>
+        ),
+      },
+      {
+        id: 'created_at',
+        label: 'Created At',
+        render: (row) => formatETDate(row.created_at),
+      },
+      {
+        id: 'last_used_at',
+        label: 'Last Used',
+        render: (row) => (row.last_used_at ? formatETDate(row.last_used_at) : 'Never'),
+      },
+      {
+        id: 'is_active',
+        label: 'Status',
+        render: (row) => (
+          <StatusChip
+            status={row.is_active ? 'active' : 'inactive'}
+            label={row.is_active ? 'Active' : 'Revoked'}
+          />
+        ),
+      },
+    ]
+    if (isCixciAdmin) {
+      cols.push({
+        id: 'actions',
+        label: 'Actions',
+        sortable: false,
+        align: 'right' as const,
+        width: 80,
+        render: (row) => (
+          <Tooltip title="Revoke Key">
+            <IconButton size="small" color="error" onClick={() => handleRevokeKey(row.id)}>
+              <DeleteOutlineIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-        </Box>
-      ),
-    },
-    {
-      id: 'created_at',
-      label: 'Created At',
-      render: (row) => formatETDate(row.created_at),
-    },
-    {
-      id: 'last_used_at',
-      label: 'Last Used',
-      render: (row) => (row.last_used_at ? formatETDate(row.last_used_at) : 'Never'),
-    },
-    {
-      id: 'is_active',
-      label: 'Status',
-      render: (row) => (
-        <StatusChip
-          status={row.is_active ? 'active' : 'inactive'}
-          label={row.is_active ? 'Active' : 'Revoked'}
-        />
-      ),
-    },
-    {
-      id: 'actions',
-      label: 'Actions',
-      sortable: false,
-      align: 'right' as const,
-      width: 80,
-      render: (row) => (
-        <Tooltip title="Revoke Key">
-          <IconButton size="small" color="error" onClick={() => handleRevokeKey(row.id)}>
-            <DeleteOutlineIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      ),
-    },
-  ], [copiedKeyId])
+        ),
+      })
+    }
+    return cols
+  }, [copiedKeyId, isCixciAdmin])
 
   /* ── render ── */
   return (
@@ -355,7 +382,7 @@ export default function IntegrationPage() {
         title="Integration"
         subtitle="External connections, webhooks, and B2B API access keys."
         actions={
-          tab === 'api-keys' ? (
+          tab === 'api-keys' && isCixciAdmin ? (
             <Button
               variant="contained"
               startIcon={<VpnKeyOutlinedIcon />}
@@ -448,7 +475,23 @@ export default function IntegrationPage() {
           )}
 
           {!generatedKey ? (
-            <Box component="form" id="generate-key-form" onSubmit={handleGenerateKey}>
+            <Box component="form" id="generate-key-form" onSubmit={handleGenerateKey} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                select
+                label="Company"
+                value={selectedCompanyId}
+                onChange={(e) => setSelectedCompanyId(e.target.value)}
+                required
+                fullWidth
+                size="small"
+                helperText="Select the company this API key will authenticate as."
+              >
+                {companies.map((co: any) => (
+                  <MenuItem key={co.id} value={co.id}>
+                    {co.name} ({co.company_type?.replace(/_/g, ' ')})
+                  </MenuItem>
+                ))}
+              </TextField>
               <TextField
                 label="Key Description / Label"
                 placeholder="e.g. Telco Cellular Accessories Storefront"
@@ -505,7 +548,7 @@ export default function IntegrationPage() {
                 type="submit"
                 form="generate-key-form"
                 variant="contained"
-                disabled={isCreatingKey}
+                disabled={isCreatingKey || !selectedCompanyId}
                 startIcon={isCreatingKey ? <CircularProgress size={16} color="inherit" /> : undefined}
               >
                 {isCreatingKey ? 'Generating...' : 'Generate Key'}

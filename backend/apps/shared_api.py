@@ -1475,14 +1475,22 @@ class ExternalActionRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
 
 class CompanyAPIKeySerializer(serializers.ModelSerializer):
     company_scope_reference = serializers.UUIDField(required=False, allow_null=True)
+    company_name = serializers.SerializerMethodField()
 
     class Meta:
         model = CompanyAPIKey
         fields = [
-            "id", "company_scope_reference", "label", "token",
+            "id", "company_scope_reference", "company_name", "label", "token",
             "is_active", "created_at", "last_used_at",
         ]
         read_only_fields = ["id", "token", "created_at", "last_used_at"]
+
+    def get_company_name(self, obj):
+        from apps.tenant.models import Company
+        if obj.company_scope_reference:
+            co = Company.objects.filter(id=obj.company_scope_reference).first()
+            return co.name if co else ""
+        return ""
 
 class CompanyAPIKeyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = CompanyAPIKey.objects.all()
@@ -1503,22 +1511,26 @@ class CompanyAPIKeyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         return CompanyAPIKey.objects.filter(company_scope_reference=user.entity.company_id)
 
     def perform_create(self, serializer):
-        import secrets, uuid
-        token = f"cixci_key_{secrets.token_hex(24)}"
+        from rest_framework.exceptions import PermissionDenied
         user = self.request.user
+        if not getattr(user, "is_cixci_admin", False):
+            raise PermissionDenied("Only CIXCI system administrators can generate API keys.")
         company_id = serializer.validated_data.get("company_scope_reference")
         if not company_id:
-            company_id = user.entity.company_id if getattr(user, "entity", None) else None
-        if not company_id and getattr(user, "company", None):
-            company_id = user.company.id
-        if not company_id and getattr(user, "is_cixci_admin", False):
-            from apps.tenant.models import Company
-            c = Company.objects.first()
-            company_id = c.id if c else uuid.uuid4()
+            raise serializers.ValidationError({"company_scope_reference": "This field is required."})
+        import secrets
+        token = f"cixci_key_{secrets.token_hex(24)}"
         serializer.save(
             company_scope_reference=company_id,
             token=token
         )
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        if not getattr(user, "is_cixci_admin", False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI system administrators can revoke API keys.")
+        instance.delete()
 
 class WebhookDeliverySerializer(serializers.ModelSerializer):
     class Meta:
