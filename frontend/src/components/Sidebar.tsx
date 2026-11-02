@@ -25,6 +25,7 @@ import PublicIcon from '@mui/icons-material/Public'
 import SettingsIcon from '@mui/icons-material/SettingsOutlined'
 import LogoutIcon from '@mui/icons-material/LogoutOutlined'
 import PeopleIcon from '@mui/icons-material/PeopleOutlined'
+import ApiIcon from '@mui/icons-material/ApiOutlined'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeMode } from '../theme/ThemeProvider'
 import ConfirmDialog from './feedback/ConfirmDialog'
@@ -190,6 +191,18 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             <ListItemIcon sx={{ minWidth: 32 }}><SettingsIcon fontSize="small" /></ListItemIcon>
             <ListItemText primary="Settings" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
           </ListItemButton>
+          {isCixciAdmin && (
+            <ListItemButton
+              component="a"
+              href="/api/v1/docs/"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ mx: 1, borderRadius: 1.5 }}
+            >
+              <ListItemIcon sx={{ minWidth: 32 }}><ApiIcon fontSize="small" /></ListItemIcon>
+              <ListItemText primary="API Docs" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
+            </ListItemButton>
+          )}
           <ListItemButton onClick={handleLogout} sx={{ mx: 1, borderRadius: 1.5 }}>
             <ListItemIcon sx={{ minWidth: 32 }}><LogoutIcon fontSize="small" /></ListItemIcon>
             <ListItemText primary="Sign out" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
