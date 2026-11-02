@@ -2277,30 +2277,64 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 if eol_date <= today_est:
                     status_str = "eol"
 
-            # --- Product Category ---
+            # --- Product Category (Category Governance) ---
+            # Vendor provides their own category name (vendor_category)
+            # System resolves it to canonical CIXCI category (product_category)
             category_raw = str(row.get("productcategory") or row.get("category") or "").strip()
-            product_category = None
+            vendor_category = category_raw  # Source data
+            product_category = None  # Canonical CIXCI category
+            category_needs_review = False
+
             if not category_raw:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Product Category",
                     "submitted_value": "",
                     "validation_error": "Product Category must not be blank.",
-                    "recommended_correction": "Specify a valid approved category."
+                    "recommended_correction": "Specify a valid vendor category."
                 })
             else:
                 normalized_category = category_raw.replace("&", "and").strip()
-                cat_exists = DynamicDropdownConfig.objects.filter(field_name="product_category", value__iexact=normalized_category).first()
-                if cat_exists:
-                    product_category = cat_exists.value
+
+                # Try to resolve via VendorCategoryMapping first
+                from apps.catalog.models import VendorCategoryMapping, VendorCategoryMappingStatus
+                vendor_ref = request.user.company.id if (request and request.user and hasattr(request.user, 'company')) else None
+
+                mapping = None
+                if vendor_ref:
+                    mapping = VendorCategoryMapping.objects.filter(
+                        vendor_company_reference=vendor_ref,
+                        vendor_category__iexact=normalized_category,
+                        status=VendorCategoryMappingStatus.ACTIVE
+                    ).first()
+
+                if mapping:
+                    # Mapping found - use canonical CIXCI category
+                    product_category = mapping.cixci_category
+                    vendor_category = normalized_category
                 else:
-                    row_errors.append({
-                        "row_number": row_num,
-                        "column_name": "Product Category",
-                        "submitted_value": category_raw,
-                        "validation_error": f"Unknown Product Category '{category_raw}'.",
-                        "recommended_correction": "Map to an approved category."
-                    })
+                    # No mapping - check if it's a direct CIXCI category match (legacy support)
+                    cat_exists = DynamicDropdownConfig.objects.filter(
+                        field_name="product_category",
+                        value__iexact=normalized_category
+                    ).first()
+
+                    if cat_exists:
+                        product_category = cat_exists.value
+                        vendor_category = normalized_category
+                    else:
+                        # Unknown category - needs mapping
+                        vendor_category = normalized_category
+                        product_category = None
+                        category_needs_review = True
+
+                        row_errors.append({
+                            "row_number": row_num,
+                            "column_name": "Product Category",
+                            "submitted_value": category_raw,
+                            "validation_error": f"Vendor category '{category_raw}' has no mapping to CIXCI category.",
+                            "recommended_correction": "Contact CIXCI Admin to create category mapping."
+                        })
 
             # --- UPC ---
             upc_val = str(row.get("upc") or "").strip()
@@ -3343,6 +3377,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 if should_stage and final_status == "active":
                     final_status = "inactive"
 
+                # Category Governance: Products with unmapped categories need review
+                if category_needs_review:
+                    final_status = "review_required"
+
                 # AI Enrichment Simulation
                 # 1. Clean Name
                 cleaned_name = " ".join(name.split())
@@ -3390,7 +3428,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 product.name = cleaned_name
                 product.brand = brand
                 product.product_type = product_type
-                product.product_category = product_category
+                # Category Governance
+                product.product_category = product_category  # Canonical CIXCI category
+                product.vendor_category = vendor_category    # Source vendor category
                 product.description = cleaned_desc
                 product.short_description = cleaned_short_desc
                 product.promo_information = promo_info
