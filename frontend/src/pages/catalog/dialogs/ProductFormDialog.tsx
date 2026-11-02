@@ -371,7 +371,7 @@ export default function ProductFormDialog({
     if (isVendor) {
       if (!form.prodUpc.trim()) return 'UPC is required.'
       if (!/^\d{12}$/.test(form.prodUpc.trim())) return 'UPC must be exactly 12 digits.'
-      if (form.prodCategory !== 'branded_merchandise' && !form.prodCategory) return 'Product Category is required.'
+      if (form.prodType !== 'branded_merchandise' && !form.prodVendorCategory.trim()) return 'Vendor Category is required.'
       if (!form.prodLaunchDate) return 'Launch Date is required.'
       if (!form.prodColor.trim()) return 'Color is required.'
       if (!form.prodSystemColor.trim()) return 'System Color is required.'
@@ -460,7 +460,6 @@ export default function ProductFormDialog({
         sku: form.prodSku.trim(),
         brand: form.prodBrand.trim(),
         product_type: form.prodType || 'accessory',
-        product_category: form.prodCategory,
         description: form.prodDescription.trim(),
         vendor_wholesale_price_amount: form.prodPrice ? parseFloat(form.prodPrice) : null,
         vendor_wholesale_price_currency: form.prodCurrency || 'USD',
@@ -498,6 +497,17 @@ export default function ProductFormDialog({
         memory_capacity: form.compMemoryCapacity || '',
         compatible_watch_case_size: form.compWatchCaseSize || '',
         compatible_device_types: form.compUniversalDeviceTypes,
+      }
+
+      // Category Governance: Vendors provide vendor_category, Admins can set both
+      if (isVendor) {
+        payload.vendor_category = form.prodVendorCategory.trim()
+      } else if (isAdmin) {
+        payload.product_category = form.prodCategory || null
+        payload.vendor_category = form.prodVendorCategory.trim() || null
+      } else {
+        // Regular users (if any) can set product_category
+        payload.product_category = form.prodCategory || null
       }
 
       let savedProduct: any
@@ -774,13 +784,32 @@ export default function ProductFormDialog({
             </div>
 
             <div style={twoColGrid}>
-              <div>
-                <label style={labelStyle}>Product Category {isVendor && form.prodCategory !== 'branded_merchandise' ? '*' : ''}</label>
-                <select value={form.prodCategory} onChange={e => form.setProdCategory(e.target.value)} style={fieldStyle}>
-                  <option value="">Select category...</option>
-                  {allowedCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+              {/* Category field - different for vendors vs admins */}
+              {isVendor ? (
+                <div>
+                  <label style={labelStyle}>Vendor Category {form.prodType !== 'branded_merchandise' ? '*' : ''}</label>
+                  <input
+                    type="text"
+                    value={form.prodVendorCategory}
+                    onChange={e => form.setProdVendorCategory(e.target.value)}
+                    placeholder="Enter your category name"
+                    style={fieldStyle}
+                  />
+                  {form.prodCategory && (
+                    <Typography sx={{ fontSize: 11, color: 'var(--text-secondary)', mt: 0.5 }}>
+                      Mapped to CIXCI category: <strong>{form.prodCategory}</strong>
+                    </Typography>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label style={labelStyle}>Product Category</label>
+                  <select value={form.prodCategory} onChange={e => form.setProdCategory(e.target.value)} style={fieldStyle}>
+                    <option value="">Select category...</option>
+                    {allowedCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label style={labelStyle}>UPC {isVendor ? '*' : ''}</label>
                 <input
@@ -793,6 +822,20 @@ export default function ProductFormDialog({
                 />
               </div>
             </div>
+
+            {/* Admin: Show vendor category as well */}
+            {isAdmin && (
+              <div style={{ marginTop: 8 }}>
+                <label style={labelStyle}>Vendor Category (Original)</label>
+                <input
+                  type="text"
+                  value={form.prodVendorCategory}
+                  onChange={e => form.setProdVendorCategory(e.target.value)}
+                  placeholder="Vendor's original category name"
+                  style={fieldStyle}
+                />
+              </div>
+            )}
 
             <div>
               <label style={labelStyle}>Description {isVendor ? '*' : ''}</label>

@@ -15,6 +15,7 @@ export function useProductForm() {
   const [prodBrand, setProdBrand] = useState('')
   const [prodType, setProdType] = useState('')
   const [prodCategory, setProdCategory] = useState('')
+  const [prodVendorCategory, setProdVendorCategory] = useState('')
   const [prodDescription, setProdDescription] = useState('')
   const [prodPrice, setProdPrice] = useState('')
   const [prodCurrency, setProdCurrency] = useState('USD')
@@ -69,7 +70,7 @@ export function useProductForm() {
   const [compUniversalDeviceTypes, setCompUniversalDeviceTypes] = useState<string[]>([])
 
   const resetForm = useCallback(() => {
-    setProdName(''); setProdSku(''); setProdBrand(''); setProdType(''); setProdCategory('')
+    setProdName(''); setProdSku(''); setProdBrand(''); setProdType(''); setProdCategory(''); setProdVendorCategory('')
     setProdDescription(''); setProdPrice(''); setProdCurrency('USD'); setProdUpc(''); setProdStatus('')
     setProdLaunchDate(''); setProdReleaseDate(''); setProdEolDate(''); setProdColor(''); setProdSystemColor('')
     setProdMsrp(''); setProdMapPrice(''); setProdSalePrice(''); setProdRecommendedAccessory(false)
@@ -94,7 +95,8 @@ export function useProductForm() {
     }
     setProdName(p.name || ''); setProdSku(p.sku || ''); setProdBrand(p.brand || '')
     setProdStatus(p.status || 'active'); setProdType(p.product_type || 'accessory')
-    setProdCategory(p.product_category || ''); setProdDescription(p.description || '')
+    setProdCategory(p.product_category || ''); setProdVendorCategory(p.vendor_category || '')
+    setProdDescription(p.description || '')
     setProdPrice(cleanPrice(p.vendor_wholesale_price_amount))
     setProdCurrency(p.vendor_wholesale_price_currency || 'USD')
     setImagePreviewUrl(p.primary_image_url ? getImageUrl(p.primary_image_url) : '')
@@ -142,7 +144,7 @@ export function useProductForm() {
   const isAddDirty = useCallback(() => {
     return (
       prodName !== '' || prodStatus !== '' || prodSku !== '' || prodBrand !== '' || prodType !== '' ||
-      prodCategory !== '' || prodDescription !== '' || prodPrice !== '' || prodCurrency !== 'USD' ||
+      prodCategory !== '' || prodVendorCategory !== '' || prodDescription !== '' || prodPrice !== '' || prodCurrency !== 'USD' ||
       prodUpc !== '' || prodLaunchDate !== '' || prodReleaseDate !== '' || prodEolDate !== '' ||
       prodColor !== '' || prodSystemColor !== '' || prodMsrp !== '' || prodMapPrice !== '' ||
       prodSalePrice !== '' || prodRecommendedAccessory !== false || prodInventoryLevel !== '' ||
@@ -156,7 +158,7 @@ export function useProductForm() {
       compMemoryCapacity !== '' || compWatchCaseSize !== '' || compUniversalDeviceTypes.length > 0
     )
   }, [
-    prodName, prodStatus, prodSku, prodBrand, prodType, prodCategory, prodDescription, prodPrice,
+    prodName, prodStatus, prodSku, prodBrand, prodType, prodCategory, prodVendorCategory, prodDescription, prodPrice,
     prodCurrency, prodUpc, prodLaunchDate, prodReleaseDate, prodEolDate, prodColor, prodSystemColor,
     prodMsrp, prodMapPrice, prodSalePrice, prodRecommendedAccessory, prodInventoryLevel,
     prodInventoryThreshold, prodLength, prodWidth, prodHeight, prodWeight, prodWarranty,
@@ -189,6 +191,7 @@ export function useProductForm() {
       prodStatus !== (editingProduct.status || '') ||
       prodType !== (editingProduct.product_type || 'accessory') ||
       prodCategory !== (editingProduct.product_category || '') ||
+      prodVendorCategory !== (editingProduct.vendor_category || '') ||
       prodDescription !== (editingProduct.description || '') ||
       prodPrice !== (editingProduct.vendor_wholesale_price_amount != null ? String(editingProduct.vendor_wholesale_price_amount) : '') ||
       prodCurrency !== (editingProduct.vendor_wholesale_price_currency || 'USD') ||
@@ -231,7 +234,7 @@ export function useProductForm() {
       compWatchCaseSize !== (editingProduct.compatible_watch_case_size || '')
     )
   }, [
-    prodName, prodSku, prodBrand, prodStatus, prodType, prodCategory, prodDescription, prodPrice,
+    prodName, prodSku, prodBrand, prodStatus, prodType, prodCategory, prodVendorCategory, prodDescription, prodPrice,
     prodCurrency, prodUpc, prodLaunchDate, prodReleaseDate, prodEolDate, prodColor, prodSystemColor,
     prodMsrp, prodMapPrice, prodSalePrice, prodRecommendedAccessory, prodInventoryLevel,
     prodInventoryThreshold, prodLength, prodWidth, prodHeight, prodWeight, prodWarranty,
@@ -268,6 +271,7 @@ export function useProductForm() {
     // Basic fields
     prodName, setProdName, prodStatus, setProdStatus, prodSku, setProdSku,
     prodBrand, setProdBrand, prodType, setProdType, prodCategory, setProdCategory,
+    prodVendorCategory, setProdVendorCategory,
     prodDescription, setProdDescription, prodPrice, setProdPrice, prodCurrency, setProdCurrency,
     prodUpc, setProdUpc, prodLaunchDate, setProdLaunchDate, prodReleaseDate, setProdReleaseDate,
     prodEolDate, setProdEolDate, prodColor, setProdColor, prodSystemColor, setProdSystemColor,

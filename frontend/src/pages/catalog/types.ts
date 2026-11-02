@@ -13,6 +13,7 @@ export interface Product {
   brand?: string
   product_type?: string
   product_category?: string
+  vendor_category?: string  // Category Governance: vendor's category name
   description?: string
   short_description?: string
   promo_information?: string
