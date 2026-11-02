@@ -18,7 +18,8 @@ from apps.media.utils import media_short_url
 from .models import (
     Product, ProductCompatibilityAssertion,
     BuyerScopedCompatibilityProjection, BuyerProductExportJob,
-    DynamicDropdownConfig, ProductStatus,
+    DynamicDropdownConfig, ProductStatus, VendorCategoryMapping,
+    VendorCategoryMappingStatus,
 )
 from .services import recalculate_buyer_compatibility_projection
 
@@ -4140,6 +4141,143 @@ class DynamicDropdownConfigViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("Only CIXCI system admins can modify dropdown values.")
 
 
+# ─── Vendor Category Mapping (Category Governance) ───────────────────────────
+
+class VendorCategoryMappingSerializer(serializers.ModelSerializer):
+    vendor_company_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VendorCategoryMapping
+        fields = [
+            "id", "vendor_company_reference", "vendor_company_name",
+            "vendor_category", "cixci_category",
+            "status", "mapping_source", "effective_date",
+            "created_at", "updated_at",
+            "created_by", "created_by_name",
+            "updated_by", "updated_by_name",
+            "company_scope_reference",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "company_scope_reference"]
+
+    def get_vendor_company_name(self, obj):
+        try:
+            from apps.tenant.models import Company
+            company = Company.objects.filter(id=obj.vendor_company_reference).first()
+            return company.name if company else None
+        except Exception:
+            return None
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return None
+        try:
+            from apps.tenant.models import User
+            user = User.objects.filter(id=obj.created_by).first()
+            return user.full_name if user else None
+        except Exception:
+            return None
+
+    def get_updated_by_name(self, obj):
+        if not obj.updated_by:
+            return None
+        try:
+            from apps.tenant.models import User
+            user = User.objects.filter(id=obj.updated_by).first()
+            return user.full_name if user else None
+        except Exception:
+            return None
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and request.user:
+            validated_data['created_by'] = request.user.id
+            validated_data['company_scope_reference'] = request.user.entity
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        request = self.context.get('request')
+        if request and request.user:
+            validated_data['updated_by'] = request.user.id
+        return super().update(instance, validated_data)
+
+
+class VendorCategoryMappingViewSet(CheckAccessMixin, viewsets.ModelViewSet):
+    """
+    Category Governance: Manage vendor category to CIXCI category mappings.
+
+    Only CIXCI Admins can create/update/delete mappings.
+    Vendors can view their own mappings (read-only).
+    """
+    queryset = VendorCategoryMapping.objects.all().order_by('-created_at')
+    serializer_class = VendorCategoryMappingSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ["vendor_company_reference", "status", "cixci_category"]
+    search_fields = ["vendor_category", "cixci_category"]
+
+    action_capability_map = {
+        "list": None,      # All authenticated
+        "retrieve": None,  # All authenticated
+        "create": "admin_only",
+        "update": "admin_only",
+        "partial_update": "admin_only",
+        "destroy": "admin_only",
+    }
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+
+        # Vendors can only see their own mappings
+        if hasattr(user, 'company') and user.company and user.company.company_type == 'vendor':
+            qs = qs.filter(vendor_company_reference=user.company.id)
+
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def bulk_create(self, request):
+        """
+        Bulk create vendor category mappings.
+        Admin only.
+        """
+        if not request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI Admins can create category mappings.")
+
+        mappings_data = request.data.get('mappings', [])
+        if not isinstance(mappings_data, list):
+            return Response(
+                {"error": "Expected 'mappings' array in request body"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        created = []
+        errors = []
+
+        for idx, mapping_data in enumerate(mappings_data):
+            serializer = self.get_serializer(data=mapping_data)
+            if serializer.is_valid():
+                serializer.save()
+                created.append(serializer.data)
+            else:
+                errors.append({
+                    "index": idx,
+                    "data": mapping_data,
+                    "errors": serializer.errors
+                })
+
+        return Response({
+            "created": created,
+            "errors": errors,
+            "summary": {
+                "total": len(mappings_data),
+                "created": len(created),
+                "failed": len(errors)
+            }
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST)
+
+
 # ─── URLs ─────────────────────────────────────────────────────────────────────
 
 router = DefaultRouter()
@@ -4147,5 +4285,6 @@ router.register("products", ProductViewSet, basename="product")
 router.register("my-projection", BuyerCompatibilityProjectionViewSet, basename="buyer-projection")
 router.register("export-jobs", BuyerExportJobViewSet, basename="export-job")
 router.register("dropdown-configs", DynamicDropdownConfigViewSet, basename="dropdown-config")
+router.register("vendor-category-mappings", VendorCategoryMappingViewSet, basename="vendor-category-mapping")
 
 urlpatterns = [path("", include(router.urls))]
