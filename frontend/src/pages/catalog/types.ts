@@ -14,6 +14,11 @@ export interface Product {
   product_type?: string
   product_category?: string
   vendor_category?: string  // Category Governance: vendor's category name
+  vendor_category_raw?: string  // Exact vendor category input (unmodified, for audit)
+  product_category_override?: string  // Admin override for CIXCI category
+  product_category_override_by?: string
+  product_category_override_at?: string
+  category_validation_status?: string  // pending | mapping_required | resolved | override_applied
   description?: string
   short_description?: string
   promo_information?: string

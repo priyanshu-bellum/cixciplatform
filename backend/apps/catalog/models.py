@@ -36,6 +36,13 @@ class SellingStatus(models.TextChoices):
     # Removing a device from My Devices does NOT auto-trigger this.
 
 
+class CategoryValidationStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    MAPPING_REQUIRED = "mapping_required", "Category Mapping Required"
+    RESOLVED = "resolved", "Resolved via Mapping"
+    OVERRIDE_APPLIED = "override_applied", "Override Applied by Admin"
+
+
 class ProductType(models.TextChoices):
     ACCESSORY = "accessory", "Accessory"
     BRANDED_MERCHANDISE = "branded_merchandise", "Branded Merchandise"
@@ -91,9 +98,24 @@ class Product(models.Model):
     # Category Governance: Canonical CIXCI category
     product_category = models.CharField(max_length=100, blank=True, null=True, db_index=True,
                                        help_text="Canonical CIXCI category (mapped from vendor_category)")
-    # Category Governance: Source vendor category
+    # Category Governance: Source vendor category (trimmed for matching)
     vendor_category = models.CharField(max_length=100, blank=True, null=True,
-                                      help_text="Original vendor category name (source data)")
+                                      help_text="Vendor category name (trimmed, used for mapping lookup)")
+    # Category Governance: Raw vendor category (exact input, for audit/provenance)
+    vendor_category_raw = models.CharField(max_length=100, blank=True, null=True,
+                                          help_text="Exact vendor category input (unmodified, for audit)")
+    # Category Governance: Admin override for canonical category
+    product_category_override = models.CharField(max_length=100, blank=True, null=True,
+                                                help_text="Admin override for CIXCI category (takes priority over mapping)")
+    product_category_override_by = models.UUIDField(null=True, blank=True,
+                                                   help_text="Admin who set the category override")
+    product_category_override_at = models.DateTimeField(null=True, blank=True,
+                                                       help_text="When the category override was set")
+    # Category Governance: Validation status (separate from product lifecycle status)
+    category_validation_status = models.CharField(
+        max_length=30, choices=CategoryValidationStatus.choices,
+        default=CategoryValidationStatus.PENDING, db_index=True,
+        help_text="Category governance validation status (separate from product lifecycle status)")
 
     vendor_company_reference = models.UUIDField(db_index=True, help_text="Tenant Company vendor ID")
     company_scope_reference = models.UUIDField(db_index=True)
@@ -1185,8 +1207,12 @@ class VendorCategoryMapping(models.Model):
     vendor_company_reference = models.UUIDField(db_index=True, help_text="Vendor company ID")
     vendor_category = models.CharField(max_length=100, help_text="Original vendor category name")
 
-    # Canonical mapping
-    cixci_category = models.CharField(max_length=100, help_text="Canonical CIXCI category")
+    # Canonical mapping (denormalized name + reference ID for integrity)
+    cixci_category = models.CharField(max_length=100, help_text="Canonical CIXCI category name (denormalized)")
+    cixci_category_reference = models.UUIDField(
+        null=True, blank=True, db_index=True,
+        help_text="Reference to DynamicDropdownConfig.id for canonical CIXCI category"
+    )
 
     # Mapping metadata
     status = models.CharField(max_length=20, choices=VendorCategoryMappingStatus.choices,

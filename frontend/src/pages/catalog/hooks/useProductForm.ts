@@ -16,6 +16,8 @@ export function useProductForm() {
   const [prodType, setProdType] = useState('')
   const [prodCategory, setProdCategory] = useState('')
   const [prodVendorCategory, setProdVendorCategory] = useState('')
+  const [prodCategoryOverride, setProdCategoryOverride] = useState('')
+  const [prodCategoryValidationStatus, setProdCategoryValidationStatus] = useState('')
   const [prodDescription, setProdDescription] = useState('')
   const [prodPrice, setProdPrice] = useState('')
   const [prodCurrency, setProdCurrency] = useState('USD')
@@ -71,6 +73,7 @@ export function useProductForm() {
 
   const resetForm = useCallback(() => {
     setProdName(''); setProdSku(''); setProdBrand(''); setProdType(''); setProdCategory(''); setProdVendorCategory('')
+    setProdCategoryOverride(''); setProdCategoryValidationStatus('')
     setProdDescription(''); setProdPrice(''); setProdCurrency('USD'); setProdUpc(''); setProdStatus('')
     setProdLaunchDate(''); setProdReleaseDate(''); setProdEolDate(''); setProdColor(''); setProdSystemColor('')
     setProdMsrp(''); setProdMapPrice(''); setProdSalePrice(''); setProdRecommendedAccessory(false)
@@ -96,6 +99,8 @@ export function useProductForm() {
     setProdName(p.name || ''); setProdSku(p.sku || ''); setProdBrand(p.brand || '')
     setProdStatus(p.status || 'active'); setProdType(p.product_type || 'accessory')
     setProdCategory(p.product_category || ''); setProdVendorCategory(p.vendor_category || '')
+    setProdCategoryOverride(p.product_category_override || '')
+    setProdCategoryValidationStatus(p.category_validation_status || '')
     setProdDescription(p.description || '')
     setProdPrice(cleanPrice(p.vendor_wholesale_price_amount))
     setProdCurrency(p.vendor_wholesale_price_currency || 'USD')
@@ -272,6 +277,8 @@ export function useProductForm() {
     prodName, setProdName, prodStatus, setProdStatus, prodSku, setProdSku,
     prodBrand, setProdBrand, prodType, setProdType, prodCategory, setProdCategory,
     prodVendorCategory, setProdVendorCategory,
+    prodCategoryOverride, setProdCategoryOverride,
+    prodCategoryValidationStatus, setProdCategoryValidationStatus,
     prodDescription, setProdDescription, prodPrice, setProdPrice, prodCurrency, setProdCurrency,
     prodUpc, setProdUpc, prodLaunchDate, setProdLaunchDate, prodReleaseDate, setProdReleaseDate,
     prodEolDate, setProdEolDate, prodColor, setProdColor, prodSystemColor, setProdSystemColor,

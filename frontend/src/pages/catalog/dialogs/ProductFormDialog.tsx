@@ -499,12 +499,13 @@ export default function ProductFormDialog({
         compatible_device_types: form.compUniversalDeviceTypes,
       }
 
-      // Category Governance: Vendors provide vendor_category, Admins can set both
+      // Category Governance: Vendors provide vendor_category, Admins can set both + override
       if (isVendor) {
         payload.vendor_category = form.prodVendorCategory.trim()
       } else if (isAdmin) {
         payload.product_category = form.prodCategory || null
         payload.vendor_category = form.prodVendorCategory.trim() || null
+        payload.product_category_override = form.prodCategoryOverride || null
       } else {
         // Regular users (if any) can set product_category
         payload.product_category = form.prodCategory || null
@@ -823,17 +824,71 @@ export default function ProductFormDialog({
               </div>
             </div>
 
-            {/* Admin: Show vendor category as well */}
+            {/* Admin: Show vendor category + category override + validation status */}
             {isAdmin && (
-              <div style={{ marginTop: 8 }}>
-                <label style={labelStyle}>Vendor Category (Original)</label>
-                <input
-                  type="text"
-                  value={form.prodVendorCategory}
-                  onChange={e => form.setProdVendorCategory(e.target.value)}
-                  placeholder="Vendor's original category name"
-                  style={fieldStyle}
-                />
+              <>
+                <div style={twoColGrid}>
+                  <div>
+                    <label style={labelStyle}>Vendor Category (Original)</label>
+                    <input
+                      type="text"
+                      value={form.prodVendorCategory}
+                      onChange={e => form.setProdVendorCategory(e.target.value)}
+                      placeholder="Vendor's original category name"
+                      style={fieldStyle}
+                      readOnly={mode === 'edit'}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Category Override</label>
+                    <select
+                      value={form.prodCategoryOverride}
+                      onChange={e => form.setProdCategoryOverride(e.target.value)}
+                      style={fieldStyle}
+                    >
+                      <option value="">No override (use mapping)</option>
+                      {allowedCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {form.prodCategoryOverride && (
+                      <Typography sx={{ fontSize: 11, color: '#ed6c02', mt: 0.5 }}>
+                        Override active — takes priority over mapping
+                      </Typography>
+                    )}
+                  </div>
+                </div>
+                {mode === 'edit' && form.prodCategoryValidationStatus && (
+                  <div style={{ marginTop: 4 }}>
+                    <Typography sx={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                      Category Status: <strong style={{
+                        color: form.prodCategoryValidationStatus === 'resolved' ? '#2e7d32'
+                          : form.prodCategoryValidationStatus === 'override_applied' ? '#ed6c02'
+                          : form.prodCategoryValidationStatus === 'mapping_required' ? '#d32f2f'
+                          : '#757575'
+                      }}>
+                        {form.prodCategoryValidationStatus === 'resolved' ? 'Resolved via Mapping'
+                          : form.prodCategoryValidationStatus === 'override_applied' ? 'Override Applied'
+                          : form.prodCategoryValidationStatus === 'mapping_required' ? 'Mapping Required'
+                          : 'Pending'}
+                      </strong>
+                    </Typography>
+                  </div>
+                )}
+              </>
+            )}
+            {/* Vendor: Show category validation status */}
+            {isVendor && mode === 'edit' && form.prodCategoryValidationStatus && (
+              <div style={{ marginTop: 4 }}>
+                <Typography sx={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Category Status: <strong style={{
+                    color: form.prodCategoryValidationStatus === 'resolved' ? '#2e7d32'
+                      : form.prodCategoryValidationStatus === 'mapping_required' ? '#d32f2f'
+                      : '#757575'
+                  }}>
+                    {form.prodCategoryValidationStatus === 'resolved' ? 'Resolved'
+                      : form.prodCategoryValidationStatus === 'mapping_required' ? 'Mapping Required'
+                      : 'Pending'}
+                  </strong>
+                </Typography>
               </div>
             )}
 

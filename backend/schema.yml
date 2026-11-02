@@ -14903,6 +14903,18 @@ components:
       required:
       - code
       - module
+    CategoryValidationStatusEnum:
+      enum:
+      - pending
+      - mapping_required
+      - resolved
+      - override_applied
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `mapping_required` - Category Mapping Required
+        * `resolved` - Resolved via Mapping
+        * `override_applied` - Override Applied by Admin
     ChangeSourceEnum:
       enum:
       - buyer_action
@@ -20486,13 +20498,43 @@ components:
         vendor_category:
           type: string
           nullable: true
-          description: Original vendor category name (source data)
+          description: Vendor category name (trimmed, used for mapping lookup)
+          maxLength: 100
+        vendor_category_raw:
+          type: string
+          nullable: true
+          description: Exact vendor category input (unmodified, for audit)
           maxLength: 100
         product_category:
           type: string
           nullable: true
           description: Canonical CIXCI category (mapped from vendor_category)
           maxLength: 100
+        product_category_override:
+          type: string
+          nullable: true
+          description: Admin override for CIXCI category (takes priority over mapping)
+          maxLength: 100
+        product_category_override_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: Admin who set the category override
+        product_category_override_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the category override was set
+        category_validation_status:
+          allOf:
+          - $ref: '#/components/schemas/CategoryValidationStatusEnum'
+          description: |-
+            Category governance validation status (separate from product lifecycle status)
+
+            * `pending` - Pending
+            * `mapping_required` - Category Mapping Required
+            * `resolved` - Resolved via Mapping
+            * `override_applied` - Override Applied by Admin
         brand:
           type: string
           maxLength: 200
@@ -20916,7 +20958,7 @@ components:
         cixci_category:
           type: string
           minLength: 1
-          description: Canonical CIXCI category
+          description: Canonical CIXCI category name (denormalized)
           maxLength: 100
         status:
           $ref: '#/components/schemas/VendorCategoryMappingStatusEnum'
@@ -21225,13 +21267,43 @@ components:
         vendor_category:
           type: string
           nullable: true
-          description: Original vendor category name (source data)
+          description: Vendor category name (trimmed, used for mapping lookup)
+          maxLength: 100
+        vendor_category_raw:
+          type: string
+          nullable: true
+          description: Exact vendor category input (unmodified, for audit)
           maxLength: 100
         product_category:
           type: string
           nullable: true
           description: Canonical CIXCI category (mapped from vendor_category)
           maxLength: 100
+        product_category_override:
+          type: string
+          nullable: true
+          description: Admin override for CIXCI category (takes priority over mapping)
+          maxLength: 100
+        product_category_override_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: Admin who set the category override
+        product_category_override_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the category override was set
+        category_validation_status:
+          allOf:
+          - $ref: '#/components/schemas/CategoryValidationStatusEnum'
+          description: |-
+            Category governance validation status (separate from product lifecycle status)
+
+            * `pending` - Pending
+            * `mapping_required` - Category Mapping Required
+            * `resolved` - Resolved via Mapping
+            * `override_applied` - Override Applied by Admin
         brand:
           type: string
           maxLength: 200
@@ -21453,13 +21525,43 @@ components:
         vendor_category:
           type: string
           nullable: true
-          description: Original vendor category name (source data)
+          description: Vendor category name (trimmed, used for mapping lookup)
+          maxLength: 100
+        vendor_category_raw:
+          type: string
+          nullable: true
+          description: Exact vendor category input (unmodified, for audit)
           maxLength: 100
         product_category:
           type: string
           nullable: true
           description: Canonical CIXCI category (mapped from vendor_category)
           maxLength: 100
+        product_category_override:
+          type: string
+          nullable: true
+          description: Admin override for CIXCI category (takes priority over mapping)
+          maxLength: 100
+        product_category_override_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: Admin who set the category override
+        product_category_override_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the category override was set
+        category_validation_status:
+          allOf:
+          - $ref: '#/components/schemas/CategoryValidationStatusEnum'
+          description: |-
+            Category governance validation status (separate from product lifecycle status)
+
+            * `pending` - Pending
+            * `mapping_required` - Category Mapping Required
+            * `resolved` - Resolved via Mapping
+            * `override_applied` - Override Applied by Admin
         brand:
           type: string
           maxLength: 200
@@ -21656,8 +21758,28 @@ components:
         vendor_category:
           type: string
           nullable: true
-          description: Original vendor category name (source data)
+          description: Vendor category name (trimmed, used for mapping lookup)
           maxLength: 100
+        vendor_category_raw:
+          type: string
+          nullable: true
+          description: Exact vendor category input (unmodified, for audit)
+          maxLength: 100
+        product_category_override:
+          type: string
+          nullable: true
+          description: Admin override for CIXCI category (takes priority over mapping)
+          maxLength: 100
+        category_validation_status:
+          allOf:
+          - $ref: '#/components/schemas/CategoryValidationStatusEnum'
+          description: |-
+            Category governance validation status (separate from product lifecycle status)
+
+            * `pending` - Pending
+            * `mapping_required` - Category Mapping Required
+            * `resolved` - Resolved via Mapping
+            * `override_applied` - Override Applied by Admin
         status:
           $ref: '#/components/schemas/StatusF0cEnum'
         vendor_company_reference:
@@ -21851,8 +21973,28 @@ components:
         vendor_category:
           type: string
           nullable: true
-          description: Original vendor category name (source data)
+          description: Vendor category name (trimmed, used for mapping lookup)
           maxLength: 100
+        vendor_category_raw:
+          type: string
+          nullable: true
+          description: Exact vendor category input (unmodified, for audit)
+          maxLength: 100
+        product_category_override:
+          type: string
+          nullable: true
+          description: Admin override for CIXCI category (takes priority over mapping)
+          maxLength: 100
+        category_validation_status:
+          allOf:
+          - $ref: '#/components/schemas/CategoryValidationStatusEnum'
+          description: |-
+            Category governance validation status (separate from product lifecycle status)
+
+            * `pending` - Pending
+            * `mapping_required` - Category Mapping Required
+            * `resolved` - Resolved via Mapping
+            * `override_applied` - Override Applied by Admin
         status:
           $ref: '#/components/schemas/StatusF0cEnum'
         vendor_company_reference:
@@ -23310,8 +23452,14 @@ components:
           maxLength: 100
         cixci_category:
           type: string
-          description: Canonical CIXCI category
+          description: Canonical CIXCI category name (denormalized)
           maxLength: 100
+        cixci_category_reference:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          description: Reference to DynamicDropdownConfig.id for canonical CIXCI category
         status:
           $ref: '#/components/schemas/VendorCategoryMappingStatusEnum'
         mapping_source:
@@ -23353,6 +23501,7 @@ components:
           description: CIXCI company scope
       required:
       - cixci_category
+      - cixci_category_reference
       - company_scope_reference
       - created_at
       - created_by_name
@@ -23377,7 +23526,7 @@ components:
         cixci_category:
           type: string
           minLength: 1
-          description: Canonical CIXCI category
+          description: Canonical CIXCI category name (denormalized)
           maxLength: 100
         status:
           $ref: '#/components/schemas/VendorCategoryMappingStatusEnum'

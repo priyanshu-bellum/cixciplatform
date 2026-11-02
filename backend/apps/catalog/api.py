@@ -139,11 +139,21 @@ class ProductSerializerBase(serializers.ModelSerializer):
                 ret.pop("compatibility_status", None)
 
             # Category Governance: Field visibility by role
-            # Buyers see only canonical CIXCI category (product_category), not vendor_category
+            # Buyers see only canonical CIXCI category (product_category)
             if is_buyer:
                 ret.pop("vendor_category", None)
-            # Vendors see vendor_category (their input) - product_category is read-only mapped result
-            # Admins see both for governance purposes
+                ret.pop("vendor_category_raw", None)
+                ret.pop("product_category_override", None)
+                ret.pop("product_category_override_by", None)
+                ret.pop("product_category_override_at", None)
+                ret.pop("category_validation_status", None)
+            # Vendors see vendor_category + category_validation_status, not override fields
+            elif is_vendor:
+                ret.pop("product_category_override", None)
+                ret.pop("product_category_override_by", None)
+                ret.pop("product_category_override_at", None)
+                ret.pop("vendor_category_raw", None)
+            # Admins see all fields for governance purposes
 
         return ret
 
@@ -210,6 +220,8 @@ class ProductListSerializer(ProductSerializerBase):
         fields = [
             "id", "name", "sku", "upc", "brand", "product_type",
             "product_category", "vendor_category",  # Category Governance
+            "vendor_category_raw", "product_category_override",
+            "category_validation_status",
             "status",
             "vendor_company_reference", "vendor_name",
             "description", "short_description", "promo_information",
@@ -411,7 +423,12 @@ class ProductDetailSerializer(ProductSerializerBase):
             # Basic Info
             "product_type",
             "vendor_category",
+            "vendor_category_raw",
             "product_category",
+            "product_category_override",
+            "product_category_override_by",
+            "product_category_override_at",
+            "category_validation_status",
             "brand",
             "description",
             "short_description",
@@ -535,10 +552,13 @@ class ProductDetailSerializer(ProductSerializerBase):
             user and hasattr(user, 'company') and user.company
             and user.company.company_type == 'vendor'
         )
+        is_admin = user and getattr(user, 'is_cixci_admin', False)
 
-        # Category Governance: Vendor API behavior
+        # ── Category Governance ──────────────────────────────────────────
+        from apps.catalog.models import CategoryValidationStatus
+
         if is_vendor:
-            vendor_category = attrs.get('vendor_category')
+            vendor_category_input = attrs.get('vendor_category')
             product_category_direct = attrs.get('product_category')
 
             # Vendors must NOT set product_category directly
@@ -547,21 +567,49 @@ class ProductDetailSerializer(ProductSerializerBase):
                     "product_category": "Vendors cannot set CIXCI Category directly. Please provide vendor_category instead."
                 })
 
-            # If vendor provides vendor_category, resolve mapping
+            # Store raw vendor category (exact input, for audit/provenance)
+            if vendor_category_input:
+                attrs['vendor_category_raw'] = vendor_category_input
+                attrs['vendor_category'] = vendor_category_input.strip()
+
+            vendor_category = attrs.get('vendor_category')
             if vendor_category:
                 vendor_company_ref = user.company.id
-                cixci_cat, needs_review = self._resolve_vendor_category_mapping(
-                    vendor_category, vendor_company_ref
-                )
 
-                if needs_review:
-                    # No mapping exists - mark product for review
-                    attrs['product_category'] = None
-                    # Keep vendor_category as-is for provenance
-                    # Product status should be set to review_required in create logic
+                # Resolution priority: 1) product_category_override, 2) mapping, 3) none
+                override = attrs.get('product_category_override') or (
+                    self.instance.product_category_override if self.instance else None
+                )
+                if override:
+                    attrs['product_category'] = override
+                    attrs['category_validation_status'] = CategoryValidationStatus.OVERRIDE_APPLIED
                 else:
-                    # Mapping found - use canonical CIXCI category
-                    attrs['product_category'] = cixci_cat
+                    cixci_cat, needs_mapping = self._resolve_vendor_category_mapping(
+                        vendor_category, vendor_company_ref
+                    )
+                    if needs_mapping:
+                        attrs['product_category'] = None
+                        attrs['category_validation_status'] = CategoryValidationStatus.MAPPING_REQUIRED
+                        # DO NOT change product status — category validation is separate
+                    else:
+                        attrs['product_category'] = cixci_cat
+                        attrs['category_validation_status'] = CategoryValidationStatus.RESOLVED
+
+        elif is_admin:
+            # Admin can set product_category_override
+            override = attrs.get('product_category_override')
+            if override:
+                attrs['product_category'] = override
+                attrs['category_validation_status'] = CategoryValidationStatus.OVERRIDE_APPLIED
+                attrs['product_category_override_by'] = user.id
+                from django.utils import timezone as tz
+                attrs['product_category_override_at'] = tz.now()
+
+            # Admin: store vendor_category_raw if vendor_category is provided
+            vendor_category_input = attrs.get('vendor_category')
+            if vendor_category_input:
+                attrs['vendor_category_raw'] = vendor_category_input
+                attrs['vendor_category'] = vendor_category_input.strip()
 
         category = attrs.get('product_category') or (self.instance.product_category if self.instance else None)
         if category:
@@ -2383,10 +2431,12 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             # --- Product Category (Category Governance) ---
             # Vendor provides their own category name (vendor_category)
             # System resolves it to canonical CIXCI category (product_category)
+            from apps.catalog.models import VendorCategoryMapping, VendorCategoryMappingStatus, CategoryValidationStatus
             category_raw = str(row.get("productcategory") or row.get("category") or "").strip()
-            vendor_category = category_raw  # Source data
+            vendor_category_raw_val = category_raw  # Exact input for audit
+            vendor_category = category_raw.strip() if category_raw else ""  # Trimmed for matching
             product_category = None  # Canonical CIXCI category
-            category_needs_review = False
+            category_validation = CategoryValidationStatus.PENDING
 
             if not category_raw:
                 row_errors.append({
@@ -2397,45 +2447,41 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "recommended_correction": "Specify a valid vendor category."
                 })
             else:
-                normalized_category = category_raw.replace("&", "and").strip()
-
                 # Try to resolve via VendorCategoryMapping first
-                from apps.catalog.models import VendorCategoryMapping, VendorCategoryMappingStatus
                 vendor_ref = request.user.company.id if (request and request.user and hasattr(request.user, 'company')) else None
 
                 mapping = None
                 if vendor_ref:
                     mapping = VendorCategoryMapping.objects.filter(
                         vendor_company_reference=vendor_ref,
-                        vendor_category__iexact=normalized_category,
+                        vendor_category__iexact=vendor_category,
                         status=VendorCategoryMappingStatus.ACTIVE
                     ).first()
 
                 if mapping:
                     # Mapping found - use canonical CIXCI category
                     product_category = mapping.cixci_category
-                    vendor_category = normalized_category
+                    category_validation = CategoryValidationStatus.RESOLVED
                 else:
                     # No mapping - check if it's a direct CIXCI category match (legacy support)
                     cat_exists = DynamicDropdownConfig.objects.filter(
                         field_name="product_category",
-                        value__iexact=normalized_category
+                        value__iexact=vendor_category
                     ).first()
 
                     if cat_exists:
                         product_category = cat_exists.value
-                        vendor_category = normalized_category
+                        category_validation = CategoryValidationStatus.RESOLVED
                     else:
-                        # Unknown category - needs mapping
-                        vendor_category = normalized_category
+                        # Unknown category - needs mapping (separate from product status)
                         product_category = None
-                        category_needs_review = True
+                        category_validation = CategoryValidationStatus.MAPPING_REQUIRED
 
                         row_errors.append({
                             "row_number": row_num,
                             "column_name": "Product Category",
                             "submitted_value": category_raw,
-                            "validation_error": f"Vendor category '{category_raw}' has no mapping to CIXCI category.",
+                            "validation_error": f"Vendor category '{category_raw}' has no mapping to CIXCI category. Category Mapping Required.",
                             "recommended_correction": "Contact CIXCI Admin to create category mapping."
                         })
 
@@ -3480,9 +3526,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 if should_stage and final_status == "active":
                     final_status = "inactive"
 
-                # Category Governance: Products with unmapped categories need review
-                if category_needs_review:
-                    final_status = "review_required"
+                # Category Governance: category_validation_status is set separately
+                # on the product (not via product lifecycle status field)
 
                 # AI Enrichment Simulation
                 # 1. Clean Name
@@ -3533,7 +3578,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 product.product_type = product_type
                 # Category Governance
                 product.product_category = product_category  # Canonical CIXCI category
-                product.vendor_category = vendor_category    # Source vendor category
+                product.vendor_category = vendor_category    # Trimmed vendor category (for matching)
+                product.vendor_category_raw = vendor_category_raw_val  # Exact input (for audit)
+                product.category_validation_status = category_validation  # Separate from product status
                 product.description = cleaned_desc
                 product.short_description = cleaned_short_desc
                 product.promo_information = promo_info
@@ -4262,14 +4309,29 @@ class VendorCategoryMappingSerializer(serializers.ModelSerializer):
         model = VendorCategoryMapping
         fields = [
             "id", "vendor_company_reference", "vendor_company_name",
-            "vendor_category", "cixci_category",
+            "vendor_category", "cixci_category", "cixci_category_reference",
             "status", "mapping_source", "effective_date",
             "created_at", "updated_at",
             "created_by", "created_by_name",
             "updated_by", "updated_by_name",
             "company_scope_reference",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "company_scope_reference"]
+        read_only_fields = ["id", "created_at", "updated_at", "company_scope_reference", "cixci_category_reference"]
+
+    def validate_cixci_category(self, value):
+        """Validate that cixci_category matches an active CIXCI category in DynamicDropdownConfig."""
+        cat_cfg = DynamicDropdownConfig.objects.filter(
+            field_name="product_category", value=value, status="active"
+        ).first()
+        if not cat_cfg:
+            active_cats = list(DynamicDropdownConfig.objects.filter(
+                field_name="product_category", status="active"
+            ).values_list("value", flat=True))
+            raise serializers.ValidationError(
+                f"'{value}' is not a valid CIXCI Category. "
+                f"Valid categories: {', '.join(active_cats)}"
+            )
+        return value
 
     def get_vendor_company_name(self, obj):
         try:
@@ -4299,17 +4361,33 @@ class VendorCategoryMappingSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
+    def _resolve_category_reference(self, cixci_category):
+        """Resolve DynamicDropdownConfig.id for the given CIXCI category name."""
+        cat_cfg = DynamicDropdownConfig.objects.filter(
+            field_name="product_category", value=cixci_category
+        ).first()
+        return cat_cfg.id if cat_cfg else None
+
     def create(self, validated_data):
         request = self.context.get('request')
         if request and request.user:
             validated_data['created_by'] = request.user.id
             validated_data['company_scope_reference'] = request.user.entity
+        # Auto-populate cixci_category_reference
+        validated_data['cixci_category_reference'] = self._resolve_category_reference(
+            validated_data.get('cixci_category', '')
+        )
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         request = self.context.get('request')
         if request and request.user:
             validated_data['updated_by'] = request.user.id
+        # Update cixci_category_reference if cixci_category changed
+        if 'cixci_category' in validated_data:
+            validated_data['cixci_category_reference'] = self._resolve_category_reference(
+                validated_data['cixci_category']
+            )
         return super().update(instance, validated_data)
 
 
@@ -4344,6 +4422,66 @@ class VendorCategoryMappingViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             qs = qs.filter(vendor_company_reference=user.company.id)
 
         return qs
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        self._reprocess_affected_products(instance)
+        self._audit_log("catalog.category_mapping.created", instance,
+                        f"Created mapping: '{instance.vendor_category}' → '{instance.cixci_category}'")
+
+    def perform_update(self, serializer):
+        old_category = serializer.instance.cixci_category
+        instance = serializer.save()
+        self._reprocess_affected_products(instance)
+        self._audit_log("catalog.category_mapping.updated", instance,
+                        f"Updated mapping: '{instance.vendor_category}' → '{instance.cixci_category}' (was '{old_category}')")
+
+    def perform_destroy(self, instance):
+        self._audit_log("catalog.category_mapping.deactivated", instance,
+                        f"Deleted mapping: '{instance.vendor_category}' → '{instance.cixci_category}'")
+        super().perform_destroy(instance)
+
+    def _reprocess_affected_products(self, mapping):
+        """
+        Re-resolve category for all products with matching vendor_category.
+        Does NOT change product status — only updates category fields.
+        """
+        from apps.catalog.models import CategoryValidationStatus
+        affected = Product.objects.filter(
+            vendor_company_reference=mapping.vendor_company_reference,
+            vendor_category__iexact=mapping.vendor_category.strip()
+        ).exclude(product_category_override__isnull=False).exclude(product_category_override='')
+
+        reprocessed_count = 0
+        for product in affected:
+            product.product_category = mapping.cixci_category
+            product.category_validation_status = CategoryValidationStatus.RESOLVED
+            product.save(update_fields=['product_category', 'category_validation_status', 'updated_at'])
+            reprocessed_count += 1
+
+        if reprocessed_count > 0:
+            self._audit_log(
+                "catalog.product.category_reprocessed", mapping,
+                f"Reprocessed {reprocessed_count} product(s) for mapping "
+                f"'{mapping.vendor_category}' → '{mapping.cixci_category}'"
+            )
+
+    def _audit_log(self, event_code, mapping, description):
+        """Log category governance audit event."""
+        try:
+            from apps.catalog.services import log_catalog_audit
+            log_catalog_audit(
+                event_code=event_code,
+                description=description,
+                product_id=None,
+                actor_id=self.request.user.id if self.request.user else None,
+                status="success"
+            )
+        except Exception:
+            import logging
+            logging.getLogger("apps.catalog").error(
+                f"Failed to log audit for {event_code}: {description}"
+            )
 
     @action(detail=False, methods=['post'])
     def bulk_create(self, request):
