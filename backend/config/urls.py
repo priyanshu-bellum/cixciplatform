@@ -62,6 +62,8 @@ api_v1 = [
 
 import os
 import yaml
+from django.http import FileResponse, HttpResponseForbidden, HttpResponseNotFound
+from django.views import View
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -70,6 +72,25 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 # ─── Admin Schema: full internal schema, restricted to CIXCI admins ────────────
+
+class AdminSchemaFileView(View):
+    """
+    Serves the schema.yml file directly for authenticated CIXCI admins.
+    This bypasses the REST framework authentication stack for static file serving.
+    """
+    def get(self, request):
+        # Check if user is authenticated and is CIXCI admin
+        if not request.user.is_authenticated:
+            return HttpResponseForbidden("Authentication required. Please log in to access API documentation.")
+        if not getattr(request.user, "is_cixci_admin", False):
+            return HttpResponseForbidden("Access restricted to CIXCI system administrators.")
+
+        schema_path = os.path.join(settings.BASE_DIR, "schema.yml")
+        if not os.path.exists(schema_path):
+            return HttpResponseNotFound("Schema file not found")
+
+        return FileResponse(open(schema_path, 'rb'), content_type='application/x-yaml')
+
 
 class AdminSchemaView(APIView):
     """
@@ -605,10 +626,10 @@ urlpatterns = [
 
     # ── Internal: CIXCI System Admin only ─────────────────────────────────────
     # /api/docs/ is now restricted — only authenticated CIXCI admins can access it.
-    path("api/schema/",        AdminSchemaView.as_view(), name="schema"),
+    path("api/schema/",        AdminSchemaFileView.as_view(), name="schema"),
     path("api/docs/",          SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/redoc/",         SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
-    path("api/v1/schema/",     AdminSchemaView.as_view(), name="v1-schema"),
+    path("api/v1/schema/",     AdminSchemaFileView.as_view(), name="v1-schema"),
     path("api/v1/docs/",       SpectacularSwaggerView.as_view(url_name="v1-schema"), name="v1-swagger-ui"),
     path("api/v1/redoc/",      SpectacularRedocView.as_view(url_name="v1-schema"), name="v1-redoc"),
 
