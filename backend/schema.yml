@@ -12,20 +12,6 @@ paths:
       responses:
         '200':
           description: No response body
-  /api/schema/:
-    get:
-      operationId: schema_retrieve
-      description: |-
-        Serves the full unfiltered OpenAPI schema. Only accessible to authenticated
-        CIXCI system admins. Do NOT expose this URL publicly.
-      tags:
-      - schema
-      security:
-      - ApiKeyAuth: []
-      - jwtAuth: []
-      responses:
-        '200':
-          description: No response body
   /api/v1/analytics/freshness-markers/:
     get:
       operationId: v1_analytics_freshness_markers_list
@@ -58,6 +44,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -86,6 +73,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -125,6 +113,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -156,6 +145,7 @@ paths:
               $ref: '#/components/schemas/ReportingMetricRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -184,6 +174,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -223,6 +214,7 @@ paths:
               $ref: '#/components/schemas/ReportingMetricRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -261,6 +253,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedReportingMetricRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -288,6 +281,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -331,6 +325,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -359,6 +354,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -387,6 +383,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -403,6 +400,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -469,6 +467,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -492,6 +491,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -628,6 +628,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -651,6 +652,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -787,6 +789,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -810,6 +813,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -946,6 +950,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -969,6 +974,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1035,6 +1041,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1058,6 +1065,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1171,6 +1179,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1197,6 +1206,7 @@ paths:
               $ref: '#/components/schemas/DynamicDropdownConfigRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1220,6 +1230,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1254,6 +1265,7 @@ paths:
               $ref: '#/components/schemas/DynamicDropdownConfigRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1287,6 +1299,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedDynamicDropdownConfigRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1309,6 +1322,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1327,6 +1341,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1349,6 +1364,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1376,6 +1392,7 @@ paths:
             schema:
               $ref: '#/components/schemas/BuyerExportJobRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1392,6 +1409,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1408,6 +1426,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1438,6 +1457,7 @@ paths:
               $ref: '#/components/schemas/BuyerCompatibilityProjectionRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1518,17 +1538,6 @@ paths:
           items:
             type: string
             nullable: true
-            enum:
-            - ''
-            - Cases
-            - Chargers and Cables
-            - Headphones
-            - Memory
-            - null
-            - Phone Attachments
-            - Screen Protection
-            - Speakers
-            - Wearable Tech
         description: Multiple values may be separated by commas.
         explode: false
         style: form
@@ -1602,6 +1611,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1633,6 +1643,7 @@ paths:
               $ref: '#/components/schemas/ProductDetailRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1661,6 +1672,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1700,6 +1712,7 @@ paths:
               $ref: '#/components/schemas/ProductDetailRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1738,6 +1751,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedProductDetailRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1765,6 +1779,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1785,6 +1800,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1809,6 +1825,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1844,6 +1861,7 @@ paths:
               $ref: '#/components/schemas/ProductListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1880,6 +1898,7 @@ paths:
               $ref: '#/components/schemas/ProductListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1919,6 +1938,7 @@ paths:
               $ref: '#/components/schemas/ProductListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1948,6 +1968,7 @@ paths:
               $ref: '#/components/schemas/ProductListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1969,6 +1990,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -1998,6 +2020,7 @@ paths:
               $ref: '#/components/schemas/ProductListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2006,6 +2029,262 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProductList'
+          description: ''
+  /api/v1/catalog/vendor-category-mappings/:
+    get:
+      operationId: v1_catalog_vendor_category_mappings_list
+      description: |-
+        Category Governance: Manage vendor category to CIXCI category mappings.
+
+        Only CIXCI Admins can create/update/delete mappings.
+        Vendors can view their own mappings (read-only).
+      parameters:
+      - in: query
+        name: cixci_category
+        schema:
+          type: string
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - active
+          - inactive
+          - review_required
+        description: |-
+          * `active` - Active
+          * `inactive` - Inactive
+          * `review_required` - Review Required
+      - in: query
+        name: vendor_company_reference
+        schema:
+          type: string
+          format: uuid
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedVendorCategoryMappingList'
+          description: ''
+    post:
+      operationId: v1_catalog_vendor_category_mappings_create
+      description: |-
+        Category Governance: Manage vendor category to CIXCI category mappings.
+
+        Only CIXCI Admins can create/update/delete mappings.
+        Vendors can view their own mappings (read-only).
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VendorCategoryMappingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VendorCategoryMappingRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VendorCategoryMappingRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorCategoryMapping'
+          description: ''
+  /api/v1/catalog/vendor-category-mappings/{id}/:
+    get:
+      operationId: v1_catalog_vendor_category_mappings_retrieve
+      description: |-
+        Category Governance: Manage vendor category to CIXCI category mappings.
+
+        Only CIXCI Admins can create/update/delete mappings.
+        Vendors can view their own mappings (read-only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this vendor category mapping.
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorCategoryMapping'
+          description: ''
+    put:
+      operationId: v1_catalog_vendor_category_mappings_update
+      description: |-
+        Category Governance: Manage vendor category to CIXCI category mappings.
+
+        Only CIXCI Admins can create/update/delete mappings.
+        Vendors can view their own mappings (read-only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this vendor category mapping.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VendorCategoryMappingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VendorCategoryMappingRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VendorCategoryMappingRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorCategoryMapping'
+          description: ''
+    patch:
+      operationId: v1_catalog_vendor_category_mappings_partial_update
+      description: |-
+        Category Governance: Manage vendor category to CIXCI category mappings.
+
+        Only CIXCI Admins can create/update/delete mappings.
+        Vendors can view their own mappings (read-only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this vendor category mapping.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedVendorCategoryMappingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedVendorCategoryMappingRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedVendorCategoryMappingRequest'
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorCategoryMapping'
+          description: ''
+    delete:
+      operationId: v1_catalog_vendor_category_mappings_destroy
+      description: |-
+        Category Governance: Manage vendor category to CIXCI category mappings.
+
+        Only CIXCI Admins can create/update/delete mappings.
+        Vendors can view their own mappings (read-only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this vendor category mapping.
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/catalog/vendor-category-mappings/bulk_create/:
+    post:
+      operationId: v1_catalog_vendor_category_mappings_bulk_create_create
+      description: |-
+        Bulk create vendor category mappings.
+        Admin only.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VendorCategoryMappingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VendorCategoryMappingRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VendorCategoryMappingRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorCategoryMapping'
           description: ''
   /api/v1/devices/devices/:
     get:
@@ -2053,6 +2332,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2084,6 +2364,7 @@ paths:
               $ref: '#/components/schemas/DeviceDetailRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2112,6 +2393,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2151,6 +2433,7 @@ paths:
               $ref: '#/components/schemas/DeviceDetailRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2189,6 +2472,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedDeviceDetailRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2216,6 +2500,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2236,6 +2521,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2262,6 +2548,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2286,6 +2573,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2322,6 +2610,7 @@ paths:
               $ref: '#/components/schemas/DeviceDetailRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2354,6 +2643,7 @@ paths:
               $ref: '#/components/schemas/DeviceDetailRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2400,6 +2690,7 @@ paths:
               $ref: '#/components/schemas/DeviceDetailRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2454,6 +2745,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2485,6 +2777,7 @@ paths:
               $ref: '#/components/schemas/DataQualityExceptionRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2513,6 +2806,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2552,6 +2846,7 @@ paths:
               $ref: '#/components/schemas/DataQualityExceptionRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2590,6 +2885,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedDataQualityExceptionRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2617,6 +2913,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2665,6 +2962,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2696,6 +2994,7 @@ paths:
               $ref: '#/components/schemas/FeatureGroupRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2724,6 +3023,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2763,6 +3063,7 @@ paths:
               $ref: '#/components/schemas/FeatureGroupRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2801,6 +3102,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedFeatureGroupRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2828,6 +3130,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2876,6 +3179,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2907,6 +3211,7 @@ paths:
               $ref: '#/components/schemas/FeatureValueRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2935,6 +3240,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -2974,6 +3280,7 @@ paths:
               $ref: '#/components/schemas/FeatureValueRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3012,6 +3319,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedFeatureValueRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3039,6 +3347,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3074,6 +3383,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3105,6 +3415,7 @@ paths:
               $ref: '#/components/schemas/ManufacturerRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3133,6 +3444,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3172,6 +3484,7 @@ paths:
               $ref: '#/components/schemas/ManufacturerRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3210,6 +3523,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedManufacturerRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3237,6 +3551,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3261,6 +3576,7 @@ paths:
               $ref: '#/components/schemas/BuyerPortfolioReferenceRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3277,6 +3593,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3293,6 +3610,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3321,6 +3639,7 @@ paths:
               $ref: '#/components/schemas/BuyerPortfolioReferenceRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3337,6 +3656,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3376,6 +3696,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3407,6 +3728,7 @@ paths:
               $ref: '#/components/schemas/DeviceTypeRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3435,6 +3757,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3474,6 +3797,7 @@ paths:
               $ref: '#/components/schemas/DeviceTypeRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3512,6 +3836,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedDeviceTypeRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3539,6 +3864,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3571,6 +3897,7 @@ paths:
               $ref: '#/components/schemas/DeviceTypeRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3639,6 +3966,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3667,6 +3995,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3700,6 +4029,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3731,6 +4061,7 @@ paths:
               $ref: '#/components/schemas/FulfillmentHandoffRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3757,6 +4088,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3794,6 +4126,7 @@ paths:
               $ref: '#/components/schemas/FulfillmentHandoffRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3830,6 +4163,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedFulfillmentHandoffRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3855,6 +4189,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3873,6 +4208,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3895,6 +4231,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3915,6 +4252,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -3953,6 +4291,7 @@ paths:
               $ref: '#/components/schemas/FulfillmentHandoffRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4002,6 +4341,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4030,6 +4370,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4089,6 +4430,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4120,6 +4462,7 @@ paths:
               $ref: '#/components/schemas/ReturnRequestRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4148,6 +4491,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4187,6 +4531,7 @@ paths:
               $ref: '#/components/schemas/ReturnRequestRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4225,6 +4570,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedReturnRequestRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4252,6 +4598,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4264,6 +4611,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4294,6 +4642,7 @@ paths:
               $ref: '#/components/schemas/ReturnRequestRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4343,6 +4692,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4371,6 +4721,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4404,6 +4755,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4430,6 +4782,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4468,6 +4821,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4498,6 +4852,7 @@ paths:
               $ref: '#/components/schemas/SLAOverrideEvidenceRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4525,6 +4880,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4577,6 +4933,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4608,6 +4965,7 @@ paths:
               $ref: '#/components/schemas/SLAPolicyRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4637,6 +4995,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4677,6 +5036,7 @@ paths:
               $ref: '#/components/schemas/SLAPolicyRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4716,6 +5076,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedSLAPolicyRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4744,6 +5105,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4781,6 +5143,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4809,6 +5172,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4846,6 +5210,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4877,6 +5242,7 @@ paths:
               $ref: '#/components/schemas/CompanyAPIKeyRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4905,6 +5271,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4944,6 +5311,7 @@ paths:
               $ref: '#/components/schemas/CompanyAPIKeyRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -4982,6 +5350,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedCompanyAPIKeyRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5009,6 +5378,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5077,6 +5447,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5108,6 +5479,7 @@ paths:
               $ref: '#/components/schemas/ExternalConnectionRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5136,6 +5508,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5175,6 +5548,7 @@ paths:
               $ref: '#/components/schemas/ExternalConnectionRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5213,6 +5587,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedExternalConnectionRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5240,6 +5615,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5277,6 +5653,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5305,6 +5682,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5360,6 +5738,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5391,6 +5770,7 @@ paths:
               $ref: '#/components/schemas/WebhookDeliveryRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5419,6 +5799,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5458,6 +5839,7 @@ paths:
               $ref: '#/components/schemas/WebhookDeliveryRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5496,6 +5878,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedWebhookDeliveryRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5523,6 +5906,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5571,6 +5955,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5599,6 +5984,7 @@ paths:
               $ref: '#/components/schemas/InvoiceExceptionRecordRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5624,6 +6010,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5660,6 +6047,7 @@ paths:
               $ref: '#/components/schemas/InvoiceExceptionRecordRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5695,6 +6083,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedInvoiceExceptionRecordRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5719,6 +6108,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5751,6 +6141,7 @@ paths:
               $ref: '#/components/schemas/InvoiceExceptionRecordRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5852,6 +6243,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5883,6 +6275,7 @@ paths:
               $ref: '#/components/schemas/InvoiceListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5911,6 +6304,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5950,6 +6344,7 @@ paths:
               $ref: '#/components/schemas/InvoiceListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -5988,6 +6383,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedInvoiceListRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6015,6 +6411,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6035,6 +6432,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6070,6 +6468,7 @@ paths:
               $ref: '#/components/schemas/InvoiceListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6106,6 +6505,7 @@ paths:
               $ref: '#/components/schemas/InvoiceListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6130,6 +6530,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6156,6 +6557,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6193,6 +6595,7 @@ paths:
               $ref: '#/components/schemas/InvoiceListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6229,6 +6632,7 @@ paths:
               $ref: '#/components/schemas/InvoiceListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6261,6 +6665,7 @@ paths:
               $ref: '#/components/schemas/InvoiceListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6306,6 +6711,7 @@ paths:
               $ref: '#/components/schemas/InvoiceListRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6325,6 +6731,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6391,6 +6798,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6418,6 +6826,7 @@ paths:
               $ref: '#/components/schemas/ReconciliationMatchResultRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6442,6 +6851,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6477,6 +6887,7 @@ paths:
               $ref: '#/components/schemas/ReconciliationMatchResultRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6511,6 +6922,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedReconciliationMatchResultRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6534,6 +6946,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6604,6 +7017,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6635,6 +7049,7 @@ paths:
               $ref: '#/components/schemas/InvoiceRunRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6663,6 +7078,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6702,6 +7118,7 @@ paths:
               $ref: '#/components/schemas/InvoiceRunRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6740,6 +7157,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedInvoiceRunRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6767,6 +7185,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6787,6 +7206,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6811,6 +7231,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6875,6 +7296,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6906,6 +7328,7 @@ paths:
               $ref: '#/components/schemas/LaunchEventRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6934,6 +7357,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -6973,6 +7397,7 @@ paths:
               $ref: '#/components/schemas/LaunchEventRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7011,6 +7436,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedLaunchEventRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7038,6 +7464,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7132,6 +7559,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7163,6 +7591,7 @@ paths:
               $ref: '#/components/schemas/MediaAssetRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7191,6 +7620,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7230,6 +7660,7 @@ paths:
               $ref: '#/components/schemas/MediaAssetRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7268,6 +7699,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedMediaAssetRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7295,6 +7727,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7333,6 +7766,7 @@ paths:
               $ref: '#/components/schemas/MediaAssetRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7361,6 +7795,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7398,6 +7833,7 @@ paths:
               $ref: '#/components/schemas/MediaAssetRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7434,6 +7870,7 @@ paths:
               $ref: '#/components/schemas/MediaAssetRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7467,6 +7904,7 @@ paths:
               $ref: '#/components/schemas/MediaAssetRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7495,6 +7933,7 @@ paths:
               $ref: '#/components/schemas/MediaAssetRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7530,6 +7969,7 @@ paths:
               $ref: '#/components/schemas/MediaAssetRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7569,6 +8009,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7597,6 +8038,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7631,6 +8073,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7652,6 +8095,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7685,6 +8129,7 @@ paths:
               $ref: '#/components/schemas/InAppNotificationRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7718,6 +8163,7 @@ paths:
               $ref: '#/components/schemas/InAppNotificationRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7745,6 +8191,7 @@ paths:
               $ref: '#/components/schemas/InAppNotificationRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7760,6 +8207,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7794,6 +8242,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7820,6 +8269,7 @@ paths:
               $ref: '#/components/schemas/NotificationPreferenceRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7841,6 +8291,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7873,6 +8324,7 @@ paths:
               $ref: '#/components/schemas/NotificationPreferenceRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7904,6 +8356,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedNotificationPreferenceRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7924,6 +8377,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7936,6 +8390,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -7964,6 +8419,7 @@ paths:
               $ref: '#/components/schemas/NotificationPreferenceRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8041,6 +8497,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8069,6 +8526,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8097,6 +8555,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8136,6 +8595,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8167,6 +8627,7 @@ paths:
               $ref: '#/components/schemas/ActivitySummaryConfigRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8195,6 +8656,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8234,6 +8696,7 @@ paths:
               $ref: '#/components/schemas/ActivitySummaryConfigRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8272,6 +8735,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedActivitySummaryConfigRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8299,6 +8763,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8366,6 +8831,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8397,6 +8863,7 @@ paths:
               $ref: '#/components/schemas/NotificationTemplateRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8425,6 +8892,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8464,6 +8932,7 @@ paths:
               $ref: '#/components/schemas/NotificationTemplateRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8502,6 +8971,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedNotificationTemplateRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8529,6 +8999,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8564,6 +9035,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8595,6 +9067,7 @@ paths:
               $ref: '#/components/schemas/VendorCommissionAgreementRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8623,6 +9096,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8662,6 +9136,7 @@ paths:
               $ref: '#/components/schemas/VendorCommissionAgreementRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8700,6 +9175,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedVendorCommissionAgreementRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8727,6 +9203,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8763,6 +9240,7 @@ paths:
               $ref: '#/components/schemas/VendorCommissionAgreementRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8828,6 +9306,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8861,6 +9340,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8915,6 +9395,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8946,6 +9427,7 @@ paths:
               $ref: '#/components/schemas/MapExceptionRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -8974,6 +9456,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9013,6 +9496,7 @@ paths:
               $ref: '#/components/schemas/MapExceptionRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9051,6 +9535,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedMapExceptionRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9078,6 +9563,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9148,6 +9634,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9179,6 +9666,7 @@ paths:
               $ref: '#/components/schemas/PricingProfileRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9207,6 +9695,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9246,6 +9735,7 @@ paths:
               $ref: '#/components/schemas/PricingProfileRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9284,6 +9774,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedPricingProfileRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9311,6 +9802,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9352,6 +9844,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9378,6 +9871,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9432,6 +9926,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9461,6 +9956,7 @@ paths:
               $ref: '#/components/schemas/VendorRegionalShippingFeeRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9487,6 +9983,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9524,6 +10021,7 @@ paths:
               $ref: '#/components/schemas/VendorRegionalShippingFeeRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9560,6 +10058,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedVendorRegionalShippingFeeRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9585,6 +10084,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9661,6 +10161,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9687,6 +10188,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9703,6 +10205,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9771,6 +10274,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9802,6 +10306,7 @@ paths:
               $ref: '#/components/schemas/PurchaseOrderRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9830,6 +10335,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9869,6 +10375,7 @@ paths:
               $ref: '#/components/schemas/PurchaseOrderRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9907,6 +10414,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedPurchaseOrderRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9934,6 +10442,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9970,6 +10479,7 @@ paths:
               $ref: '#/components/schemas/PurchaseOrderRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -9998,6 +10508,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10037,6 +10548,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10065,6 +10577,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10105,6 +10618,7 @@ paths:
               $ref: '#/components/schemas/VendorOrderExportLogRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10145,6 +10659,7 @@ paths:
               $ref: '#/components/schemas/VendorOrderExportLogRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10197,6 +10712,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10228,6 +10744,7 @@ paths:
               $ref: '#/components/schemas/VendorExportScheduleRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10256,6 +10773,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10295,6 +10813,7 @@ paths:
               $ref: '#/components/schemas/VendorExportScheduleRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10333,6 +10852,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedVendorExportScheduleRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10360,6 +10880,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10410,6 +10931,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10438,6 +10960,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10462,6 +10985,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10506,6 +11030,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10541,6 +11066,7 @@ paths:
             schema:
               $ref: '#/components/schemas/OrderCreateRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10572,6 +11098,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10614,6 +11141,7 @@ paths:
               $ref: '#/components/schemas/OrderRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10655,6 +11183,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedOrderRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10685,6 +11214,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10704,6 +11234,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10726,6 +11257,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10778,6 +11310,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedOrderRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10808,6 +11341,7 @@ paths:
               $ref: '#/components/schemas/OrderRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10836,6 +11370,7 @@ paths:
               $ref: '#/components/schemas/OrderRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10845,20 +11380,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Order'
           description: ''
-  /api/v1/schema/:
-    get:
-      operationId: v1_schema_retrieve
-      description: |-
-        Serves the full unfiltered OpenAPI schema. Only accessible to authenticated
-        CIXCI system admins. Do NOT expose this URL publicly.
-      tags:
-      - v1
-      security:
-      - ApiKeyAuth: []
-      - jwtAuth: []
-      responses:
-        '200':
-          description: No response body
   /api/v1/tenant/audit/:
     get:
       operationId: v1_tenant_audit_list
@@ -10916,6 +11437,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10939,6 +11461,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10961,6 +11484,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -10986,6 +11510,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11025,6 +11550,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11056,6 +11582,7 @@ paths:
               $ref: '#/components/schemas/ChildOnboardingRequestRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11084,6 +11611,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11123,6 +11651,7 @@ paths:
               $ref: '#/components/schemas/ChildOnboardingRequestRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11161,6 +11690,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedChildOnboardingRequestRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11188,6 +11718,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11224,6 +11755,7 @@ paths:
               $ref: '#/components/schemas/ChildOnboardingRequestRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11264,6 +11796,7 @@ paths:
               $ref: '#/components/schemas/ChildOnboardingRequestRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11304,6 +11837,7 @@ paths:
               $ref: '#/components/schemas/ChildOnboardingRequestRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11392,6 +11926,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11423,6 +11958,7 @@ paths:
               $ref: '#/components/schemas/CompanyRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11451,6 +11987,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11490,6 +12027,7 @@ paths:
               $ref: '#/components/schemas/CompanyRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11528,6 +12066,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedCompanyRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11555,6 +12094,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11591,6 +12131,7 @@ paths:
               $ref: '#/components/schemas/CompanyRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11631,6 +12172,7 @@ paths:
               $ref: '#/components/schemas/CompanyRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11670,6 +12212,7 @@ paths:
               $ref: '#/components/schemas/CompanyRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11724,6 +12267,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11753,6 +12297,7 @@ paths:
               $ref: '#/components/schemas/DistributionCenterRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11779,6 +12324,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11816,6 +12362,7 @@ paths:
               $ref: '#/components/schemas/DistributionCenterRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11852,6 +12399,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedDistributionCenterRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11877,6 +12425,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11909,6 +12458,7 @@ paths:
               $ref: '#/components/schemas/DistributionCenterRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11946,6 +12496,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -11975,6 +12526,7 @@ paths:
               $ref: '#/components/schemas/CompanyEntityRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12001,6 +12553,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12038,6 +12591,7 @@ paths:
               $ref: '#/components/schemas/CompanyEntityRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12074,6 +12628,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedCompanyEntityRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12099,6 +12654,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12129,6 +12685,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12155,6 +12712,7 @@ paths:
               $ref: '#/components/schemas/UserInvitationRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12178,6 +12736,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12212,6 +12771,7 @@ paths:
               $ref: '#/components/schemas/UserInvitationRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12245,6 +12805,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedUserInvitationRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12267,6 +12828,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12298,6 +12860,7 @@ paths:
               $ref: '#/components/schemas/UserInvitationRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12333,6 +12896,7 @@ paths:
               $ref: '#/components/schemas/UserInvitationRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12360,6 +12924,7 @@ paths:
               $ref: '#/components/schemas/UserInvitationRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       - {}
@@ -12388,6 +12953,7 @@ paths:
               $ref: '#/components/schemas/UserInvitationRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12422,6 +12988,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12447,6 +13014,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CompanyUserMembershipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12470,6 +13038,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12503,6 +13072,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CompanyUserMembershipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12536,6 +13106,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedCompanyUserMembershipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12558,6 +13129,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12588,6 +13160,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CompanyUserMembershipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12622,6 +13195,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CompanyUserMembershipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12656,6 +13230,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CompanyUserMembershipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12690,6 +13265,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CompanyUserMembershipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12724,6 +13300,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CompanyUserMembershipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12750,6 +13327,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CompanyUserMembershipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12798,6 +13376,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12822,6 +13401,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12879,6 +13459,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12910,6 +13491,7 @@ paths:
               $ref: '#/components/schemas/CompanyRelationshipRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12938,6 +13520,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -12977,6 +13560,7 @@ paths:
               $ref: '#/components/schemas/CompanyRelationshipRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13015,6 +13599,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedCompanyRelationshipRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13042,6 +13627,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13074,6 +13660,7 @@ paths:
               $ref: '#/components/schemas/CompanyRelationshipRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13131,6 +13718,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13162,6 +13750,7 @@ paths:
               $ref: '#/components/schemas/UserCreateRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13190,6 +13779,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13229,6 +13819,7 @@ paths:
               $ref: '#/components/schemas/UserRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13267,6 +13858,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedUserRequest'
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13294,6 +13886,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13326,6 +13919,7 @@ paths:
               $ref: '#/components/schemas/UserRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13355,6 +13949,7 @@ paths:
               $ref: '#/components/schemas/UserRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       - {}
@@ -13372,6 +13967,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       responses:
@@ -13401,6 +13997,7 @@ paths:
               $ref: '#/components/schemas/UserRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       - {}
@@ -13430,6 +14027,7 @@ paths:
               $ref: '#/components/schemas/UserRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       - {}
@@ -13459,6 +14057,7 @@ paths:
               $ref: '#/components/schemas/UserRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       - {}
@@ -13488,6 +14087,7 @@ paths:
               $ref: '#/components/schemas/UserRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       - {}
@@ -13506,6 +14106,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       - {}
@@ -13535,6 +14136,7 @@ paths:
               $ref: '#/components/schemas/UserRequest'
         required: true
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       - {}
@@ -13553,6 +14155,7 @@ paths:
       tags:
       - v1
       security:
+      - cookieAuth: []
       - ApiKeyAuth: []
       - jwtAuth: []
       - {}
@@ -18872,6 +19475,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/User'
+    PaginatedVendorCategoryMappingList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/VendorCategoryMapping'
     PaginatedVendorCommissionAgreementList:
       type: object
       required:
@@ -19871,11 +20493,15 @@ components:
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
+          type: string
           nullable: true
-          oneOf:
-          - $ref: '#/components/schemas/ProductCategoryEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Canonical CIXCI category (mapped from vendor_category)
+          maxLength: 100
+        vendor_category:
+          type: string
+          nullable: true
+          description: Original vendor category name (source data)
+          maxLength: 100
         vendor_company_reference:
           type: string
           format: uuid
@@ -20265,6 +20891,43 @@ components:
           type: boolean
         is_cixci_admin:
           type: boolean
+    PatchedVendorCategoryMappingRequest:
+      type: object
+      properties:
+        vendor_company_reference:
+          type: string
+          format: uuid
+          description: Vendor company ID
+        vendor_category:
+          type: string
+          minLength: 1
+          description: Original vendor category name
+          maxLength: 100
+        cixci_category:
+          type: string
+          minLength: 1
+          description: Canonical CIXCI category
+          maxLength: 100
+        status:
+          $ref: '#/components/schemas/VendorCategoryMappingStatusEnum'
+        mapping_source:
+          type: string
+          description: e.g. 'CIXCI Admin', 'Onboarding', 'Auto-detected'
+          maxLength: 100
+        effective_date:
+          type: string
+          format: date
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: User ID who created mapping
+        updated_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: User ID who last updated mapping
     PatchedVendorCommissionAgreementRequest:
       type: object
       properties:
@@ -20530,26 +21193,6 @@ components:
       required:
       - channel
       - vendor_company_reference
-    ProductCategoryEnum:
-      enum:
-      - Cases
-      - Screen Protection
-      - Headphones
-      - Speakers
-      - Chargers and Cables
-      - Memory
-      - Wearable Tech
-      - Phone Attachments
-      type: string
-      description: |-
-        * `Cases` - Cases
-        * `Screen Protection` - Screen Protection
-        * `Headphones` - Headphones
-        * `Speakers` - Speakers
-        * `Chargers and Cables` - Chargers and Cables
-        * `Memory` - Memory
-        * `Wearable Tech` - Wearable Tech
-        * `Phone Attachments` - Phone Attachments
     ProductDetail:
       type: object
       properties:
@@ -20602,11 +21245,15 @@ components:
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
+          type: string
           nullable: true
-          oneOf:
-          - $ref: '#/components/schemas/ProductCategoryEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Canonical CIXCI category (mapped from vendor_category)
+          maxLength: 100
+        vendor_category:
+          type: string
+          nullable: true
+          description: Original vendor category name (source data)
+          maxLength: 100
         vendor_company_reference:
           type: string
           format: uuid
@@ -20800,11 +21447,15 @@ components:
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
+          type: string
           nullable: true
-          oneOf:
-          - $ref: '#/components/schemas/ProductCategoryEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Canonical CIXCI category (mapped from vendor_category)
+          maxLength: 100
+        vendor_category:
+          type: string
+          nullable: true
+          description: Original vendor category name (source data)
+          maxLength: 100
         vendor_company_reference:
           type: string
           format: uuid
@@ -20975,11 +21626,15 @@ components:
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
+          type: string
           nullable: true
-          oneOf:
-          - $ref: '#/components/schemas/ProductCategoryEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Canonical CIXCI category (mapped from vendor_category)
+          maxLength: 100
+        vendor_category:
+          type: string
+          nullable: true
+          description: Original vendor category name (source data)
+          maxLength: 100
         status:
           $ref: '#/components/schemas/StatusF0cEnum'
         vendor_company_reference:
@@ -21166,11 +21821,15 @@ components:
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
+          type: string
           nullable: true
-          oneOf:
-          - $ref: '#/components/schemas/ProductCategoryEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Canonical CIXCI category (mapped from vendor_category)
+          maxLength: 100
+        vendor_category:
+          type: string
+          nullable: true
+          description: Original vendor category name (source data)
+          maxLength: 100
         status:
           $ref: '#/components/schemas/StatusF0cEnum'
         vendor_company_reference:
@@ -22608,6 +23267,129 @@ components:
           type: boolean
       required:
       - email
+    VendorCategoryMapping:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vendor_company_reference:
+          type: string
+          format: uuid
+          description: Vendor company ID
+        vendor_company_name:
+          type: string
+          readOnly: true
+        vendor_category:
+          type: string
+          description: Original vendor category name
+          maxLength: 100
+        cixci_category:
+          type: string
+          description: Canonical CIXCI category
+          maxLength: 100
+        status:
+          $ref: '#/components/schemas/VendorCategoryMappingStatusEnum'
+        mapping_source:
+          type: string
+          description: e.g. 'CIXCI Admin', 'Onboarding', 'Auto-detected'
+          maxLength: 100
+        effective_date:
+          type: string
+          format: date
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: User ID who created mapping
+        created_by_name:
+          type: string
+          readOnly: true
+        updated_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: User ID who last updated mapping
+        updated_by_name:
+          type: string
+          readOnly: true
+        company_scope_reference:
+          type: string
+          format: uuid
+          readOnly: true
+          description: CIXCI company scope
+      required:
+      - cixci_category
+      - company_scope_reference
+      - created_at
+      - created_by_name
+      - id
+      - updated_at
+      - updated_by_name
+      - vendor_category
+      - vendor_company_name
+      - vendor_company_reference
+    VendorCategoryMappingRequest:
+      type: object
+      properties:
+        vendor_company_reference:
+          type: string
+          format: uuid
+          description: Vendor company ID
+        vendor_category:
+          type: string
+          minLength: 1
+          description: Original vendor category name
+          maxLength: 100
+        cixci_category:
+          type: string
+          minLength: 1
+          description: Canonical CIXCI category
+          maxLength: 100
+        status:
+          $ref: '#/components/schemas/VendorCategoryMappingStatusEnum'
+        mapping_source:
+          type: string
+          description: e.g. 'CIXCI Admin', 'Onboarding', 'Auto-detected'
+          maxLength: 100
+        effective_date:
+          type: string
+          format: date
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: User ID who created mapping
+        updated_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: User ID who last updated mapping
+      required:
+      - cixci_category
+      - vendor_category
+      - vendor_company_reference
+    VendorCategoryMappingStatusEnum:
+      enum:
+      - active
+      - inactive
+      - review_required
+      type: string
+      description: |-
+        * `active` - Active
+        * `inactive` - Inactive
+        * `review_required` - Review Required
     VendorCommissionAgreement:
       type: object
       properties:
@@ -23618,6 +24400,10 @@ components:
       in: header
       name: X-API-Key
       description: 'Custom B2B API Key authentication header (X-API-Key: cixci_key_...)'
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: cixci_sessionid
     jwtAuth:
       type: http
       scheme: bearer
