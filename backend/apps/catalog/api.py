@@ -1014,6 +1014,12 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "recalculate_bulk_compatibility": "catalog.product.update",
         "audit_history": "catalog.product.read",
     }
+
+    def get_throttles(self):
+        """Apply role-based throttling."""
+        from config.throttling import VendorRateThrottle, BuyerRateThrottle, AdminRateThrottle
+        # Apply role-specific throttles (they auto-check user role)
+        return [VendorRateThrottle(), BuyerRateThrottle(), AdminRateThrottle()]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = ProductFilterSet
     search_fields = [
@@ -3955,6 +3961,14 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
     """Buyer product export jobs."""
     permission_classes = [IsAuthenticated]
     serializer_class = BuyerExportJobSerializer
+    throttle_classes = []  # Default: no throttling
+
+    def get_throttles(self):
+        """Apply stricter throttling to export job creation."""
+        if self.action == 'create_job':
+            from config.throttling import ExportThrottle
+            return [ExportThrottle()]
+        return super().get_throttles()
 
     def get_queryset(self):
         return BuyerProductExportJob.objects.filter(

@@ -148,6 +148,20 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/hour",           # Unauthenticated users: 100 requests/hour
+        "user": "1000/hour",          # Authenticated users: 1000 requests/hour
+        "vendor": "2000/hour",        # Vendors (bulk operations): 2000 requests/hour
+        "buyer": "1500/hour",         # Buyers: 1500 requests/hour
+        "admin": "5000/hour",         # Admins: 5000 requests/hour
+        "csv_import": "10/hour",      # CSV imports: 10/hour (heavy operations)
+        "export": "20/hour",          # Exports: 20/hour
+        "webhook": "100/minute",      # Webhooks: 100/minute
+    },
     "DEFAULT_PAGINATION_CLASS": "config.pagination.CixciCursorPagination",
     "PAGE_SIZE": 50,
     "DEFAULT_FILTER_BACKENDS": [

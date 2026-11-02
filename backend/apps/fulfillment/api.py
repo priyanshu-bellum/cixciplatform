@@ -308,6 +308,13 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["vendor_company_reference", "status"]
 
+    def get_throttles(self):
+        """Apply strict throttling to CSV import operations."""
+        if self.action in ['import_shipping', 'import_returns']:
+            from config.throttling import CSVImportThrottle
+            return [CSVImportThrottle()]
+        return super().get_throttles()
+
     def get_queryset(self):
         user = self.request.user
         qs = FulfillmentHandoff.objects.all()
