@@ -194,6 +194,11 @@ SPECTACULAR_SETTINGS = {
     # which crashes in a regular <script> tag and renders a blank page.
     "REDOC_DIST": "https://cdn.jsdelivr.net/npm/redoc@2.1.5",
     "SWAGGER_UI_DIST": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14",
+    # Enable session authentication for schema fetching in Swagger UI
+    "SWAGGER_UI_SETTINGS": {
+        "withCredentials": True,
+        "persistAuthorization": True,
+    },
 }
 
 # ─── Static & Media Files ─────────────────────────────────────────────────────
@@ -294,4 +299,14 @@ LOGGING = {
 }
 
 SESSION_COOKIE_NAME = "cixci_sessionid"
+SESSION_COOKIE_SAMESITE = "Lax"  # Allow cookies to be sent on same-site requests
+SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access (security)
+SESSION_COOKIE_SECURE = not DEBUG  # HTTPS only in production
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = not DEBUG
+# Allow CSRF for production domains
+CSRF_TRUSTED_ORIGINS = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default="https://testnew.cixci.com,https://livenew.cixci.com"
+).split(",")
 
