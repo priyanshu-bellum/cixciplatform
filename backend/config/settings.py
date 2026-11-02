@@ -299,6 +299,8 @@ LOGGING = {
 }
 
 SESSION_COOKIE_NAME = "cixci_sessionid"
+SESSION_COOKIE_PATH = "/"  # Cookie available for all paths
+SESSION_COOKIE_DOMAIN = None  # Use default domain (same domain that set it)
 SESSION_COOKIE_SAMESITE = "Lax"  # Allow cookies to be sent on same-site requests
 SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access (security)
 SESSION_COOKIE_SECURE = not DEBUG  # HTTPS only in production

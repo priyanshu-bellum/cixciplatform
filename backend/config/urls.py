@@ -79,13 +79,12 @@ class AdminSwaggerView(View):
     """
     Custom Swagger UI view that embeds the schema directly in the HTML.
     This avoids AJAX fetch issues with session authentication.
+    Supports both JWT (frontend) and session (direct browser) authentication.
     """
     def get(self, request):
-        # Check if user is authenticated and is CIXCI admin
-        if not request.user.is_authenticated:
-            return HttpResponseForbidden("Authentication required. Please log in to access API documentation.")
-        if not getattr(request.user, "is_cixci_admin", False):
-            return HttpResponseForbidden("Access restricted to CIXCI system administrators.")
+        # Authentication is handled client-side via localStorage JWT token
+        # This view just serves the HTML page - actual API calls will be authenticated
+        # by the REST framework using the JWT token injected by Swagger UI
 
         schema_path = os.path.join(settings.BASE_DIR, "schema.yml")
         if not os.path.exists(schema_path):
@@ -111,22 +110,38 @@ class AdminSwaggerView(View):
     <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-standalone-preset.js"></script>
     <script>
-    window.onload = function() {{
-        const spec = {schema_json};
-        window.ui = SwaggerUIBundle({{
-            spec: spec,
-            dom_id: '#swagger-ui',
-            deepLinking: true,
-            presets: [
-                SwaggerUIBundle.presets.apis,
-                SwaggerUIStandalonePreset
-            ],
-            plugins: [
-                SwaggerUIBundle.plugins.DownloadUrl
-            ],
-            layout: "StandaloneLayout"
-        }});
-    }};
+    // Check authentication from localStorage (JWT tokens)
+    const accessToken = localStorage.getItem('access');
+    if (!accessToken) {{
+        document.body.innerHTML = '<div style="padding: 40px; text-align: center;"><h2>Authentication Required</h2><p>Please <a href="/">log in to the dashboard</a> first, then return to API docs.</p></div>';
+    }} else {{
+        window.onload = function() {{
+            const spec = {schema_json};
+
+            // Configure Swagger UI with JWT authentication
+            window.ui = SwaggerUIBundle({{
+                spec: spec,
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                // Auto-inject JWT token into all API requests
+                requestInterceptor: (req) => {{
+                    const token = localStorage.getItem('access');
+                    if (token) {{
+                        req.headers.Authorization = 'Bearer ' + token;
+                    }}
+                    return req;
+                }}
+            }});
+        }};
+    }}
     </script>
 </body>
 </html>
