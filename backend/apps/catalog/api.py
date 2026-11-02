@@ -400,7 +400,82 @@ class ProductDetailSerializer(ProductSerializerBase):
 
     class Meta:
         model = Product
-        fields = "__all__"
+        # Explicit field order: Core fields first, compatibility fields last
+        fields = [
+            # Identifiers
+            "id",
+            "name",
+            "sku",
+            "upc",
+
+            # Basic Info
+            "product_type",
+            "vendor_category",
+            "product_category",
+            "brand",
+            "description",
+            "short_description",
+
+            # Pricing
+            "vendor_wholesale_price_amount",
+            "vendor_wholesale_price_currency",
+            "buyer_wholesale_price",
+            "msrp",
+            "map_price",
+            "sale_price",
+
+            # Status & Dates
+            "status",
+            "selling_status",
+            "launch_date",
+            "release_date",
+            "eol_date",
+
+            # Physical Attributes
+            "color",
+            "system_color",
+            "length",
+            "width",
+            "height",
+            "weight",
+
+            # Inventory
+            "inventory_level",
+            "inventory_threshold",
+
+            # Media
+            "primary_image_reference",
+            "primary_image_url",
+            "media_references",
+            "media_readiness",
+
+            # Marketing
+            "warranty",
+            "promo_information",
+            "recommended_accessory",
+            "meta_title",
+            "meta_description",
+
+            # Device Compatibility (at the end)
+            "compatibility_mode",
+            "compatible_device_types",
+            "headphone_jack_compatibility",
+            "bluetooth_compatibility",
+            "compatible_charging_interface",
+            "wireless_charging_compatibility",
+            "storage_expansion_compatibility",
+            "memory_capacity",
+            "compatible_watch_case_size",
+
+            # System Fields
+            "vendor_company_reference",
+            "company_scope_reference",
+            "deactivation_reason",
+            "is_tied_to_activity",
+            "created_at",
+            "updated_at",
+            "exported_date",
+        ]
         read_only_fields = ["id", "created_at", "updated_at", "company_scope_reference"]
 
     def validate_upc(self, value):

@@ -20469,6 +20469,148 @@ components:
     PatchedProductDetailRequest:
       type: object
       properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 300
+        sku:
+          type: string
+          minLength: 1
+          maxLength: 200
+        upc:
+          type: string
+          nullable: true
+          maxLength: 100
+        product_type:
+          $ref: '#/components/schemas/ProductTypeEnum'
+        vendor_category:
+          type: string
+          nullable: true
+          description: Original vendor category name (source data)
+          maxLength: 100
+        product_category:
+          type: string
+          nullable: true
+          description: Canonical CIXCI category (mapped from vendor_category)
+          maxLength: 100
+        brand:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        short_description:
+          type: string
+          nullable: true
+        vendor_wholesale_price_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        vendor_wholesale_price_currency:
+          type: string
+          minLength: 1
+          maxLength: 3
+        msrp:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        map_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        sale_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        status:
+          $ref: '#/components/schemas/StatusF0cEnum'
+        selling_status:
+          $ref: '#/components/schemas/SellingStatusEnum'
+        launch_date:
+          type: string
+          format: date
+          nullable: true
+        release_date:
+          type: string
+          format: date
+          nullable: true
+        eol_date:
+          type: string
+          format: date
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          maxLength: 100
+        system_color:
+          type: string
+          nullable: true
+          maxLength: 100
+        length:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        width:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        height:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        weight:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        inventory_level:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        inventory_threshold:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        primary_image_reference:
+          type: string
+          format: uuid
+          nullable: true
+        media_references: {}
+        warranty:
+          type: string
+          nullable: true
+          maxLength: 200
+        promo_information:
+          type: string
+          nullable: true
+        recommended_accessory:
+          type: boolean
+        meta_title:
+          type: string
+          nullable: true
+          maxLength: 500
+        meta_description:
+          type: string
+          nullable: true
+        compatibility_mode:
+          allOf:
+          - $ref: '#/components/schemas/CompatibilityModeEnum'
+          description: |-
+            How compatibility is determined: per-device assertions or universal device type mapping.
+
+            * `direct_device` - Direct Device
+            * `universal_device_type` - Universal Device Type
+        compatible_device_types:
+          description: Device-type codes this product universally supports (e.g. ['phone',
+            'tablet']). Auto-mapped to every current and future device of those types.
         headphone_jack_compatibility:
           type: string
           nullable: true
@@ -20504,160 +20646,14 @@ components:
           nullable: true
           description: Watch case size (e.g., '40mm', '44mm'). Required for certain
             categories. Defaults to 'Not Compatible' if omitted.
-        product_type:
-          $ref: '#/components/schemas/ProductTypeEnum'
-        product_category:
-          type: string
-          nullable: true
-          description: Canonical CIXCI category (mapped from vendor_category)
-          maxLength: 100
-        vendor_category:
-          type: string
-          nullable: true
-          description: Original vendor category name (source data)
-          maxLength: 100
         vendor_company_reference:
           type: string
           format: uuid
           description: Tenant Company vendor ID
-        name:
-          type: string
-          minLength: 1
-          maxLength: 300
-        sku:
-          type: string
-          minLength: 1
-          maxLength: 200
-        brand:
-          type: string
-          maxLength: 200
-        description:
-          type: string
-        status:
-          $ref: '#/components/schemas/StatusF0cEnum'
-        selling_status:
-          $ref: '#/components/schemas/SellingStatusEnum'
-        vendor_wholesale_price_amount:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        vendor_wholesale_price_currency:
-          type: string
-          minLength: 1
-          maxLength: 3
-        primary_image_reference:
-          type: string
-          format: uuid
-          nullable: true
-        media_references: {}
-        upc:
-          type: string
-          nullable: true
-          maxLength: 100
-        launch_date:
-          type: string
-          format: date
-          nullable: true
-        release_date:
-          type: string
-          format: date
-          nullable: true
-        eol_date:
-          type: string
-          format: date
-          nullable: true
-        color:
-          type: string
-          nullable: true
-          maxLength: 100
-        system_color:
-          type: string
-          nullable: true
-          maxLength: 100
-        msrp:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        map_price:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        sale_price:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        recommended_accessory:
-          type: boolean
-        inventory_level:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        inventory_threshold:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        length:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        width:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        height:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        weight:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        warranty:
-          type: string
-          nullable: true
-          maxLength: 200
-        short_description:
-          type: string
-          nullable: true
-        promo_information:
-          type: string
-          nullable: true
-        meta_title:
-          type: string
-          nullable: true
-          maxLength: 500
-        meta_description:
-          type: string
-          nullable: true
         deactivation_reason:
           type: string
           nullable: true
           maxLength: 200
-        compatibility_status:
-          type: string
-          minLength: 1
-          maxLength: 30
-        compatibility_mode:
-          allOf:
-          - $ref: '#/components/schemas/CompatibilityModeEnum'
-          description: |-
-            How compatibility is determined: per-device assertions or universal device type mapping.
-
-            * `direct_device` - Direct Device
-            * `universal_device_type` - Universal Device Type
-        compatible_device_types:
-          description: Device-type codes this product universally supports (e.g. ['phone',
-            'tablet']). Auto-mapped to every current and future device of those types.
     PatchedPurchaseOrderRequest:
       type: object
       properties:
@@ -21214,27 +21210,154 @@ components:
           type: string
           format: uuid
           readOnly: true
-        vendor_map_pricing_enforced:
+        name:
           type: string
-          readOnly: true
-        exported_date:
+          maxLength: 300
+        sku:
           type: string
-          readOnly: true
-        vendor_name:
+          maxLength: 200
+        upc:
           type: string
-          readOnly: true
-        primary_image_url:
+          nullable: true
+          maxLength: 100
+        product_type:
+          $ref: '#/components/schemas/ProductTypeEnum'
+        vendor_category:
           type: string
-          readOnly: true
+          nullable: true
+          description: Original vendor category name (source data)
+          maxLength: 100
+        product_category:
+          type: string
+          nullable: true
+          description: Canonical CIXCI category (mapped from vendor_category)
+          maxLength: 100
+        brand:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        short_description:
+          type: string
+          nullable: true
+        vendor_wholesale_price_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        vendor_wholesale_price_currency:
+          type: string
+          maxLength: 3
         buyer_wholesale_price:
           type: string
           readOnly: true
-        is_tied_to_activity:
+        msrp:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        map_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        sale_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        status:
+          $ref: '#/components/schemas/StatusF0cEnum'
+        selling_status:
+          $ref: '#/components/schemas/SellingStatusEnum'
+        launch_date:
+          type: string
+          format: date
+          nullable: true
+        release_date:
+          type: string
+          format: date
+          nullable: true
+        eol_date:
+          type: string
+          format: date
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          maxLength: 100
+        system_color:
+          type: string
+          nullable: true
+          maxLength: 100
+        length:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        width:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        height:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        weight:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        inventory_level:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        inventory_threshold:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        primary_image_reference:
+          type: string
+          format: uuid
+          nullable: true
+        primary_image_url:
           type: string
           readOnly: true
+        media_references: {}
         media_readiness:
           type: string
           readOnly: true
+        warranty:
+          type: string
+          nullable: true
+          maxLength: 200
+        promo_information:
+          type: string
+          nullable: true
+        recommended_accessory:
+          type: boolean
+        meta_title:
+          type: string
+          nullable: true
+          maxLength: 500
+        meta_description:
+          type: string
+          nullable: true
+        compatibility_mode:
+          allOf:
+          - $ref: '#/components/schemas/CompatibilityModeEnum'
+          description: |-
+            How compatibility is determined: per-device assertions or universal device type mapping.
+
+            * `direct_device` - Direct Device
+            * `universal_device_type` - Universal Device Type
+        compatible_device_types:
+          description: Device-type codes this product universally supports (e.g. ['phone',
+            'tablet']). Auto-mapped to every current and future device of those types.
         headphone_jack_compatibility:
           type: string
           nullable: true
@@ -21270,18 +21393,6 @@ components:
           nullable: true
           description: Watch case size (e.g., '40mm', '44mm'). Required for certain
             categories. Defaults to 'Not Compatible' if omitted.
-        product_type:
-          $ref: '#/components/schemas/ProductTypeEnum'
-        product_category:
-          type: string
-          nullable: true
-          description: Canonical CIXCI category (mapped from vendor_category)
-          maxLength: 100
-        vendor_category:
-          type: string
-          nullable: true
-          description: Original vendor category name (source data)
-          maxLength: 100
         vendor_company_reference:
           type: string
           format: uuid
@@ -21290,140 +21401,13 @@ components:
           type: string
           format: uuid
           readOnly: true
-        name:
-          type: string
-          maxLength: 300
-        sku:
-          type: string
-          maxLength: 200
-        brand:
-          type: string
-          maxLength: 200
-        description:
-          type: string
-        status:
-          $ref: '#/components/schemas/StatusF0cEnum'
-        selling_status:
-          $ref: '#/components/schemas/SellingStatusEnum'
-        vendor_wholesale_price_amount:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        vendor_wholesale_price_currency:
-          type: string
-          maxLength: 3
-        primary_image_reference:
-          type: string
-          format: uuid
-          nullable: true
-        media_references: {}
-        upc:
-          type: string
-          nullable: true
-          maxLength: 100
-        launch_date:
-          type: string
-          format: date
-          nullable: true
-        release_date:
-          type: string
-          format: date
-          nullable: true
-        eol_date:
-          type: string
-          format: date
-          nullable: true
-        color:
-          type: string
-          nullable: true
-          maxLength: 100
-        system_color:
-          type: string
-          nullable: true
-          maxLength: 100
-        msrp:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        map_price:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        sale_price:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        recommended_accessory:
-          type: boolean
-        inventory_level:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        inventory_threshold:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        length:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        width:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        height:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        weight:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        warranty:
-          type: string
-          nullable: true
-          maxLength: 200
-        short_description:
-          type: string
-          nullable: true
-        promo_information:
-          type: string
-          nullable: true
-        meta_title:
-          type: string
-          nullable: true
-          maxLength: 500
-        meta_description:
-          type: string
-          nullable: true
         deactivation_reason:
           type: string
           nullable: true
           maxLength: 200
-        compatibility_status:
+        is_tied_to_activity:
           type: string
-          maxLength: 30
-        compatibility_mode:
-          allOf:
-          - $ref: '#/components/schemas/CompatibilityModeEnum'
-          description: |-
-            How compatibility is determined: per-device assertions or universal device type mapping.
-
-            * `direct_device` - Direct Device
-            * `universal_device_type` - Universal Device Type
-        compatible_device_types:
-          description: Device-type codes this product universally supports (e.g. ['phone',
-            'tablet']). Auto-mapped to every current and future device of those types.
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -21431,6 +21415,9 @@ components:
         updated_at:
           type: string
           format: date-time
+          readOnly: true
+        exported_date:
+          type: string
           readOnly: true
       required:
       - buyer_wholesale_price
@@ -21446,11 +21433,151 @@ components:
       - sku
       - updated_at
       - vendor_company_reference
-      - vendor_map_pricing_enforced
-      - vendor_name
     ProductDetailRequest:
       type: object
       properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 300
+        sku:
+          type: string
+          minLength: 1
+          maxLength: 200
+        upc:
+          type: string
+          nullable: true
+          maxLength: 100
+        product_type:
+          $ref: '#/components/schemas/ProductTypeEnum'
+        vendor_category:
+          type: string
+          nullable: true
+          description: Original vendor category name (source data)
+          maxLength: 100
+        product_category:
+          type: string
+          nullable: true
+          description: Canonical CIXCI category (mapped from vendor_category)
+          maxLength: 100
+        brand:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        short_description:
+          type: string
+          nullable: true
+        vendor_wholesale_price_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        vendor_wholesale_price_currency:
+          type: string
+          minLength: 1
+          maxLength: 3
+        msrp:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        map_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        sale_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
+          nullable: true
+        status:
+          $ref: '#/components/schemas/StatusF0cEnum'
+        selling_status:
+          $ref: '#/components/schemas/SellingStatusEnum'
+        launch_date:
+          type: string
+          format: date
+          nullable: true
+        release_date:
+          type: string
+          format: date
+          nullable: true
+        eol_date:
+          type: string
+          format: date
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          maxLength: 100
+        system_color:
+          type: string
+          nullable: true
+          maxLength: 100
+        length:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        width:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        height:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        weight:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
+          nullable: true
+        inventory_level:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        inventory_threshold:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        primary_image_reference:
+          type: string
+          format: uuid
+          nullable: true
+        media_references: {}
+        warranty:
+          type: string
+          nullable: true
+          maxLength: 200
+        promo_information:
+          type: string
+          nullable: true
+        recommended_accessory:
+          type: boolean
+        meta_title:
+          type: string
+          nullable: true
+          maxLength: 500
+        meta_description:
+          type: string
+          nullable: true
+        compatibility_mode:
+          allOf:
+          - $ref: '#/components/schemas/CompatibilityModeEnum'
+          description: |-
+            How compatibility is determined: per-device assertions or universal device type mapping.
+
+            * `direct_device` - Direct Device
+            * `universal_device_type` - Universal Device Type
+        compatible_device_types:
+          description: Device-type codes this product universally supports (e.g. ['phone',
+            'tablet']). Auto-mapped to every current and future device of those types.
         headphone_jack_compatibility:
           type: string
           nullable: true
@@ -21486,160 +21613,14 @@ components:
           nullable: true
           description: Watch case size (e.g., '40mm', '44mm'). Required for certain
             categories. Defaults to 'Not Compatible' if omitted.
-        product_type:
-          $ref: '#/components/schemas/ProductTypeEnum'
-        product_category:
-          type: string
-          nullable: true
-          description: Canonical CIXCI category (mapped from vendor_category)
-          maxLength: 100
-        vendor_category:
-          type: string
-          nullable: true
-          description: Original vendor category name (source data)
-          maxLength: 100
         vendor_company_reference:
           type: string
           format: uuid
           description: Tenant Company vendor ID
-        name:
-          type: string
-          minLength: 1
-          maxLength: 300
-        sku:
-          type: string
-          minLength: 1
-          maxLength: 200
-        brand:
-          type: string
-          maxLength: 200
-        description:
-          type: string
-        status:
-          $ref: '#/components/schemas/StatusF0cEnum'
-        selling_status:
-          $ref: '#/components/schemas/SellingStatusEnum'
-        vendor_wholesale_price_amount:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        vendor_wholesale_price_currency:
-          type: string
-          minLength: 1
-          maxLength: 3
-        primary_image_reference:
-          type: string
-          format: uuid
-          nullable: true
-        media_references: {}
-        upc:
-          type: string
-          nullable: true
-          maxLength: 100
-        launch_date:
-          type: string
-          format: date
-          nullable: true
-        release_date:
-          type: string
-          format: date
-          nullable: true
-        eol_date:
-          type: string
-          format: date
-          nullable: true
-        color:
-          type: string
-          nullable: true
-          maxLength: 100
-        system_color:
-          type: string
-          nullable: true
-          maxLength: 100
-        msrp:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        map_price:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        sale_price:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
-          nullable: true
-        recommended_accessory:
-          type: boolean
-        inventory_level:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        inventory_threshold:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          nullable: true
-        length:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        width:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        height:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        weight:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,3})?$
-          nullable: true
-        warranty:
-          type: string
-          nullable: true
-          maxLength: 200
-        short_description:
-          type: string
-          nullable: true
-        promo_information:
-          type: string
-          nullable: true
-        meta_title:
-          type: string
-          nullable: true
-          maxLength: 500
-        meta_description:
-          type: string
-          nullable: true
         deactivation_reason:
           type: string
           nullable: true
           maxLength: 200
-        compatibility_status:
-          type: string
-          minLength: 1
-          maxLength: 30
-        compatibility_mode:
-          allOf:
-          - $ref: '#/components/schemas/CompatibilityModeEnum'
-          description: |-
-            How compatibility is determined: per-device assertions or universal device type mapping.
-
-            * `direct_device` - Direct Device
-            * `universal_device_type` - Universal Device Type
-        compatible_device_types:
-          description: Device-type codes this product universally supports (e.g. ['phone',
-            'tablet']). Auto-mapped to every current and future device of those types.
       required:
       - name
       - product_type
