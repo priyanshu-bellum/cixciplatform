@@ -141,6 +141,7 @@ CELERY_BEAT_SCHEDULE = {
 # ─── REST Framework ───────────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
         "apps.integration.authentication.CompanyAPIKeyAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],

@@ -65,6 +65,8 @@ import yaml
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import SessionAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 # ─── Admin Schema: full internal schema, restricted to CIXCI admins ────────────
@@ -74,9 +76,19 @@ class AdminSchemaView(APIView):
     Serves the full unfiltered OpenAPI schema. Only accessible to authenticated
     CIXCI system admins. Do NOT expose this URL publicly.
     """
-    permission_classes = [IsAuthenticated]
+    authentication_classes = [
+        SessionAuthentication,
+        JWTAuthentication,
+    ]
+    permission_classes = []  # Custom permission check below
 
     def get(self, request, *args, **kwargs):
+        # Check if user is authenticated and is CIXCI admin
+        if not request.user or not request.user.is_authenticated:
+            return Response(
+                {"detail": "Authentication required. Please log in to access API documentation."},
+                status=401,
+            )
         if not getattr(request.user, "is_cixci_admin", False):
             return Response(
                 {"detail": "Access restricted to CIXCI system administrators."},
