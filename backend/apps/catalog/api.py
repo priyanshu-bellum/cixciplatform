@@ -369,13 +369,34 @@ class ProductDetailSerializer(ProductSerializerBase):
     is_tied_to_activity = serializers.ReadOnlyField()
     media_readiness = serializers.SerializerMethodField()
 
-    headphone_jack_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    bluetooth_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    compatible_charging_interface = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    wireless_charging_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    storage_expansion_compatibility = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    memory_capacity = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    compatible_watch_case_size = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    headphone_jack_compatibility = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True,
+        help_text="Headphone jack type (e.g., '3.5mm', 'USB-C', 'Lightning'). Required for certain categories. Defaults to 'Not Compatible' if omitted."
+    )
+    bluetooth_compatibility = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True,
+        help_text="Bluetooth version (e.g., 'Bluetooth 5.0', 'Bluetooth 5.3'). Required for certain categories. Defaults to 'Yes' if omitted."
+    )
+    compatible_charging_interface = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True,
+        help_text="Charging port type (e.g., 'USB-C', 'Lightning', 'Wireless Only'). Required for certain categories. Defaults to 'Not Compatible' if omitted."
+    )
+    wireless_charging_compatibility = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True,
+        help_text="Wireless charging standards (e.g., 'Qi', 'MagSafe'). Optional. Defaults to 'Not Compatible' if omitted."
+    )
+    storage_expansion_compatibility = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True,
+        help_text="Memory card type (e.g., 'microSD', 'SD'). Required for certain categories. Defaults to 'Not Compatible' if omitted."
+    )
+    memory_capacity = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True,
+        help_text="Storage capacity (e.g., '64GB', '128GB'). Required when storage expansion is compatible. Defaults to 'Not Compatible' otherwise."
+    )
+    compatible_watch_case_size = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True,
+        help_text="Watch case size (e.g., '40mm', '44mm'). Required for certain categories. Defaults to 'Not Compatible' if omitted."
+    )
 
     class Meta:
         model = Product

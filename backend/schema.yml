@@ -20472,24 +20472,38 @@ components:
         headphone_jack_compatibility:
           type: string
           nullable: true
+          description: Headphone jack type (e.g., '3.5mm', 'USB-C', 'Lightning').
+            Required for certain categories. Defaults to 'Not Compatible' if omitted.
         bluetooth_compatibility:
           type: string
           nullable: true
+          description: Bluetooth version (e.g., 'Bluetooth 5.0', 'Bluetooth 5.3').
+            Required for certain categories. Defaults to 'Yes' if omitted.
         compatible_charging_interface:
           type: string
           nullable: true
+          description: Charging port type (e.g., 'USB-C', 'Lightning', 'Wireless Only').
+            Required for certain categories. Defaults to 'Not Compatible' if omitted.
         wireless_charging_compatibility:
           type: string
           nullable: true
+          description: Wireless charging standards (e.g., 'Qi', 'MagSafe'). Optional.
+            Defaults to 'Not Compatible' if omitted.
         storage_expansion_compatibility:
           type: string
           nullable: true
+          description: Memory card type (e.g., 'microSD', 'SD'). Required for certain
+            categories. Defaults to 'Not Compatible' if omitted.
         memory_capacity:
           type: string
           nullable: true
+          description: Storage capacity (e.g., '64GB', '128GB'). Required when storage
+            expansion is compatible. Defaults to 'Not Compatible' otherwise.
         compatible_watch_case_size:
           type: string
           nullable: true
+          description: Watch case size (e.g., '40mm', '44mm'). Required for certain
+            categories. Defaults to 'Not Compatible' if omitted.
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
@@ -21224,24 +21238,38 @@ components:
         headphone_jack_compatibility:
           type: string
           nullable: true
+          description: Headphone jack type (e.g., '3.5mm', 'USB-C', 'Lightning').
+            Required for certain categories. Defaults to 'Not Compatible' if omitted.
         bluetooth_compatibility:
           type: string
           nullable: true
+          description: Bluetooth version (e.g., 'Bluetooth 5.0', 'Bluetooth 5.3').
+            Required for certain categories. Defaults to 'Yes' if omitted.
         compatible_charging_interface:
           type: string
           nullable: true
+          description: Charging port type (e.g., 'USB-C', 'Lightning', 'Wireless Only').
+            Required for certain categories. Defaults to 'Not Compatible' if omitted.
         wireless_charging_compatibility:
           type: string
           nullable: true
+          description: Wireless charging standards (e.g., 'Qi', 'MagSafe'). Optional.
+            Defaults to 'Not Compatible' if omitted.
         storage_expansion_compatibility:
           type: string
           nullable: true
+          description: Memory card type (e.g., 'microSD', 'SD'). Required for certain
+            categories. Defaults to 'Not Compatible' if omitted.
         memory_capacity:
           type: string
           nullable: true
+          description: Storage capacity (e.g., '64GB', '128GB'). Required when storage
+            expansion is compatible. Defaults to 'Not Compatible' otherwise.
         compatible_watch_case_size:
           type: string
           nullable: true
+          description: Watch case size (e.g., '40mm', '44mm'). Required for certain
+            categories. Defaults to 'Not Compatible' if omitted.
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
@@ -21426,24 +21454,38 @@ components:
         headphone_jack_compatibility:
           type: string
           nullable: true
+          description: Headphone jack type (e.g., '3.5mm', 'USB-C', 'Lightning').
+            Required for certain categories. Defaults to 'Not Compatible' if omitted.
         bluetooth_compatibility:
           type: string
           nullable: true
+          description: Bluetooth version (e.g., 'Bluetooth 5.0', 'Bluetooth 5.3').
+            Required for certain categories. Defaults to 'Yes' if omitted.
         compatible_charging_interface:
           type: string
           nullable: true
+          description: Charging port type (e.g., 'USB-C', 'Lightning', 'Wireless Only').
+            Required for certain categories. Defaults to 'Not Compatible' if omitted.
         wireless_charging_compatibility:
           type: string
           nullable: true
+          description: Wireless charging standards (e.g., 'Qi', 'MagSafe'). Optional.
+            Defaults to 'Not Compatible' if omitted.
         storage_expansion_compatibility:
           type: string
           nullable: true
+          description: Memory card type (e.g., 'microSD', 'SD'). Required for certain
+            categories. Defaults to 'Not Compatible' if omitted.
         memory_capacity:
           type: string
           nullable: true
+          description: Storage capacity (e.g., '64GB', '128GB'). Required when storage
+            expansion is compatible. Defaults to 'Not Compatible' otherwise.
         compatible_watch_case_size:
           type: string
           nullable: true
+          description: Watch case size (e.g., '40mm', '44mm'). Required for certain
+            categories. Defaults to 'Not Compatible' if omitted.
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
