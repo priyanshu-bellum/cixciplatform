@@ -80,10 +80,21 @@ class Product(models.Model):
     """
     Canonical product record. Owned by Product Catalog.
     Vendor wholesale price inputs are stored here; Pricing does the calculation.
+
+    Category Governance:
+    - vendor_category: Source data from vendor (their category name)
+    - product_category: Canonical CIXCI category (mapped from vendor_category)
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     product_type = models.CharField(max_length=30, choices=ProductType.choices)
-    product_category = models.CharField(max_length=50, choices=ProductCategory.choices, blank=True, null=True)
+
+    # Category Governance: Canonical CIXCI category
+    product_category = models.CharField(max_length=100, blank=True, null=True, db_index=True,
+                                       help_text="Canonical CIXCI category (mapped from vendor_category)")
+    # Category Governance: Source vendor category
+    vendor_category = models.CharField(max_length=100, blank=True, null=True,
+                                      help_text="Original vendor category name (source data)")
+
     vendor_company_reference = models.UUIDField(db_index=True, help_text="Tenant Company vendor ID")
     company_scope_reference = models.UUIDField(db_index=True)
 
@@ -1152,4 +1163,54 @@ class DynamicDropdownConfig(models.Model):
 
     def __str__(self):
         return f"Dropdown({self.field_name}: {self.display_name})"
+
+
+class VendorCategoryMappingStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    INACTIVE = "inactive", "Inactive"
+    REVIEW_REQUIRED = "review_required", "Review Required"
+
+
+class VendorCategoryMapping(models.Model):
+    """
+    Maps vendor-specific category names to canonical CIXCI categories.
+
+    Category Governance Rule:
+    Vendor category names are source data only. Every vendor category must map
+    to an approved CIXCI Category before products can enter the governed catalog.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Vendor identification
+    vendor_company_reference = models.UUIDField(db_index=True, help_text="Vendor company ID")
+    vendor_category = models.CharField(max_length=100, help_text="Original vendor category name")
+
+    # Canonical mapping
+    cixci_category = models.CharField(max_length=100, help_text="Canonical CIXCI category")
+
+    # Mapping metadata
+    status = models.CharField(max_length=20, choices=VendorCategoryMappingStatus.choices,
+                            default=VendorCategoryMappingStatus.ACTIVE)
+    mapping_source = models.CharField(max_length=100, blank=True,
+                                     help_text="e.g. 'CIXCI Admin', 'Onboarding', 'Auto-detected'")
+    effective_date = models.DateField(null=True, blank=True)
+
+    # Audit
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.UUIDField(null=True, blank=True, help_text="User ID who created mapping")
+    updated_by = models.UUIDField(null=True, blank=True, help_text="User ID who last updated mapping")
+
+    company_scope_reference = models.UUIDField(db_index=True, help_text="CIXCI company scope")
+
+    class Meta:
+        db_table = "catalog_vendor_category_mapping"
+        unique_together = [("vendor_company_reference", "vendor_category")]
+        indexes = [
+            models.Index(fields=["vendor_company_reference", "vendor_category", "status"]),
+            models.Index(fields=["cixci_category"]),
+        ]
+
+    def __str__(self):
+        return f"VendorCategoryMapping({self.vendor_category} → {self.cixci_category})"
 

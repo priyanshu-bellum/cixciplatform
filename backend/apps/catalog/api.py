@@ -118,6 +118,10 @@ class ProductSerializerBase(serializers.ModelSerializer):
             is_vendor = (
                 hasattr(user, "company") and user.company and user.company.company_type == "vendor"
             )
+            is_buyer = (
+                hasattr(user, "company") and user.company and user.company.company_type == "buyer"
+            )
+
             # Rule (§5/§6): a vendor admin must see "Vendor Wholesale Price"; a
             # buyer must never see it. Only strip for non-admin, non-vendor users.
             if not (is_admin or is_vendor):
@@ -132,6 +136,13 @@ class ProductSerializerBase(serializers.ModelSerializer):
                 ret.pop("release_date", None)
                 ret.pop("inventory_threshold", None)
                 ret.pop("compatibility_status", None)
+
+            # Category Governance: Field visibility by role
+            # Buyers see only canonical CIXCI category (product_category), not vendor_category
+            if is_buyer:
+                ret.pop("vendor_category", None)
+            # Vendors see vendor_category (their input) - product_category is read-only mapped result
+            # Admins see both for governance purposes
 
         return ret
 
@@ -196,7 +207,8 @@ class ProductListSerializer(ProductSerializerBase):
     class Meta:
         model = Product
         fields = [
-            "id", "name", "sku", "upc", "brand", "product_type", "product_category",
+            "id", "name", "sku", "upc", "brand", "product_type",
+            "product_category", "vendor_category",  # Category Governance
             "status",
             "vendor_company_reference", "vendor_name",
             "description", "short_description", "promo_information",
@@ -396,7 +408,64 @@ class ProductDetailSerializer(ProductSerializerBase):
             raise serializers.ValidationError("Inventory Level must be a non-negative integer.")
         return value
 
+    def _resolve_vendor_category_mapping(self, vendor_category, vendor_company_ref):
+        """
+        Resolve vendor category to canonical CIXCI category using VendorCategoryMapping.
+        Returns (cixci_category, needs_review) tuple.
+        """
+        from apps.catalog.models import VendorCategoryMapping, VendorCategoryMappingStatus
+
+        if not vendor_category:
+            return None, False
+
+        # Look up active mapping
+        mapping = VendorCategoryMapping.objects.filter(
+            vendor_company_reference=vendor_company_ref,
+            vendor_category__iexact=vendor_category.strip(),
+            status=VendorCategoryMappingStatus.ACTIVE
+        ).first()
+
+        if mapping:
+            return mapping.cixci_category, False
+        else:
+            # No mapping found - needs review
+            return None, True
+
     def validate(self, attrs):
+        request = self.context.get('request')
+        user = request.user if request else None
+        is_vendor = (
+            user and hasattr(user, 'company') and user.company
+            and user.company.company_type == 'vendor'
+        )
+
+        # Category Governance: Vendor API behavior
+        if is_vendor:
+            vendor_category = attrs.get('vendor_category')
+            product_category_direct = attrs.get('product_category')
+
+            # Vendors must NOT set product_category directly
+            if product_category_direct and not self.instance:
+                raise serializers.ValidationError({
+                    "product_category": "Vendors cannot set CIXCI Category directly. Please provide vendor_category instead."
+                })
+
+            # If vendor provides vendor_category, resolve mapping
+            if vendor_category:
+                vendor_company_ref = user.company.id
+                cixci_cat, needs_review = self._resolve_vendor_category_mapping(
+                    vendor_category, vendor_company_ref
+                )
+
+                if needs_review:
+                    # No mapping exists - mark product for review
+                    attrs['product_category'] = None
+                    # Keep vendor_category as-is for provenance
+                    # Product status should be set to review_required in create logic
+                else:
+                    # Mapping found - use canonical CIXCI category
+                    attrs['product_category'] = cixci_cat
+
         category = attrs.get('product_category') or (self.instance.product_category if self.instance else None)
         if category:
             from apps.catalog.models import DynamicDropdownConfig
