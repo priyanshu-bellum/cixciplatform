@@ -62,8 +62,10 @@ api_v1 = [
 
 import os
 import yaml
-from django.http import FileResponse, HttpResponseForbidden, HttpResponseNotFound
+import json
+from django.http import FileResponse, HttpResponseForbidden, HttpResponseNotFound, HttpResponse
 from django.views import View
+from django.template.response import TemplateResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -72,6 +74,66 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 # ─── Admin Schema: full internal schema, restricted to CIXCI admins ────────────
+
+class AdminSwaggerView(View):
+    """
+    Custom Swagger UI view that embeds the schema directly in the HTML.
+    This avoids AJAX fetch issues with session authentication.
+    """
+    def get(self, request):
+        # Check if user is authenticated and is CIXCI admin
+        if not request.user.is_authenticated:
+            return HttpResponseForbidden("Authentication required. Please log in to access API documentation.")
+        if not getattr(request.user, "is_cixci_admin", False):
+            return HttpResponseForbidden("Access restricted to CIXCI system administrators.")
+
+        schema_path = os.path.join(settings.BASE_DIR, "schema.yml")
+        if not os.path.exists(schema_path):
+            return HttpResponseNotFound("Schema file not found")
+
+        # Load and embed schema directly in HTML
+        with open(schema_path, 'r', encoding='utf-8') as f:
+            schema_data = yaml.safe_load(f)
+
+        schema_json = json.dumps(schema_data)
+
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CIXCI Internal API Documentation</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css">
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-standalone-preset.js"></script>
+    <script>
+    window.onload = function() {{
+        const spec = {schema_json};
+        window.ui = SwaggerUIBundle({{
+            spec: spec,
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            presets: [
+                SwaggerUIBundle.presets.apis,
+                SwaggerUIStandalonePreset
+            ],
+            plugins: [
+                SwaggerUIBundle.plugins.DownloadUrl
+            ],
+            layout: "StandaloneLayout"
+        }});
+    }};
+    </script>
+</body>
+</html>
+        """
+
+        return HttpResponse(html, content_type='text/html')
+
 
 class AdminSchemaFileView(View):
     """
@@ -626,11 +688,12 @@ urlpatterns = [
 
     # ── Internal: CIXCI System Admin only ─────────────────────────────────────
     # /api/docs/ is now restricted — only authenticated CIXCI admins can access it.
+    # Using custom view that embeds schema to avoid session auth issues with AJAX
     path("api/schema/",        AdminSchemaFileView.as_view(), name="schema"),
-    path("api/docs/",          SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    path("api/docs/",          AdminSwaggerView.as_view(), name="swagger-ui"),
     path("api/redoc/",         SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
     path("api/v1/schema/",     AdminSchemaFileView.as_view(), name="v1-schema"),
-    path("api/v1/docs/",       SpectacularSwaggerView.as_view(url_name="v1-schema"), name="v1-swagger-ui"),
+    path("api/v1/docs/",       AdminSwaggerView.as_view(), name="v1-swagger-ui"),
     path("api/v1/redoc/",      SpectacularRedocView.as_view(url_name="v1-schema"), name="v1-redoc"),
 
     # ── External: Buyer API docs ───────────────────────────────────────────────
