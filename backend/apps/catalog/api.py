@@ -1876,6 +1876,121 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 
         return Response(history)
 
+    @action(detail=False, methods=["get"], url_path="bulk-upload-template")
+    def bulk_upload_template(self, request):
+        """Generate and return an Excel (.xlsx) bulk-upload template with
+        blue header row, proper column widths, and data-validation dropdowns
+        for Status (Active / Inactive) and Product Category (dynamic from
+        DynamicDropdownConfig).
+        """
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from django.http import HttpResponse
+
+        columns = [
+            ("Brand", 22),
+            ("Product Name", 35),
+            ("Product Status", 18),
+            ("EOL Date", 16),
+            ("Product Category", 28),
+            ("SKU", 20),
+            ("UPC", 18),
+            ("Launch Date", 16),
+            ("Release Date", 16),
+            ("Color", 16),
+            ("System Color", 16),
+            ("Vendor Wholesale Price", 24),
+            ("MSRP", 12),
+            ("MAP Price", 14),
+            ("Sale Price", 14),
+            ("Recommended Accessory", 24),
+            ("Inventory Level", 18),
+            ("Device Compatibility", 30),
+            ("Universal Device Types", 24),
+            ("Length", 12),
+            ("Width", 12),
+            ("Height", 12),
+            ("Weight", 12),
+            ("Brand Warranty", 18),
+            ("Short Description", 30),
+            ("Product Description", 40),
+            ("Promo Information", 28),
+            ("Image URL 1", 30),
+            ("Image URL 2", 30),
+            ("Image URL 3", 30),
+            ("Image URL 4", 30),
+            ("Image URL 5", 30),
+            ("Meta Title", 30),
+            ("Meta Description", 35),
+        ]
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Bulk Upload Template"
+
+        header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        thin_border = Border(
+            left=Side(style="thin", color="B0B0B0"),
+            right=Side(style="thin", color="B0B0B0"),
+            top=Side(style="thin", color="B0B0B0"),
+            bottom=Side(style="thin", color="B0B0B0"),
+        )
+
+        for col_idx, (col_name, col_width) in enumerate(columns, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=col_name)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+            ws.column_dimensions[get_column_letter(col_idx)].width = col_width
+
+        ws.row_dimensions[1].height = 30
+        ws.freeze_panes = "A2"
+
+        # Status dropdown (column C = index 3)
+        status_dv = DataValidation(
+            type="list",
+            formula1='"Active,Inactive"',
+            allow_blank=True,
+            showErrorMessage=True,
+            errorTitle="Invalid Status",
+            error="Please select Active or Inactive.",
+        )
+        status_col_letter = get_column_letter(3)
+        status_dv.add(f"{status_col_letter}2:{status_col_letter}1000")
+        ws.add_data_validation(status_dv)
+
+        # Product Category dropdown (column E = index 5) — dynamic from DynamicDropdownConfig
+        categories = list(
+            DynamicDropdownConfig.objects.filter(
+                field_name="product_category", status="active"
+            ).values_list("value", flat=True).order_by("value")
+        )
+        if categories:
+            cat_formula = ",".join(categories)
+            cat_dv = DataValidation(
+                type="list",
+                formula1=f'"{cat_formula}"',
+                allow_blank=True,
+                showErrorMessage=True,
+                errorTitle="Invalid Category",
+                error="Please select a valid Product Category.",
+            )
+            cat_col_letter = get_column_letter(5)
+            cat_dv.add(f"{cat_col_letter}2:{cat_col_letter}1000")
+            ws.add_data_validation(cat_dv)
+
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = 'attachment; filename="CIXCI_Bulk_Upload_Template.xlsx"'
+        wb.save(response)
+        return response
+
     @action(detail=False, methods=["post"])
     def bulk_upload(self, request):
         """Bulk upload products from a CSV or Excel (.xlsx) file with detailed validations."""

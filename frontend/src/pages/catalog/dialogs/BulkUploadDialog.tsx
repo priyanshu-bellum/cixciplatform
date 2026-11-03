@@ -410,12 +410,7 @@ export default function BulkUploadDialog({
   // Download template
   // ---------------------------------------------------------------------------
   const handleDownloadTemplate = useCallback(() => {
-    const link = document.createElement('a')
-    link.href = '/Download CSV Template.csv'
-    link.download = 'Download CSV Template.csv'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    window.open(`${api.defaults.baseURL}/catalog/products/bulk-upload-template/`, '_blank')
   }, [])
 
   // ---------------------------------------------------------------------------

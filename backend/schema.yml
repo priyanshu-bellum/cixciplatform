@@ -1948,6 +1948,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProductList'
           description: ''
+  /api/v1/catalog/products/bulk-upload-template/:
+    get:
+      operationId: v1_catalog_products_bulk_upload_template_retrieve
+      description: |-
+        Generate and return an Excel (.xlsx) bulk-upload template with
+        blue header row, proper column widths, and data-validation dropdowns
+        for Status (Active / Inactive) and Product Category (dynamic from
+        DynamicDropdownConfig).
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductList'
+          description: ''
   /api/v1/catalog/products/bulk_upload/:
     post:
       operationId: v1_catalog_products_bulk_upload_create
