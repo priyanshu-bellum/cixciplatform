@@ -409,8 +409,21 @@ export default function BulkUploadDialog({
   // ---------------------------------------------------------------------------
   // Download template
   // ---------------------------------------------------------------------------
-  const handleDownloadTemplate = useCallback(() => {
-    window.open(`${api.defaults.baseURL}/catalog/products/bulk-upload-template/`, '_blank')
+  const handleDownloadTemplate = useCallback(async () => {
+    try {
+      const resp = await api.get('/catalog/products/bulk-upload-template/', { responseType: 'blob' })
+      const blob = new Blob([resp.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'CIXCI_Bulk_Upload_Template.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch {
+      console.error('Failed to download template')
+    }
   }, [])
 
   // ---------------------------------------------------------------------------
