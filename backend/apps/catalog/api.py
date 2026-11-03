@@ -650,15 +650,16 @@ class ProductDetailSerializer(ProductSerializerBase):
                     return "Yes"
                 return "Not Compatible"
 
-            # Initialize defaults
+            # Initialize defaults — use instance value if non-empty, otherwise default
             for f in compat_fields:
                 val = attrs.get(f)
                 rule = rules.get(f)
                 mode = rule.get("mode", "hidden") if rule else "hidden"
-                
+
                 if val is None or (isinstance(val, str) and val.strip() == ""):
-                    if self.instance and hasattr(self.instance, f):
-                        attrs[f] = getattr(self.instance, f)
+                    instance_val = getattr(self.instance, f, None) if self.instance else None
+                    if instance_val and isinstance(instance_val, str) and instance_val.strip():
+                        attrs[f] = instance_val
                     else:
                         attrs[f] = get_default_value(f, rule)
 
@@ -4454,18 +4455,50 @@ class VendorCategoryMappingViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         """
         Re-resolve category for all products with matching vendor_category.
         Does NOT change product status — only updates category fields.
+        Also sets compatibility field defaults for products missing them.
         """
-        from apps.catalog.models import CategoryValidationStatus
+        from apps.catalog.models import CategoryValidationStatus, DynamicDropdownConfig
+
         affected = Product.objects.filter(
             vendor_company_reference=mapping.vendor_company_reference,
             vendor_category__iexact=mapping.vendor_category.strip()
-        ).exclude(product_category_override__isnull=False).exclude(product_category_override='')
+        ).filter(
+            Q(product_category_override__isnull=True) | Q(product_category_override='')
+        )
+
+        # Resolve compat defaults from category config
+        cat_cfg = DynamicDropdownConfig.objects.filter(
+            field_name="product_category", value=mapping.cixci_category
+        ).first()
+        compat_fields = [
+            "headphone_jack_compatibility", "bluetooth_compatibility",
+            "compatible_charging_interface", "wireless_charging_compatibility",
+            "storage_expansion_compatibility", "memory_capacity",
+            "compatible_watch_case_size",
+        ]
+
+        def get_default(f, rules):
+            rule = rules.get(f, {})
+            if "default_value" in rule:
+                return rule["default_value"]
+            return "Yes" if f == "bluetooth_compatibility" else "Not Compatible"
+
+        rules = (cat_cfg.compatibility_rules or {}) if cat_cfg else {}
 
         reprocessed_count = 0
         for product in affected:
             product.product_category = mapping.cixci_category
             product.category_validation_status = CategoryValidationStatus.RESOLVED
-            product.save(update_fields=['product_category', 'category_validation_status', 'updated_at'])
+            update_fields = ['product_category', 'category_validation_status', 'updated_at']
+
+            # Set compat defaults only for empty/null fields
+            for f in compat_fields:
+                current = getattr(product, f, None)
+                if not current or (isinstance(current, str) and not current.strip()):
+                    setattr(product, f, get_default(f, rules))
+                    update_fields.append(f)
+
+            product.save(update_fields=update_fields)
             reprocessed_count += 1
 
         if reprocessed_count > 0:
