@@ -387,25 +387,27 @@ export default function ProductFormDialog({
         if (form.selectedDeviceIds.length === 0 && form.compUniversalDeviceTypes.length === 0) {
           return 'Device compatibility is required for accessories. Select devices or universal device types.'
         }
-        // Category-specific compatibility checks
-        const cat = form.prodCategory?.toLowerCase().replace(/[\s&]+/g, '_')
-        if (cat === 'headphones') {
-          if (!form.compHeadphoneJack) return 'Headphone Jack compatibility is required for Headphones.'
-          if (!form.compBluetooth) return 'Bluetooth compatibility is required for Headphones.'
-        } else if (cat === 'speakers') {
-          if (!form.compChargingInterface) return 'Charging Interface is required for Speakers.'
-          if (!form.compBluetooth) return 'Bluetooth compatibility is required for Speakers.'
-        } else if (cat === 'chargers_and_cables' || cat === 'chargers' || cat === 'cables') {
-          if (!form.compChargingInterface) return 'Charging Interface is required for Chargers & Cables.'
-        } else if (cat === 'memory' || cat === 'memory_cards') {
-          if (!form.compStorageExpansion) return 'Storage Expansion compatibility is required for Memory.'
-          if (form.compStorageExpansion !== 'Not Compatible' && !form.compMemoryCapacity) {
-            return 'Memory Capacity is required for Memory products.'
+        // Category-specific compatibility checks (admin only — vendors don't manage these)
+        if (!isVendor) {
+          const cat = form.prodCategory?.toLowerCase().replace(/[\s&]+/g, '_')
+          if (cat === 'headphones') {
+            if (!form.compHeadphoneJack) return 'Headphone Jack compatibility is required for Headphones.'
+            if (!form.compBluetooth) return 'Bluetooth compatibility is required for Headphones.'
+          } else if (cat === 'speakers') {
+            if (!form.compChargingInterface) return 'Charging Interface is required for Speakers.'
+            if (!form.compBluetooth) return 'Bluetooth compatibility is required for Speakers.'
+          } else if (cat === 'chargers_and_cables' || cat === 'chargers' || cat === 'cables') {
+            if (!form.compChargingInterface) return 'Charging Interface is required for Chargers & Cables.'
+          } else if (cat === 'memory' || cat === 'memory_cards') {
+            if (!form.compStorageExpansion) return 'Storage Expansion compatibility is required for Memory.'
+            if (form.compStorageExpansion !== 'Not Compatible' && !form.compMemoryCapacity) {
+              return 'Memory Capacity is required for Memory products.'
+            }
+          } else if (cat === 'wearable_tech' || cat === 'wearables') {
+            if (!form.compChargingInterface) return 'Charging Interface is required for Wearable Tech.'
+          } else if (cat === 'watch_accessories') {
+            if (!form.compWatchCaseSize) return 'Watch Case Size is required for Watch Accessories.'
           }
-        } else if (cat === 'wearable_tech' || cat === 'wearables') {
-          if (!form.compChargingInterface) return 'Charging Interface is required for Wearable Tech.'
-        } else if (cat === 'watch_accessories') {
-          if (!form.compWatchCaseSize) return 'Watch Case Size is required for Watch Accessories.'
         }
       }
     }
@@ -489,14 +491,18 @@ export default function ProductFormDialog({
         meta_title: form.prodMetaTitle.trim(),
         meta_description: form.prodMetaDescription.trim(),
         media_references: mediaRefs,
-        bluetooth_compatibility: form.compBluetooth || '',
-        headphone_jack_compatibility: form.compHeadphoneJack || '',
-        compatible_charging_interface: form.compChargingInterface || '',
-        wireless_charging_compatibility: wirelessChargingStr,
-        storage_expansion_compatibility: form.compStorageExpansion || '',
-        memory_capacity: form.compMemoryCapacity || '',
-        compatible_watch_case_size: form.compWatchCaseSize || '',
         compatible_device_types: form.compUniversalDeviceTypes,
+      }
+
+      // Compatibility fields: CIXCI-internal, only admins manage these
+      if (!isVendor) {
+        payload.bluetooth_compatibility = form.compBluetooth || ''
+        payload.headphone_jack_compatibility = form.compHeadphoneJack || ''
+        payload.compatible_charging_interface = form.compChargingInterface || ''
+        payload.wireless_charging_compatibility = wirelessChargingStr
+        payload.storage_expansion_compatibility = form.compStorageExpansion || ''
+        payload.memory_capacity = form.compMemoryCapacity || ''
+        payload.compatible_watch_case_size = form.compWatchCaseSize || ''
       }
 
       // Category Governance: Vendors provide vendor_category, Admins can set both + override
@@ -1426,8 +1432,8 @@ export default function ProductFormDialog({
                 </div>
               </div>
 
-              {/* ---- Category-Specific Compatibility ---- */}
-              {renderCategorySpecificCompatibility()}
+              {/* ---- Category-Specific Compatibility (admin only — CIXCI internal auto-mapping) ---- */}
+              {!isVendor && renderCategorySpecificCompatibility()}
             </>
           )}
         </DialogContent>

@@ -147,12 +147,21 @@ class ProductSerializerBase(serializers.ModelSerializer):
                 ret.pop("product_category_override_by", None)
                 ret.pop("product_category_override_at", None)
                 ret.pop("category_validation_status", None)
-            # Vendors see vendor_category + category_validation_status, not override fields
+            # Vendors see vendor_category + category_validation_status, not override or compat fields
             elif is_vendor:
                 ret.pop("product_category_override", None)
                 ret.pop("product_category_override_by", None)
                 ret.pop("product_category_override_at", None)
                 ret.pop("vendor_category_raw", None)
+                # Compatibility fields are CIXCI-internal auto-mapping logic
+                ret.pop("compatibility_mode", None)
+                ret.pop("headphone_jack_compatibility", None)
+                ret.pop("bluetooth_compatibility", None)
+                ret.pop("compatible_charging_interface", None)
+                ret.pop("wireless_charging_compatibility", None)
+                ret.pop("storage_expansion_compatibility", None)
+                ret.pop("memory_capacity", None)
+                ret.pop("compatible_watch_case_size", None)
             # Admins see all fields for governance purposes
 
         return ret

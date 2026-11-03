@@ -405,6 +405,11 @@ class VendorSchemaView(APIView):
             "vendor_category_raw", "product_category_override",
             "product_category_override_by", "product_category_override_at",
             "category_validation_status",
+            # Device-to-Accessory compatibility: CIXCI-internal auto-mapping logic
+            "compatibility_mode", "headphone_jack_compatibility",
+            "bluetooth_compatibility", "compatible_charging_interface",
+            "wireless_charging_compatibility", "storage_expansion_compatibility",
+            "memory_capacity", "compatible_watch_case_size",
         }
         vendor_order_hidden_fields = {"email"}
         schemas = data.get("components", {}).get("schemas", {})
@@ -440,6 +445,8 @@ class VendorSchemaView(APIView):
             "The following fields are **not** included in vendor API responses:\n"
             "- **Products**: `buyer_wholesale_price`, `vendor_name`, `selling_status`, `release_date`, `inventory_threshold`, `compatibility_status`, "
             "`vendor_category_raw`, `product_category_override`, `product_category_override_by`, `product_category_override_at`, `category_validation_status`\n"
+            "- **Device Compatibility** (CIXCI-internal auto-mapping): `compatibility_mode`, `headphone_jack_compatibility`, `bluetooth_compatibility`, "
+            "`compatible_charging_interface`, `wireless_charging_compatibility`, `storage_expansion_compatibility`, `memory_capacity`, `compatible_watch_case_size`\n"
             "- **Orders**: `email` (customer email is not exposed to vendors)"
         )
         data["tags"] = [
