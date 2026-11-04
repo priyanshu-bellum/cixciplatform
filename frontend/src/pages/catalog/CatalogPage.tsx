@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Tabs from '@mui/material/Tabs'
@@ -30,8 +31,14 @@ export default function CatalogPage() {
   const isVendor = user?.company_type === 'vendor'
   const isBuyer = user?.company_type === 'buyer'
 
-  // Tab state
-  const [tab, setTab] = useState<string>('products')
+  // Tab state — read initial tab from URL (e.g. ?tab=projection from Device Catalog)
+  const [searchParams] = useSearchParams()
+  const initialTab = (() => {
+    const t = searchParams.get('tab')
+    if (t === 'my-compatibility' || t === 'projection') return 'projection'
+    return 'products'
+  })()
+  const [tab, setTab] = useState<string>(initialTab)
 
   // Modal orchestration
   const [showAddDialog, setShowAddDialog] = useState(false)

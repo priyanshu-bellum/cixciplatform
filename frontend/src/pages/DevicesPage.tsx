@@ -1452,7 +1452,7 @@ export default function DevicesPage() {
                                 <Button
                                   variant="contained"
                                   size="small"
-                                  onClick={() => navigate(`/catalog?tab=my-compatibility&compatibility_device=${ref.device}`)}
+                                  onClick={() => navigate(`/catalog?tab=projection&compat_device_id=${ref.device}`)}
                                 >
                                   View Products
                                 </Button>

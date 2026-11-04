@@ -59,8 +59,8 @@ export default function ProductCard({
   const [hoveredImage, setHoveredImage] = useState<string | null>(null)
 
   const isCixciAdmin = !!user?.is_cixci_admin
-  const isVendor = user?.role === 'vendor'
-  const isBuyer = user?.role === 'buyer'
+  const isVendor = user?.company_type === 'vendor'
+  const isBuyer = user?.company_type === 'buyer'
 
   // ---- Derived image data ------------------------------------------------
   const primaryUrl = p.primary_image_url || ''

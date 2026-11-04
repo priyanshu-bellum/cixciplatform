@@ -42,6 +42,7 @@ export default function AllProductsTab({
 }: AllProductsTabProps) {
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
   const isBuyer = user?.company_type === 'buyer'
+  const isVendor = user?.company_type === 'vendor'
 
   const filters = useCatalogFilters('all')
   const debouncedSearch = useDebouncedValue(filters.search, 400)
@@ -289,7 +290,7 @@ export default function AllProductsTab({
                 <TableCell>Brand</TableCell>
                 <TableCell>Category</TableCell>
                 <TableCell align="right">MSRP</TableCell>
-                {(isCixciAdmin || isBuyer) && <TableCell align="right">Wholesale</TableCell>}
+                {(isCixciAdmin || isBuyer || isVendor) && <TableCell align="right">Wholesale</TableCell>}
                 <TableCell>Status</TableCell>
                 <TableCell align="center">Actions</TableCell>
               </TableRow>
@@ -324,9 +325,12 @@ export default function AllProductsTab({
                   <TableCell>{p.brand}</TableCell>
                   <TableCell>{p.product_category || '—'}</TableCell>
                   <TableCell align="right">{formatCurrency(p.msrp || 0, p.vendor_wholesale_price_currency)}</TableCell>
-                  {(isCixciAdmin || isBuyer) && (
+                  {(isCixciAdmin || isBuyer || isVendor) && (
                     <TableCell align="right">
-                      {formatCurrency(p.buyer_wholesale_price ?? p.vendor_wholesale_price_amount ?? 0, p.vendor_wholesale_price_currency)}
+                      {formatCurrency(
+                        isVendor ? (p.vendor_wholesale_price_amount ?? 0) : (p.buyer_wholesale_price ?? p.vendor_wholesale_price_amount ?? 0),
+                        p.vendor_wholesale_price_currency,
+                      )}
                     </TableCell>
                   )}
                   <TableCell>

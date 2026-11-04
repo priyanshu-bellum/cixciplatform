@@ -1161,10 +1161,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "upc",
         "brand",
         "product_category",
-        "vendor_wholesale_price_amount",
         "color",
         "status",
-        "msrp",
     ]
     ordering_fields = ["name", "created_at", "exported_date"]
     ordering = ["-created_at"]
