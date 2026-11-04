@@ -1949,14 +1949,17 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         ws.row_dimensions[1].height = 30
         ws.freeze_panes = "A2"
 
-        # Status dropdown (column C = index 3)
+        # Product Status dropdown (column C = index 3) — dynamic from ProductStatus choices
+        from apps.catalog.models import ProductStatus as PS
+        status_labels = [label for _, label in PS.choices]
+        status_formula = ",".join(status_labels)
         status_dv = DataValidation(
             type="list",
-            formula1='"Active,Inactive"',
+            formula1=f'"{status_formula}"',
             allow_blank=True,
             showErrorMessage=True,
             errorTitle="Invalid Status",
-            error="Please select Active or Inactive.",
+            error=f"Please select one of: {status_formula}.",
         )
         status_col_letter = get_column_letter(3)
         status_dv.add(f"{status_col_letter}2:{status_col_letter}1000")
@@ -1981,6 +1984,26 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             cat_col_letter = get_column_letter(5)
             cat_dv.add(f"{cat_col_letter}2:{cat_col_letter}1000")
             ws.add_data_validation(cat_dv)
+
+        # System Color dropdown (column K = index 11) — dynamic from DynamicDropdownConfig
+        sys_colors = list(
+            DynamicDropdownConfig.objects.filter(
+                field_name="system_color", status="active"
+            ).values_list("value", flat=True).order_by("value")
+        )
+        if sys_colors:
+            color_formula = ",".join(sys_colors)
+            color_dv = DataValidation(
+                type="list",
+                formula1=f'"{color_formula}"',
+                allow_blank=True,
+                showErrorMessage=True,
+                errorTitle="Invalid System Color",
+                error="Please select a valid System Color.",
+            )
+            color_col_letter = get_column_letter(11)
+            color_dv.add(f"{color_col_letter}2:{color_col_letter}1000")
+            ws.add_data_validation(color_dv)
 
         response = HttpResponse(
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -2462,17 +2485,22 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         should_stage = True
 
             # --- Product Status ---
-            status_str = str(row.get("productstatus") or row.get("status") or "").strip().lower()
+            status_raw = str(row.get("productstatus") or row.get("status") or "").strip()
+            status_str = status_raw.lower()
             if not status_str:
                 status_str = "active"
-            
-            if status_str not in ["active", "inactive", "eol", "out_of_stock"]:
+            status_label_map = {label.lower(): val for val, label in ProductStatus.choices}
+            if status_str in status_label_map:
+                status_str = status_label_map[status_str]
+            valid_status_values = [v for v, _ in ProductStatus.choices]
+            if status_str not in valid_status_values:
+                valid_labels = ", ".join(label for _, label in ProductStatus.choices)
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Product Status",
-                    "submitted_value": status_str,
+                    "submitted_value": status_raw,
                     "validation_error": "Invalid Product Status value.",
-                    "recommended_correction": "Provide one of: Active, Inactive, EOL, Out of Stock."
+                    "recommended_correction": f"Provide one of: {valid_labels}."
                 })
 
             # --- Launch Date ---
