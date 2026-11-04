@@ -173,7 +173,7 @@ export default function AllProductsTab({
           onExportExcel={isCixciAdmin ? handleExportExcel : undefined}
           exporting={exporting}
           selectedCount={0}
-          showSelectAll={isBuyer}
+          showSelectAll={false}
           totalProducts={0}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
@@ -231,18 +231,11 @@ export default function AllProductsTab({
         brandsList={brandsList}
         onExportExcel={isCixciAdmin ? handleExportExcel : undefined}
         exporting={exporting}
-        selectedCount={selectedIds.length}
-        onSelectAll={async (e) => {
-          if (e.target.checked) {
-            const allIds = await fetchMatchingIds()
-            setSelectedIds(allIds)
-          } else {
-            setSelectedIds([])
-          }
-        }}
-        onClearSelection={() => setSelectedIds([])}
-        onExportSelection={() => setShowExportModal(true)}
-        showSelectAll={isBuyer}
+        selectedCount={0}
+        onSelectAll={undefined}
+        onClearSelection={() => {}}
+        onExportSelection={() => {}}
+        showSelectAll={false}
         allChecked={allChecked}
         someChecked={someChecked}
         totalProducts={totalProducts}
@@ -274,7 +267,7 @@ export default function AllProductsTab({
                   prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id]
                 )
               }}
-              showCheckbox={isBuyer}
+              showCheckbox={false}
               exportedProductIds={exportedProductIds}
             />
           ))}
