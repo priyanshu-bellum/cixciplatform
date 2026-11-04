@@ -32,23 +32,46 @@ class CompanyAPIKeyAuthentication(BaseAuthentication):
         api_key.last_used_at = timezone.now()
         api_key.save(update_fields=["last_used_at"])
 
-        # Prefer a company admin, then fall back to any active user in the company
-        from apps.tenant.models import CompanyUserMembership
+        # Resolve a user for this company: prefer admin with valid entity,
+        # then any member with valid entity, then entity-based lookup.
+        # If the best candidate has no entity, auto-link them.
+        from apps.tenant.models import CompanyUserMembership, CompanyEntity
         company_id = api_key.company_scope_reference
-        admin_membership = CompanyUserMembership.objects.filter(
-            company_id=company_id, is_company_admin=True, user__is_active=True,
-        ).select_related("user").first()
-        user = admin_membership.user if admin_membership else None
-        if not user:
-            membership = CompanyUserMembership.objects.filter(
+
+        user = None
+        for qs in [
+            CompanyUserMembership.objects.filter(
+                company_id=company_id, is_company_admin=True, user__is_active=True,
+                user__entity__company_id=company_id,
+            ),
+            CompanyUserMembership.objects.filter(
                 company_id=company_id, user__is_active=True,
-            ).select_related("user").first()
-            user = membership.user if membership else None
+                user__entity__company_id=company_id,
+            ),
+            CompanyUserMembership.objects.filter(
+                company_id=company_id, is_company_admin=True, user__is_active=True,
+            ),
+            CompanyUserMembership.objects.filter(
+                company_id=company_id, user__is_active=True,
+            ),
+        ]:
+            m = qs.select_related("user").first()
+            if m:
+                user = m.user
+                break
+
         if not user:
             user = User.objects.filter(entity__company_id=company_id, is_active=True).first()
 
         if not user:
             raise AuthenticationFailed("No active user found for the company entity associated with this API key")
+
+        # Auto-fix: if resolved user has no entity, link them to the company's entity
+        if not user.entity_id:
+            entity = CompanyEntity.objects.filter(company_id=company_id, status="active").first()
+            if entity:
+                user.entity_id = entity.id
+                user.save(update_fields=["entity_id"])
 
         return (user, api_key)
 

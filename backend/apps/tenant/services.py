@@ -1212,6 +1212,8 @@ def accept_user_invitation(token, password):
             )
         else:
             user.is_active = True
+            if not user.entity_id and target_entity:
+                user.entity = target_entity
             user.save()
 
         membership, _ = CompanyUserMembership.objects.get_or_create(
