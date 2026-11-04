@@ -120,6 +120,8 @@ def check_access(user, capability_code: str, company_id=None, entity_id=None, re
                 "invoicing.invoice.read",
                 "invoicing.run.list",
                 "invoicing.run.read",
+                "media.buyer_images.list",
+                "media.buyer_images.download",
             }
             if (company.company_type or "").lower() == "buyer" and capability_code in buyer_safe_caps:
                 if company_id and str(user.entity.company_id) != str(company_id):

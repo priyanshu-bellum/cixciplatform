@@ -27,6 +27,7 @@ import TelcoCellularPage from './pages/TelcoCellularPage'
 import CompanyUsersPage from './pages/CompanyUsersPage'
 import RegionalPage from './pages/RegionalPage'
 import { SettingsPage } from './pages/StubPages'
+import BuyerProductImagesPage from './pages/BuyerProductImagesPage'
 import ConfirmEmailPage from './pages/ConfirmEmailPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 
@@ -106,6 +107,7 @@ function AppWithQuery() {
             <Route path="procurement" element={<ProcurementPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="media" element={<MediaPage />} />
+            <Route path="product-images" element={<BuyerProductImagesPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="integration" element={<IntegrationPage />} />
             <Route path="launch" element={<LaunchPage />} />

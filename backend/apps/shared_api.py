@@ -26,6 +26,7 @@ def _parse_uuid(value):
 
 # ── Media ──────────────────────────────────────────────────────────────────────
 from apps.media.models import MediaAsset, UploadSession, Rendition
+from apps.media.utils import media_short_url
 
 class MediaAssetSerializer(serializers.ModelSerializer):
     class Meta:
@@ -1768,11 +1769,370 @@ class LaunchEventViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company_scope_reference=self.request.user.entity.company_id)
 
+# ── Buyer Product Images ──────────────────────────────────────────────────────
+
+class BuyerProductImagesViewSet(CheckAccessMixin, viewsets.ViewSet):
+    """
+    Buyer-facing, product-centric image library (read-only).
+
+    Buyers see only products in their authorized assortment (active, compatible
+    with their device portfolio, region-filtered). Each row is a product with
+    its approved image count. Individual and bulk (ZIP) downloads are supported.
+    """
+    action_capability_map = {
+        "list": "media.buyer_images.list",
+        "images": "media.buyer_images.list",
+        "download_image": "media.buyer_images.download",
+        "download_all": "media.buyer_images.download",
+    }
+
+    def _assert_buyer(self, request):
+        company = getattr(request.user, "company", None)
+        if not company:
+            entity = getattr(request.user, "entity", None)
+            company = getattr(entity, "company", None) if entity else None
+        if not company or company.company_type != "buyer":
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("This endpoint is available only to buyer accounts.")
+        return company
+
+    def _buyer_product_queryset(self, request, company):
+        from apps.catalog.models import Product, ProductCompatibilityAssertion
+        from apps.devices.models import BuyerDevicePortfolioReference
+        from apps.tenant.models import Company, CompanyStatus, CompanyType
+        from django.db.models import Q
+        import pytz
+        from django.utils import timezone
+
+        est = pytz.timezone("US/Eastern")
+        today_est = timezone.now().astimezone(est).date()
+
+        qs = Product.objects.filter(status="active").exclude(
+            compatibility_status="incomplete"
+        ).filter(Q(release_date__isnull=True) | Q(release_date__lte=today_est))
+
+        from django.conf import settings as _settings
+        if getattr(_settings, "MEDIA_READINESS_ENFORCE_BUYER", True):
+            from apps.media.models import MediaAsset
+            ready_asset_ids = MediaAsset.objects.filter(
+                status="ready", mime_type="image/png", has_transparency=True,
+                review_status="approved",
+            ).values_list("id", flat=True)
+            qs = qs.filter(primary_image_reference__in=list(ready_asset_ids))
+
+        portfolio_device_ids = list(BuyerDevicePortfolioReference.objects.filter(
+            company_scope_reference=company.id, active_flag=True,
+        ).values_list("device_id", flat=True))
+        if not portfolio_device_ids:
+            return Product.objects.none()
+
+        compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
+            device_reference__in=portfolio_device_ids,
+            is_compatible=True, is_excluded=False,
+        ).values_list("product_id", flat=True)
+        qs = qs.filter(id__in=compatible_product_ids)
+
+        buyer_regions = company.approved_regions or []
+        if not isinstance(buyer_regions, list):
+            buyer_regions = [buyer_regions]
+        if buyer_regions:
+            region_filter = Q()
+            for r in buyer_regions:
+                region_filter |= Q(approved_regions__icontains=f'"{r}"')
+            invisible_vendor_ids = Company.objects.filter(
+                company_type=CompanyType.VENDOR,
+            ).exclude(Q(status=CompanyStatus.ACTIVE) & region_filter).values_list("id", flat=True)
+            qs = qs.exclude(vendor_company_reference__in=invisible_vendor_ids)
+        else:
+            inactive_vendor_ids = Company.objects.filter(
+                company_type=CompanyType.VENDOR,
+            ).exclude(status=CompanyStatus.ACTIVE).values_list("id", flat=True)
+            qs = qs.exclude(vendor_company_reference__in=inactive_vendor_ids)
+
+        selling_status = request.query_params.get("selling_status")
+        if selling_status:
+            qs = qs.filter(selling_status=selling_status)
+
+        return qs.order_by("name")
+
+    def _get_buyer_visible_assets(self, product_id):
+        from apps.media.models import MediaAsset
+        NON_BUYER_FACING = {
+            "validation_failed", "processing_failed", "rejected",
+            "archived", "revoked", "superseded", "expired", "restricted",
+        }
+        return MediaAsset.objects.filter(
+            owner_module="catalog",
+            owner_record_id=product_id,
+            status="ready",
+            review_status="approved",
+        ).exclude(status__in=NON_BUYER_FACING).order_by("display_order", "created_at")
+
+    def _assert_product_in_assortment(self, request, company, product_id):
+        qs = self._buyer_product_queryset(request, company)
+        from apps.catalog.models import Product
+        try:
+            return qs.get(id=product_id)
+        except Product.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+            raise NotFound("Product not found in your authorized assortment.")
+
+    def list(self, request):
+        company = self._assert_buyer(request)
+        qs = self._buyer_product_queryset(request, company)
+
+        search = request.query_params.get("search", "").strip()
+        if search:
+            from django.db.models import Q
+            from apps.tenant.models import Company
+            vendor_ids_matching = Company.objects.filter(
+                name__icontains=search
+            ).values_list("id", flat=True)
+            qs = qs.filter(
+                Q(name__icontains=search) | Q(sku__icontains=search) |
+                Q(upc__icontains=search) | Q(brand__icontains=search) |
+                Q(vendor_company_reference__in=list(vendor_ids_matching))
+            )
+
+        for param, field in [
+            ("brand", "brand"), ("product_category", "product_category"),
+            ("status", "status"),
+        ]:
+            val = request.query_params.get(param)
+            if val:
+                qs = qs.filter(**{field: val})
+
+        vendor_param = request.query_params.get("vendor", "").strip()
+        if vendor_param:
+            from apps.tenant.models import Company
+            vendor_ids_filtered = Company.objects.filter(
+                name__icontains=vendor_param
+            ).values_list("id", flat=True)
+            qs = qs.filter(vendor_company_reference__in=list(vendor_ids_filtered))
+
+        from apps.catalog.api import ProductPagination
+        paginator = ProductPagination()
+        page = paginator.paginate_queryset(qs, request)
+        rows = page if page is not None else list(qs)
+
+        product_ids = [p.id for p in rows]
+        from apps.media.models import MediaAsset
+        from django.db.models import Count
+        image_counts = dict(
+            MediaAsset.objects.filter(
+                owner_module="catalog", owner_record_id__in=product_ids,
+                status="ready", review_status="approved",
+            ).values_list("owner_record_id").annotate(cnt=Count("id")).values_list("owner_record_id", "cnt")
+        )
+
+        from apps.tenant.models import Company
+        vendor_ids = list({p.vendor_company_reference for p in rows if p.vendor_company_reference})
+        vendor_names = dict(Company.objects.filter(id__in=vendor_ids).values_list("id", "name"))
+
+        results = []
+        for p in rows:
+            results.append({
+                "id": str(p.id),
+                "name": p.name,
+                "sku": p.sku,
+                "upc": p.upc or "",
+                "brand": p.brand or "",
+                "vendor_name": vendor_names.get(p.vendor_company_reference, ""),
+                "product_category": p.product_category or "",
+                "selling_status": p.selling_status or "",
+                "status": p.status,
+                "primary_image_url": media_short_url(p.primary_image_reference) if p.primary_image_reference else "",
+                "image_count": image_counts.get(p.id, 0),
+            })
+
+        if page is not None:
+            return paginator.get_paginated_response(results)
+        return Response(results)
+
+    @action(detail=True, methods=["get"])
+    def images(self, request, pk=None):
+        company = self._assert_buyer(request)
+        product = self._assert_product_in_assortment(request, company, pk)
+        assets = self._get_buyer_visible_assets(product.id)
+
+        data = []
+        for a in assets:
+            is_primary = str(a.id) == str(product.primary_image_reference)
+            fname_lower = (a.original_filename or "").lower()
+            if is_primary:
+                image_type = "Primary"
+            elif "lifestyle" in fname_lower:
+                image_type = "Lifestyle"
+            elif "packaging" in fname_lower or "package" in fname_lower:
+                image_type = "Packaging"
+            elif "alt" in fname_lower or "alternate" in fname_lower:
+                image_type = "Alternate"
+            else:
+                image_type = "Main"
+            data.append({
+                "id": str(a.id),
+                "filename": a.original_filename,
+                "is_primary": is_primary,
+                "image_type": image_type,
+                "width": a.width,
+                "height": a.height,
+                "file_size_bytes": a.file_size_bytes,
+                "display_order": a.display_order,
+                "alt_text": a.alt_text or "",
+                "url": media_short_url(a.id),
+            })
+        return Response({
+            "product_id": str(product.id),
+            "product_name": product.name,
+            "sku": product.sku,
+            "images": data,
+        })
+
+    @action(detail=True, methods=["get"], url_path="download-image/(?P<asset_id>[0-9a-f-]+)")
+    def download_image(self, request, pk=None, asset_id=None):
+        company = self._assert_buyer(request)
+        product = self._assert_product_in_assortment(request, company, pk)
+        assets = self._get_buyer_visible_assets(product.id)
+
+        asset = assets.filter(id=asset_id).first()
+        if not asset:
+            from rest_framework.exceptions import NotFound
+            raise NotFound("Image not found for this product.")
+
+        import os
+        from django.conf import settings
+        from django.http import FileResponse
+
+        data = None
+        provider = (asset.storage_provider or "local").lower()
+        try:
+            if provider == "gcs":
+                bucket_name = getattr(settings, "GS_BUCKET_NAME", None)
+                if bucket_name:
+                    client = get_gcs_client()
+                    blob = client.bucket(bucket_name).blob(asset.storage_key)
+                    data = blob.download_as_bytes()
+            elif provider == "s3":
+                import boto3
+                s3_client = boto3.client(
+                    "s3",
+                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                    region_name=getattr(settings, "AWS_S3_REGION_NAME", "us-east-1"),
+                    endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+                )
+                obj = s3_client.get_object(
+                    Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=asset.storage_key,
+                )
+                data = obj["Body"].read()
+            else:
+                full_path = os.path.join(settings.MEDIA_ROOT, asset.storage_key)
+                if os.path.exists(full_path):
+                    from apps.media.services import log_media_audit
+                    log_media_audit(
+                        event_code="media.buyer_image.downloaded",
+                        description=f"Buyer downloaded image {asset.id} for product {product.id}",
+                        asset_id=asset.id,
+                        company_id=company.id,
+                        actor_id=request.user.id,
+                    )
+                    response = FileResponse(open(full_path, "rb"), content_type=asset.mime_type or "image/png")
+                    response["Content-Disposition"] = f'attachment; filename="{product.sku}_{asset.original_filename}"'
+                    return response
+        except Exception:
+            pass
+
+        if data:
+            from apps.media.services import log_media_audit
+            log_media_audit(
+                event_code="media.buyer_image.downloaded",
+                description=f"Buyer downloaded image {asset.id} for product {product.id}",
+                asset_id=asset.id,
+                company_id=company.id,
+                actor_id=request.user.id,
+            )
+            from django.http import HttpResponse
+            response = HttpResponse(data, content_type=asset.mime_type or "image/png")
+            response["Content-Disposition"] = f'attachment; filename="{product.sku}_{asset.original_filename}"'
+            return response
+
+        return Response({"error": "Image file not found in storage."}, status=404)
+
+    @action(detail=True, methods=["get"], url_path="download-all")
+    def download_all(self, request, pk=None):
+        company = self._assert_buyer(request)
+        product = self._assert_product_in_assortment(request, company, pk)
+        assets = list(self._get_buyer_visible_assets(product.id))
+
+        if not assets:
+            return Response({"error": "No images available for this product."}, status=404)
+
+        import io
+        import os
+        import zipfile
+        from django.conf import settings
+        from django.http import HttpResponse
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for idx, asset in enumerate(assets):
+                file_data = None
+                provider = (asset.storage_provider or "local").lower()
+                try:
+                    if provider == "gcs":
+                        bucket_name = getattr(settings, "GS_BUCKET_NAME", None)
+                        if bucket_name:
+                            client = get_gcs_client()
+                            blob = client.bucket(bucket_name).blob(asset.storage_key)
+                            file_data = blob.download_as_bytes()
+                    elif provider == "s3":
+                        import boto3
+                        s3_client = boto3.client(
+                            "s3",
+                            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                            region_name=getattr(settings, "AWS_S3_REGION_NAME", "us-east-1"),
+                            endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+                        )
+                        obj = s3_client.get_object(
+                            Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=asset.storage_key,
+                        )
+                        file_data = obj["Body"].read()
+                    else:
+                        full_path = os.path.join(settings.MEDIA_ROOT, asset.storage_key)
+                        if os.path.exists(full_path):
+                            with open(full_path, "rb") as fh:
+                                file_data = fh.read()
+                except Exception:
+                    continue
+
+                if file_data:
+                    is_primary = str(asset.id) == str(product.primary_image_reference)
+                    prefix = "primary_" if is_primary else f"{idx+1:02d}_"
+                    fname = f"{prefix}{asset.original_filename}"
+                    zf.writestr(fname, file_data)
+
+        buf.seek(0)
+        from apps.media.services import log_media_audit
+        log_media_audit(
+            event_code="media.buyer_images.zip_downloaded",
+            description=f"Buyer downloaded all images ({len(assets)}) for product {product.id}",
+            asset_id=assets[0].id if assets else None,
+            company_id=company.id,
+            actor_id=request.user.id,
+        )
+        zip_filename = f"{product.sku}_images.zip"
+        response = HttpResponse(buf.read(), content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="{zip_filename}"'
+        return response
+
+
 # ── Routers ────────────────────────────────────────────────────────────────────
 
 media_router = DefaultRouter()
 media_router.register("assets", MediaAssetViewSet, basename="media-asset")
 media_router.register("upload-sessions", UploadSessionViewSet, basename="upload-session")
+media_router.register("buyer-product-images", BuyerProductImagesViewSet, basename="buyer-product-images")
 
 analytics_router = DefaultRouter()
 analytics_router.register("metrics", ReportingMetricViewSet, basename="reporting-metric")

@@ -18,6 +18,7 @@ import ReceiptIcon from '@mui/icons-material/ReceiptLongOutlined'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCartOutlined'
 import NotificationsIcon from '@mui/icons-material/NotificationsOutlined'
 import ImageIcon from '@mui/icons-material/ImageOutlined'
+import CollectionsIcon from '@mui/icons-material/CollectionsOutlined'
 import BarChartIcon from '@mui/icons-material/BarChartOutlined'
 import PowerIcon from '@mui/icons-material/PowerOutlined'
 import RocketIcon from '@mui/icons-material/RocketLaunchOutlined'
@@ -58,6 +59,7 @@ const NAV = [
     items: [
       { to: '/notifications', icon: <NotificationsIcon fontSize="small" />, label: 'Notifications' },
       { to: '/media', icon: <ImageIcon fontSize="small" />, label: 'Media' },
+      { to: '/product-images', icon: <CollectionsIcon fontSize="small" />, label: 'Product Images' },
       { to: '/analytics', icon: <BarChartIcon fontSize="small" />, label: 'Analytics' },
       { to: '/integration', icon: <PowerIcon fontSize="small" />, label: 'Integration' },
       { to: '/launch', icon: <RocketIcon fontSize="small" />, label: 'Launch' },
@@ -86,7 +88,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         return ['/', '/devices', '/catalog', '/orders', '/fulfillment', '/invoicing', '/integration', '/analytics', '/notifications', '/regions', '/media'].includes(item.to)
       }
       if (isBuyer) {
-        return ['/', '/devices', '/catalog', '/pricing', '/orders', '/fulfillment', '/invoicing', '/procurement', '/notifications', '/integration', '/regions'].includes(item.to)
+        return ['/', '/devices', '/catalog', '/pricing', '/orders', '/fulfillment', '/invoicing', '/procurement', '/notifications', '/integration', '/regions', '/product-images'].includes(item.to)
       }
       if (isVendor) {
         return ['/', '/catalog', '/orders', '/fulfillment', '/invoicing', '/notifications', '/regions', '/media'].includes(item.to)

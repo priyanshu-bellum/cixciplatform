@@ -8000,6 +8000,102 @@ paths:
               schema:
                 $ref: '#/components/schemas/MediaAsset'
           description: ''
+  /api/v1/media/buyer-product-images/:
+    get:
+      operationId: v1_media_buyer_product_images_retrieve
+      description: |-
+        Buyer-facing, product-centric image library (read-only).
+
+        Buyers see only products in their authorized assortment (active, compatible
+        with their device portfolio, region-filtered). Each row is a product with
+        its approved image count. Individual and bulk (ZIP) downloads are supported.
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/buyer-product-images/{id}/download-all/:
+    get:
+      operationId: v1_media_buyer_product_images_download_all_retrieve
+      description: |-
+        Buyer-facing, product-centric image library (read-only).
+
+        Buyers see only products in their authorized assortment (active, compatible
+        with their device portfolio, region-filtered). Each row is a product with
+        its approved image count. Individual and bulk (ZIP) downloads are supported.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/buyer-product-images/{id}/download-image/{asset_id}/:
+    get:
+      operationId: v1_media_buyer_product_images_download_image_retrieve
+      description: |-
+        Buyer-facing, product-centric image library (read-only).
+
+        Buyers see only products in their authorized assortment (active, compatible
+        with their device portfolio, region-filtered). Each row is a product with
+        its approved image count. Individual and bulk (ZIP) downloads are supported.
+      parameters:
+      - in: path
+        name: asset_id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]+$
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/buyer-product-images/{id}/images/:
+    get:
+      operationId: v1_media_buyer_product_images_images_retrieve
+      description: |-
+        Buyer-facing, product-centric image library (read-only).
+
+        Buyers see only products in their authorized assortment (active, compatible
+        with their device portfolio, region-filtered). Each row is a product with
+        its approved image count. Individual and bulk (ZIP) downloads are supported.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/v1/media/upload-sessions/:
     get:
       operationId: v1_media_upload_sessions_list
