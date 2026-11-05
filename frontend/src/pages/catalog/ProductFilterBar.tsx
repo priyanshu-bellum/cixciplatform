@@ -117,7 +117,7 @@ export default function ProductFilterBar({
           label="Filter by Device"
           placeholder="All Devices (My Portfolio)"
           value={filters.filterDeviceId ? filters.filterDeviceId.split(',').filter(Boolean) : []}
-          options={portfolio.filter((d: any) => d.active_flag).map((d: any) => d.device_name)}
+          options={portfolio.filter((d: any) => d.active_flag).map((d: any) => ({ value: d.device, label: d.device_name }))}
           onChange={(vals: string[]) => filters.setFilterDeviceId(vals.join(','))}
         />
       )}

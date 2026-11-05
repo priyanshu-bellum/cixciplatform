@@ -21,6 +21,7 @@ import Select from '@mui/material/Select'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import CircularProgress from '@mui/material/CircularProgress'
+import Checkbox from '@mui/material/Checkbox'
 import Tooltip from '@mui/material/Tooltip'
 import SearchIcon from '@mui/icons-material/Search'
 import ImageIcon from '@mui/icons-material/ImageOutlined'
@@ -29,10 +30,10 @@ import FolderZipIcon from '@mui/icons-material/FolderZip'
 import CloseIcon from '@mui/icons-material/Close'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import StarIcon from '@mui/icons-material/Star'
+import JSZip from 'jszip'
 import api from '../lib/apiClient'
 import { getImageUrl } from '../lib/formatters'
 import { Pagination } from '../components/Pagination'
-import StatusChip from '../components/data-display/StatusChip'
 
 const PAGE_SIZE = 25
 
@@ -67,31 +68,26 @@ export default function BuyerProductImagesPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
-  const [sellingStatus, setSellingStatus] = useState('for_sale')
   const [filterBrand, setFilterBrand] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [filterVendor, setFilterVendor] = useState('')
   const [galleryProduct, setGalleryProduct] = useState<ProductRow | null>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
+  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400)
     return () => clearTimeout(t)
   }, [search])
 
-  useEffect(() => { setPage(1) }, [debouncedSearch, sellingStatus, filterBrand, filterCategory, filterStatus, filterVendor])
+  useEffect(() => { setPage(1) }, [debouncedSearch, filterBrand, filterCategory])
 
   const params = useMemo(() => ({
     search: debouncedSearch || undefined,
-    selling_status: sellingStatus || undefined,
     brand: filterBrand || undefined,
     product_category: filterCategory || undefined,
-    status: filterStatus || undefined,
-    vendor: filterVendor || undefined,
     page,
     page_size: PAGE_SIZE,
-  }), [debouncedSearch, sellingStatus, filterBrand, filterCategory, filterStatus, filterVendor, page])
+  }), [debouncedSearch, filterBrand, filterCategory, page])
 
   const { data: dropdownData } = useQuery({
     queryKey: ['dropdown-configs'],
@@ -163,18 +159,52 @@ export default function BuyerProductImagesPage() {
     }
   }, [])
 
+  const handleDownloadSelected = useCallback(async (product: ProductRow, selected: Set<string>, imageList: ImageItem[]) => {
+    if (selected.size === 0) return
+    setDownloading('zip-selected')
+    try {
+      const zip = new JSZip()
+      const toDownload = imageList.filter(img => selected.has(img.id))
+      await Promise.all(toDownload.map(async (img) => {
+        const resp = await api.get(`/media/buyer-product-images/${product.id}/download-image/${img.id}/`, {
+          responseType: 'blob',
+        })
+        zip.file(img.filename, resp.data)
+      }))
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${product.sku}_selected_images.zip`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch {
+      console.error('Selected download failed')
+    } finally {
+      setDownloading(null)
+    }
+  }, [])
+
+  const toggleImageSelection = useCallback((id: string) => {
+    setSelectedImages(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
-      <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>Product Images</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Browse and download product images from your authorized assortment.
-      </Typography>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Product Images</Typography>
 
       {/* Filters */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           size="small"
-          placeholder="Search by name, SKU, UPC, brand, or vendor..."
+          placeholder="Search by name, SKU, UPC, or brand..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           sx={{ minWidth: 280, flex: 1, maxWidth: 420 }}
@@ -188,18 +218,6 @@ export default function BuyerProductImagesPage() {
             },
           }}
         />
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Selling Status</InputLabel>
-          <Select
-            value={sellingStatus}
-            label="Selling Status"
-            onChange={e => setSellingStatus(e.target.value)}
-          >
-            <MenuItem value="">All</MenuItem>
-            <MenuItem value="for_sale">For Sale</MenuItem>
-            <MenuItem value="not_for_sale">Not For Sale</MenuItem>
-          </Select>
-        </FormControl>
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel>Brand</InputLabel>
           <Select value={filterBrand} label="Brand" onChange={e => setFilterBrand(e.target.value)}>
@@ -214,23 +232,6 @@ export default function BuyerProductImagesPage() {
             {categoryOptions.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Product Status</InputLabel>
-          <Select value={filterStatus} label="Product Status" onChange={e => setFilterStatus(e.target.value)}>
-            <MenuItem value="">All</MenuItem>
-            <MenuItem value="active">Active</MenuItem>
-            <MenuItem value="inactive">Inactive</MenuItem>
-            <MenuItem value="eol">EOL</MenuItem>
-            <MenuItem value="out_of_stock">Out of Stock</MenuItem>
-          </Select>
-        </FormControl>
-        <TextField
-          size="small"
-          placeholder="Filter by vendor..."
-          value={filterVendor}
-          onChange={e => setFilterVendor(e.target.value)}
-          sx={{ minWidth: 150, maxWidth: 200 }}
-        />
       </Box>
 
       {/* Table */}
@@ -242,10 +243,7 @@ export default function BuyerProductImagesPage() {
               <TableCell>Product</TableCell>
               <TableCell>SKU</TableCell>
               <TableCell>Brand</TableCell>
-              <TableCell>Vendor</TableCell>
               <TableCell>Category</TableCell>
-              <TableCell>Selling Status</TableCell>
-              <TableCell>Product Status</TableCell>
               <TableCell align="center">Images</TableCell>
               <TableCell align="center">Actions</TableCell>
             </TableRow>
@@ -259,16 +257,13 @@ export default function BuyerProductImagesPage() {
                   <TableCell><Skeleton width="60%" /></TableCell>
                   <TableCell><Skeleton width="50%" /></TableCell>
                   <TableCell><Skeleton width="50%" /></TableCell>
-                  <TableCell><Skeleton width="50%" /></TableCell>
-                  <TableCell><Skeleton width={60} /></TableCell>
-                  <TableCell><Skeleton width={60} /></TableCell>
                   <TableCell align="center"><Skeleton width={30} sx={{ mx: 'auto' }} /></TableCell>
                   <TableCell />
                 </TableRow>
               ))
             ) : products.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} sx={{ textAlign: 'center', py: 6 }}>
+                <TableCell colSpan={7} sx={{ textAlign: 'center', py: 6 }}>
                   <ImageIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
                   <Typography color="text.secondary">
                     {debouncedSearch ? 'No products match your search.' : 'No products available.'}
@@ -301,18 +296,7 @@ export default function BuyerProductImagesPage() {
                     <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{p.sku}</Typography>
                   </TableCell>
                   <TableCell>{p.brand}</TableCell>
-                  <TableCell>{p.vendor_name}</TableCell>
                   <TableCell>{p.product_category || '—'}</TableCell>
-                  <TableCell>
-                    <StatusChip
-                      status={p.selling_status === 'for_sale' ? 'active' : 'inactive'}
-                      size="small"
-                      label={p.selling_status === 'for_sale' ? 'For Sale' : 'Not For Sale'}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <StatusChip status={p.status} size="small" />
-                  </TableCell>
                   <TableCell align="center">
                     <Chip label={p.image_count} size="small" variant="outlined" />
                   </TableCell>
@@ -321,7 +305,7 @@ export default function BuyerProductImagesPage() {
                       <Tooltip title="View Images">
                         <IconButton
                           size="small"
-                          onClick={() => setGalleryProduct(p)}
+                          onClick={() => { setSelectedImages(new Set()); setGalleryProduct(p) }}
                           disabled={p.image_count === 0}
                         >
                           <VisibilityIcon fontSize="small" />
@@ -375,6 +359,17 @@ export default function BuyerProductImagesPage() {
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                {selectedImages.size > 0 && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={downloading === 'zip-selected' ? <CircularProgress size={16} /> : <DownloadIcon />}
+                    onClick={() => handleDownloadSelected(galleryProduct, selectedImages, images)}
+                    disabled={downloading === 'zip-selected'}
+                  >
+                    Download {selectedImages.size} Selected
+                  </Button>
+                )}
                 <Button
                   size="small"
                   variant="outlined"
@@ -408,12 +403,19 @@ export default function BuyerProductImagesPage() {
                       key={img.id}
                       sx={{
                         border: 1,
-                        borderColor: img.is_primary ? 'primary.main' : 'divider',
+                        borderColor: selectedImages.has(img.id) ? 'primary.main' : img.is_primary ? 'primary.main' : 'divider',
                         borderRadius: 2,
                         overflow: 'hidden',
                         position: 'relative',
+                        bgcolor: selectedImages.has(img.id) ? 'action.selected' : 'transparent',
                       }}
                     >
+                      <Checkbox
+                        size="small"
+                        checked={selectedImages.has(img.id)}
+                        onChange={() => toggleImageSelection(img.id)}
+                        sx={{ position: 'absolute', top: 4, right: 4, zIndex: 2, bgcolor: 'background.paper', borderRadius: 1, p: 0.25 }}
+                      />
                       {img.is_primary && (
                         <Chip
                           icon={<StarIcon sx={{ fontSize: '14px !important' }} />}

@@ -1949,9 +1949,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         ws.row_dimensions[1].height = 30
         ws.freeze_panes = "A2"
 
-        # Product Status dropdown (column C = index 3) — dynamic from ProductStatus choices
+        # Product Status dropdown (column C = index 3) — vendor-facing statuses only
         from apps.catalog.models import ProductStatus as PS
-        status_labels = [label for _, label in PS.choices]
+        _VENDOR_STATUSES = {PS.ACTIVE, PS.INACTIVE, PS.EOL, PS.OUT_OF_STOCK}
+        status_labels = [label for val, label in PS.choices if val in _VENDOR_STATUSES]
         status_formula = ",".join(status_labels)
         status_dv = DataValidation(
             type="list",
@@ -4441,12 +4442,30 @@ class DynamicDropdownConfigViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["field_name"]
 
+    _FIELD_TO_PRODUCT_COLUMN = {
+        "product_category": "product_category",
+        "system_color": "system_color",
+        "brand": "brand",
+    }
+
     def check_permissions(self, request):
         super().check_permissions(request)
         if self.action in ["create", "update", "partial_update", "destroy"]:
             if not request.user.is_authenticated or not request.user.is_cixci_admin:
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied("Only CIXCI system admins can modify dropdown values.")
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        product_field = self._FIELD_TO_PRODUCT_COLUMN.get(instance.field_name)
+        if product_field:
+            count = Product.objects.filter(**{product_field: instance.value}).count()
+            if count:
+                return Response(
+                    {"detail": f"Cannot delete \"{instance.value}\" — it is used by {count} product{'s' if count != 1 else ''}. Remove the association first."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+        return super().destroy(request, *args, **kwargs)
 
 
 # ─── Vendor Category Mapping (Category Governance) ───────────────────────────

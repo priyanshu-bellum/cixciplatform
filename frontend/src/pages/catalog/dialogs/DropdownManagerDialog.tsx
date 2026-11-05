@@ -33,12 +33,11 @@ interface DropdownManagerDialogProps {
   onConfigChanged: () => void
 }
 
-type ManageFieldType = 'brand' | 'product_category' | 'system_color'
+type ManageFieldType = 'product_category' | 'system_color'
 
 const FIELD_TAB_MAP: { value: ManageFieldType; label: string }[] = [
-  { value: 'brand', label: 'Brand' },
   { value: 'product_category', label: 'Category' },
-  { value: 'system_color', label: 'Color' },
+  { value: 'system_color', label: 'System Color' },
 ]
 
 const COMPATIBILITY_MODES = [
@@ -85,7 +84,7 @@ export default function DropdownManagerDialog({
   onConfigChanged,
 }: DropdownManagerDialogProps) {
   // Dropdown list management state
-  const [manageField, setManageField] = useState<ManageFieldType>('brand')
+  const [manageField, setManageField] = useState<ManageFieldType>('product_category')
   const [newDropdownValue, setNewDropdownValue] = useState('')
   const [dropdownError, setDropdownError] = useState<string | null>(null)
 

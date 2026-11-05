@@ -1797,61 +1797,17 @@ class BuyerProductImagesViewSet(CheckAccessMixin, viewsets.ViewSet):
         return company
 
     def _buyer_product_queryset(self, request, company):
-        from apps.catalog.models import Product, ProductCompatibilityAssertion
-        from apps.devices.models import BuyerDevicePortfolioReference
-        from apps.tenant.models import Company, CompanyStatus, CompanyType
+        from apps.catalog.models import Product, BuyerProductExportDate
         from django.db.models import Q
-        import pytz
-        from django.utils import timezone
 
-        est = pytz.timezone("US/Eastern")
-        today_est = timezone.now().astimezone(est).date()
-
-        qs = Product.objects.filter(status="active").exclude(
-            compatibility_status="incomplete"
-        ).filter(Q(release_date__isnull=True) | Q(release_date__lte=today_est))
-
-        from django.conf import settings as _settings
-        if getattr(_settings, "MEDIA_READINESS_ENFORCE_BUYER", True):
-            from apps.media.models import MediaAsset
-            ready_asset_ids = MediaAsset.objects.filter(
-                status="ready", mime_type="image/png", has_transparency=True,
-                review_status="approved",
-            ).values_list("id", flat=True)
-            qs = qs.filter(primary_image_reference__in=list(ready_asset_ids))
-
-        portfolio_device_ids = list(BuyerDevicePortfolioReference.objects.filter(
-            company_scope_reference=company.id, active_flag=True,
-        ).values_list("device_id", flat=True))
-        if not portfolio_device_ids:
-            return Product.objects.none()
-
-        compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
-            device_reference__in=portfolio_device_ids,
-            is_compatible=True, is_excluded=False,
+        exported_product_ids = BuyerProductExportDate.objects.filter(
+            company_scope_reference=company.id,
         ).values_list("product_id", flat=True)
-        qs = qs.filter(id__in=compatible_product_ids)
 
-        buyer_regions = company.approved_regions or []
-        if not isinstance(buyer_regions, list):
-            buyer_regions = [buyer_regions]
-        if buyer_regions:
-            region_filter = Q()
-            for r in buyer_regions:
-                region_filter |= Q(approved_regions__icontains=f'"{r}"')
-            invisible_vendor_ids = Company.objects.filter(
-                company_type=CompanyType.VENDOR,
-            ).exclude(Q(status=CompanyStatus.ACTIVE) & region_filter).values_list("id", flat=True)
-            qs = qs.exclude(vendor_company_reference__in=invisible_vendor_ids)
-        else:
-            inactive_vendor_ids = Company.objects.filter(
-                company_type=CompanyType.VENDOR,
-            ).exclude(status=CompanyStatus.ACTIVE).values_list("id", flat=True)
-            qs = qs.exclude(vendor_company_reference__in=inactive_vendor_ids)
-
-        selling_status = request.query_params.get("selling_status")
-        if selling_status:
-            qs = qs.filter(selling_status=selling_status)
+        qs = Product.objects.filter(
+            id__in=exported_product_ids,
+            status="active",
+        )
 
         return qs.order_by("name")
 
