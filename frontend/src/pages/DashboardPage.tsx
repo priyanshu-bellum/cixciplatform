@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell
 } from 'recharts'
 
 // MUI components
@@ -1013,12 +1013,13 @@ function AdminDashboard({ count }: any) {
     time: r.created_at ? formatDate(r.created_at) : '—',
   }))
 
-  const dataChart = [
-    { name: 'Companies', companies: cCount },
-    { name: 'Users', companies: uCount },
-    { name: 'Devices', companies: dCount },
-    { name: 'Products', companies: pCount },
+  const pieData = [
+    { name: 'Companies', value: Number(cCount) || 0 },
+    { name: 'Users', value: Number(uCount) || 0 },
+    { name: 'Devices', value: Number(dCount) || 0 },
+    { name: 'Products', value: Number(pCount) || 0 },
   ]
+  const ADMIN_COLORS = ['#a855f7', '#4f8ef7', '#22c55e', '#f59e0b']
 
   return (
     <Box>
@@ -1036,22 +1037,22 @@ function AdminDashboard({ count }: any) {
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Link to="/settings" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<BusinessIcon />} title="Active Companies" value={cCount} subtitle="registered tenants" color="var(--purple)" />
+            <StatCard icon={<BusinessIcon />} title="Active Companies" value={cCount} subtitle="registered tenants" color="secondary.main" />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Link to="/settings" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<PeopleIcon />} title="System Admins & Users" value={uCount} subtitle="onboarded members" color="var(--accent)" />
+            <StatCard icon={<PeopleIcon />} title="System Admins & Users" value={uCount} subtitle="onboarded members" color="primary.main" />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Link to="/devices" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<SmartphoneIcon />} title="Global Devices" value={dCount} subtitle="in master catalog" color="var(--green)" />
+            <StatCard icon={<SmartphoneIcon />} title="Global Devices" value={dCount} subtitle="in master catalog" color="success.main" />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Link to="/catalog" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ShoppingBagIcon />} title="Catalog Products" value={pCount} subtitle="wholesale accessories" color="var(--amber)" />
+            <StatCard icon={<ShoppingBagIcon />} title="Catalog Products" value={pCount} subtitle="wholesale accessories" color="warning.main" />
           </Link>
         </Grid>
       </Grid>
@@ -1060,19 +1061,39 @@ function AdminDashboard({ count }: any) {
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined">
             <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Platform Entity Overview</Typography>
-                <Chip label="Current Counts" size="small" color="secondary" />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Platform Distribution</Typography>
+                <Chip label="Live" size="small" color="success" />
               </Box>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={dataChart}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="name" stroke="var(--text-muted)" />
-                  <YAxis stroke="var(--text-muted)" />
-                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
-                  <Bar dataKey="companies" fill="var(--purple)" radius={[4, 4, 0, 0]} name="Count" />
-                </BarChart>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={85}
+                    paddingAngle={4}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {pieData.map((_, index) => (
+                      <Cell key={index} fill={ADMIN_COLORS[index % ADMIN_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }} />
+                </PieChart>
               </ResponsiveContainer>
+              <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 2, mt: 1 }}>
+                {pieData.map((entry, i) => (
+                  <Box key={entry.name} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ADMIN_COLORS[i] }} />
+                    <Typography sx={{ fontSize: '0.6875rem', color: 'text.secondary' }}>
+                      {entry.name}: {entry.value}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
             </CardContent>
           </Card>
         </Grid>
@@ -1084,8 +1105,8 @@ function AdminDashboard({ count }: any) {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1, justifyContent: 'center' }}>
                 <Button
                   component={Link} to="/settings?tab=users&action=invite" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
-                  startIcon={<PeopleIcon sx={{ color: 'var(--accent)' }} />}
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  startIcon={<PeopleIcon sx={{ color: 'primary.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 650 }}>Invite Organization Admin</Typography>
@@ -1094,8 +1115,8 @@ function AdminDashboard({ count }: any) {
                 </Button>
                 <Button
                   component={Link} to="/devices" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
-                  startIcon={<SmartphoneIcon sx={{ color: 'var(--green)' }} />}
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  startIcon={<SmartphoneIcon sx={{ color: 'success.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 650 }}>Import Device Data</Typography>
@@ -1104,8 +1125,8 @@ function AdminDashboard({ count }: any) {
                 </Button>
                 <Button
                   component={Link} to="/integration" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
-                  startIcon={<ShieldIcon sx={{ color: 'var(--amber)' }} />}
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  startIcon={<ShieldIcon sx={{ color: 'warning.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 650 }}>System Integration Logs</Typography>
@@ -1119,8 +1140,10 @@ function AdminDashboard({ count }: any) {
       </Grid>
 
       <Card variant="outlined">
-        <CardContent>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Global Audit Trail</Typography>
+        <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+          <Box sx={{ px: 2.5, py: 2 }}>
+            <Typography sx={{ fontSize: '0.875rem', fontWeight: 600 }}>Global Audit Trail</Typography>
+          </Box>
           <TableContainer>
             <Table size="small">
               <TableHead>
@@ -1193,22 +1216,22 @@ function BuyerDashboard({ count, user }: any) {
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Link to="/devices" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<SmartphoneIcon />} title="My Device Portfolio" value={dCount} subtitle="compatible targets" color="var(--accent)" />
+            <StatCard icon={<SmartphoneIcon />} title="My Device Portfolio" value={dCount} subtitle="compatible targets" color="primary.main" />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Link to="/catalog" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ShoppingBagIcon />} title="Compatible Accessories" value={cCount} subtitle="available in catalog" color="var(--purple)" />
+            <StatCard icon={<ShoppingBagIcon />} title="Compatible Accessories" value={cCount} subtitle="available in catalog" color="secondary.main" />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Link to="/orders" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<InventoryIcon />} title="Orders Placed" value={oCount} subtitle="tracked packages" color="var(--green)" />
+            <StatCard icon={<InventoryIcon />} title="Orders Placed" value={oCount} subtitle="tracked packages" color="success.main" />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Link to="/invoicing" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ReceiptLongIcon />} title="Procurement Invoices" value={iCount} subtitle="issued total" color="var(--amber)" />
+            <StatCard icon={<ReceiptLongIcon />} title="Procurement Invoices" value={iCount} subtitle="issued total" color="warning.main" />
           </Link>
         </Grid>
       </Grid>
@@ -1232,7 +1255,7 @@ function BuyerDashboard({ count, user }: any) {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="day" stroke="var(--text-muted)" />
                   <YAxis stroke="var(--text-muted)" />
-                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
+                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }} />
                   <Area type="monotone" dataKey="orders" stroke="var(--accent)" strokeWidth={2} fill="url(#buyerOrders)" name="Orders" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -1247,8 +1270,8 @@ function BuyerDashboard({ count, user }: any) {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <Button
                   component={Link} to="/catalog" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
-                  startIcon={<ShoppingBagIcon sx={{ color: 'var(--purple)' }} />}
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  startIcon={<ShoppingBagIcon sx={{ color: 'secondary.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 650 }}>Export Selection Catalog</Typography>
@@ -1257,8 +1280,8 @@ function BuyerDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/devices" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
-                  startIcon={<SmartphoneIcon sx={{ color: 'var(--accent)' }} />}
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  startIcon={<SmartphoneIcon sx={{ color: 'primary.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 650 }}>Review Devices Portfolio</Typography>
@@ -1267,8 +1290,8 @@ function BuyerDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/orders" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
-                  startIcon={<InventoryIcon sx={{ color: 'var(--green)' }} />}
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  startIcon={<InventoryIcon sx={{ color: 'success.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 650 }}>Track Routed Orders</Typography>
@@ -1282,8 +1305,10 @@ function BuyerDashboard({ count, user }: any) {
       </Grid>
 
       <Card variant="outlined">
-        <CardContent>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Recent Routed Purchases</Typography>
+        <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+          <Box sx={{ px: 2.5, py: 2 }}>
+            <Typography sx={{ fontSize: '0.875rem', fontWeight: 600 }}>Recent Routed Purchases</Typography>
+          </Box>
           <TableContainer>
             {ordersData.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
@@ -1377,25 +1402,25 @@ function VendorDashboard({ count, user }: any) {
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/catalog" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ShoppingBagIcon />} title="Listed Accessories" value={pCount} subtitle="in active catalog" color="var(--purple)" />
+            <StatCard icon={<ShoppingBagIcon />} title="Listed Accessories" value={pCount} subtitle="in active catalog" color="secondary.main" />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/orders" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<InventoryIcon />} title="Assigned Orders" value={oCount} subtitle="pending fulfillment" color="var(--green)" />
+            <StatCard icon={<InventoryIcon />} title="Assigned Orders" value={oCount} subtitle="pending fulfillment" color="success.main" />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
-          <StatCard icon={<BusinessIcon />} title="Active Buyers" value={rCount} subtitle="retailer partnerships" color="var(--accent)" />
+          <StatCard icon={<BusinessIcon />} title="Active Buyers" value={rCount} subtitle="retailer partnerships" color="primary.main" />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/invoicing" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ReceiptLongIcon />} title="Invoices Issued" value={iCount} subtitle="billing total" color="var(--amber)" />
+            <StatCard icon={<ReceiptLongIcon />} title="Invoices Issued" value={iCount} subtitle="billing total" color="warning.main" />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/fulfillment" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<LocalShippingIcon />} title="Return Requests" value={retCount} subtitle="import & manage" color="var(--red, #ef4444)" />
+            <StatCard icon={<LocalShippingIcon />} title="Return Requests" value={retCount} subtitle="import & manage" color="error.main" />
           </Link>
         </Grid>
       </Grid>
@@ -1413,7 +1438,7 @@ function VendorDashboard({ count, user }: any) {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="day" stroke="var(--text-muted)" />
                   <YAxis stroke="var(--text-muted)" />
-                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
+                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }} />
                   <Bar dataKey="on_time" fill="var(--green)" radius={[4, 4, 0, 0]} name="On Time" />
                   <Bar dataKey="late" fill="var(--red)" radius={[4, 4, 0, 0]} name="Late" />
                 </BarChart>
@@ -1429,8 +1454,8 @@ function VendorDashboard({ count, user }: any) {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <Button
                   component={Link} to="/catalog" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
-                  startIcon={<ShoppingBagIcon sx={{ color: 'var(--purple)' }} />}
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  startIcon={<ShoppingBagIcon sx={{ color: 'secondary.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 650 }}>List New Accessory</Typography>
@@ -1439,8 +1464,8 @@ function VendorDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/fulfillment" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
-                  startIcon={<LocalShippingIcon sx={{ color: 'var(--green)' }} />}
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  startIcon={<LocalShippingIcon sx={{ color: 'success.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 650 }}>Process Shipments</Typography>
@@ -1449,8 +1474,8 @@ function VendorDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/invoicing" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left' }}
-                  startIcon={<ReceiptLongIcon sx={{ color: 'var(--amber)' }} />}
+                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  startIcon={<ReceiptLongIcon sx={{ color: 'warning.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 650 }}>Generate Invoices</Typography>
@@ -1464,8 +1489,10 @@ function VendorDashboard({ count, user }: any) {
       </Grid>
 
       <Card variant="outlined">
-        <CardContent>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>Incoming Orders to Fulfill</Typography>
+        <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+          <Box sx={{ px: 2.5, py: 2 }}>
+            <Typography sx={{ fontSize: '0.875rem', fontWeight: 600 }}>Incoming Orders to Fulfill</Typography>
+          </Box>
           <TableContainer>
             {ordersData.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>

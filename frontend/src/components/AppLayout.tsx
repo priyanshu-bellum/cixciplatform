@@ -5,13 +5,12 @@ import AppBar from '@mui/material/AppBar'
 import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
-import Avatar from '@mui/material/Avatar'
+import Tooltip from '@mui/material/Tooltip'
 import MenuIcon from '@mui/icons-material/Menu'
 import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined'
 import LightModeIcon from '@mui/icons-material/LightModeOutlined'
 import DarkModeIcon from '@mui/icons-material/DarkModeOutlined'
 import Sidebar, { DRAWER_WIDTH } from './Sidebar'
-import { useAuthStore } from '../stores/authStore'
 import { useThemeMode } from '../theme/ThemeProvider'
 import SearchBar from './forms/SearchBar'
 
@@ -32,16 +31,15 @@ const TITLES: Record<string, string> = {
   '/regions': 'Regional Visibility',
   '/users': 'Company Users',
   '/settings': 'Settings',
+  '/product-images': 'Product Images',
 }
 
 export default function AppLayout() {
   const { pathname } = useLocation()
-  const { user } = useAuthStore()
   const { mode, toggleMode } = useThemeMode()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const title = TITLES[pathname] ?? 'CIXCI'
-  const initials = user?.full_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() ?? 'U'
+  const title = TITLES[pathname] ?? TITLES[`/${pathname.split('/')[1]}`] ?? 'CIXCI'
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -60,13 +58,14 @@ export default function AppLayout() {
           position="sticky"
           elevation={0}
           sx={{
-            bgcolor: 'background.paper',
+            bgcolor: 'background.default',
             color: 'text.primary',
             borderBottom: 1,
             borderColor: 'divider',
+            backdropFilter: 'blur(8px)',
           }}
         >
-          <Toolbar variant="dense" sx={{ gap: 1 }}>
+          <Toolbar sx={{ gap: 1, minHeight: { xs: 52, sm: 52 } }}>
             <IconButton
               edge="start"
               onClick={() => setMobileOpen(true)}
@@ -75,31 +74,28 @@ export default function AppLayout() {
               <MenuIcon />
             </IconButton>
 
-            <Typography variant="h5" sx={{ fontWeight: 600, flexShrink: 0 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: '1rem', flexShrink: 0 }}>
               {title}
             </Typography>
 
             <Box sx={{ flex: 1 }} />
 
             <SearchBar
-              sx={{ display: { xs: 'none', sm: 'flex' }, maxWidth: 260 }}
+              sx={{ display: { xs: 'none', sm: 'flex' }, maxWidth: 240 }}
               size="small"
             />
 
-            <IconButton onClick={toggleMode} size="small" title={`Switch to ${mode === 'dark' ? 'light' : 'dark'} mode`}>
-              {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-            </IconButton>
+            <Tooltip title={`Switch to ${mode === 'dark' ? 'light' : 'dark'} mode`}>
+              <IconButton onClick={toggleMode} size="small">
+                {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
 
-            <IconButton size="small">
-              <NotificationsOutlinedIcon fontSize="small" />
-            </IconButton>
-
-            <Avatar
-              sx={{ width: 28, height: 28, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main' }}
-              title={user?.email}
-            >
-              {initials}
-            </Avatar>
+            <Tooltip title="Notifications">
+              <IconButton size="small">
+                <NotificationsOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Toolbar>
         </AppBar>
 

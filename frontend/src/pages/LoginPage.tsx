@@ -296,8 +296,10 @@ export default function LoginPage() {
             )
           ) : (
             <form onSubmit={handleSubmit}>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>
+                Email address
+              </Typography>
               <TextField
-                label="Email address"
                 type="email"
                 required
                 fullWidth
@@ -344,7 +346,7 @@ export default function LoginPage() {
                     ),
                   },
                 }}
-                sx={{ mb: 3.5 }}
+                sx={{ mb: 3.5, '& input[type="password"]': { fontSize: '1.1rem', letterSpacing: '0.1em' }, '& input[type="password"]::placeholder': { fontSize: '0.8125rem', letterSpacing: 'normal' } }}
               />
               <LoadingButton
                 type="submit"

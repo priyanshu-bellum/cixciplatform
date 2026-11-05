@@ -6,8 +6,9 @@ import ListItemButton from '@mui/material/ListItemButton'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemText from '@mui/material/ListItemText'
 import Typography from '@mui/material/Typography'
-import Divider from '@mui/material/Divider'
+import Avatar from '@mui/material/Avatar'
 import IconButton from '@mui/material/IconButton'
+import Tooltip from '@mui/material/Tooltip'
 import DashboardIcon from '@mui/icons-material/DashboardOutlined'
 import SmartphoneIcon from '@mui/icons-material/SmartphoneOutlined'
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBagOutlined'
@@ -32,7 +33,7 @@ import { useThemeMode } from '../theme/ThemeProvider'
 import ConfirmDialog from './feedback/ConfirmDialog'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 
-export const DRAWER_WIDTH = 240
+export const DRAWER_WIDTH = 260
 
 const NAV = [
   {
@@ -67,6 +68,38 @@ const NAV = [
   },
 ]
 
+const navItemSx = {
+  mx: 1.5,
+  borderRadius: 2,
+  mb: 0.5,
+  py: 0.75,
+  px: 1.5,
+  transition: 'all 0.15s ease',
+  position: 'relative' as const,
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    left: -12,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: 3,
+    height: 0,
+    borderRadius: 4,
+    bgcolor: 'primary.main',
+    transition: 'height 0.2s ease',
+  },
+  '&:hover': {
+    bgcolor: 'action.hover',
+  },
+  '&.active': {
+    bgcolor: 'action.selected',
+    color: 'primary.main',
+    fontWeight: 600,
+    '& .MuiListItemIcon-root': { color: 'primary.main' },
+    '&::before': { height: 20 },
+  },
+}
+
 interface SidebarProps {
   mobileOpen: boolean
   onMobileClose: () => void
@@ -81,6 +114,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
   const isBuyer = user?.company_type === 'buyer'
   const isVendor = user?.company_type === 'vendor'
+
+  const initials = user?.full_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() ?? 'U'
+  const roleLabel = isCixciAdmin ? 'System Admin' : isBuyer ? 'Buyer' : isVendor ? 'Vendor' : 'User'
 
   const filteredNav = NAV.map(section => {
     const items = section.items.filter(item => {
@@ -112,35 +148,40 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     navigate('/login')
   }
 
+  const drawerPaperSx = {
+    bgcolor: mode === 'dark' ? '#0c1021' : '#fafbfd',
+    borderRight: '1px solid',
+    borderColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)',
+  }
+
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Brand */}
-      <Box sx={{ px: 2.5, py: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box
-            component="img"
-            src={mode === 'dark' ? '/cixci-logo-white-rgb-864px@72ppi.png' : '/cixci-logo-color.jpeg'}
-            alt="CIXCI"
-            sx={{ height: 32, objectFit: 'contain' }}
-          />
-        </Box>
-        {user && (
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-            {user.company_name}
-          </Typography>
-        )}
+      <Box sx={{ px: 2.5, pt: 2.5, pb: 2 }}>
+        <Box
+          component="img"
+          src={mode === 'dark' ? '/cixci-logo-white-rgb-864px@72ppi.png' : '/cixci-logo-color.jpeg'}
+          alt="CIXCI"
+          sx={{ height: 28, objectFit: 'contain' }}
+        />
       </Box>
 
-      <Divider />
-
       {/* Navigation */}
-      <Box sx={{ flex: 1, overflow: 'auto', py: 1 }}>
-        {filteredNav.map((section) => (
-          <Box key={section.label} sx={{ mb: 1 }}>
+      <Box sx={{ flex: 1, overflow: 'auto', py: 0.5 }}>
+        {filteredNav.map((section, idx) => (
+          <Box key={section.label} sx={{ mb: 0.5 }}>
             <Typography
-              variant="overline"
-              color="text.secondary"
-              sx={{ px: 2.5, display: 'block', mt: 1.5, mb: 0.5 }}
+              sx={{
+                px: 3,
+                display: 'block',
+                mt: idx === 0 ? 0.5 : 2,
+                mb: 1,
+                fontSize: '0.625rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                color: 'text.disabled',
+              }}
             >
               {section.label}
             </Typography>
@@ -152,19 +193,13 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                   to={to}
                   end={to === '/' ? true : undefined}
                   onClick={onMobileClose}
-                  sx={{
-                    mx: 1,
-                    borderRadius: 1.5,
-                    mb: 0.25,
-                    '&.active': {
-                      bgcolor: 'action.selected',
-                      color: 'primary.main',
-                      '& .MuiListItemIcon-root': { color: 'primary.main' },
-                    },
-                  }}
+                  sx={navItemSx}
                 >
-                  <ListItemIcon sx={{ minWidth: 32 }}>{icon}</ListItemIcon>
-                  <ListItemText primary={label} slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
+                  <ListItemIcon sx={{ minWidth: 30, color: 'text.secondary' }}>{icon}</ListItemIcon>
+                  <ListItemText
+                    primary={label}
+                    slotProps={{ primary: { sx: { fontSize: '0.8125rem', fontWeight: 500 } } }}
+                  />
                 </ListItemButton>
               ))}
             </List>
@@ -172,45 +207,92 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         ))}
       </Box>
 
-      <Divider />
-
-      {/* Footer */}
-      <Box sx={{ py: 1 }}>
-        <List dense disablePadding>
-          <ListItemButton
-            component={NavLink}
-            to="/users"
-            sx={{ mx: 1, borderRadius: 1.5, '&.active': { bgcolor: 'action.selected', color: 'primary.main' } }}
-          >
-            <ListItemIcon sx={{ minWidth: 32 }}><PeopleIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Users" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
-          </ListItemButton>
-          <ListItemButton
-            component={NavLink}
-            to="/settings"
-            sx={{ mx: 1, borderRadius: 1.5, '&.active': { bgcolor: 'action.selected', color: 'primary.main' } }}
-          >
-            <ListItemIcon sx={{ minWidth: 32 }}><SettingsIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Settings" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
-          </ListItemButton>
-          {isCixciAdmin && (
-            <ListItemButton
-              component="a"
-              href="/api/v1/docs/"
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={{ mx: 1, borderRadius: 1.5 }}
-            >
-              <ListItemIcon sx={{ minWidth: 32 }}><ApiIcon fontSize="small" /></ListItemIcon>
-              <ListItemText primary="API Docs" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
+      {/* Footer — utility links */}
+      <Box sx={{ px: 1.5, pb: 1 }}>
+        <Box sx={{
+          borderTop: '1px solid',
+          borderColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+          pt: 1,
+        }}>
+          <List dense disablePadding>
+            <ListItemButton component={NavLink} to="/users" sx={navItemSx}>
+              <ListItemIcon sx={{ minWidth: 30, color: 'text.secondary' }}><PeopleIcon fontSize="small" /></ListItemIcon>
+              <ListItemText primary="Users" slotProps={{ primary: { sx: { fontSize: '0.8125rem', fontWeight: 500 } } }} />
             </ListItemButton>
-          )}
-          <ListItemButton onClick={handleLogout} sx={{ mx: 1, borderRadius: 1.5 }}>
-            <ListItemIcon sx={{ minWidth: 32 }}><LogoutIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Sign out" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
-          </ListItemButton>
-        </List>
+            <ListItemButton component={NavLink} to="/settings" sx={navItemSx}>
+              <ListItemIcon sx={{ minWidth: 30, color: 'text.secondary' }}><SettingsIcon fontSize="small" /></ListItemIcon>
+              <ListItemText primary="Settings" slotProps={{ primary: { sx: { fontSize: '0.8125rem', fontWeight: 500 } } }} />
+            </ListItemButton>
+            {isCixciAdmin && (
+              <ListItemButton
+                component="a"
+                href="/api/v1/docs/"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={navItemSx}
+              >
+                <ListItemIcon sx={{ minWidth: 30, color: 'text.secondary' }}><ApiIcon fontSize="small" /></ListItemIcon>
+                <ListItemText primary="API Docs" slotProps={{ primary: { sx: { fontSize: '0.8125rem', fontWeight: 500 } } }} />
+              </ListItemButton>
+            )}
+          </List>
+        </Box>
       </Box>
+
+      {/* User Profile Card */}
+      {user && (
+        <Box sx={{
+          mx: 1.5,
+          mb: 1.5,
+          p: 1.5,
+          borderRadius: 2.5,
+          bgcolor: mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+          border: '1px solid',
+          borderColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+        }}>
+          <Avatar
+            sx={{
+              width: 34,
+              height: 34,
+              fontSize: 13,
+              fontWeight: 700,
+              bgcolor: 'primary.main',
+              flexShrink: 0,
+            }}
+          >
+            {initials}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              sx={{ fontSize: '0.8125rem', fontWeight: 600, lineHeight: 1.3 }}
+              noWrap
+            >
+              {user.full_name}
+            </Typography>
+            <Typography
+              sx={{ fontSize: '0.6875rem', color: 'text.disabled', lineHeight: 1.3 }}
+              noWrap
+            >
+              {user.company_name} · {roleLabel}
+            </Typography>
+          </Box>
+          <Tooltip title="Sign out" placement="top">
+            <IconButton
+              size="small"
+              onClick={handleLogout}
+              sx={{
+                color: 'text.disabled',
+                '&:hover': { color: 'error.main' },
+              }}
+            >
+              <LogoutIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
     </Box>
   )
 
@@ -224,7 +306,11 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+          '& .MuiDrawer-paper': {
+            width: DRAWER_WIDTH,
+            boxSizing: 'border-box',
+            ...drawerPaperSx,
+          },
         }}
       >
         {drawerContent}
@@ -240,8 +326,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           '& .MuiDrawer-paper': {
             width: DRAWER_WIDTH,
             boxSizing: 'border-box',
-            borderRight: 1,
-            borderColor: 'divider',
+            ...drawerPaperSx,
           },
         }}
         open
