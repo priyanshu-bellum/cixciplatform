@@ -50,8 +50,8 @@ import UploadIcon from '@mui/icons-material/Upload'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
+import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import Collapse from '@mui/material/Collapse'
@@ -1262,7 +1262,7 @@ function AdminDashboard({ count, user }: any) {
   const attentionItems = useMemo(() => {
     const items: AttentionItem[] = []
     if (Number(pCount) === 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: 'No products in catalog — onboard a vendor to get started', severity: 'warning', link: '/catalog' })
-    if (Number(dCount) === 0) items.push({ icon: <ErrorOutlineIcon sx={{ fontSize: 18 }} />, label: 'No devices imported — upload device data for compatibility', severity: 'error', link: '/devices' })
+    if (Number(dCount) === 0) items.push({ icon: <ErrorOutlinedIcon sx={{ fontSize: 18 }} />, label: 'No devices imported — upload device data for compatibility', severity: 'error', link: '/devices' })
     if (Number(cCount) > 0 && Number(uCount) === 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: 'Companies exist but no users — invite admins', severity: 'warning', link: '/settings' })
     return items
   }, [pCount, dCount, cCount, uCount])
@@ -1452,7 +1452,7 @@ function BuyerDashboard({ count, user }: any) {
   const attentionItems = useMemo(() => {
     const items: AttentionItem[] = []
     if (Number(dCount) === 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: 'No devices in portfolio — add devices to see compatible accessories', severity: 'warning', link: '/devices' })
-    if (Number(cCount) === 0 && Number(dCount) > 0) items.push({ icon: <ErrorOutlineIcon sx={{ fontSize: 18 }} />, label: 'No compatible accessories found — check your device portfolio', severity: 'info', link: '/catalog' })
+    if (Number(cCount) === 0 && Number(dCount) > 0) items.push({ icon: <ErrorOutlinedIcon sx={{ fontSize: 18 }} />, label: 'No compatible accessories found — check your device portfolio', severity: 'info', link: '/catalog' })
     if (Number(retCount) > 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: `${retCount} return request${Number(retCount) !== 1 ? 's' : ''} pending review`, severity: 'warning', link: '/fulfillment' })
     return items
   }, [dCount, cCount, retCount])
@@ -1632,7 +1632,7 @@ function VendorDashboard({ count, user }: any) {
   const attentionItems = useMemo(() => {
     const items: AttentionItem[] = []
     if (Number(pCount) === 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: 'No products listed — add your first accessory to the catalog', severity: 'warning', link: '/catalog' })
-    if (Number(oCount) > 0) items.push({ icon: <ErrorOutlineIcon sx={{ fontSize: 18 }} />, label: `${oCount} order${Number(oCount) !== 1 ? 's' : ''} awaiting fulfillment`, severity: 'info', link: '/orders' })
+    if (Number(oCount) > 0) items.push({ icon: <ErrorOutlinedIcon sx={{ fontSize: 18 }} />, label: `${oCount} order${Number(oCount) !== 1 ? 's' : ''} awaiting fulfillment`, severity: 'info', link: '/orders' })
     if (Number(retCount) > 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: `${retCount} return request${Number(retCount) !== 1 ? 's' : ''} need processing`, severity: 'warning', link: '/fulfillment' })
     return items
   }, [pCount, oCount, retCount])
