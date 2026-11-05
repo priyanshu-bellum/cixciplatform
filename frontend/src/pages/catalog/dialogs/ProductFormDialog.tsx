@@ -8,8 +8,18 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
 import IconButton from '@mui/material/IconButton'
+import TextField from '@mui/material/TextField'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import Checkbox from '@mui/material/Checkbox'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Chip from '@mui/material/Chip'
+import InputAdornment from '@mui/material/InputAdornment'
 import CloseIcon from '@mui/icons-material/Close'
 import CheckIcon from '@mui/icons-material/Check'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import JSZip from 'jszip'
 import api from '../../../lib/apiClient'
 import { getImageUrl } from '../../../lib/formatters'
@@ -38,7 +48,7 @@ interface ProductFormDialogProps {
 }
 
 // ---------------------------------------------------------------------------
-// MultiSelectColor (inline component)
+// MultiSelectColor (inline component — MUI-styled)
 // ---------------------------------------------------------------------------
 
 interface MultiSelectColorProps {
@@ -76,129 +86,111 @@ function MultiSelectColor({ selected, options, onChange, label }: MultiSelectCol
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
+    <Box ref={ref} sx={{ position: 'relative' }}>
+      <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: 'text.secondary' }}>
         {label}
-      </label>
-      <div
+      </Typography>
+      <Box
         onClick={() => setOpen(o => !o)}
-        style={{
-          padding: '8px 12px',
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-          background: 'var(--bg)',
+        sx={{
+          px: 1.5,
+          py: 1,
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 1,
+          bgcolor: 'background.paper',
           cursor: 'pointer',
-          minHeight: 38,
+          minHeight: 40,
           display: 'flex',
           flexWrap: 'wrap',
-          gap: 4,
+          gap: 0.5,
           alignItems: 'center',
+          '&:hover': { borderColor: 'text.primary' },
         }}
       >
         {selectedColors.length === 0 ? (
-          <span style={{ color: 'var(--text-secondary)', fontSize: 14 }}>Select colors...</span>
+          <Typography variant="body2" color="text.secondary">Select colors...</Typography>
         ) : (
           selectedColors.map(c => (
-            <span
+            <Chip
               key={c}
-              style={{
-                background: 'var(--accent)',
-                color: '#fff',
-                borderRadius: 4,
-                padding: '2px 8px',
-                fontSize: 12,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              {c}
-              <span
-                onClick={e => { e.stopPropagation(); toggle(c) }}
-                style={{ cursor: 'pointer', fontWeight: 700 }}
-              >
-                x
-              </span>
-            </span>
+              label={c}
+              size="small"
+              color="primary"
+              onDelete={(e) => { e.stopPropagation(); toggle(c) }}
+              sx={{ height: 24, fontSize: 12 }}
+            />
           ))
         )}
-      </div>
+      </Box>
       {open && (
-        <div
-          style={{
+        <Box
+          sx={{
             position: 'absolute',
             top: '100%',
             left: 0,
             right: 0,
-            zIndex: 1000,
-            background: 'var(--bg-card, #fff)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
+            zIndex: 1300,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
             maxHeight: 200,
             overflowY: 'auto',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            boxShadow: 3,
           }}
         >
           {options.map(opt => (
-            <div
+            <Box
               key={opt}
               onClick={() => toggle(opt)}
-              style={{
-                padding: '6px 12px',
+              sx={{
+                px: 1.5,
+                py: 0.75,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                background: selectedColors.includes(opt) ? 'var(--bg-hover, #f0f4ff)' : 'transparent',
+                gap: 1,
+                bgcolor: selectedColors.includes(opt) ? 'action.hover' : 'transparent',
+                '&:hover': { bgcolor: 'action.hover' },
                 fontSize: 14,
               }}
             >
-              {selectedColors.includes(opt) && <CheckIcon sx={{ fontSize: 16, color: 'var(--accent)' }} />}
+              {selectedColors.includes(opt) && <CheckIcon sx={{ fontSize: 16, color: 'primary.main' }} />}
               {opt}
-            </div>
+            </Box>
           ))}
-        </div>
+        </Box>
       )}
-    </div>
+    </Box>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Helper: inline field style
+// Shared sx helpers
 // ---------------------------------------------------------------------------
 
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '6px 10px',
-  border: '1px solid var(--border)',
-  borderRadius: 6,
-  background: 'var(--bg)',
-  color: 'var(--text-primary)',
-  fontSize: 13,
-  outline: 'none',
-}
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  marginBottom: 2,
-  fontSize: 12,
-  color: 'var(--text-secondary)',
-}
-
-const twoColGrid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: 8,
-}
-
-const sectionTitle: React.CSSProperties = {
+const sectionTitleSx = {
   fontSize: 13,
   fontWeight: 600,
-  color: 'var(--text-primary)',
-  marginTop: 6,
-  marginBottom: 3,
-  borderBottom: '1px solid var(--border)',
-  paddingBottom: 2,
+  color: 'text.primary',
+  mt: 2.5,
+  mb: 1,
+  pb: 0.5,
+  borderBottom: '1px solid',
+  borderColor: 'divider',
+}
+
+const gridTwoCol = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 2,
+}
+
+const gridFourCol = {
+  display: 'grid',
+  gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr 1fr' },
+  gap: 2,
 }
 
 // ---------------------------------------------------------------------------
@@ -581,111 +573,112 @@ export default function ProductFormDialog({
     const watchCaseSizeOptions = ['38mm', '40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '47mm', '49mm']
 
     const renderSelect = (label: string, value: string, onChange: (v: string) => void, options: string[]) => (
-      <div>
-        <label style={labelStyle}>{label}</label>
-        <select value={value} onChange={e => onChange(e.target.value)} style={fieldStyle}>
-          <option value="">Select...</option>
-          {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-        </select>
-      </div>
+      <FormControl size="small" fullWidth>
+        <InputLabel>{label}</InputLabel>
+        <Select value={value} onChange={e => onChange(e.target.value as string)} label={label}>
+          <MenuItem value=""><em>Select...</em></MenuItem>
+          {options.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+        </Select>
+      </FormControl>
     )
 
     const renderWirelessChargingCheckboxes = () => (
-      <div>
-        <label style={labelStyle}>Wireless Charging Compatibility</label>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <Box>
+        <Typography variant="caption" sx={{ color: 'text.secondary', mb: 0.5, display: 'block' }}>
+          Wireless Charging Compatibility
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {wirelessChargingOptions.map(opt => (
-            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={form.compWirelessCharging.includes(opt)}
-                onChange={() => form.handleWirelessChargingChange(opt)}
-              />
-              {opt}
-            </label>
+            <FormControlLabel
+              key={opt}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={form.compWirelessCharging.includes(opt)}
+                  onChange={() => form.handleWirelessChargingChange(opt)}
+                />
+              }
+              label={opt}
+              sx={{ '& .MuiFormControlLabel-label': { fontSize: 14 } }}
+            />
           ))}
-        </div>
-      </div>
+        </Box>
+      </Box>
     )
 
     if (cat === 'headphones') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Typography sx={sectionTitle}>Category Compatibility (Headphones)</Typography>
-          <div style={twoColGrid}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography sx={sectionTitleSx}>Category Compatibility (Headphones)</Typography>
+          <Box sx={gridTwoCol}>
             {renderSelect('Headphone Jack', form.compHeadphoneJack, form.setCompHeadphoneJack, headphoneJackOptions)}
             {renderSelect('Bluetooth', form.compBluetooth, form.setCompBluetooth, bluetoothOptions)}
-          </div>
-        </div>
+          </Box>
+        </Box>
       )
     }
 
     if (cat === 'speakers') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Typography sx={sectionTitle}>Category Compatibility (Speakers)</Typography>
-          <div style={twoColGrid}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography sx={sectionTitleSx}>Category Compatibility (Speakers)</Typography>
+          <Box sx={gridTwoCol}>
             {renderSelect('Charging Interface', form.compChargingInterface, form.setCompChargingInterface, chargingInterfaceOptions)}
             {renderSelect('Bluetooth', form.compBluetooth, form.setCompBluetooth, bluetoothOptions)}
-          </div>
-        </div>
+          </Box>
+        </Box>
       )
     }
 
     if (cat === 'chargers_and_cables' || cat === 'chargers' || cat === 'cables') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Typography sx={sectionTitle}>Category Compatibility (Chargers & Cables)</Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography sx={sectionTitleSx}>Category Compatibility (Chargers & Cables)</Typography>
           {renderSelect('Charging Interface', form.compChargingInterface, form.setCompChargingInterface, chargingInterfaceOptions)}
           {renderWirelessChargingCheckboxes()}
-        </div>
+        </Box>
       )
     }
 
     if (cat === 'memory' || cat === 'memory_cards') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Typography sx={sectionTitle}>Category Compatibility (Memory)</Typography>
-          <div style={twoColGrid}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography sx={sectionTitleSx}>Category Compatibility (Memory)</Typography>
+          <Box sx={gridTwoCol}>
             {renderSelect('Storage Expansion', form.compStorageExpansion, form.setCompStorageExpansion, storageExpansionOptions)}
-            <div>
-              <label style={labelStyle}>Memory Capacity</label>
-              <select
+            <FormControl size="small" fullWidth disabled={form.compStorageExpansion === 'Not Compatible'}>
+              <InputLabel>Memory Capacity</InputLabel>
+              <Select
                 value={form.compMemoryCapacity}
-                onChange={e => form.setCompMemoryCapacity(e.target.value)}
-                disabled={form.compStorageExpansion === 'Not Compatible'}
-                style={{
-                  ...fieldStyle,
-                  opacity: form.compStorageExpansion === 'Not Compatible' ? 0.5 : 1,
-                  cursor: form.compStorageExpansion === 'Not Compatible' ? 'not-allowed' : 'pointer',
-                }}
+                onChange={e => form.setCompMemoryCapacity(e.target.value as string)}
+                label="Memory Capacity"
               >
-                <option value="">Select...</option>
-                {memoryCapacityOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
+                <MenuItem value=""><em>Select...</em></MenuItem>
+                {memoryCapacityOptions.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+              </Select>
+            </FormControl>
+          </Box>
+        </Box>
       )
     }
 
     if (cat === 'wearable_tech' || cat === 'wearables') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Typography sx={sectionTitle}>Category Compatibility (Wearable Tech)</Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography sx={sectionTitleSx}>Category Compatibility (Wearable Tech)</Typography>
           {renderSelect('Charging Interface', form.compChargingInterface, form.setCompChargingInterface, chargingInterfaceOptions)}
           {renderWirelessChargingCheckboxes()}
-        </div>
+        </Box>
       )
     }
 
     if (cat === 'watch_accessories') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Typography sx={sectionTitle}>Category Compatibility (Watch Accessories)</Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography sx={sectionTitleSx}>Category Compatibility (Watch Accessories)</Typography>
           {renderSelect('Watch Case Size', form.compWatchCaseSize, form.setCompWatchCaseSize, watchCaseSizeOptions)}
           {renderWirelessChargingCheckboxes()}
-        </div>
+        </Box>
       )
     }
 
@@ -705,8 +698,8 @@ export default function ProductFormDialog({
         slotProps={{
           paper: {
             sx: {
-              background: 'var(--bg-card, #fff)',
-              color: 'var(--text-primary)',
+              bgcolor: 'background.paper',
+              color: 'text.primary',
               borderRadius: 3,
             },
           },
@@ -717,7 +710,8 @@ export default function ProductFormDialog({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: '1px solid var(--border)',
+            borderBottom: '1px solid',
+            borderColor: 'divider',
             pb: 1,
           }}
         >
@@ -729,7 +723,7 @@ export default function ProductFormDialog({
           </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ pt: 1.5, pb: 1, px: 2.5 }}>
+        <DialogContent sx={{ pt: 2, pb: 1, px: 3 }}>
           {form.formError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => form.setFormError(null)}>
               {form.formError}
@@ -737,475 +731,471 @@ export default function ProductFormDialog({
           )}
 
           {/* ---- Basic Info ---- */}
-          <Typography sx={sectionTitle}>Basic Information</Typography>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={twoColGrid}>
-              <div>
-                <label style={labelStyle}>Product Name *</label>
-                <input
-                  type="text"
-                  value={form.prodName}
-                  onChange={e => form.setProdName(e.target.value)}
-                  placeholder="Product name"
-                  style={fieldStyle}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>SKU *</label>
-                <input
-                  type="text"
-                  value={form.prodSku}
-                  onChange={e => form.setProdSku(e.target.value)}
-                  placeholder="SKU"
-                  style={fieldStyle}
-                />
-              </div>
-            </div>
+          <Typography sx={sectionTitleSx}>Basic Information</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={gridTwoCol}>
+              <TextField
+                size="small"
+                fullWidth
+                label={`Product Name *`}
+                value={form.prodName}
+                onChange={e => form.setProdName(e.target.value)}
+                placeholder="Product name"
+              />
+              <TextField
+                size="small"
+                fullWidth
+                label="SKU *"
+                value={form.prodSku}
+                onChange={e => form.setProdSku(e.target.value)}
+                placeholder="SKU"
+              />
+            </Box>
 
-            <div style={twoColGrid}>
-              <div>
-                <label style={labelStyle}>Brand</label>
-                {isVendor ? (
-                  <input
-                    type="text"
-                    value={form.prodBrand}
-                    onChange={e => form.setProdBrand(e.target.value)}
-                    placeholder="Brand"
-                    style={fieldStyle}
-                  />
-                ) : (
-                  <select value={form.prodBrand} onChange={e => form.setProdBrand(e.target.value)} style={fieldStyle}>
-                    <option value="">Select brand...</option>
-                    {allowedBrands.map(b => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                )}
-              </div>
-              <div>
-                <label style={labelStyle}>Product Type</label>
-                <select value={form.prodType} onChange={e => form.setProdType(e.target.value)} style={fieldStyle}>
-                  <option value="">Select type...</option>
-                  <option value="accessory">Accessory</option>
-                  <option value="branded_merchandise">Branded Merchandise</option>
-                </select>
-              </div>
-            </div>
-
-            <div style={twoColGrid}>
-              {/* Category field - different for vendors vs admins */}
+            <Box sx={gridTwoCol}>
               {isVendor ? (
-                <div>
-                  <label style={labelStyle}>Vendor Category {form.prodType !== 'branded_merchandise' ? '*' : ''}</label>
-                  <input
-                    type="text"
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Brand"
+                  value={form.prodBrand}
+                  onChange={e => form.setProdBrand(e.target.value)}
+                  placeholder="Brand"
+                />
+              ) : (
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Brand</InputLabel>
+                  <Select value={form.prodBrand} onChange={e => form.setProdBrand(e.target.value as string)} label="Brand">
+                    <MenuItem value=""><em>Select brand...</em></MenuItem>
+                    {allowedBrands.map(b => <MenuItem key={b} value={b}>{b}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              )}
+              <FormControl size="small" fullWidth>
+                <InputLabel>Product Type</InputLabel>
+                <Select value={form.prodType} onChange={e => form.setProdType(e.target.value as string)} label="Product Type">
+                  <MenuItem value=""><em>Select type...</em></MenuItem>
+                  <MenuItem value="accessory">Accessory</MenuItem>
+                  <MenuItem value="branded_merchandise">Branded Merchandise</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+
+            <Box sx={gridTwoCol}>
+              {isVendor ? (
+                <Box>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    label={`Vendor Category ${form.prodType !== 'branded_merchandise' ? '*' : ''}`}
                     value={form.prodVendorCategory}
                     onChange={e => form.setProdVendorCategory(e.target.value)}
                     placeholder="Enter your category name"
-                    style={fieldStyle}
                   />
                   {form.prodCategory && (
-                    <Typography sx={{ fontSize: 11, color: 'var(--text-secondary)', mt: 0.5 }}>
+                    <Typography sx={{ fontSize: 11, color: 'text.secondary', mt: 0.5 }}>
                       Mapped to CIXCI category: <strong>{form.prodCategory}</strong>
                     </Typography>
                   )}
-                </div>
+                </Box>
               ) : (
-                <div>
-                  <label style={labelStyle}>Product Category</label>
-                  <select value={form.prodCategory} onChange={e => form.setProdCategory(e.target.value)} style={fieldStyle}>
-                    <option value="">Select category...</option>
-                    {allowedCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Product Category</InputLabel>
+                  <Select value={form.prodCategory} onChange={e => form.setProdCategory(e.target.value as string)} label="Product Category">
+                    <MenuItem value=""><em>Select category...</em></MenuItem>
+                    {allowedCategories.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                  </Select>
+                </FormControl>
               )}
-              <div>
-                <label style={labelStyle}>UPC {isVendor ? '*' : ''}</label>
-                <input
-                  type="text"
-                  value={form.prodUpc}
-                  onChange={e => form.setProdUpc(e.target.value)}
-                  placeholder="123456789012"
-                  maxLength={12}
-                  style={fieldStyle}
-                />
-              </div>
-            </div>
+              <TextField
+                size="small"
+                fullWidth
+                label={`UPC ${isVendor ? '*' : ''}`}
+                value={form.prodUpc}
+                onChange={e => form.setProdUpc(e.target.value)}
+                placeholder="123456789012"
+                inputProps={{ maxLength: 12 }}
+              />
+            </Box>
 
             {/* Admin: Show vendor category + category override + validation status */}
             {isAdmin && (
               <>
-                <div style={twoColGrid}>
-                  <div>
-                    <label style={labelStyle}>Vendor Category (Original)</label>
-                    <input
-                      type="text"
-                      value={form.prodVendorCategory}
-                      onChange={e => form.setProdVendorCategory(e.target.value)}
-                      placeholder="Vendor's original category name"
-                      style={fieldStyle}
-                      readOnly={mode === 'edit'}
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Category Override</label>
-                    <select
-                      value={form.prodCategoryOverride}
-                      onChange={e => form.setProdCategoryOverride(e.target.value)}
-                      style={fieldStyle}
-                    >
-                      <option value="">No override (use mapping)</option>
-                      {allowedCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                <Box sx={gridTwoCol}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    label="Vendor Category (Original)"
+                    value={form.prodVendorCategory}
+                    onChange={e => form.setProdVendorCategory(e.target.value)}
+                    placeholder="Vendor's original category name"
+                    InputProps={{ readOnly: mode === 'edit' }}
+                  />
+                  <Box>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel>Category Override</InputLabel>
+                      <Select
+                        value={form.prodCategoryOverride}
+                        onChange={e => form.setProdCategoryOverride(e.target.value as string)}
+                        label="Category Override"
+                      >
+                        <MenuItem value="">No override (use mapping)</MenuItem>
+                        {allowedCategories.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                      </Select>
+                    </FormControl>
                     {form.prodCategoryOverride && (
-                      <Typography sx={{ fontSize: 11, color: '#ed6c02', mt: 0.5 }}>
+                      <Typography sx={{ fontSize: 11, color: 'warning.main', mt: 0.5 }}>
                         Override active — takes priority over mapping
                       </Typography>
                     )}
-                  </div>
-                </div>
+                  </Box>
+                </Box>
                 {mode === 'edit' && form.prodCategoryValidationStatus && (
-                  <div style={{ marginTop: 4 }}>
-                    <Typography sx={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      Category Status: <strong style={{
-                        color: form.prodCategoryValidationStatus === 'resolved' ? '#2e7d32'
-                          : form.prodCategoryValidationStatus === 'override_applied' ? '#ed6c02'
-                          : form.prodCategoryValidationStatus === 'mapping_required' ? '#d32f2f'
-                          : '#757575'
-                      }}>
-                        {form.prodCategoryValidationStatus === 'resolved' ? 'Resolved via Mapping'
-                          : form.prodCategoryValidationStatus === 'override_applied' ? 'Override Applied'
-                          : form.prodCategoryValidationStatus === 'mapping_required' ? 'Mapping Required'
-                          : 'Pending'}
-                      </strong>
-                    </Typography>
-                  </div>
+                  <Typography sx={{ fontSize: 12, color: 'text.secondary', mt: 0.5 }}>
+                    Category Status: <strong style={{
+                      color: form.prodCategoryValidationStatus === 'resolved' ? '#2e7d32'
+                        : form.prodCategoryValidationStatus === 'override_applied' ? '#ed6c02'
+                        : form.prodCategoryValidationStatus === 'mapping_required' ? '#d32f2f'
+                        : '#757575'
+                    }}>
+                      {form.prodCategoryValidationStatus === 'resolved' ? 'Resolved via Mapping'
+                        : form.prodCategoryValidationStatus === 'override_applied' ? 'Override Applied'
+                        : form.prodCategoryValidationStatus === 'mapping_required' ? 'Mapping Required'
+                        : 'Pending'}
+                    </strong>
+                  </Typography>
                 )}
               </>
             )}
             {/* Vendor: Show category validation status */}
             {isVendor && mode === 'edit' && form.prodCategoryValidationStatus && (
-              <div style={{ marginTop: 4 }}>
-                <Typography sx={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  Category Status: <strong style={{
-                    color: form.prodCategoryValidationStatus === 'resolved' ? '#2e7d32'
-                      : form.prodCategoryValidationStatus === 'mapping_required' ? '#d32f2f'
-                      : '#757575'
-                  }}>
-                    {form.prodCategoryValidationStatus === 'resolved' ? 'Resolved'
-                      : form.prodCategoryValidationStatus === 'mapping_required' ? 'Mapping Required'
-                      : 'Pending'}
-                  </strong>
-                </Typography>
-              </div>
+              <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
+                Category Status: <strong style={{
+                  color: form.prodCategoryValidationStatus === 'resolved' ? '#2e7d32'
+                    : form.prodCategoryValidationStatus === 'mapping_required' ? '#d32f2f'
+                    : '#757575'
+                }}>
+                  {form.prodCategoryValidationStatus === 'resolved' ? 'Resolved'
+                    : form.prodCategoryValidationStatus === 'mapping_required' ? 'Mapping Required'
+                    : 'Pending'}
+                </strong>
+              </Typography>
             )}
 
-            <div>
-              <label style={labelStyle}>Description {isVendor ? '*' : ''}</label>
-              <textarea
-                value={form.prodDescription}
-                onChange={e => form.setProdDescription(e.target.value)}
-                placeholder="Product description"
-                rows={2}
-                style={{ ...fieldStyle, resize: 'vertical' }}
-              />
-            </div>
+            <TextField
+              size="small"
+              fullWidth
+              multiline
+              rows={2}
+              label={`Description ${isVendor ? '*' : ''}`}
+              value={form.prodDescription}
+              onChange={e => form.setProdDescription(e.target.value)}
+              placeholder="Product description"
+            />
 
-            <div>
-              <label style={labelStyle}>Short Description</label>
-              <textarea
-                value={form.prodShortDescription}
-                onChange={e => form.setProdShortDescription(e.target.value)}
-                placeholder="Short description"
-                rows={1}
-                style={{ ...fieldStyle, resize: 'vertical' }}
-              />
-            </div>
-          </div>
+            <TextField
+              size="small"
+              fullWidth
+              multiline
+              rows={1}
+              label="Short Description"
+              value={form.prodShortDescription}
+              onChange={e => form.setProdShortDescription(e.target.value)}
+              placeholder="Short description"
+            />
+          </Box>
 
           {/* ---- Pricing ---- */}
-          <Typography sx={sectionTitle}>Pricing</Typography>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={twoColGrid}>
-              <div>
-                <label style={labelStyle}>Vendor Wholesale Price {isVendor ? '*' : ''}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.prodPrice}
-                  onChange={e => form.setProdPrice(e.target.value)}
-                  placeholder="0.00"
-                  style={fieldStyle}
+          <Typography sx={sectionTitleSx}>Pricing</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={gridTwoCol}>
+              <TextField
+                size="small"
+                fullWidth
+                type="number"
+                label={`Vendor Wholesale Price ${isVendor ? '*' : ''}`}
+                value={form.prodPrice}
+                onChange={e => form.setProdPrice(e.target.value)}
+                placeholder="0.00"
+                inputProps={{ step: '0.01' }}
+              />
+              <FormControl size="small" fullWidth>
+                <InputLabel>Currency</InputLabel>
+                <Select value={form.prodCurrency} onChange={e => form.setProdCurrency(e.target.value as string)} label="Currency">
+                  <MenuItem value="USD">USD</MenuItem>
+                  <MenuItem value="EUR">EUR</MenuItem>
+                  <MenuItem value="GBP">GBP</MenuItem>
+                  <MenuItem value="CAD">CAD</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={gridTwoCol}>
+              <TextField
+                size="small"
+                fullWidth
+                type="number"
+                label={`MSRP ${isVendor ? '*' : ''}`}
+                value={form.prodMsrp}
+                onChange={e => form.setProdMsrp(e.target.value)}
+                placeholder="0.00"
+                inputProps={{ step: '0.01' }}
+              />
+              <TextField
+                size="small"
+                fullWidth
+                type="number"
+                label="MAP Price"
+                value={form.prodMapPrice}
+                onChange={e => form.setProdMapPrice(e.target.value)}
+                placeholder="0.00"
+                inputProps={{ step: '0.01' }}
+              />
+            </Box>
+            <Box sx={gridTwoCol}>
+              <TextField
+                size="small"
+                fullWidth
+                type="number"
+                label="Sale Price"
+                value={form.prodSalePrice}
+                onChange={e => form.setProdSalePrice(e.target.value)}
+                placeholder="0.00"
+                inputProps={{ step: '0.01' }}
+              />
+              <Box sx={{ display: 'flex', alignItems: 'center', pt: 1 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={form.prodRecommendedAccessory}
+                      onChange={e => form.setProdRecommendedAccessory(e.target.checked)}
+                    />
+                  }
+                  label="Recommended Accessory"
+                  sx={{ '& .MuiFormControlLabel-label': { fontSize: 14 } }}
                 />
-              </div>
-              <div>
-                <label style={labelStyle}>Currency</label>
-                <select value={form.prodCurrency} onChange={e => form.setProdCurrency(e.target.value)} style={fieldStyle}>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
-                  <option value="CAD">CAD</option>
-                </select>
-              </div>
-            </div>
-            <div style={twoColGrid}>
-              <div>
-                <label style={labelStyle}>MSRP {isVendor ? '*' : ''}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.prodMsrp}
-                  onChange={e => form.setProdMsrp(e.target.value)}
-                  placeholder="0.00"
-                  style={fieldStyle}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>MAP Price</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.prodMapPrice}
-                  onChange={e => form.setProdMapPrice(e.target.value)}
-                  placeholder="0.00"
-                  style={fieldStyle}
-                />
-              </div>
-            </div>
-            <div style={twoColGrid}>
-              <div>
-                <label style={labelStyle}>Sale Price</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.prodSalePrice}
-                  onChange={e => form.setProdSalePrice(e.target.value)}
-                  placeholder="0.00"
-                  style={fieldStyle}
-                />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
-                <input
-                  type="checkbox"
-                  checked={form.prodRecommendedAccessory}
-                  onChange={e => form.setProdRecommendedAccessory(e.target.checked)}
-                  id="recommendedAccessory"
-                />
-                <label htmlFor="recommendedAccessory" style={{ fontSize: 14, cursor: 'pointer' }}>
-                  Recommended Accessory
-                </label>
-              </div>
-            </div>
-          </div>
+              </Box>
+            </Box>
+          </Box>
 
           {/* ---- Dates ---- */}
-          <Typography sx={sectionTitle}>Dates</Typography>
-          <div style={twoColGrid}>
-            <div>
-              <label style={labelStyle}>Launch Date {isVendor ? '*' : ''}</label>
-              <input
+          <Typography sx={sectionTitleSx}>Dates</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={gridTwoCol}>
+              <TextField
+                size="small"
+                fullWidth
                 type="date"
+                label={`Launch Date ${isVendor ? '*' : ''}`}
                 value={form.prodLaunchDate}
                 onChange={e => form.setProdLaunchDate(e.target.value)}
-                style={fieldStyle}
+                InputLabelProps={{ shrink: true }}
               />
-            </div>
-            <div>
-              <label style={labelStyle}>Release Date</label>
-              <input
+              <TextField
+                size="small"
+                fullWidth
                 type="date"
+                label="Release Date"
                 value={form.prodReleaseDate}
                 onChange={e => form.setProdReleaseDate(e.target.value)}
-                style={fieldStyle}
+                InputLabelProps={{ shrink: true }}
               />
-            </div>
-          </div>
-          <div style={{ ...twoColGrid, marginTop: 6 }}>
-            <div>
-              <label style={labelStyle}>EOL Date</label>
-              <input
+            </Box>
+            <Box sx={gridTwoCol}>
+              <TextField
+                size="small"
+                fullWidth
                 type="date"
+                label="EOL Date"
                 value={form.prodEolDate}
                 onChange={e => form.setProdEolDate(e.target.value)}
-                style={fieldStyle}
+                InputLabelProps={{ shrink: true }}
               />
-            </div>
-            <div />
-          </div>
+              <Box />
+            </Box>
+          </Box>
 
           {/* ---- Colors ---- */}
-          <Typography sx={sectionTitle}>Colors</Typography>
-          <div style={twoColGrid}>
-            <div>
-              <label style={labelStyle}>Color {isVendor ? '*' : ''}</label>
-              <input
-                type="text"
-                value={form.prodColor}
-                onChange={e => form.setProdColor(e.target.value)}
-                placeholder="e.g. Midnight Black"
-                style={fieldStyle}
-              />
-            </div>
+          <Typography sx={sectionTitleSx}>Colors</Typography>
+          <Box sx={gridTwoCol}>
+            <TextField
+              size="small"
+              fullWidth
+              label={`Color ${isVendor ? '*' : ''}`}
+              value={form.prodColor}
+              onChange={e => form.setProdColor(e.target.value)}
+              placeholder="e.g. Midnight Black"
+            />
             <MultiSelectColor
               selected={form.prodSystemColor}
               options={allowedColors}
               onChange={form.setProdSystemColor}
               label={`System Color ${isVendor ? '*' : ''}`}
             />
-          </div>
+          </Box>
 
           {/* ---- Dimensions & Weight ---- */}
-          <Typography sx={sectionTitle}>Dimensions & Weight</Typography>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
-            <div>
-              <label style={labelStyle}>Length {isVendor ? '*' : ''}</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.prodLength}
-                onChange={e => form.setProdLength(e.target.value)}
-                placeholder="in"
-                style={fieldStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Width {isVendor ? '*' : ''}</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.prodWidth}
-                onChange={e => form.setProdWidth(e.target.value)}
-                placeholder="in"
-                style={fieldStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Height {isVendor ? '*' : ''}</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.prodHeight}
-                onChange={e => form.setProdHeight(e.target.value)}
-                placeholder="in"
-                style={fieldStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Weight {isVendor ? '*' : ''}</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.prodWeight}
-                onChange={e => form.setProdWeight(e.target.value)}
-                placeholder="oz"
-                style={fieldStyle}
-              />
-            </div>
-          </div>
+          <Typography sx={sectionTitleSx}>Dimensions & Weight</Typography>
+          <Box sx={gridFourCol}>
+            <TextField
+              size="small"
+              fullWidth
+              type="number"
+              label={`Length ${isVendor ? '*' : ''}`}
+              value={form.prodLength}
+              onChange={e => form.setProdLength(e.target.value)}
+              placeholder="0.00"
+              inputProps={{ step: '0.01' }}
+              InputProps={{ endAdornment: <InputAdornment position="end">in</InputAdornment> }}
+            />
+            <TextField
+              size="small"
+              fullWidth
+              type="number"
+              label={`Width ${isVendor ? '*' : ''}`}
+              value={form.prodWidth}
+              onChange={e => form.setProdWidth(e.target.value)}
+              placeholder="0.00"
+              inputProps={{ step: '0.01' }}
+              InputProps={{ endAdornment: <InputAdornment position="end">in</InputAdornment> }}
+            />
+            <TextField
+              size="small"
+              fullWidth
+              type="number"
+              label={`Height ${isVendor ? '*' : ''}`}
+              value={form.prodHeight}
+              onChange={e => form.setProdHeight(e.target.value)}
+              placeholder="0.00"
+              inputProps={{ step: '0.01' }}
+              InputProps={{ endAdornment: <InputAdornment position="end">in</InputAdornment> }}
+            />
+            <TextField
+              size="small"
+              fullWidth
+              type="number"
+              label={`Weight ${isVendor ? '*' : ''}`}
+              value={form.prodWeight}
+              onChange={e => form.setProdWeight(e.target.value)}
+              placeholder="0.00"
+              inputProps={{ step: '0.01' }}
+              InputProps={{ endAdornment: <InputAdornment position="end">oz</InputAdornment> }}
+            />
+          </Box>
 
           {/* ---- Inventory ---- */}
-          <Typography sx={sectionTitle}>Inventory</Typography>
-          <div style={twoColGrid}>
-            <div>
-              <label style={labelStyle}>Inventory Level</label>
-              <input
-                type="number"
-                value={form.prodInventoryLevel}
-                onChange={e => form.setProdInventoryLevel(e.target.value)}
-                placeholder="0"
-                style={fieldStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Inventory Threshold</label>
-              <input
-                type="number"
-                value={form.prodInventoryThreshold}
-                onChange={e => form.setProdInventoryThreshold(e.target.value)}
-                placeholder="0"
-                style={fieldStyle}
-              />
-            </div>
-          </div>
+          <Typography sx={sectionTitleSx}>Inventory</Typography>
+          <Box sx={gridTwoCol}>
+            <TextField
+              size="small"
+              fullWidth
+              type="number"
+              label="Inventory Level"
+              value={form.prodInventoryLevel}
+              onChange={e => form.setProdInventoryLevel(e.target.value)}
+              placeholder="0"
+            />
+            <TextField
+              size="small"
+              fullWidth
+              type="number"
+              label="Inventory Threshold"
+              value={form.prodInventoryThreshold}
+              onChange={e => form.setProdInventoryThreshold(e.target.value)}
+              placeholder="0"
+            />
+          </Box>
 
-          {/* ---- Warranty ---- */}
-          <Typography sx={sectionTitle}>Warranty & Promo</Typography>
-          <div style={twoColGrid}>
-            <div>
-              <label style={labelStyle}>Warranty {isVendor ? '*' : ''}</label>
-              <input
-                type="text"
-                value={form.prodWarranty}
-                onChange={e => form.setProdWarranty(e.target.value)}
-                placeholder="e.g. 1 Year Limited"
-                style={fieldStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Promo Information</label>
-              <input
-                type="text"
-                value={form.prodPromoInformation}
-                onChange={e => form.setProdPromoInformation(e.target.value)}
-                placeholder="Promo info"
-                style={fieldStyle}
-              />
-            </div>
-          </div>
+          {/* ---- Warranty & Promo ---- */}
+          <Typography sx={sectionTitleSx}>Warranty & Promo</Typography>
+          <Box sx={gridTwoCol}>
+            <TextField
+              size="small"
+              fullWidth
+              label={`Warranty ${isVendor ? '*' : ''}`}
+              value={form.prodWarranty}
+              onChange={e => form.setProdWarranty(e.target.value)}
+              placeholder="e.g. 1 Year Limited"
+            />
+            <TextField
+              size="small"
+              fullWidth
+              label="Promo Information"
+              value={form.prodPromoInformation}
+              onChange={e => form.setProdPromoInformation(e.target.value)}
+              placeholder="Promo info"
+            />
+          </Box>
 
           {/* ---- Status (edit mode or admin) ---- */}
           {(mode === 'edit' || isAdmin) && (
             <>
-              <Typography sx={sectionTitle}>Status</Typography>
-              <div style={twoColGrid}>
-                <div>
-                  <label style={labelStyle}>Product Status</label>
-                  <select value={form.prodStatus} onChange={e => form.setProdStatus(e.target.value)} style={fieldStyle}>
-                    <option value="">Select status...</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="draft">Draft</option>
-                    <option value="pending_review">Pending Review</option>
-                    <option value="out_of_stock">Out of Stock</option>
-                    <option value="eol">EOL</option>
-                    {isAdmin && <option value="rejected">Rejected</option>}
-                    {isAdmin && <option value="archived">Archived</option>}
-                  </select>
-                </div>
-                <div />
-              </div>
+              <Typography sx={sectionTitleSx}>Status</Typography>
+              <Box sx={gridTwoCol}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Product Status</InputLabel>
+                  <Select value={form.prodStatus} onChange={e => form.setProdStatus(e.target.value as string)} label="Product Status">
+                    <MenuItem value=""><em>Select status...</em></MenuItem>
+                    <MenuItem value="active">Active</MenuItem>
+                    <MenuItem value="inactive">Inactive</MenuItem>
+                    <MenuItem value="draft">Draft</MenuItem>
+                    <MenuItem value="pending_review">Pending Review</MenuItem>
+                    <MenuItem value="out_of_stock">Out of Stock</MenuItem>
+                    <MenuItem value="eol">EOL</MenuItem>
+                    {isAdmin && <MenuItem value="rejected">Rejected</MenuItem>}
+                    {isAdmin && <MenuItem value="archived">Archived</MenuItem>}
+                  </Select>
+                </FormControl>
+                <Box />
+              </Box>
             </>
           )}
 
           {/* ---- Images ---- */}
-          <Typography sx={sectionTitle}>Images</Typography>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div>
-              <label style={labelStyle}>Primary Image (PNG with transparent background, or ZIP of PNGs)</label>
+          <Typography sx={sectionTitleSx}>Images</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box>
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+                Primary Image (PNG with transparent background, or ZIP of PNGs)
+              </Typography>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".png,.zip"
                 onChange={handleImageChange}
-                style={{ fontSize: 14 }}
+                style={{ display: 'none' }}
+                id="product-image-upload"
               />
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<CloudUploadIcon />}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingImage}
+              >
+                {uploadingImage ? 'Uploading...' : 'Choose File'}
+              </Button>
               {uploadingImage && (
-                <Typography sx={{ fontSize: 13, color: 'var(--text-secondary)', mt: 0.5 }}>
+                <Typography sx={{ fontSize: 13, color: 'text.secondary', mt: 0.5 }}>
                   Uploading images...
                 </Typography>
               )}
-            </div>
+            </Box>
 
             {form.imagePreviewUrl && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.5 }}>
-                <img
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box
+                  component="img"
                   src={form.imagePreviewUrl}
                   alt="Preview"
-                  style={{
+                  sx={{
                     width: 80,
                     height: 80,
                     objectFit: 'contain',
-                    borderRadius: 8,
-                    border: '1px solid var(--border)',
-                    background: '#f8f8f8',
+                    borderRadius: 1,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: '#f8f8f8',
                   }}
                 />
                 <Button
@@ -1225,212 +1215,199 @@ export default function ProductFormDialog({
             )}
 
             {form.uploadedZipImages.length > 1 && (
-              <div>
-                <label style={labelStyle}>ZIP Images ({form.uploadedZipImages.length} extracted)</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Box>
+                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                  ZIP Images ({form.uploadedZipImages.length} extracted)
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                   {form.uploadedZipImages.map((img, idx) => (
-                    <div
+                    <Box
                       key={img.id || idx}
-                      style={{
+                      sx={{
                         position: 'relative',
-                        border: idx === 0 ? '2px solid var(--accent)' : '1px solid var(--border)',
-                        borderRadius: 8,
-                        padding: 2,
+                        border: idx === 0 ? '2px solid' : '1px solid',
+                        borderColor: idx === 0 ? 'primary.main' : 'divider',
+                        borderRadius: 1,
+                        p: 0.25,
                       }}
                     >
-                      <img
+                      <Box
+                        component="img"
                         src={getImageUrl(img.url)}
                         alt={img.name}
-                        style={{ width: 60, height: 60, objectFit: 'contain', borderRadius: 6, background: '#f8f8f8' }}
+                        sx={{ width: 60, height: 60, objectFit: 'contain', borderRadius: 0.75, bgcolor: '#f8f8f8' }}
                       />
                       {idx === 0 && (
-                        <span style={{
-                          position: 'absolute', top: -6, right: -6, background: 'var(--accent)', color: '#fff',
-                          borderRadius: '50%', width: 18, height: 18, fontSize: 10, display: 'flex',
-                          alignItems: 'center', justifyContent: 'center',
-                        }}>
+                        <Box
+                          sx={{
+                            position: 'absolute', top: -6, right: -6,
+                            bgcolor: 'primary.main', color: '#fff',
+                            borderRadius: '50%', width: 18, height: 18,
+                            fontSize: 10, display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
                           P
-                        </span>
+                        </Box>
                       )}
-                    </div>
+                    </Box>
                   ))}
-                </div>
-              </div>
+                </Box>
+              </Box>
             )}
 
-            <Typography sx={{ fontSize: 13, color: 'var(--text-secondary)' }}>Additional Image URLs</Typography>
-            <div style={twoColGrid}>
-              <div>
-                <label style={labelStyle}>Image URL 1</label>
-                <input type="text" value={form.prodImageUrl1} onChange={e => form.setProdImageUrl1(e.target.value)} placeholder="URL or storage key" style={fieldStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Image URL 2</label>
-                <input type="text" value={form.prodImageUrl2} onChange={e => form.setProdImageUrl2(e.target.value)} placeholder="URL or storage key" style={fieldStyle} />
-              </div>
-            </div>
-            <div style={twoColGrid}>
-              <div>
-                <label style={labelStyle}>Image URL 3</label>
-                <input type="text" value={form.prodImageUrl3} onChange={e => form.setProdImageUrl3(e.target.value)} placeholder="URL or storage key" style={fieldStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Image URL 4</label>
-                <input type="text" value={form.prodImageUrl4} onChange={e => form.setProdImageUrl4(e.target.value)} placeholder="URL or storage key" style={fieldStyle} />
-              </div>
-            </div>
-            <div style={twoColGrid}>
-              <div>
-                <label style={labelStyle}>Image URL 5</label>
-                <input type="text" value={form.prodImageUrl5} onChange={e => form.setProdImageUrl5(e.target.value)} placeholder="URL or storage key" style={fieldStyle} />
-              </div>
-              <div />
-            </div>
-          </div>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Additional Image URLs</Typography>
+            <Box sx={gridTwoCol}>
+              <TextField size="small" fullWidth label="Image URL 1" value={form.prodImageUrl1} onChange={e => form.setProdImageUrl1(e.target.value)} placeholder="URL or storage key" />
+              <TextField size="small" fullWidth label="Image URL 2" value={form.prodImageUrl2} onChange={e => form.setProdImageUrl2(e.target.value)} placeholder="URL or storage key" />
+            </Box>
+            <Box sx={gridTwoCol}>
+              <TextField size="small" fullWidth label="Image URL 3" value={form.prodImageUrl3} onChange={e => form.setProdImageUrl3(e.target.value)} placeholder="URL or storage key" />
+              <TextField size="small" fullWidth label="Image URL 4" value={form.prodImageUrl4} onChange={e => form.setProdImageUrl4(e.target.value)} placeholder="URL or storage key" />
+            </Box>
+            <Box sx={gridTwoCol}>
+              <TextField size="small" fullWidth label="Image URL 5" value={form.prodImageUrl5} onChange={e => form.setProdImageUrl5(e.target.value)} placeholder="URL or storage key" />
+              <Box />
+            </Box>
+          </Box>
 
           {/* ---- SEO / Meta ---- */}
-          <Typography sx={sectionTitle}>SEO / Meta</Typography>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div>
-              <label style={labelStyle}>Meta Title</label>
-              <input
-                type="text"
-                value={form.prodMetaTitle}
-                onChange={e => form.setProdMetaTitle(e.target.value)}
-                placeholder="Meta title"
-                style={fieldStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Meta Description</label>
-              <textarea
-                value={form.prodMetaDescription}
-                onChange={e => form.setProdMetaDescription(e.target.value)}
-                placeholder="Meta description"
-                rows={2}
-                style={{ ...fieldStyle, resize: 'vertical' }}
-              />
-            </div>
-          </div>
+          <Typography sx={sectionTitleSx}>SEO / Meta</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              size="small"
+              fullWidth
+              label="Meta Title"
+              value={form.prodMetaTitle}
+              onChange={e => form.setProdMetaTitle(e.target.value)}
+              placeholder="Meta title"
+            />
+            <TextField
+              size="small"
+              fullWidth
+              multiline
+              rows={2}
+              label="Meta Description"
+              value={form.prodMetaDescription}
+              onChange={e => form.setProdMetaDescription(e.target.value)}
+              placeholder="Meta description"
+            />
+          </Box>
 
           {/* ---- Device Compatibility ---- */}
           {form.prodType === 'accessory' && (
             <>
-              <Typography sx={sectionTitle}>Device Compatibility</Typography>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Typography sx={sectionTitleSx}>Device Compatibility</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {/* Universal Device Types */}
-                <div>
-                  <label style={labelStyle}>Universal Device Types</label>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Box>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                    Universal Device Types
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                     {deviceTypes.map((dt: any) => {
                       const dtName = typeof dt === 'string' ? dt : dt.name || dt.value || ''
                       return (
-                        <label key={dtName} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={form.compUniversalDeviceTypes.includes(dtName)}
-                            onChange={() => {
-                              form.setCompUniversalDeviceTypes(prev =>
-                                prev.includes(dtName) ? prev.filter(x => x !== dtName) : [...prev, dtName]
-                              )
-                            }}
-                          />
-                          {dtName}
-                        </label>
+                        <FormControlLabel
+                          key={dtName}
+                          control={
+                            <Checkbox
+                              size="small"
+                              checked={form.compUniversalDeviceTypes.includes(dtName)}
+                              onChange={() => {
+                                form.setCompUniversalDeviceTypes(prev =>
+                                  prev.includes(dtName) ? prev.filter(x => x !== dtName) : [...prev, dtName]
+                                )
+                              }}
+                            />
+                          }
+                          label={dtName}
+                          sx={{ '& .MuiFormControlLabel-label': { fontSize: 14 } }}
+                        />
                       )
                     })}
-                  </div>
-                </div>
+                  </Box>
+                </Box>
 
                 {/* Specific Device Selection */}
-                <div>
-                  <label style={labelStyle}>Specific Device Compatibility</label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="text"
+                <Box>
+                  <Box sx={{ position: 'relative' }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Specific Device Compatibility"
                       value={form.deviceSearch}
                       onChange={e => { form.setDeviceSearch(e.target.value); form.setShowDeviceDropdown(true) }}
                       onFocus={() => form.setShowDeviceDropdown(true)}
                       placeholder="Search devices..."
-                      style={fieldStyle}
                     />
                     {form.showDeviceDropdown && filteredDevices.length > 0 && (
-                      <div
-                        style={{
+                      <Box
+                        sx={{
                           position: 'absolute',
                           top: '100%',
                           left: 0,
                           right: 0,
-                          zIndex: 1000,
-                          background: 'var(--bg-card, #fff)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 8,
+                          zIndex: 1300,
+                          bgcolor: 'background.paper',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          borderRadius: 1,
                           maxHeight: 200,
                           overflowY: 'auto',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          boxShadow: 3,
                         }}
                       >
                         {filteredDevices.slice(0, 50).map((device: any) => {
                           const isSelected = form.selectedDeviceIds.includes(device.id)
                           return (
-                            <div
+                            <Box
                               key={device.id}
                               onClick={() => form.toggleDeviceSelection(device.id)}
-                              style={{
-                                padding: '6px 12px',
+                              sx={{
+                                px: 1.5,
+                                py: 0.75,
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: 8,
-                                background: isSelected ? 'var(--bg-hover, #f0f4ff)' : 'transparent',
+                                gap: 1,
+                                bgcolor: isSelected ? 'action.hover' : 'transparent',
+                                '&:hover': { bgcolor: 'action.hover' },
                                 fontSize: 14,
                               }}
                             >
-                              {isSelected && <CheckIcon sx={{ fontSize: 16, color: 'var(--accent)' }} />}
+                              {isSelected && <CheckIcon sx={{ fontSize: 16, color: 'primary.main' }} />}
                               <span>{device.brand} {device.name} {device.model ? `(${device.model})` : ''}</span>
-                            </div>
+                            </Box>
                           )
                         })}
-                      </div>
+                      </Box>
                     )}
-                  </div>
+                  </Box>
 
                   {/* Selected devices display */}
                   {form.selectedDeviceIds.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
                       {form.selectedDeviceIds.map(id => {
                         const device = devices.find((d: any) => d.id === id)
                         const displayName = device
                           ? `${device.brand || ''} ${device.name || ''} ${device.model ? `(${device.model})` : ''}`.trim()
                           : id
                         return (
-                          <span
+                          <Chip
                             key={id}
-                            style={{
-                              background: 'var(--accent)',
-                              color: '#fff',
-                              borderRadius: 4,
-                              padding: '2px 8px',
-                              fontSize: 12,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 4,
-                            }}
-                          >
-                            {displayName}
-                            <span
-                              onClick={() => form.toggleDeviceSelection(id)}
-                              style={{ cursor: 'pointer', fontWeight: 700 }}
-                            >
-                              x
-                            </span>
-                          </span>
+                            label={displayName}
+                            size="small"
+                            color="primary"
+                            onDelete={() => form.toggleDeviceSelection(id)}
+                            sx={{ height: 24, fontSize: 12 }}
+                          />
                         )
                       })}
-                    </div>
+                    </Box>
                   )}
-                </div>
-              </div>
+                </Box>
+              </Box>
 
               {/* ---- Category-Specific Compatibility (admin only — CIXCI internal auto-mapping) ---- */}
               {!isVendor && renderCategorySpecificCompatibility()}
@@ -1438,7 +1415,7 @@ export default function ProductFormDialog({
           )}
         </DialogContent>
 
-        <DialogActions sx={{ borderTop: '1px solid var(--border)', px: 3, py: 1.5 }}>
+        <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', px: 3, py: 1.5 }}>
           <Button onClick={handleClose} disabled={submitting}>
             Cancel
           </Button>
