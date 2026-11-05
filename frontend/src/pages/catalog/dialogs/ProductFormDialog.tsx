@@ -814,7 +814,7 @@ export default function ProductFormDialog({
                 value={form.prodUpc}
                 onChange={e => form.setProdUpc(e.target.value)}
                 placeholder="123456789012"
-                inputProps={{ maxLength: 12 }}
+                slotProps={{ htmlInput: { maxLength: 12 } }}
               />
             </Box>
 
@@ -829,7 +829,7 @@ export default function ProductFormDialog({
                     value={form.prodVendorCategory}
                     onChange={e => form.setProdVendorCategory(e.target.value)}
                     placeholder="Vendor's original category name"
-                    InputProps={{ readOnly: mode === 'edit' }}
+                    slotProps={{ input: { readOnly: mode === 'edit' } }}
                   />
                   <Box>
                     <FormControl size="small" fullWidth>
@@ -917,7 +917,7 @@ export default function ProductFormDialog({
                 value={form.prodPrice}
                 onChange={e => form.setProdPrice(e.target.value)}
                 placeholder="0.00"
-                inputProps={{ step: '0.01' }}
+                slotProps={{ htmlInput: { step: '0.01' } }}
               />
               <FormControl size="small" fullWidth>
                 <InputLabel>Currency</InputLabel>
@@ -938,7 +938,7 @@ export default function ProductFormDialog({
                 value={form.prodMsrp}
                 onChange={e => form.setProdMsrp(e.target.value)}
                 placeholder="0.00"
-                inputProps={{ step: '0.01' }}
+                slotProps={{ htmlInput: { step: '0.01' } }}
               />
               <TextField
                 size="small"
@@ -948,7 +948,7 @@ export default function ProductFormDialog({
                 value={form.prodMapPrice}
                 onChange={e => form.setProdMapPrice(e.target.value)}
                 placeholder="0.00"
-                inputProps={{ step: '0.01' }}
+                slotProps={{ htmlInput: { step: '0.01' } }}
               />
             </Box>
             <Box sx={gridTwoCol}>
@@ -960,7 +960,7 @@ export default function ProductFormDialog({
                 value={form.prodSalePrice}
                 onChange={e => form.setProdSalePrice(e.target.value)}
                 placeholder="0.00"
-                inputProps={{ step: '0.01' }}
+                slotProps={{ htmlInput: { step: '0.01' } }}
               />
               <Box sx={{ display: 'flex', alignItems: 'center', pt: 1 }}>
                 <FormControlLabel
@@ -989,7 +989,7 @@ export default function ProductFormDialog({
                 label={`Launch Date ${isVendor ? '*' : ''}`}
                 value={form.prodLaunchDate}
                 onChange={e => form.setProdLaunchDate(e.target.value)}
-                InputLabelProps={{ shrink: true }}
+                slotProps={{ inputLabel: { shrink: true } }}
               />
               <TextField
                 size="small"
@@ -998,7 +998,7 @@ export default function ProductFormDialog({
                 label="Release Date"
                 value={form.prodReleaseDate}
                 onChange={e => form.setProdReleaseDate(e.target.value)}
-                InputLabelProps={{ shrink: true }}
+                slotProps={{ inputLabel: { shrink: true } }}
               />
             </Box>
             <Box sx={gridTwoCol}>
@@ -1009,7 +1009,7 @@ export default function ProductFormDialog({
                 label="EOL Date"
                 value={form.prodEolDate}
                 onChange={e => form.setProdEolDate(e.target.value)}
-                InputLabelProps={{ shrink: true }}
+                slotProps={{ inputLabel: { shrink: true } }}
               />
               <Box />
             </Box>
@@ -1045,8 +1045,7 @@ export default function ProductFormDialog({
               value={form.prodLength}
               onChange={e => form.setProdLength(e.target.value)}
               placeholder="0.00"
-              inputProps={{ step: '0.01' }}
-              InputProps={{ endAdornment: <InputAdornment position="end">in</InputAdornment> }}
+              slotProps={{ htmlInput: { step: '0.01' }, input: { endAdornment: <InputAdornment position="end">in</InputAdornment> } }}
             />
             <TextField
               size="small"
@@ -1056,8 +1055,7 @@ export default function ProductFormDialog({
               value={form.prodWidth}
               onChange={e => form.setProdWidth(e.target.value)}
               placeholder="0.00"
-              inputProps={{ step: '0.01' }}
-              InputProps={{ endAdornment: <InputAdornment position="end">in</InputAdornment> }}
+              slotProps={{ htmlInput: { step: '0.01' }, input: { endAdornment: <InputAdornment position="end">in</InputAdornment> } }}
             />
             <TextField
               size="small"
@@ -1067,8 +1065,7 @@ export default function ProductFormDialog({
               value={form.prodHeight}
               onChange={e => form.setProdHeight(e.target.value)}
               placeholder="0.00"
-              inputProps={{ step: '0.01' }}
-              InputProps={{ endAdornment: <InputAdornment position="end">in</InputAdornment> }}
+              slotProps={{ htmlInput: { step: '0.01' }, input: { endAdornment: <InputAdornment position="end">in</InputAdornment> } }}
             />
             <TextField
               size="small"
@@ -1078,8 +1075,7 @@ export default function ProductFormDialog({
               value={form.prodWeight}
               onChange={e => form.setProdWeight(e.target.value)}
               placeholder="0.00"
-              inputProps={{ step: '0.01' }}
-              InputProps={{ endAdornment: <InputAdornment position="end">oz</InputAdornment> }}
+              slotProps={{ htmlInput: { step: '0.01' }, input: { endAdornment: <InputAdornment position="end">oz</InputAdornment> } }}
             />
           </Box>
 
