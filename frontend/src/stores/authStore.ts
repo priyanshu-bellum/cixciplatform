@@ -60,8 +60,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const { data } = await api.get('/tenant/users/me/')
       set({ user: data, loading: false, initialized: true })
-    } catch {
-      set({ user: null, loading: false, initialized: true })
+    } catch (err: any) {
+      const status = err?.response?.status
+      if (status === 401 || status === 403) {
+        localStorage.removeItem('access')
+        localStorage.removeItem('refresh')
+        set({ user: null, loading: false, initialized: true })
+      } else {
+        set((state) => ({ ...state, loading: false, initialized: true }))
+      }
     }
   },
 }))

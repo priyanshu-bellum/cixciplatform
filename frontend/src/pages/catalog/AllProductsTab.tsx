@@ -170,7 +170,7 @@ export default function AllProductsTab({
           allowedBrands={allowedBrands}
           allowedColors={allowedColors}
           brandsList={brandsList}
-          onExportExcel={isCixciAdmin ? handleExportExcel : undefined}
+          onExportExcel={handleExportExcel}
           exporting={exporting}
           selectedCount={0}
           showSelectAll={false}
@@ -229,7 +229,7 @@ export default function AllProductsTab({
         allowedBrands={allowedBrands}
         allowedColors={allowedColors}
         brandsList={brandsList}
-        onExportExcel={isCixciAdmin ? handleExportExcel : undefined}
+        onExportExcel={handleExportExcel}
         exporting={exporting}
         selectedCount={0}
         onSelectAll={undefined}

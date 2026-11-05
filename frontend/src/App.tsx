@@ -89,6 +89,16 @@ function AppWithQuery() {
 
   useEffect(() => { void fetchMe() }, [fetchMe])
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && localStorage.getItem('refresh')) {
+        void fetchMe()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [fetchMe])
+
   return (
     <QueryClientProvider client={queryClientRef.current}>
       <BrowserRouter>

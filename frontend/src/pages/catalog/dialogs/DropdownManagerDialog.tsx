@@ -21,6 +21,7 @@ import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import Checkbox from '@mui/material/Checkbox'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import Tooltip from '@mui/material/Tooltip'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import SettingsIcon from '@mui/icons-material/Settings'
@@ -485,15 +486,25 @@ export default function DropdownManagerDialog({
                                   <SettingsIcon fontSize="small" />
                                 </IconButton>
                               )}
-                              <IconButton
-                                edge="end"
-                                size="small"
-                                color="error"
-                                onClick={() => handleDeleteDropdownValue(item.id)}
-                                title="Delete value"
+                              <Tooltip
+                                title={
+                                  item.linked_product_count > 0
+                                    ? `Linked to ${item.linked_product_count} product${item.linked_product_count !== 1 ? 's' : ''} — remove associations first`
+                                    : 'Delete value'
+                                }
                               >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
+                                <span>
+                                  <IconButton
+                                    edge="end"
+                                    size="small"
+                                    color="error"
+                                    disabled={item.linked_product_count > 0}
+                                    onClick={() => handleDeleteDropdownValue(item.id)}
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
                             </Box>
                           }
                           sx={{ borderBottom: '1px solid', borderColor: 'divider' }}

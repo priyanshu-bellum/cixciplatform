@@ -994,11 +994,13 @@ function AdminDashboard({ count }: any) {
   const { data: users } = useQuery({ queryKey: ['admin-users'], queryFn: () => api.get('/tenant/users/').then(r => r.data) })
   const { data: devices } = useQuery({ queryKey: ['admin-devices'], queryFn: () => api.get('/devices/devices/').then(r => r.data) })
   const { data: products } = useQuery({ queryKey: ['admin-products'], queryFn: () => api.get('/catalog/products/').then(r => r.data) })
+  const { data: orders } = useQuery({ queryKey: ['admin-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data).catch(() => []) })
 
   const cCount = count(companies)
   const uCount = count(users)
   const dCount = count(devices)
   const pCount = count(products)
+  const oCount = count(orders)
 
   const { data: auditData } = useQuery({
     queryKey: ['admin-audit-trail'],
@@ -1035,24 +1037,29 @@ function AdminDashboard({ count }: any) {
       {showOnboardModal && <OnboardOrgModal onClose={() => setShowOnboardModal(false)} />}
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/settings" style={{ textDecoration: 'none' }}>
             <StatCard icon={<BusinessIcon />} title="Active Companies" value={cCount} subtitle="registered tenants" color="secondary.main" />
           </Link>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/settings" style={{ textDecoration: 'none' }}>
             <StatCard icon={<PeopleIcon />} title="System Admins & Users" value={uCount} subtitle="onboarded members" color="primary.main" />
           </Link>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/devices" style={{ textDecoration: 'none' }}>
             <StatCard icon={<SmartphoneIcon />} title="Global Devices" value={dCount} subtitle="in master catalog" color="success.main" />
           </Link>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/catalog" style={{ textDecoration: 'none' }}>
             <StatCard icon={<ShoppingBagIcon />} title="Catalog Products" value={pCount} subtitle="wholesale accessories" color="warning.main" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
+          <Link to="/orders" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<InventoryIcon />} title="Platform Orders" value={oCount} subtitle="total routed" color="error.main" />
           </Link>
         </Grid>
       </Grid>
@@ -1178,11 +1185,13 @@ function BuyerDashboard({ count, user }: any) {
   const { data: projection } = useQuery({ queryKey: ['buyer-projection'], queryFn: () => api.get('/catalog/my-projection/my_projection/').then(r => r.data) })
   const { data: orders } = useQuery({ queryKey: ['buyer-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data) })
   const { data: invoices } = useQuery({ queryKey: ['buyer-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data) })
+  const { data: returns } = useQuery({ queryKey: ['buyer-returns'], queryFn: () => api.get('/fulfillment/return-requests/').then(r => r.data).catch(() => []) })
 
   const dCount = count(myDevices)
   const cCount = projection?.compatible_product_count ?? 0
   const oCount = count(orders)
   const iCount = count(invoices)
+  const retCount = count(returns)
 
   const ordersData = Array.isArray(orders) ? orders : (orders?.results ?? [])
 
@@ -1214,24 +1223,29 @@ function BuyerDashboard({ count, user }: any) {
       />
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/devices" style={{ textDecoration: 'none' }}>
             <StatCard icon={<SmartphoneIcon />} title="My Device Portfolio" value={dCount} subtitle="compatible targets" color="primary.main" />
           </Link>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/catalog" style={{ textDecoration: 'none' }}>
             <StatCard icon={<ShoppingBagIcon />} title="Compatible Accessories" value={cCount} subtitle="available in catalog" color="secondary.main" />
           </Link>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/orders" style={{ textDecoration: 'none' }}>
             <StatCard icon={<InventoryIcon />} title="Orders Placed" value={oCount} subtitle="tracked packages" color="success.main" />
           </Link>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/invoicing" style={{ textDecoration: 'none' }}>
             <StatCard icon={<ReceiptLongIcon />} title="Procurement Invoices" value={iCount} subtitle="issued total" color="warning.main" />
+          </Link>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
+          <Link to="/fulfillment" style={{ textDecoration: 'none' }}>
+            <StatCard icon={<LocalShippingIcon />} title="Return Requests" value={retCount} subtitle="submitted total" color="error.main" />
           </Link>
         </Grid>
       </Grid>

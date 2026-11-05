@@ -242,8 +242,10 @@ def process_buyer_export_job(job_id):
             mime_type = "application/json"
             data_list = [build_product_row(p) for p in products]
             content = json.dumps(data_list, indent=2)
+        elif job.format == "xlsx":
+            mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            content = None
         else:
-            # CSV or XLSX fallback
             import io
             f_out = io.StringIO()
             writer = csv.writer(f_out)
@@ -252,14 +254,58 @@ def process_buyer_export_job(job_id):
                 row_data = build_product_row(p)
                 writer.writerow([row_data.get(h, "") for h in export_headers])
             content = f_out.getvalue()
-            if job.format == "xlsx":
-                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            else:
-                mime_type = "text/csv"
+            mime_type = "text/csv"
 
         # Create a MediaAsset for the output file
         storage_key = f"exports/{job.company_scope_reference}/{job.id}/{filename}"
-        
+
+        full_path = os.path.join(settings.MEDIA_ROOT, storage_key)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+        if job.format == "xlsx":
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Product Export"
+
+            header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+            header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+            header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            thin_border = Border(
+                left=Side(style="thin", color="B0B0B0"),
+                right=Side(style="thin", color="B0B0B0"),
+                top=Side(style="thin", color="B0B0B0"),
+                bottom=Side(style="thin", color="B0B0B0"),
+            )
+
+            display_headers = [h.replace("_", " ").title() for h in export_headers]
+            for col_idx, header_name in enumerate(display_headers, start=1):
+                cell = ws.cell(row=1, column=col_idx, value=header_name)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_align
+                cell.border = thin_border
+                ws.column_dimensions[get_column_letter(col_idx)].width = max(14, len(header_name) + 4)
+
+            ws.row_dimensions[1].height = 30
+            ws.freeze_panes = "A2"
+
+            for row_idx, p in enumerate(products, start=2):
+                row_data = build_product_row(p)
+                for col_idx, h in enumerate(export_headers, start=1):
+                    cell = ws.cell(row=row_idx, column=col_idx, value=row_data.get(h, ""))
+                    cell.border = thin_border
+
+            wb.save(full_path)
+            file_size = os.path.getsize(full_path)
+        else:
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            file_size = len(content.encode("utf-8"))
+
         asset = MediaAsset.objects.create(
             id=uuid.uuid4(),
             asset_type="document",
@@ -272,15 +318,9 @@ def process_buyer_export_job(job_id):
             mime_type=mime_type,
             storage_key=storage_key,
             storage_provider="local",
-            file_size_bytes=len(content.encode("utf-8")),
+            file_size_bytes=file_size,
             content_hash=uuid.uuid4().hex
         )
-
-        # Save file to MEDIA_ROOT
-        full_path = os.path.join(settings.MEDIA_ROOT, storage_key)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(content)
 
         # Update job status
         job.output_file_reference = asset.id

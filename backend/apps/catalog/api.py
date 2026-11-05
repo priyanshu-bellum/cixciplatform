@@ -234,7 +234,6 @@ class ProductListSerializer(ProductSerializerBase):
             "vendor_company_reference", "vendor_name",
             "description", "short_description", "promo_information",
             "msrp", "map_price", "sale_price", "buyer_wholesale_price",
-            # Admin-only: stripped for non-admins in to_representation()
             "vendor_wholesale_price_amount", "vendor_wholesale_price_currency",
             "color", "system_color",
             "launch_date", "eol_date",
@@ -938,15 +937,29 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
 
 class DynamicDropdownConfigSerializer(serializers.ModelSerializer):
     display_name = serializers.CharField(required=False, allow_blank=True)
+    linked_product_count = serializers.SerializerMethodField()
+
+    _FIELD_TO_PRODUCT_COLUMN = {
+        "product_category": "product_category",
+        "system_color": "system_color",
+        "brand": "brand",
+    }
 
     class Meta:
         model = DynamicDropdownConfig
         fields = [
             "id", "field_name", "value", "display_name", "created_at",
             "status", "compatibility_mode", "eligible_device_types",
-            "match_logic", "accessory_fields", "compatibility_rules"
+            "match_logic", "accessory_fields", "compatibility_rules",
+            "linked_product_count",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "linked_product_count"]
+
+    def get_linked_product_count(self, obj):
+        product_field = self._FIELD_TO_PRODUCT_COLUMN.get(obj.field_name)
+        if not product_field:
+            return 0
+        return Product.objects.filter(**{product_field: obj.value}).count()
 
     def validate(self, attrs):
         if not attrs.get("display_name"):

@@ -64,7 +64,6 @@ api.interceptors.response.use(
       } catch (refreshErr) {
         localStorage.removeItem('access')
         localStorage.removeItem('refresh')
-        window.location.href = '/login'
         return Promise.reject(refreshErr)
       }
 
