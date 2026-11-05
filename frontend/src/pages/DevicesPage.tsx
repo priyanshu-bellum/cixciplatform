@@ -150,7 +150,7 @@ export default function DevicesPage() {
 
   const { data: dropdownConfigsData } = useQuery({
     queryKey: ['dropdown-configs'],
-    queryFn: () => api.get('/catalog/dropdown-configs/').then(r => r.data),
+    queryFn: () => api.get('/catalog/dropdown-configs/?paginate=false').then(r => r.data),
   })
   const categories = useMemo(() => {
     const data = dropdownConfigsData?.results ?? dropdownConfigsData ?? []

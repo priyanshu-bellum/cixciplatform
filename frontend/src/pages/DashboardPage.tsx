@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
@@ -49,6 +49,14 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import UploadIcon from '@mui/icons-material/Upload'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
+import Collapse from '@mui/material/Collapse'
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 
 // Shared components and utilities
 import api from '../lib/apiClient'
@@ -967,6 +975,242 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ─── SHARED DASHBOARD HELPERS ────────────────────────────────────────────────
+
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
+function WelcomeBanner({ userName, highlights }: { userName: string; highlights?: string[] }) {
+  return (
+    <Card
+      variant="outlined"
+      sx={{
+        mb: 3,
+        background: (theme) =>
+          theme.palette.mode === 'dark'
+            ? 'linear-gradient(135deg, rgba(79,142,247,0.08) 0%, rgba(168,85,247,0.08) 100%)'
+            : 'linear-gradient(135deg, rgba(79,142,247,0.06) 0%, rgba(168,85,247,0.04) 100%)',
+        borderColor: (theme) =>
+          theme.palette.mode === 'dark' ? 'rgba(79,142,247,0.2)' : 'rgba(79,142,247,0.15)',
+      }}
+    >
+      <CardContent sx={{ py: 2.5, px: 3, '&:last-child': { pb: 2.5 } }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+          {getGreeting()}, {userName}
+        </Typography>
+        {highlights && highlights.length > 0 && (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>
+            {highlights.map((h, i) => (
+              <Chip
+                key={i}
+                label={h}
+                size="small"
+                variant="outlined"
+                sx={{ fontSize: '0.75rem', borderColor: 'divider' }}
+              />
+            ))}
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+interface AttentionItem {
+  icon: React.ReactNode
+  label: string
+  severity: 'warning' | 'info' | 'error' | 'success'
+  link?: string
+}
+
+function NeedsAttention({ items }: { items: AttentionItem[] }) {
+  if (items.length === 0) return null
+  const severityColor: Record<string, string> = {
+    warning: 'warning.main', info: 'info.main', error: 'error.main', success: 'success.main',
+  }
+  return (
+    <Card variant="outlined" sx={{ mb: 3 }}>
+      <CardContent sx={{ py: 2, px: 2.5, '&:last-child': { pb: 2 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <WarningAmberIcon sx={{ fontSize: 18, color: 'warning.main' }} />
+          <Typography sx={{ fontSize: '0.8125rem', fontWeight: 650 }}>Needs Attention</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {items.map((item, i) => (
+            <Box
+              key={i}
+              component={item.link ? Link : 'div'}
+              {...(item.link ? { to: item.link, style: { textDecoration: 'none', color: 'inherit' } } : {})}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 1.5,
+                p: 1.25, borderRadius: 1.5,
+                bgcolor: 'action.hover',
+                transition: 'background 0.15s',
+                ...(item.link ? { cursor: 'pointer', '&:hover': { bgcolor: 'action.selected' } } : {}),
+              }}
+            >
+              <Box sx={{ color: severityColor[item.severity] || 'text.secondary', display: 'flex', flexShrink: 0 }}>
+                {item.icon}
+              </Box>
+              <Typography sx={{ fontSize: '0.8125rem', flex: 1 }}>{item.label}</Typography>
+              {item.link && <OpenInNewIcon sx={{ fontSize: 14, color: 'text.disabled' }} />}
+            </Box>
+          ))}
+        </Box>
+      </CardContent>
+    </Card>
+  )
+}
+
+const ACTIVITY_COLORS: Record<string, string> = {
+  completed: '#22c55e', success: '#22c55e', active: '#4f8ef7',
+  pending: '#f59e0b', warning: '#f59e0b', failed: '#ef4444',
+  error: '#ef4444', unknown: '#94a3b8',
+}
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
+function ActivityTimeline({ events, title, emptyText, viewAllLink }: {
+  events: { event: string; desc: string; status: string; time: string; rawTime?: string }[]
+  title: string
+  emptyText: string
+  viewAllLink?: string
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? events : events.slice(0, 5)
+  return (
+    <Card variant="outlined">
+      <CardContent sx={{ py: 2, px: 2.5, '&:last-child': { pb: 2 } }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <AccessTimeIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+            <Typography sx={{ fontSize: '0.8125rem', fontWeight: 650 }}>{title}</Typography>
+            {events.length > 0 && (
+              <Chip label={events.length} size="small" sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 600 }} />
+            )}
+          </Box>
+          {viewAllLink && (
+            <Button component={Link} to={viewAllLink} size="small" endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />} sx={{ fontSize: '0.75rem', textTransform: 'none' }}>
+              View All
+            </Button>
+          )}
+        </Box>
+        {events.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+            {emptyText}
+          </Typography>
+        ) : (
+          <>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {visible.map((ev, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 1.5, py: 1, borderBottom: i < visible.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pt: 0.5 }}>
+                    <FiberManualRecordIcon sx={{ fontSize: 10, color: ACTIVITY_COLORS[ev.status] || ACTIVITY_COLORS.unknown }} />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: '0.8125rem', fontWeight: 550, lineHeight: 1.4 }}>{ev.event}</Typography>
+                    <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', lineHeight: 1.3, mt: 0.25 }} noWrap>{ev.desc}</Typography>
+                  </Box>
+                  <Typography sx={{ fontSize: '0.6875rem', color: 'text.disabled', whiteSpace: 'nowrap', pt: 0.25 }}>
+                    {ev.rawTime ? timeAgo(ev.rawTime) : ev.time}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+            {events.length > 5 && (
+              <Button
+                size="small" fullWidth onClick={() => setExpanded(!expanded)}
+                endIcon={expanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                sx={{ mt: 1, fontSize: '0.75rem', textTransform: 'none', color: 'text.secondary' }}
+              >
+                {expanded ? 'Show Less' : `Show ${events.length - 5} More`}
+              </Button>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function OrdersPreviewTable({ orders, title, emptyText, viewAllLink, columns }: {
+  orders: any[]
+  title: string
+  emptyText: string
+  viewAllLink: string
+  columns: { key: string; label: string; render?: (row: any) => React.ReactNode }[]
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? orders.slice(0, 10) : orders.slice(0, 3)
+  return (
+    <Card variant="outlined">
+      <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2.5, py: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography sx={{ fontSize: '0.8125rem', fontWeight: 650 }}>{title}</Typography>
+            {orders.length > 0 && (
+              <Chip label={orders.length} size="small" sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 600 }} />
+            )}
+          </Box>
+          <Button component={Link} to={viewAllLink} size="small" endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />} sx={{ fontSize: '0.75rem', textTransform: 'none' }}>
+            View All
+          </Button>
+        </Box>
+        {orders.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+            {emptyText}
+          </Typography>
+        ) : (
+          <>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {columns.map(c => <TableCell key={c.key}>{c.label}</TableCell>)}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {visible.map((row: any) => (
+                    <TableRow key={row.id} hover>
+                      {columns.map(c => (
+                        <TableCell key={c.key}>{c.render ? c.render(row) : row[c.key]}</TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            {orders.length > 3 && (
+              <Box sx={{ px: 2.5, py: 1 }}>
+                <Button
+                  size="small" fullWidth onClick={() => setExpanded(!expanded)}
+                  endIcon={expanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                  sx={{ fontSize: '0.75rem', textTransform: 'none', color: 'text.secondary' }}
+                >
+                  {expanded ? 'Show Less' : `Show ${Math.min(orders.length - 3, 7)} More`}
+                </Button>
+              </Box>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── MAIN DASHBOARD PAGE ─────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user } = useAuthStore()
@@ -977,7 +1221,7 @@ export default function DashboardPage() {
   const count = (d: any) => d?.count ?? d?.results?.length ?? d?.length ?? '0'
 
   if (isCixciAdmin) {
-    return <AdminDashboard count={count} />
+    return <AdminDashboard count={count} user={user} />
   } else if (isBuyer) {
     return <BuyerDashboard count={count} user={user} />
   } else if (isVendor) {
@@ -988,7 +1232,7 @@ export default function DashboardPage() {
 }
 
 // ─── CIXCI ADMIN DASHBOARD ───────────────────────────────────────────────────
-function AdminDashboard({ count }: any) {
+function AdminDashboard({ count, user }: any) {
   const [showOnboardModal, setShowOnboardModal] = useState(false)
   const { data: companies } = useQuery({ queryKey: ['admin-companies'], queryFn: () => api.get('/tenant/companies/').then(r => r.data) })
   const { data: users } = useQuery({ queryKey: ['admin-users'], queryFn: () => api.get('/tenant/users/').then(r => r.data) })
@@ -1004,16 +1248,24 @@ function AdminDashboard({ count }: any) {
 
   const { data: auditData } = useQuery({
     queryKey: ['admin-audit-trail'],
-    queryFn: () => api.get('/audit/records/', { params: { page_size: 10, paginate: 'false' } }).then(r => r.data),
+    queryFn: () => api.get('/audit/records/', { params: { page_size: 20, paginate: 'false' } }).then(r => r.data),
   })
   const auditRecords = Array.isArray(auditData) ? auditData : (auditData?.results ?? [])
-  const globalActivity: { event: string; desc: string; status: string; statusText: string; time: string }[] = auditRecords.slice(0, 10).map((r: any) => ({
+  const timelineEvents = useMemo(() => auditRecords.slice(0, 20).map((r: any) => ({
     event: r.event_code?.replace(/_/g, ' ') || 'System event',
-    desc: r.event_description || r.source_module || '—',
+    desc: r.event_description || r.source_module || '',
     status: r.status || 'unknown',
-    statusText: r.status?.replace(/_/g, ' ') || 'Unknown',
-    time: r.created_at ? formatDate(r.created_at) : '—',
-  }))
+    time: r.created_at ? formatDate(r.created_at) : '',
+    rawTime: r.created_at || '',
+  })), [auditRecords])
+
+  const attentionItems = useMemo(() => {
+    const items: AttentionItem[] = []
+    if (Number(pCount) === 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: 'No products in catalog — onboard a vendor to get started', severity: 'warning', link: '/catalog' })
+    if (Number(dCount) === 0) items.push({ icon: <ErrorOutlineIcon sx={{ fontSize: 18 }} />, label: 'No devices imported — upload device data for compatibility', severity: 'error', link: '/devices' })
+    if (Number(cCount) > 0 && Number(uCount) === 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: 'Companies exist but no users — invite admins', severity: 'warning', link: '/settings' })
+    return items
+  }, [pCount, dCount, cCount, uCount])
 
   const pieData = [
     { name: 'Companies', value: Number(cCount) || 0 },
@@ -1022,6 +1274,8 @@ function AdminDashboard({ count }: any) {
     { name: 'Products', value: Number(pCount) || 0 },
   ]
   const ADMIN_COLORS = ['#a855f7', '#4f8ef7', '#22c55e', '#f59e0b']
+
+  const userName = user?.first_name || user?.username || 'Admin'
 
   return (
     <Box>
@@ -1035,6 +1289,15 @@ function AdminDashboard({ count }: any) {
         }
       />
       {showOnboardModal && <OnboardOrgModal onClose={() => setShowOnboardModal(false)} />}
+
+      <WelcomeBanner
+        userName={userName}
+        highlights={[
+          `${cCount} companies`, `${pCount} products`, `${oCount} orders`
+        ]}
+      />
+
+      <NeedsAttention items={attentionItems} />
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
@@ -1146,35 +1409,12 @@ function AdminDashboard({ count }: any) {
         </Grid>
       </Grid>
 
-      <Card variant="outlined">
-        <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
-          <Box sx={{ px: 2.5, py: 2 }}>
-            <Typography sx={{ fontSize: '0.875rem', fontWeight: 600 }}>Global Audit Trail</Typography>
-          </Box>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Event</TableCell>
-                  <TableCell>Description</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Time</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {globalActivity.map((row, i) => (
-                  <TableRow key={i}>
-                    <TableCell sx={{ fontWeight: 500 }}>{row.event}</TableCell>
-                    <TableCell>{row.desc}</TableCell>
-                    <TableCell><StatusChip status={row.status} label={row.statusText} /></TableCell>
-                    <TableCell>{row.time}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+      <ActivityTimeline
+        events={timelineEvents}
+        title="Global Audit Trail"
+        emptyText="No audit activity recorded yet."
+        viewAllLink="/audit"
+      />
     </Box>
   )
 }
@@ -1195,7 +1435,6 @@ function BuyerDashboard({ count, user }: any) {
 
   const ordersData = Array.isArray(orders) ? orders : (orders?.results ?? [])
 
-  // Derive order volume from actual order data grouped by day
   const orderVolumeTrend = (() => {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     const counts: Record<string, number> = {}
@@ -1210,6 +1449,16 @@ function BuyerDashboard({ count, user }: any) {
     return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => ({ day: d, orders: counts[d] || 0 }))
   })()
 
+  const attentionItems = useMemo(() => {
+    const items: AttentionItem[] = []
+    if (Number(dCount) === 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: 'No devices in portfolio — add devices to see compatible accessories', severity: 'warning', link: '/devices' })
+    if (Number(cCount) === 0 && Number(dCount) > 0) items.push({ icon: <ErrorOutlineIcon sx={{ fontSize: 18 }} />, label: 'No compatible accessories found — check your device portfolio', severity: 'info', link: '/catalog' })
+    if (Number(retCount) > 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: `${retCount} return request${Number(retCount) !== 1 ? 's' : ''} pending review`, severity: 'warning', link: '/fulfillment' })
+    return items
+  }, [dCount, cCount, retCount])
+
+  const userName = user?.first_name || user?.username || 'Buyer'
+
   return (
     <Box>
       <PageHeader
@@ -1221,6 +1470,15 @@ function BuyerDashboard({ count, user }: any) {
           </Button>
         }
       />
+
+      <WelcomeBanner
+        userName={userName}
+        highlights={[
+          `${dCount} devices`, `${cCount} compatible`, `${oCount} orders`
+        ]}
+      />
+
+      <NeedsAttention items={attentionItems} />
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
@@ -1318,43 +1576,19 @@ function BuyerDashboard({ count, user }: any) {
         </Grid>
       </Grid>
 
-      <Card variant="outlined">
-        <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
-          <Box sx={{ px: 2.5, py: 2 }}>
-            <Typography sx={{ fontSize: '0.875rem', fontWeight: 600 }}>Recent Routed Purchases</Typography>
-          </Box>
-          <TableContainer>
-            {ordersData.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                No purchase orders found.
-              </Typography>
-            ) : (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Order Reference</TableCell>
-                    <TableCell>SKU</TableCell>
-                    <TableCell>Quantity</TableCell>
-                    <TableCell>Routed State</TableCell>
-                    <TableCell>Created</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {ordersData.slice(0, 5).map((ord: any) => (
-                    <TableRow key={ord.id}>
-                      <TableCell sx={{ fontWeight: 500, fontFamily: 'monospace' }}>{ord.id.slice(0, 8)}...</TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace' }}>{ord.sku}</TableCell>
-                      <TableCell>{ord.quantity}</TableCell>
-                      <TableCell><StatusChip status={ord.routing_status || 'active'} label={ord.routing_status || 'Routed'} /></TableCell>
-                      <TableCell>{formatDate(ord.created_at)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </TableContainer>
-        </CardContent>
-      </Card>
+      <OrdersPreviewTable
+        orders={ordersData}
+        title="Recent Routed Purchases"
+        emptyText="No purchase orders found."
+        viewAllLink="/orders"
+        columns={[
+          { key: 'id', label: 'Order Reference', render: (row: any) => <Typography sx={{ fontWeight: 500, fontFamily: 'monospace', fontSize: 'inherit' }}>{row.id?.slice(0, 8)}...</Typography> },
+          { key: 'sku', label: 'SKU', render: (row: any) => <Typography sx={{ fontFamily: 'monospace', fontSize: 'inherit' }}>{row.sku}</Typography> },
+          { key: 'quantity', label: 'Quantity' },
+          { key: 'routing_status', label: 'Routed State', render: (row: any) => <StatusChip status={row.routing_status || 'active'} label={row.routing_status || 'Routed'} /> },
+          { key: 'created_at', label: 'Created', render: (row: any) => formatDate(row.created_at) },
+        ]}
+      />
     </Box>
   )
 }
@@ -1375,7 +1609,6 @@ function VendorDashboard({ count, user }: any) {
 
   const ordersData = Array.isArray(orders) ? orders : (orders?.results ?? [])
 
-  // Derive fulfillment data from actual orders
   const fulfillData = (() => {
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
     const result: { day: string; on_time: number; late: number }[] = dayNames.map(d => ({ day: d, on_time: 0, late: 0 }))
@@ -1396,6 +1629,16 @@ function VendorDashboard({ count, user }: any) {
     return result
   })()
 
+  const attentionItems = useMemo(() => {
+    const items: AttentionItem[] = []
+    if (Number(pCount) === 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: 'No products listed — add your first accessory to the catalog', severity: 'warning', link: '/catalog' })
+    if (Number(oCount) > 0) items.push({ icon: <ErrorOutlineIcon sx={{ fontSize: 18 }} />, label: `${oCount} order${Number(oCount) !== 1 ? 's' : ''} awaiting fulfillment`, severity: 'info', link: '/orders' })
+    if (Number(retCount) > 0) items.push({ icon: <WarningAmberIcon sx={{ fontSize: 18 }} />, label: `${retCount} return request${Number(retCount) !== 1 ? 's' : ''} need processing`, severity: 'warning', link: '/fulfillment' })
+    return items
+  }, [pCount, oCount, retCount])
+
+  const userName = user?.first_name || user?.username || 'Vendor'
+
   return (
     <Box>
       <PageHeader
@@ -1412,6 +1655,15 @@ function VendorDashboard({ count, user }: any) {
           </Box>
         }
       />
+
+      <WelcomeBanner
+        userName={userName}
+        highlights={[
+          `${pCount} products`, `${oCount} orders`, `${rCount} buyers`
+        ]}
+      />
+
+      <NeedsAttention items={attentionItems} />
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
@@ -1502,43 +1754,19 @@ function VendorDashboard({ count, user }: any) {
         </Grid>
       </Grid>
 
-      <Card variant="outlined">
-        <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
-          <Box sx={{ px: 2.5, py: 2 }}>
-            <Typography sx={{ fontSize: '0.875rem', fontWeight: 600 }}>Incoming Orders to Fulfill</Typography>
-          </Box>
-          <TableContainer>
-            {ordersData.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                No routing orders assigned.
-              </Typography>
-            ) : (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Order Reference</TableCell>
-                    <TableCell>SKU</TableCell>
-                    <TableCell>Quantity</TableCell>
-                    <TableCell>State</TableCell>
-                    <TableCell>Fulfill By</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {ordersData.slice(0, 5).map((ord: any) => (
-                    <TableRow key={ord.id}>
-                      <TableCell sx={{ fontWeight: 500, fontFamily: 'monospace' }}>{ord.id.slice(0, 8)}...</TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace' }}>{ord.sku}</TableCell>
-                      <TableCell>{ord.quantity}</TableCell>
-                      <TableCell><StatusChip status={ord.routing_status || 'pending'} label={ord.routing_status || 'Received'} /></TableCell>
-                      <TableCell>{ord.sla_deadline ? formatDate(ord.sla_deadline) : 'Immediate'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </TableContainer>
-        </CardContent>
-      </Card>
+      <OrdersPreviewTable
+        orders={ordersData}
+        title="Incoming Orders to Fulfill"
+        emptyText="No routing orders assigned."
+        viewAllLink="/orders"
+        columns={[
+          { key: 'id', label: 'Order Reference', render: (row: any) => <Typography sx={{ fontWeight: 500, fontFamily: 'monospace', fontSize: 'inherit' }}>{row.id?.slice(0, 8)}...</Typography> },
+          { key: 'sku', label: 'SKU', render: (row: any) => <Typography sx={{ fontFamily: 'monospace', fontSize: 'inherit' }}>{row.sku}</Typography> },
+          { key: 'quantity', label: 'Quantity' },
+          { key: 'routing_status', label: 'State', render: (row: any) => <StatusChip status={row.routing_status || 'pending'} label={row.routing_status || 'Received'} /> },
+          { key: 'sla_deadline', label: 'Fulfill By', render: (row: any) => row.sla_deadline ? formatDate(row.sla_deadline) : 'Immediate' },
+        ]}
+      />
     </Box>
   )
 }

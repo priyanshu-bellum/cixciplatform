@@ -91,7 +91,7 @@ export default function BuyerProductImagesPage() {
 
   const { data: dropdownData } = useQuery({
     queryKey: ['dropdown-configs'],
-    queryFn: () => api.get('/catalog/dropdown-configs/').then(r => r.data),
+    queryFn: () => api.get('/catalog/dropdown-configs/?paginate=false').then(r => r.data),
   })
   const dropdownConfigs = Array.isArray(dropdownData) ? dropdownData : (dropdownData?.results ?? [])
   const brandOptions: string[] = dropdownConfigs.filter((c: any) => c.field_name === 'brand').map((c: any) => c.value)
