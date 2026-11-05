@@ -124,7 +124,7 @@ class ActivitySummaryAggregationRecord(models.Model):
         db_table = "analytics_summary_aggregation_record"
 
     def save(self, *args, **kwargs):
-        if self.pk and ActivitySummaryAggregationRecord.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError(
                 "ActivitySummaryAggregationRecord is immutable. "
                 "Re-aggregation must create a new record."

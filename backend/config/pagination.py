@@ -11,10 +11,12 @@ class CixciCursorPagination(CursorPagination):
     def paginate_queryset(self, queryset, request, view=None):
         if request.query_params.get("paginate") == "false":
             return None
-        try:
-            self.count = queryset.count()
-        except Exception:
-            self.count = None
+        self.count = None
+        if request.query_params.get("include_count") == "true":
+            try:
+                self.count = queryset.count()
+            except Exception:
+                self.count = None
         return super().paginate_queryset(queryset, request, view)
 
     def get_paginated_response(self, data):

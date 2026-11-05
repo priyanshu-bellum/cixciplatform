@@ -144,7 +144,7 @@ class EffectivePriceSnapshot(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk and EffectivePriceSnapshot.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("EffectivePriceSnapshot is immutable. Create a new snapshot for corrections.")
         super().save(*args, **kwargs)
 
@@ -225,7 +225,7 @@ class ReturnAdjustmentPricingEvidence(models.Model):
         db_table = "pricing_return_adjustment_evidence"
 
     def save(self, *args, **kwargs):
-        if self.pk and ReturnAdjustmentPricingEvidence.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("ReturnAdjustmentPricingEvidence is append-only.")
         super().save(*args, **kwargs)
 
@@ -297,7 +297,7 @@ class MapException(models.Model):
 
     def save(self, *args, **kwargs):
         self.full_clean()
-        is_new = not self.pk or not MapException.objects.filter(pk=self.pk).exists()
+        is_new = self._state.adding
         old_status = None
         old_price = None
         if not is_new:
@@ -380,7 +380,7 @@ class VendorRegionalShippingFee(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        is_new = not self.pk or not VendorRegionalShippingFee.objects.filter(pk=self.pk).exists()
+        is_new = self._state.adding
         super().save(*args, **kwargs)
 
         from apps.audit.models import AuditRecord, RetentionClass, RedactionClass, AccessClass
@@ -438,7 +438,7 @@ class ShippingFeeSnapshot(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk and ShippingFeeSnapshot.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("ShippingFeeSnapshot is immutable. Create a new snapshot for corrections.")
         super().save(*args, **kwargs)
 

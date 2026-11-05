@@ -244,7 +244,7 @@ class InvoiceLine(models.Model):
         unique_together = [("invoice", "idempotency_key")]
 
     def save(self, *args, **kwargs):
-        if self.pk and InvoiceLine.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError(
                 "InvoiceLine is immutable after creation. "
                 "Corrections must use InvoiceAdjustment in a later period."

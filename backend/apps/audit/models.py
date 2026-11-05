@@ -111,7 +111,7 @@ class AuditRecord(models.Model):
 
     def save(self, *args, **kwargs):
         # Enforce append-only: no updates after creation
-        if self.pk and AuditRecord.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("AuditRecord is append-only and cannot be modified after creation.")
         super().save(*args, **kwargs)
 
@@ -200,7 +200,7 @@ class EvidenceRecord(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk and EvidenceRecord.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             # Only allow status transition updates (supersession workflow)
             existing = EvidenceRecord.objects.get(pk=self.pk)
             if existing.evidence_status == EvidenceStatus.ACTIVE and self.evidence_status == EvidenceStatus.SUPERSEDED:

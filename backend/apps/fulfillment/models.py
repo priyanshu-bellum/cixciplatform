@@ -173,7 +173,7 @@ class SLAEvaluationRecord(models.Model):
         db_table = "fulfillment_sla_evaluation"
 
     def save(self, *args, **kwargs):
-        if self.pk and SLAEvaluationRecord.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError(
                 "SLAEvaluationRecord is immutable after creation. "
                 "PR-B delivery date content validity does NOT retroactively change SLA outcome."
@@ -256,7 +256,7 @@ class SLAOverrideExcuseEvidence(models.Model):
         db_table = "fulfillment_sla_override_evidence"
 
     def save(self, *args, **kwargs):
-        if self.pk and SLAOverrideExcuseEvidence.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("SLAOverrideExcuseEvidence is immutable. Create a new reversing record.")
         super().save(*args, **kwargs)
 
@@ -303,7 +303,7 @@ class DeliveryDateCorrectionEvidence(models.Model):
         db_table = "fulfillment_delivery_date_correction"
 
     def save(self, *args, **kwargs):
-        if self.pk and DeliveryDateCorrectionEvidence.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("DeliveryDateCorrectionEvidence is immutable.")
         super().save(*args, **kwargs)
 

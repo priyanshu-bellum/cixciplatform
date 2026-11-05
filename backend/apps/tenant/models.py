@@ -653,7 +653,7 @@ class RegionChangeEvent(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk and RegionChangeEvent.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("RegionChangeEvent is append-only. Cannot modify existing events.")
         super().save(*args, **kwargs)
 

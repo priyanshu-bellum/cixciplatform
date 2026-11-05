@@ -361,14 +361,15 @@ class Product(models.Model):
 
         # Validate category-specific accessory fields
         if self.product_category:
-            from apps.catalog.models import DynamicDropdownConfig
-            cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=self.product_category).first()
+            from config.cache_service import dropdown_cache
+            all_cats = dropdown_cache.get_by_field("product_category", status=None)
+            cat_cfg = next((c for c in all_cats if c["value"] == self.product_category), None)
             if not cat_cfg:
                 raise ValidationError({"product_category": "The selected product category is not recognized."})
-            if cat_cfg.status != 'active':
-                raise ValidationError({"product_category": f"Product Category '{self.product_category}' is '{cat_cfg.status}' and cannot be used for products."})
+            if cat_cfg["status"] != 'active':
+                raise ValidationError({"product_category": f"Product Category '{self.product_category}' is '{cat_cfg['status']}' and cannot be used for products."})
             
-            rules = cat_cfg.compatibility_rules or {}
+            rules = (cat_cfg.get("compatibility_rules") if isinstance(cat_cfg, dict) else getattr(cat_cfg, "compatibility_rules", None)) or {}
             compat_fields = [
                 "headphone_jack_compatibility",
                 "bluetooth_compatibility",
@@ -556,10 +557,12 @@ class Product(models.Model):
 
             is_owner_or_admin = is_admin or is_owner
 
-            try:
-                orig = Product.objects.get(pk=self.pk)
-            except Product.DoesNotExist:
-                orig = None
+            orig = getattr(self, "_original", None)
+            if orig is None:
+                try:
+                    orig = Product.objects.get(pk=self.pk)
+                except Product.DoesNotExist:
+                    orig = None
 
             if orig:
                 if orig.status == ProductStatus.ACTIVE and self.status == ProductStatus.INACTIVE:
@@ -631,95 +634,83 @@ class Product(models.Model):
 
     def save(self, *args, actor_id=None, **kwargs):
         from django.utils import timezone
-        is_new = not self.pk or not Product.objects.filter(pk=self.pk).exists()
+        import re as _re
+        is_new = self._state.adding
         self._actor_id = actor_id
-        
-        # Apply AI cleanup and generation rules
-        colors_list = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "brown", "black", "white", "silver", "multi-color"]
+
+        _original = None
+        if not is_new:
+            try:
+                _original = Product.objects.get(pk=self.pk)
+            except Product.DoesNotExist:
+                pass
+        self._original = _original
+
+        colors_pattern = _re.compile(
+            r"\b(?:red|orange|yellow|green|blue|purple|pink|brown|black|white|silver|multi-color)\b",
+            _re.IGNORECASE,
+        )
+
+        def _strip_colors(text):
+            if not text:
+                return text
+            return " ".join(colors_pattern.sub("", text).split())
+
         if is_new:
             if self.name:
                 self.name = " ".join(self.name.split())
-            if self.description:
-                for c in colors_list:
-                    self.description = self.description.replace(f" {c} ", " ")
-                    self.description = self.description.replace(f" {c.capitalize()} ", " ")
-                    self.description = self.description.replace(f" {c.upper()} ", " ")
-            if self.short_description:
-                for c in colors_list:
-                    self.short_description = self.short_description.replace(f" {c} ", " ")
-                    self.short_description = self.short_description.replace(f" {c.capitalize()} ", " ")
-                    self.short_description = self.short_description.replace(f" {c.upper()} ", " ")
-            else:
-                self.short_description = f"Premium {self.brand or ''} {self.product_category or 'accessory'} designed for optimal compatibility."
-                for c in colors_list:
-                    self.short_description = self.short_description.replace(f" {c} ", " ")
-                    self.short_description = self.short_description.replace(f" {c.capitalize()} ", " ")
-            
+            self.description = _strip_colors(self.description)
+            self.short_description = _strip_colors(self.short_description)
+            if not self.short_description:
+                self.short_description = _strip_colors(
+                    f"Premium {self.brand or ''} {self.product_category or 'accessory'} designed for optimal compatibility."
+                )
+
             if not self.meta_title and self.name:
                 self.meta_title = f"{self.brand or ''} {self.name} | CIXCI"
                 if len(self.meta_title) > 65:
                     self.meta_title = self.meta_title[:62] + "..."
-                    
+
             if not self.meta_description and self.name:
                 self.meta_description = f"Purchase the high-quality {self.name} ({self.sku}) in our {self.product_category or 'accessory'} section."
                 if len(self.meta_description) > 160:
                     self.meta_description = self.meta_description[:157] + "..."
-        else:
-            try:
-                old_self = Product.objects.get(pk=self.pk)
-            except Product.DoesNotExist:
-                old_self = None
+        elif _original:
+            content_fields = ["description", "short_description", "meta_title", "meta_description", "promo_information"]
+            content_changed = any(
+                getattr(self, f) != getattr(_original, f) for f in content_fields
+            )
 
-            if old_self:
-                content_fields = ["description", "short_description", "meta_title", "meta_description", "promo_information"]
-                content_changed = False
-                for f in content_fields:
-                    if getattr(self, f) != getattr(old_self, f):
-                        content_changed = True
-                        break
-                
-                if content_changed:
-                    if self.name:
-                        self.name = " ".join(self.name.split())
-                    if self.description:
-                        for c in colors_list:
-                            self.description = self.description.replace(f" {c} ", " ")
-                            self.description = self.description.replace(f" {c.capitalize()} ", " ")
-                            self.description = self.description.replace(f" {c.upper()} ", " ")
-                    if self.short_description:
-                        for c in colors_list:
-                            self.short_description = self.short_description.replace(f" {c} ", " ")
-                            self.short_description = self.short_description.replace(f" {c.capitalize()} ", " ")
-                            self.short_description = self.short_description.replace(f" {c.upper()} ", " ")
-                    
-                    if not self.meta_title and self.name:
-                        self.meta_title = f"{self.brand or ''} {self.name} | CIXCI"
-                        if len(self.meta_title) > 65:
-                            self.meta_title = self.meta_title[:62] + "..."
-                            
-                    if not self.meta_description and self.name:
-                        self.meta_description = f"Purchase the high-quality {self.name} ({self.sku}) in our {self.product_category or 'accessory'} section."
-                        if len(self.meta_description) > 160:
-                            self.meta_description = self.meta_description[:157] + "..."
+            if content_changed:
+                if self.name:
+                    self.name = " ".join(self.name.split())
+                self.description = _strip_colors(self.description)
+                self.short_description = _strip_colors(self.short_description)
+
+                if not self.meta_title and self.name:
+                    self.meta_title = f"{self.brand or ''} {self.name} | CIXCI"
+                    if len(self.meta_title) > 65:
+                        self.meta_title = self.meta_title[:62] + "..."
+
+                if not self.meta_description and self.name:
+                    self.meta_description = f"Purchase the high-quality {self.name} ({self.sku}) in our {self.product_category or 'accessory'} section."
+                    if len(self.meta_description) > 160:
+                        self.meta_description = self.meta_description[:157] + "..."
 
 
         self.clean()
-        
+
         old_launch = None
         old_release = None
         old_status = None
         old_eol = None
-        
-        if not is_new:
-            try:
-                old_self = Product.objects.get(pk=self.pk)
-                old_launch = old_self.launch_date
-                old_release = old_self.release_date
-                old_status = old_self.status
-                old_eol = old_self.eol_date
-            except Product.DoesNotExist:
-                pass
-            
+
+        if not is_new and _original:
+            old_launch = _original.launch_date
+            old_release = _original.release_date
+            old_status = _original.status
+            old_eol = _original.eol_date
+
         # Automated status transitions based on inventory
         import pytz
         est = pytz.timezone("US/Eastern")
@@ -848,7 +839,11 @@ class Product(models.Model):
             affected_buyers = []
             try:
                 from apps.catalog.models import BuyerScopedCompatibilityProjection
-                affected_buyers = [str(x) for x in BuyerScopedCompatibilityProjection.objects.values_list("buyer_reference", flat=True).distinct()]
+                affected_buyers = [
+                    str(x) for x in BuyerScopedCompatibilityProjection.objects
+                    .filter(compatible_product_ids__contains=str(self.id))
+                    .values_list("buyer_reference", flat=True).distinct()
+                ]
             except Exception:
                 pass
 
@@ -1136,7 +1131,7 @@ class BuyerProductExportSelectionSnapshot(models.Model):
         db_table = "catalog_export_selection_snapshot"
 
     def save(self, *args, **kwargs):
-        if self.pk and BuyerProductExportSelectionSnapshot.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("BuyerProductExportSelectionSnapshot is immutable after creation.")
         super().save(*args, **kwargs)
 

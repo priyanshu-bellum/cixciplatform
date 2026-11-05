@@ -85,7 +85,9 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         if not self.order_id:
             from apps.tenant.models import Company
-            import re
+            from django.db.models import Max
+            from django.db.models.functions import Cast, NullIf, Left, StrIndex
+            from django.db.models import IntegerField, Value
             slug = "cixci"
             if self.buyer_reference:
                 co = Company.objects.filter(id=self.buyer_reference).first()
@@ -94,17 +96,21 @@ class Order(models.Model):
                 elif co and co.name:
                     from django.utils.text import slugify
                     slug = slugify(co.name)
-            existing_order_ids = Order.objects.exclude(order_id__isnull=True).exclude(order_id="").values_list("order_id", flat=True)
-            max_num = 999
-            for oid in existing_order_ids:
-                m = re.match(r"^(\d+)", str(oid))
-                if m:
-                    try:
-                        val = int(m.group(1))
-                        if val > max_num:
-                            max_num = val
-                    except ValueError:
-                        pass
+            result = (
+                Order.objects
+                .exclude(order_id__isnull=True)
+                .exclude(order_id="")
+                .filter(order_id__regex=r"^\d+")
+                .annotate(
+                    dash_pos=StrIndex("order_id", Value("-")),
+                    num_part=Cast(
+                        NullIf(Left("order_id", models.F("dash_pos") - 1), Value("")),
+                        output_field=IntegerField(),
+                    ),
+                )
+                .aggregate(max_num=Max("num_part"))
+            )
+            max_num = result["max_num"] or 999
             next_num = max_num + 1
             self.order_id = f"{next_num}-{slug}"
         super().save(*args, **kwargs)

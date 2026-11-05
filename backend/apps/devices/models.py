@@ -179,19 +179,23 @@ class Device(models.Model):
             if re.search(r'<script.*?>.*?</script>', self.name, flags=re.IGNORECASE | re.DOTALL):
                 self.name = re.sub(r'<script.*?>.*?</script>', '', self.name, flags=re.IGNORECASE | re.DOTALL)
             self.name = escape(self.name.strip())
-        is_new = not self.pk or not Device.objects.filter(pk=self.pk).exists()
+        is_new = self._state.adding
+
+        _original = None
+        if not is_new:
+            try:
+                _original = Device.objects.get(pk=self.pk)
+            except Device.DoesNotExist:
+                pass
+
         if self.launch_date:
             from django.utils import timezone
             today = timezone.localdate()
             if self.launch_date > today:
                 self.lifecycle_status = "inactive"
             elif not is_new and self.lifecycle_status == "inactive":
-                try:
-                    old_self = Device.objects.get(pk=self.pk)
-                    if old_self.launch_date and old_self.launch_date > today:
-                        self.lifecycle_status = "available"
-                except Device.DoesNotExist:
-                    pass
+                if _original and _original.launch_date and _original.launch_date > today:
+                    self.lifecycle_status = "available"
 
         actor_id = kwargs.pop("actor_id", None)
         old_status = None
@@ -206,18 +210,14 @@ class Device(models.Model):
         old_manufacturer = None
         old_type = None
         old_name = None
-        if not is_new:
-            try:
-                old_self = Device.objects.get(pk=self.pk)
-                old_status = old_self.lifecycle_status
-                old_launch = old_self.launch_date
-                old_manufacturer = old_self.manufacturer
-                old_type = old_self.device_type
-                old_name = old_self.name
-                for f in compat_fields:
-                    old_compat_fields[f] = getattr(old_self, f)
-            except Device.DoesNotExist:
-                pass
+        if _original:
+            old_status = _original.lifecycle_status
+            old_launch = _original.launch_date
+            old_manufacturer = _original.manufacturer
+            old_type = _original.device_type
+            old_name = _original.name
+            for f in compat_fields:
+                old_compat_fields[f] = getattr(_original, f)
 
         super().save(*args, **kwargs)
 
@@ -543,7 +543,7 @@ class BuyerDevicePortfolioSnapshot(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk and BuyerDevicePortfolioSnapshot.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("BuyerDevicePortfolioSnapshot is immutable after creation.")
         super().save(*args, **kwargs)
 
@@ -586,6 +586,6 @@ class BuyerDevicePortfolioChangeRecord(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk and BuyerDevicePortfolioChangeRecord.objects.filter(pk=self.pk).exists():
+        if not self._state.adding:
             raise ValueError("BuyerDevicePortfolioChangeRecord is append-only.")
         super().save(*args, **kwargs)

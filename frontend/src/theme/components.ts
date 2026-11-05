@@ -59,7 +59,9 @@ export const components: Components<Theme> = {
           }`,
         },
       }),
-      inputSizeSmall: { padding: '7.5px 14px' },
+      input: {
+        '&.MuiInputBase-inputSizeSmall': { padding: '7.5px 14px' },
+      },
     },
   },
   MuiSelect: {

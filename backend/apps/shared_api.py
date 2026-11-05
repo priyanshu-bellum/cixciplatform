@@ -1487,10 +1487,9 @@ class CompanyAPIKeySerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "token", "created_at", "last_used_at"]
 
     def get_company_name(self, obj):
-        from apps.tenant.models import Company
         if obj.company_scope_reference:
-            co = Company.objects.filter(id=obj.company_scope_reference).first()
-            return co.name if co else ""
+            from config.cache_service import company_cache
+            return company_cache.get_name(obj.company_scope_reference) or ""
         return ""
 
 class CompanyAPIKeyViewSet(CheckAccessMixin, viewsets.ModelViewSet):

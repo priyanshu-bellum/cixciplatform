@@ -37,9 +37,8 @@ class ProductSerializerBase(serializers.ModelSerializer):
             if bulk is not None:
                 vendor = bulk.get(obj.vendor_company_reference)
                 return vendor["name"] if vendor else None
-            from apps.tenant.models import Company
-            vendor = Company.objects.filter(id=obj.vendor_company_reference).first()
-            return vendor.name if vendor else None
+            from config.cache_service import company_cache
+            return company_cache.get_name(obj.vendor_company_reference)
         except Exception:
             return None
 
@@ -49,9 +48,9 @@ class ProductSerializerBase(serializers.ModelSerializer):
             if bulk is not None:
                 vendor = bulk.get(obj.vendor_company_reference)
                 return vendor["map_pricing_enforced"] if vendor else False
-            from apps.tenant.models import Company
-            vendor = Company.objects.filter(id=obj.vendor_company_reference).first()
-            return vendor.map_pricing_enforced if vendor else False
+            from config.cache_service import company_cache
+            co = company_cache.get(obj.vendor_company_reference)
+            return co.get("map_pricing_enforced", False) if co else False
         except Exception:
             return False
 
@@ -894,9 +893,8 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
         return None
 
     def get_buyer_company_name(self, obj):
-        from apps.tenant.models import Company
-        company = Company.objects.filter(id=obj.company_scope_reference).first()
-        return company.name if company else "Unknown Buyer"
+        from config.cache_service import company_cache
+        return company_cache.get_name(obj.company_scope_reference) or "Unknown Buyer"
 
     def get_products_snapshot(self, obj):
         snapshot = getattr(obj, "selection_snapshot", None)
@@ -904,26 +902,30 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
             return snapshot.exported_products_snapshot
         if snapshot and snapshot.product_ids:
             from apps.catalog.models import Product
-            from apps.tenant.models import Company
-            products = Product.objects.filter(id__in=snapshot.product_ids)
+            from config.cache_service import company_cache
+            products = list(Product.objects.filter(id__in=snapshot.product_ids))
+            vendor_ids = list({p.vendor_company_reference for p in products if p.vendor_company_reference})
+            vendors = company_cache.bulk_get(vendor_ids)
+            image_refs = [p.primary_image_reference for p in products if p.primary_image_reference]
+            asset_map = {}
+            if image_refs:
+                from apps.media.models import MediaAsset
+                asset_map = {
+                    str(a.id): a for a in MediaAsset.objects.filter(id__in=image_refs, status="ready")
+                }
             data = []
             for p in products:
-                vendor = Company.objects.filter(id=p.vendor_company_reference).first()
                 primary_image_url = ""
                 if p.primary_image_reference:
-                    try:
-                        from apps.media.models import MediaAsset
-                        asset = MediaAsset.objects.get(id=p.primary_image_reference)
-                        if asset.status == "ready":
-                            primary_image_url = media_short_url(asset.id)
-                    except Exception:
-                        pass
+                    asset = asset_map.get(str(p.primary_image_reference))
+                    if asset:
+                        primary_image_url = media_short_url(asset.id)
                 if not primary_image_url and isinstance(p.media_references, list) and len(p.media_references) > 0:
                     primary_image_url = p.media_references[0]
-
+                vendor = vendors.get(str(p.vendor_company_reference))
                 data.append({
                     "product_id": str(p.id),
-                    "vendor_name": vendor.name if vendor else "Unknown Vendor",
+                    "vendor_name": vendor["name"] if vendor else "Unknown Vendor",
                     "primary_image_url": primary_image_url or "",
                     "product_name": p.name,
                     "sku": p.sku,
@@ -4332,10 +4334,13 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
                 approved_exceptions = approved_exceptions.filter(buyer_company_reference__isnull=True)
             except_skus = set(approved_exceptions.values_list("sku", flat=True))
             
+            from config.cache_service import company_cache
+            vendor_ids = list({p.vendor_company_reference for p in products if p.vendor_company_reference})
+            vendors_bulk = company_cache.bulk_get(vendor_ids)
             violations = []
             for p in products:
-                vendor = Company.objects.filter(id=p.vendor_company_reference).first()
-                is_map_enforced = vendor.map_pricing_enforced if vendor else False
+                vendor = vendors_bulk.get(str(p.vendor_company_reference))
+                is_map_enforced = vendor.get("map_pricing_enforced", False) if vendor else False
                 
                 if is_map_enforced and p.map_price is None:
                     violations.append((p, f"Product {p.sku} is missing a MAP price which is enforced for this vendor."))
@@ -4505,9 +4510,8 @@ class VendorCategoryMappingSerializer(serializers.ModelSerializer):
 
     def get_vendor_company_name(self, obj):
         try:
-            from apps.tenant.models import Company
-            company = Company.objects.filter(id=obj.vendor_company_reference).first()
-            return company.name if company else None
+            from config.cache_service import company_cache
+            return company_cache.get_name(obj.vendor_company_reference)
         except Exception:
             return None
 
