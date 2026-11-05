@@ -254,7 +254,7 @@ export default function AllProductsTab({
           </Typography>
         </Box>
       ) : viewMode === 'grid' ? (
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2.5, opacity: isFetching ? 0.6 : 1, transition: 'opacity 0.2s' }}>
           {products.map((p: any) => (
             <ProductCard
               key={p.id}
@@ -273,7 +273,7 @@ export default function AllProductsTab({
           ))}
         </Box>
       ) : (
-        <Box sx={{ overflowX: 'auto' }}>
+        <Box sx={{ overflowX: 'auto', opacity: isFetching ? 0.6 : 1, transition: 'opacity 0.2s' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -301,6 +301,7 @@ export default function AllProductsTab({
                       <img
                         src={getImageUrl(p.primary_image_url)}
                         alt={p.name}
+                        loading="lazy"
                         style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 4 }}
                       />
                     ) : (

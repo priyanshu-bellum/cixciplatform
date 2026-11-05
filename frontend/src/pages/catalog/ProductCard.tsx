@@ -126,6 +126,7 @@ export default function ProductCard({
             <img
               src={getImageUrl(displayImg)}
               alt={p.name}
+              loading="lazy"
               className="admin-main-img"
             />
           ) : (
@@ -161,7 +162,7 @@ export default function ProductCard({
                   setHoveredImage(angleImg)
                 }}
               >
-                <img src={getImageUrl(angleImg)} alt={`Angle ${idx + 1}`} />
+                <img src={getImageUrl(angleImg)} alt={`Angle ${idx + 1}`} loading="lazy" />
               </div>
             )
           })}

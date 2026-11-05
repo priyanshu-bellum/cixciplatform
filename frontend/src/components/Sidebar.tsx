@@ -162,7 +162,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           component="img"
           src={mode === 'dark' ? '/cixci-logo-white-rgb-864px@72ppi.png' : '/cixci-logo-color.jpeg'}
           alt="CIXCI"
-          sx={{ height: 28, objectFit: 'contain' }}
+          sx={{ height: 38, objectFit: 'contain' }}
         />
       </Box>
 

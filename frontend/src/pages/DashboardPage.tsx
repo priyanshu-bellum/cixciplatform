@@ -55,6 +55,7 @@ import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import Collapse from '@mui/material/Collapse'
+import { useTheme } from '@mui/material/styles'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 
@@ -985,36 +986,56 @@ function getGreeting() {
 }
 
 function WelcomeBanner({ userName, highlights }: { userName: string; highlights?: string[] }) {
+  const theme = useTheme()
+  const logoSrc = theme.palette.mode === 'dark'
+    ? '/cixci-logo-white-rgb-864px@72ppi.png'
+    : '/cixci-logo-color.jpeg'
+
   return (
     <Card
       variant="outlined"
       sx={{
         mb: 3,
-        background: (theme) =>
-          theme.palette.mode === 'dark'
+        background: (t) =>
+          t.palette.mode === 'dark'
             ? 'linear-gradient(135deg, rgba(79,142,247,0.08) 0%, rgba(168,85,247,0.08) 100%)'
             : 'linear-gradient(135deg, rgba(79,142,247,0.06) 0%, rgba(168,85,247,0.04) 100%)',
-        borderColor: (theme) =>
-          theme.palette.mode === 'dark' ? 'rgba(79,142,247,0.2)' : 'rgba(79,142,247,0.15)',
+        borderColor: (t) =>
+          t.palette.mode === 'dark' ? 'rgba(79,142,247,0.2)' : 'rgba(79,142,247,0.15)',
       }}
     >
       <CardContent sx={{ py: 2.5, px: 3, '&:last-child': { pb: 2.5 } }}>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-          {getGreeting()}, {userName}
-        </Typography>
-        {highlights && highlights.length > 0 && (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>
-            {highlights.map((h, i) => (
-              <Chip
-                key={i}
-                label={h}
-                size="small"
-                variant="outlined"
-                sx={{ fontSize: '0.75rem', borderColor: 'divider' }}
-              />
-            ))}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+              {getGreeting()}, {userName}
+            </Typography>
+            {highlights && highlights.length > 0 && (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>
+                {highlights.map((h, i) => (
+                  <Chip
+                    key={i}
+                    label={h}
+                    size="small"
+                    variant="outlined"
+                    sx={{ fontSize: '0.75rem', borderColor: 'divider' }}
+                  />
+                ))}
+              </Box>
+            )}
           </Box>
-        )}
+          <Box
+            component="img"
+            src={logoSrc}
+            alt="CIXCI"
+            sx={{
+              height: 44,
+              objectFit: 'contain',
+              flexShrink: 0,
+              display: { xs: 'none', sm: 'block' },
+            }}
+          />
+        </Box>
       </CardContent>
     </Card>
   )

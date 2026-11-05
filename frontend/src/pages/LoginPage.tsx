@@ -130,7 +130,7 @@ export default function LoginPage() {
             component="img"
             src="/cixci-logo-white-rgb-864px@72ppi.png"
             alt="CIXCI"
-            sx={{ height: 36, objectFit: 'contain', mb: 6 }}
+            sx={{ height: 52, objectFit: 'contain', mb: 6 }}
           />
 
           <Typography
@@ -218,7 +218,7 @@ export default function LoginPage() {
               component="img"
               src={mode === 'dark' ? '/cixci-logo-white-rgb-864px@72ppi.png' : '/cixci-logo-color.jpeg'}
               alt="CIXCI"
-              sx={{ height: 36, objectFit: 'contain' }}
+              sx={{ height: 52, objectFit: 'contain' }}
             />
           </Box>
 
