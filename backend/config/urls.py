@@ -253,130 +253,133 @@ class VendorSchemaView(APIView):
             },
 
             # ── 2. Pricing: Vendors view their pricing profiles & snapshots ──
-            "/api/v1/pricing/profiles/": {
-                "methods": {"get"},
-                "tag": "2. Pricing (Vendor Price Profiles)",
-            },
-            "/api/v1/pricing/profiles/{id}/": {
-                "methods": {"get"},
-                "tag": "2. Pricing (Vendor Price Profiles)",
-            },
-            "/api/v1/pricing/snapshots/": {
-                "methods": {"get"},
-                "tag": "2. Pricing (Vendor Price Profiles)",
-            },
-            "/api/v1/pricing/snapshots/{id}/": {
-                "methods": {"get"},
-                "tag": "2. Pricing (Vendor Price Profiles)",
-            },
-            "/api/v1/pricing/exceptions/": {
-                "methods": {"get"},
-                "tag": "2. Pricing (Vendor Price Profiles)",
-            },
-            "/api/v1/pricing/exceptions/{id}/": {
-                "methods": {"get"},
-                "tag": "2. Pricing (Vendor Price Profiles)",
-            },
+            # NOTE: Temporarily removed from vendor API docs per client request (2026-11-05)
+            # "/api/v1/pricing/profiles/": {
+            #     "methods": {"get"},
+            #     "tag": "2. Pricing (Vendor Price Profiles)",
+            # },
+            # "/api/v1/pricing/profiles/{id}/": {
+            #     "methods": {"get"},
+            #     "tag": "2. Pricing (Vendor Price Profiles)",
+            # },
+            # "/api/v1/pricing/snapshots/": {
+            #     "methods": {"get"},
+            #     "tag": "2. Pricing (Vendor Price Profiles)",
+            # },
+            # "/api/v1/pricing/snapshots/{id}/": {
+            #     "methods": {"get"},
+            #     "tag": "2. Pricing (Vendor Price Profiles)",
+            # },
+            # "/api/v1/pricing/exceptions/": {
+            #     "methods": {"get"},
+            #     "tag": "2. Pricing (Vendor Price Profiles)",
+            # },
+            # "/api/v1/pricing/exceptions/{id}/": {
+            #     "methods": {"get"},
+            #     "tag": "2. Pricing (Vendor Price Profiles)",
+            # },
 
             # ── 3. Orders: Vendors see suborders routed to them ──
             "/api/v1/routing/orders/": {
                 "methods": {"get"},
-                "tag": "3. Orders (Routed Suborders)",
+                "tag": "2. Orders (Routed Suborders)",
             },
             "/api/v1/routing/orders/{id}/": {
                 "methods": {"get"},
-                "tag": "3. Orders (Routed Suborders)",
+                "tag": "2. Orders (Routed Suborders)",
             },
             "/api/v1/routing/export-logs/": {
                 "methods": {"get", "post"},
-                "tag": "3. Orders (Routed Suborders)",
+                "tag": "2. Orders (Routed Suborders)",
             },
             "/api/v1/routing/export-logs/{id}/": {
                 "methods": {"get"},
-                "tag": "3. Orders (Routed Suborders)",
+                "tag": "2. Orders (Routed Suborders)",
             },
 
             # ── 4. Fulfillment: Vendors submit shipping & return updates ──
             "/api/v1/fulfillment/handoffs/": {
                 "methods": {"get", "post"},
-                "tag": "4. Fulfillment (Shipping & Returns)",
+                "tag": "3. Fulfillment (Shipping & Returns)",
             },
             "/api/v1/fulfillment/handoffs/{id}/": {
                 "methods": {"get", "patch"},
-                "tag": "4. Fulfillment (Shipping & Returns)",
+                "tag": "3. Fulfillment (Shipping & Returns)",
             },
             "/api/v1/fulfillment/shipping-import-logs/": {
                 "methods": {"get", "post"},
-                "tag": "4. Fulfillment (Shipping & Returns)",
+                "tag": "3. Fulfillment (Shipping & Returns)",
             },
             "/api/v1/fulfillment/shipping-import-logs/{id}/": {
                 "methods": {"get"},
-                "tag": "4. Fulfillment (Shipping & Returns)",
+                "tag": "3. Fulfillment (Shipping & Returns)",
             },
             "/api/v1/fulfillment/return-requests/": {
                 "methods": {"get"},
-                "tag": "4. Fulfillment (Shipping & Returns)",
+                "tag": "3. Fulfillment (Shipping & Returns)",
             },
             "/api/v1/fulfillment/return-requests/{id}/": {
                 "methods": {"get"},
-                "tag": "4. Fulfillment (Shipping & Returns)",
+                "tag": "3. Fulfillment (Shipping & Returns)",
             },
             "/api/v1/fulfillment/return-import-logs/": {
                 "methods": {"get", "post"},
-                "tag": "4. Fulfillment (Shipping & Returns)",
+                "tag": "3. Fulfillment (Shipping & Returns)",
             },
             "/api/v1/fulfillment/return-import-logs/{id}/": {
                 "methods": {"get"},
-                "tag": "4. Fulfillment (Shipping & Returns)",
+                "tag": "3. Fulfillment (Shipping & Returns)",
             },
 
             # ── 5. Devices: Read-only reference catalog for compatibility ──
-            "/api/v1/devices/types/": {
-                "methods": {"get"},
-                "tag": "5. Devices (Reference Catalog)",
-            },
-            "/api/v1/devices/types/{id}/": {
-                "methods": {"get"},
-                "tag": "5. Devices (Reference Catalog)",
-            },
-            "/api/v1/devices/manufacturers/": {
-                "methods": {"get"},
-                "tag": "5. Devices (Reference Catalog)",
-            },
-            "/api/v1/devices/manufacturers/{id}/": {
-                "methods": {"get"},
-                "tag": "5. Devices (Reference Catalog)",
-            },
-            "/api/v1/devices/devices/": {
-                "methods": {"get"},
-                "tag": "5. Devices (Reference Catalog)",
-            },
-            "/api/v1/devices/devices/{id}/": {
-                "methods": {"get"},
-                "tag": "5. Devices (Reference Catalog)",
-            },
+            # NOTE: Temporarily removed from vendor API docs per client request (2026-11-05)
+            # "/api/v1/devices/types/": {
+            #     "methods": {"get"},
+            #     "tag": "5. Devices (Reference Catalog)",
+            # },
+            # "/api/v1/devices/types/{id}/": {
+            #     "methods": {"get"},
+            #     "tag": "5. Devices (Reference Catalog)",
+            # },
+            # "/api/v1/devices/manufacturers/": {
+            #     "methods": {"get"},
+            #     "tag": "5. Devices (Reference Catalog)",
+            # },
+            # "/api/v1/devices/manufacturers/{id}/": {
+            #     "methods": {"get"},
+            #     "tag": "5. Devices (Reference Catalog)",
+            # },
+            # "/api/v1/devices/devices/": {
+            #     "methods": {"get"},
+            #     "tag": "5. Devices (Reference Catalog)",
+            # },
+            # "/api/v1/devices/devices/{id}/": {
+            #     "methods": {"get"},
+            #     "tag": "5. Devices (Reference Catalog)",
+            # },
 
             # ── 6. Invoicing: Vendors view invoices issued to/from them ──
-            "/api/v1/invoicing/invoices/": {
-                "methods": {"get"},
-                "tag": "6. Invoicing (Vendor Invoices)",
-            },
-            "/api/v1/invoicing/invoices/{id}/": {
-                "methods": {"get"},
-                "tag": "6. Invoicing (Vendor Invoices)",
-            },
-            "/api/v1/invoicing/invoices/{id}/lines/": {
-                "methods": {"get"},
-                "tag": "6. Invoicing (Vendor Invoices)",
-            },
-            "/api/v1/invoicing/invoices/{id}/adjustments/": {
-                "methods": {"get"},
-                "tag": "6. Invoicing (Vendor Invoices)",
-            },
-            "/api/v1/invoicing/invoices/{id}/reconciliation/": {
-                "methods": {"get", "post"},
-                "tag": "6. Invoicing (Vendor Invoices)",
-            },
+            # NOTE: Temporarily removed from vendor API docs per client request (2026-11-05)
+            # "/api/v1/invoicing/invoices/": {
+            #     "methods": {"get"},
+            #     "tag": "6. Invoicing (Vendor Invoices)",
+            # },
+            # "/api/v1/invoicing/invoices/{id}/": {
+            #     "methods": {"get"},
+            #     "tag": "6. Invoicing (Vendor Invoices)",
+            # },
+            # "/api/v1/invoicing/invoices/{id}/lines/": {
+            #     "methods": {"get"},
+            #     "tag": "6. Invoicing (Vendor Invoices)",
+            # },
+            # "/api/v1/invoicing/invoices/{id}/adjustments/": {
+            #     "methods": {"get"},
+            #     "tag": "6. Invoicing (Vendor Invoices)",
+            # },
+            # "/api/v1/invoicing/invoices/{id}/reconciliation/": {
+            #     "methods": {"get", "post"},
+            #     "tag": "6. Invoicing (Vendor Invoices)",
+            # },
         }
 
         filtered_paths = {}
@@ -431,13 +434,10 @@ class VendorSchemaView(APIView):
         data["info"]["description"] = (
             "## API Integration Specifications for Accessory Vendors\n\n"
             "This documentation covers the endpoints that Accessory Vendors use "
-            "to integrate with the CIXCI platform across 6 areas:\n\n"
+            "to integrate with the CIXCI platform across 3 areas:\n\n"
             "1. **Products (Catalog Management)**: Create and manage your accessory product listings, descriptions, pricing inputs, and export feeds.\n"
-            "2. **Pricing (Price Profiles)**: View your pricing profiles, effective price snapshots, and MAP exception records.\n"
-            "3. **Orders (Routed Suborders)**: View suborders routed to your company and manage export logs for your order fulfillment workflow.\n"
-            "4. **Fulfillment (Shipping & Returns)**: Submit shipping tracking updates, import fulfillment CSVs, view and process return requests.\n"
-            "5. **Devices (Reference Catalog)**: Read-only access to the device reference catalog for product compatibility mapping.\n"
-            "6. **Invoicing (Vendor Invoices)**: View invoices issued to or from your company, line items, adjustments, and submit reconciliation uploads.\n\n"
+            "2. **Orders (Routed Suborders)**: View suborders routed to your company and manage export logs for your order fulfillment workflow.\n"
+            "3. **Fulfillment (Shipping & Returns)**: Submit shipping tracking updates, import fulfillment CSVs, view and process return requests.\n\n"
             "### Authentication\n"
             "All requests must include an API key via the `X-API-Key` header. "
             "API keys are generated by CIXCI system administrators and scoped to your company.\n\n"
@@ -445,8 +445,6 @@ class VendorSchemaView(APIView):
             "The following fields are **not** included in vendor API responses:\n"
             "- **Products**: `buyer_wholesale_price`, `vendor_name`, `selling_status`, `release_date`, `inventory_threshold`, `compatibility_status`, "
             "`vendor_category_raw`, `product_category_override`, `product_category_override_by`, `product_category_override_at`, `category_validation_status`\n"
-            "- **Device Compatibility** (CIXCI-internal auto-mapping): `compatibility_mode`, `headphone_jack_compatibility`, `bluetooth_compatibility`, "
-            "`compatible_charging_interface`, `wireless_charging_compatibility`, `storage_expansion_compatibility`, `memory_capacity`, `compatible_watch_case_size`\n"
             "- **Orders**: `email` (customer email is not exposed to vendors)"
         )
         data["tags"] = [
@@ -455,24 +453,12 @@ class VendorSchemaView(APIView):
                 "description": "Create, update, and manage your accessory product listings in the CIXCI catalog."
             },
             {
-                "name": "2. Pricing (Vendor Price Profiles)",
-                "description": "View pricing profiles, effective price snapshots, and MAP price exception records for your products."
-            },
-            {
-                "name": "3. Orders (Routed Suborders)",
+                "name": "2. Orders (Routed Suborders)",
                 "description": "View suborders routed to your company by CIXCI and manage order export logs."
             },
             {
-                "name": "4. Fulfillment (Shipping & Returns)",
+                "name": "3. Fulfillment (Shipping & Returns)",
                 "description": "Submit shipment tracking updates, upload fulfillment CSVs, and process customer return requests."
-            },
-            {
-                "name": "5. Devices (Reference Catalog)",
-                "description": "Read-only device reference catalog for verifying product compatibility with device types and manufacturers."
-            },
-            {
-                "name": "6. Invoicing (Vendor Invoices)",
-                "description": "View invoices, line items, and adjustments. Upload vendor reconciliation files against CIXCI invoices."
             },
         ]
         return Response(data)
