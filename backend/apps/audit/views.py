@@ -21,9 +21,7 @@ class AuditRecordViewSet(viewsets.ReadOnlyModelViewSet):
         super().check_permissions(request)
         user = request.user
         if user and not getattr(user, "is_cixci_admin", False):
-            company = getattr(user, "company", None)
-            if company and getattr(company, "company_type", None) == "buyer":
-                raise PermissionDenied("Buyer users cannot access audit logs.")
+            raise PermissionDenied("Only CIXCI system admins can access audit logs.")
 
     def get_queryset(self):
         user = self.request.user
