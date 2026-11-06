@@ -340,7 +340,14 @@ export default function DevicesPage() {
     queryFn: () => api.get('/devices/types/', { params: { limit: 100 } }).then(r => r.data),
   })
 
-  const devices = data?.results ?? (Array.isArray(data) ? data : [])
+  const devicesRaw = data?.results ?? (Array.isArray(data) ? data : [])
+  const devices = useMemo(() => {
+    return [...devicesRaw].sort((a: any, b: any) => {
+      const dateA = a.launch_date ? new Date(a.launch_date).getTime() : 0
+      const dateB = b.launch_date ? new Date(b.launch_date).getTime() : 0
+      return dateB - dateA
+    })
+  }, [devicesRaw])
   const myDevices = portfolio ?? []
 
   const filteredMyDevices = useMemo(() => {
@@ -1266,7 +1273,7 @@ export default function DevicesPage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Name</TableCell>
+                      <TableCell>Device Name</TableCell>
                       <TableCell>Manufacturer</TableCell>
                       <TableCell>Type</TableCell>
                       <TableCell>Status</TableCell>
@@ -1388,7 +1395,7 @@ export default function DevicesPage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Device</TableCell>
+                      <TableCell>Device Name</TableCell>
                       <TableCell>Manufacturer</TableCell>
                       <TableCell>Type</TableCell>
                       <TableCell>Status</TableCell>
@@ -1433,6 +1440,15 @@ export default function DevicesPage() {
                           </TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                              {ref.active_flag && ref.has_accessories && (
+                                <Button
+                                  variant="contained"
+                                  size="small"
+                                  onClick={() => navigate(`/catalog?tab=projection&compat_device_id=${ref.device}`)}
+                                >
+                                  View Products
+                                </Button>
+                              )}
                               {ref.active_flag ? (
                                 <Button
                                   variant="outlined"
@@ -1446,15 +1462,6 @@ export default function DevicesPage() {
                               ) : (
                                 <Button variant="outlined" size="small" onClick={() => handleAdd(ref.device)}>
                                   Add back
-                                </Button>
-                              )}
-                              {ref.active_flag && ref.has_accessories && (
-                                <Button
-                                  variant="contained"
-                                  size="small"
-                                  onClick={() => navigate(`/catalog?tab=projection&compat_device_id=${ref.device}`)}
-                                >
-                                  View Products
                                 </Button>
                               )}
                             </Box>
@@ -2208,7 +2215,8 @@ export default function DevicesPage() {
                     <ReadOnlyField>
                       {(() => {
                         const display = getDisplayStatus(editingDevice?.lifecycle_status, editingDevice?.launch_date)
-                        return display === 'eol' ? 'EOL' : display
+                        if (display === 'eol') return 'EOL'
+                        return display ? display.charAt(0).toUpperCase() + display.slice(1) : 'Unknown'
                       })()}
                     </ReadOnlyField>
                   )}

@@ -578,7 +578,7 @@ export default function ManageProductDialog({
                   )}
 
                   {product.exported_date && (
-                    <DetailField label="Exported Date">
+                    <DetailField label={isBuyer ? 'Product Added Date' : 'Exported Date'}>
                       <Typography variant="body2">{product.exported_date}</Typography>
                     </DetailField>
                   )}

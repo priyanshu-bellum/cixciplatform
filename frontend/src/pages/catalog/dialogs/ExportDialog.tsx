@@ -28,6 +28,8 @@ interface ExportDialogProps {
   onExported: () => void
   selectedProductIds: string[]
   tab: string
+  user?: any
+  deviceId?: string
 }
 
 const FORMAT_OPTIONS = [
@@ -44,7 +46,10 @@ export default function ExportDialog({
   onExported,
   selectedProductIds,
   tab,
+  user,
+  deviceId,
 }: ExportDialogProps) {
+  const isBuyer = user?.company_type === 'buyer'
   const [format, setFormat] = useState('csv')
   const [includeIncompatible, setIncludeIncompatible] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -72,6 +77,7 @@ export default function ExportDialog({
         format,
         include_incompatible: includeIncompatible,
         product_ids: selectedProductIds,
+        device_id: deviceId || undefined,
       }
 
       await api.post('/catalog/export-jobs/create_job/', payload)
@@ -89,14 +95,14 @@ export default function ExportDialog({
     } finally {
       setExporting(false)
     }
-  }, [format, includeIncompatible, selectedProductIds, onExported])
+  }, [format, includeIncompatible, selectedProductIds, onExported, deviceId])
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <FileDownloadIcon />
-          Export Products
+          {isBuyer ? 'Add Products' : 'Export Products'}
         </Box>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
@@ -108,25 +114,31 @@ export default function ExportDialog({
           {/* Selection info */}
           <Typography variant="body2" color="textSecondary">
             {selectedProductIds.length > 0
-              ? `${selectedProductIds.length} product(s) selected for export from the "${tab}" tab.`
-              : `All products in the "${tab}" tab will be exported.`}
+              ? isBuyer
+                ? `${selectedProductIds.length} product(s) selected to add.`
+                : `${selectedProductIds.length} product(s) selected for export from the "${tab}" tab.`
+              : isBuyer
+                ? 'All compatible products will be added.'
+                : `All products in the "${tab}" tab will be exported.`}
           </Typography>
 
-          {/* Format select */}
-          <FormControl fullWidth size="small">
-            <InputLabel>Export Format</InputLabel>
-            <Select
-              value={format}
-              label="Export Format"
-              onChange={(e) => setFormat(e.target.value)}
-            >
-              {FORMAT_OPTIONS.map((opt) => (
-                <MenuItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          {/* Format select — hidden for buyers (API-only) */}
+          {!isBuyer && (
+            <FormControl fullWidth size="small">
+              <InputLabel>Export Format</InputLabel>
+              <Select
+                value={format}
+                label="Export Format"
+                onChange={(e) => setFormat(e.target.value)}
+              >
+                {FORMAT_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
 
           {/* Include incompatible checkbox */}
           <FormControlLabel
@@ -157,7 +169,7 @@ export default function ExportDialog({
             disabled={exporting}
             startIcon={<FileDownloadIcon />}
           >
-            {exporting ? 'Creating Job...' : 'Export'}
+            {exporting ? 'Processing...' : isBuyer ? 'Add Products' : 'Export'}
           </Button>
         )}
       </DialogActions>

@@ -186,12 +186,12 @@ export default function ProductCard({
           </span>
         </div>
 
-        {/* Exported date (admin / buyer) */}
+        {/* Exported / Product Added date (admin / buyer) */}
         {(isCixciAdmin || isBuyer) &&
           p.exported_date &&
           formatExportedDate(p.exported_date) ? (
             <div className="admin-exported-row">
-              <span className="admin-label">Exported Date:</span>
+              <span className="admin-label">{isBuyer ? 'Product Added Date:' : 'Exported Date:'}</span>
               <span className="admin-val">{formatExportedDate(p.exported_date)}</span>
             </div>
           ) : null}

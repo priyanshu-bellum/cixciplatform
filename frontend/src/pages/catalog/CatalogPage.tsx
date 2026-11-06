@@ -197,7 +197,7 @@ export default function CatalogPage() {
       >
         <Tab label="All Products" value="products" />
         {isBuyer && <Tab label="My Compatibility" value="projection" />}
-        {isBuyer && <Tab label="Export Jobs" value="export_jobs" />}
+        {isBuyer && <Tab label="Added Products" value="export_jobs" />}
       </Tabs>
 
       {tab === 'products' && (

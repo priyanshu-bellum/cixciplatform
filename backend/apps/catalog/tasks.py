@@ -328,16 +328,17 @@ def process_buyer_export_job(job_id):
         job.completed_at = timezone.now()
         job.save()
 
-        # Update or create BuyerProductExportDate records for each product
+        # Update or create BuyerProductExportDate records for each product (per device)
         from apps.catalog.models import BuyerProductExportDate
         for product_id in product_ids:
             BuyerProductExportDate.objects.update_or_create(
-                buyer_reference=job.buyer_reference,
                 company_scope_reference=job.company_scope_reference,
                 buyer_entity_reference=job.buyer_entity_reference,
                 product_id=product_id,
+                device_reference=job.device_reference,
                 defaults={
-                    "exported_at": job.completed_at
+                    "buyer_reference": job.buyer_reference,
+                    "exported_at": job.completed_at,
                 }
             )
 

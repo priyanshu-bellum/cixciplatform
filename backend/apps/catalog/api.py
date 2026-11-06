@@ -1346,14 +1346,26 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if not user or user.is_anonymous:
             return Product.objects.none()
 
-        # Annotate buyer-specific exported_date
+        # Annotate buyer-specific exported_date (per device when filtered)
         from django.db.models import Subquery, OuterRef, Value, DateTimeField
         from apps.catalog.models import BuyerProductExportDate
         company = getattr(user, "company", None)
         if company and company.company_type == "buyer":
-            exported_subquery = BuyerProductExportDate.objects.filter(
+            export_filter = dict(
                 company_scope_reference=company.id,
-                product_id=OuterRef("pk")
+                product_id=OuterRef("pk"),
+            )
+            device_id_param = self.request.query_params.get("device_id")
+            if device_id_param:
+                from uuid import UUID as _UUID
+                try:
+                    dev_ids = [_UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
+                    if len(dev_ids) == 1:
+                        export_filter["device_reference"] = dev_ids[0]
+                except (ValueError, TypeError):
+                    pass
+            exported_subquery = BuyerProductExportDate.objects.filter(
+                **export_filter
             ).values("exported_at")[:1]
             qs = qs.annotate(exported_date=Subquery(exported_subquery))
         else:
@@ -4309,6 +4321,7 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
                 "System admins cannot create personal export jobs."
             )
 
+        device_id = request.data.get("device_id", None)
         product_ids = request.data.get("product_ids", [])
         if product_ids:
             from apps.catalog.models import Product
@@ -4417,12 +4430,22 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
         if not user_full_name:
             user_full_name = request.user.email
 
+        # Validate device_id if provided
+        device_ref = None
+        if device_id:
+            from uuid import UUID as _UUID
+            try:
+                device_ref = _UUID(str(device_id))
+            except (ValueError, TypeError):
+                device_ref = None
+
         job = BuyerProductExportJob.objects.create(
             buyer_reference=request.user.id,
             company_scope_reference=request.user.entity.company_id,
             buyer_entity_reference=request.user.entity_id,
             requested_by=request.user.id,
             portfolio_snapshot_reference=portfolio_snapshot_ref,
+            device_reference=device_ref,
             format="API",
             include_incompatible=False,
             include_media_missing=bool(request.data.get("include_media_missing", False)),
@@ -4452,6 +4475,28 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
             logger.error("Export task failed inline for job %s: %s", job.id, task_exc)
 
         return Response(BuyerExportJobSerializer(job).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["get"])
+    def added_products(self, request):
+        """Return product IDs already added by this buyer for a specific device."""
+        device_id = request.query_params.get("device_id")
+        if not device_id:
+            return Response({"product_ids": []})
+
+        from uuid import UUID as _UUID
+        try:
+            device_uuid = _UUID(device_id.strip())
+        except (ValueError, TypeError):
+            return Response({"product_ids": []})
+
+        from apps.catalog.models import BuyerProductExportDate
+        added = BuyerProductExportDate.objects.filter(
+            company_scope_reference=request.user.entity.company_id,
+            buyer_entity_reference=request.user.entity_id,
+            device_reference=device_uuid,
+        ).values_list("product_id", flat=True)
+
+        return Response({"product_ids": [str(pid) for pid in added]})
 
 
 class DynamicDropdownConfigViewSet(viewsets.ModelViewSet):

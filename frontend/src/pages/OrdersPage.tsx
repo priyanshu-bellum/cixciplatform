@@ -78,6 +78,7 @@ export default function OrdersPage() {
   const { dialogProps, confirm } = useConfirmDialog()
   const { user } = useAuthStore()
   const isVendor = user?.company_type === 'vendor'
+  const isBuyer = user?.company_type === 'buyer'
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [showNewOrderModal, setShowNewOrderModal] = useState(false)
@@ -399,14 +400,16 @@ export default function OrdersPage() {
         title="Orders"
         subtitle="Buyer orders and vendor routing specification"
         actions={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleOpenCreateModal}
-            size="small"
-          >
-            New Order
-          </Button>
+          !isBuyer ? (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleOpenCreateModal}
+              size="small"
+            >
+              New Order
+            </Button>
+          ) : undefined
         }
       />
 

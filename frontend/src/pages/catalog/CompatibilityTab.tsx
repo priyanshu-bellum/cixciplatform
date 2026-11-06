@@ -11,7 +11,9 @@ import TableCell from '@mui/material/TableCell'
 import Skeleton from '@mui/material/Skeleton'
 import Button from '@mui/material/Button'
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag'
+import Paper from '@mui/material/Paper'
 import RefreshIcon from '@mui/icons-material/Refresh'
+import InventoryIcon from '@mui/icons-material/Inventory2Outlined'
 import api from '../../lib/apiClient'
 import { getImageUrl, formatCurrency } from '../../lib/formatters'
 import { SERVER_PAGE_SIZE } from './constants'
@@ -52,9 +54,27 @@ export default function CompatibilityTab({
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   const [serverPage, setServerPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [exportedProductIds, setExportedProductIds] = useState<Set<string>>(new Set())
   const [showExportModal, setShowExportModal] = useState(false)
   const [refreshingProj, setRefreshingProj] = useState(false)
+
+  const activeDeviceId = useMemo(() => {
+    if (!filters.filterDeviceId) return null
+    const ids = filters.filterDeviceId.split(',').filter(Boolean)
+    return ids.length === 1 ? ids[0] : null
+  }, [filters.filterDeviceId])
+
+  const { data: addedData, refetch: refetchAdded } = useQuery<{ product_ids: string[] }>({
+    queryKey: ['buyer-added-products', activeDeviceId],
+    queryFn: () => api.get('/catalog/export-jobs/added_products/', {
+      params: { device_id: activeDeviceId },
+    }).then(r => r.data),
+    enabled: !!activeDeviceId,
+  })
+
+  const exportedProductIds = useMemo(() => {
+    if (!addedData?.product_ids) return new Set<string>()
+    return new Set<string>(addedData.product_ids)
+  }, [addedData])
 
   useEffect(() => { setServerPage(1) }, [
     debouncedSearch, filters.filterCategories, filters.filterBrands,
@@ -134,6 +154,14 @@ export default function CompatibilityTab({
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const filteredDeviceName = useMemo(() => {
+    if (!filters.filterDeviceId || !Array.isArray(portfolio)) return null
+    const deviceIds = filters.filterDeviceId.split(',').filter(Boolean)
+    if (deviceIds.length !== 1) return null
+    const ref = portfolio.find((r: any) => r.device === deviceIds[0])
+    return ref?.device_name || null
+  }, [filters.filterDeviceId, portfolio])
+
   const allChecked = products.length > 0 && products.every((p: any) => selectedIds.includes(p.id))
   const someChecked = !allChecked && products.some((p: any) => selectedIds.includes(p.id))
 
@@ -177,6 +205,33 @@ export default function CompatibilityTab({
           {refreshingProj ? 'Refreshing…' : 'Refresh'}
         </Button>
       </Box>
+
+      {totalProducts > 0 && (
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 2,
+            px: 2.5,
+            py: 1.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            bgcolor: 'action.hover',
+          }}
+        >
+          <InventoryIcon sx={{ fontSize: 22, color: 'primary.main' }} />
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+              Total Compatible Accessories: {totalProducts}
+            </Typography>
+            {filteredDeviceName && (
+              <Typography variant="caption" color="text.secondary">
+                Showing accessories for {filteredDeviceName}
+              </Typography>
+            )}
+          </Box>
+        </Paper>
+      )}
 
       <ProductFilterBar
         filters={filters}
@@ -289,16 +344,14 @@ export default function CompatibilityTab({
         open={showExportModal}
         onClose={() => setShowExportModal(false)}
         onExported={() => {
-          setExportedProductIds(prev => {
-            const next = new Set(prev)
-            selectedIds.forEach(id => next.add(id))
-            return next
-          })
+          refetchAdded()
           setSelectedIds([])
           setShowExportModal(false)
         }}
         selectedProductIds={selectedIds}
         tab="projection"
+        user={user}
+        deviceId={activeDeviceId || undefined}
       />
     </Box>
   )

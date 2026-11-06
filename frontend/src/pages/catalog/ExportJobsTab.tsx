@@ -49,7 +49,7 @@ export default function ExportJobsTab({ user }: ExportJobsTabProps) {
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h6">Export Jobs</Typography>
+        <Typography variant="h6">Added Products</Typography>
         <Button
           size="small"
           variant="outlined"
@@ -93,9 +93,9 @@ export default function ExportJobsTab({ user }: ExportJobsTabProps) {
       ) : jobs.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <DescriptionIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
-          <Typography variant="h6" color="text.secondary">No export jobs yet</Typography>
+          <Typography variant="h6" color="text.secondary">No added products yet</Typography>
           <Typography variant="body2" color="text.secondary">
-            Select products from the All Products or My Compatibility tab and click Export to create a job.
+            Select products from the My Compatibility tab and click Add Products to get started.
           </Typography>
         </Box>
       ) : (

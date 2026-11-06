@@ -7,7 +7,7 @@ const STATUS_MAP: Record<string, { color: ChipProps['color']; label?: string }> 
   complete: { color: 'success' },
   refunded: { color: 'success' },
   paid: { color: 'success' },
-  exported: { color: 'success' },
+  exported: { color: 'success', label: 'Product Added' },
   ready: { color: 'success' },
   shipped: { color: 'success' },
   selling: { color: 'success' },

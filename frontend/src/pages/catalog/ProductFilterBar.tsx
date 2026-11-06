@@ -264,7 +264,7 @@ export default function ProductFilterBar({
           </span>
           {onExportSelection && (
             <Button size="small" variant="contained" onClick={onExportSelection}>
-              Export Selection
+              {isBuyer ? 'Add Products' : 'Export Selection'}
             </Button>
           )}
           {onClearSelection && (

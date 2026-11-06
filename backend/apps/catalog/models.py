@@ -1075,6 +1075,12 @@ class BuyerProductExportJob(models.Model):
     # Projection reference
     compatibility_projection_reference = models.UUIDField(null=True, blank=True)
 
+    # Per-device tracking: which device the buyer was viewing when they added products
+    device_reference = models.UUIDField(
+        null=True, blank=True, db_index=True,
+        help_text="Device ID the buyer was filtering by when creating this export"
+    )
+
     # Job configuration
     include_incompatible = models.BooleanField(default=False)
     include_media_missing = models.BooleanField(
@@ -1138,24 +1144,34 @@ class BuyerProductExportSelectionSnapshot(models.Model):
 
 class BuyerProductExportDate(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    
+
     # Buyer-scope triad
     buyer_reference = models.UUIDField(db_index=True)
     company_scope_reference = models.UUIDField(db_index=True)
     buyer_entity_reference = models.UUIDField(db_index=True)
-    
+
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="exported_dates")
+    device_reference = models.UUIDField(
+        null=True, blank=True, db_index=True,
+        help_text="Device ID this product was added for (per-device tracking)"
+    )
     exported_at = models.DateTimeField()
 
     class Meta:
         db_table = "catalog_buyer_product_exported_date"
-        unique_together = [("buyer_reference", "company_scope_reference", "buyer_entity_reference", "product")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company_scope_reference", "buyer_entity_reference", "product", "device_reference"],
+                name="unique_buyer_product_device_export",
+            ),
+        ]
         indexes = [
             models.Index(fields=["company_scope_reference", "product"]),
+            models.Index(fields=["company_scope_reference", "device_reference"]),
         ]
 
     def __str__(self):
-        return f"BuyerProductExportDate(buyer={self.buyer_reference}, product={self.product.sku}, date={self.exported_at})"
+        return f"BuyerProductExportDate(buyer={self.buyer_reference}, product={self.product.sku}, device={self.device_reference}, date={self.exported_at})"
 
 
 class DynamicDropdownConfig(models.Model):

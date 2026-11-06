@@ -14,19 +14,22 @@ interface MultiSelectProps {
   onChange: (value: string[]) => void;
   placeholder?: string;
   disabled?: boolean;
+  sx?: Record<string, any>;
 }
 
 function isOptionObjects(opts: string[] | SelectOption[]): opts is SelectOption[] {
   return opts.length > 0 && typeof opts[0] === 'object';
 }
 
-export default function MultiSelect({ label, options, value, onChange, placeholder, disabled }: MultiSelectProps) {
+export default function MultiSelect({ label, options, value, onChange, placeholder, disabled, sx }: MultiSelectProps) {
+  const mergedSx = { minWidth: 180, ...sx };
   if (isOptionObjects(options)) {
     const optMap = new Map(options.map(o => [o.value, o.label]));
     return (
       <Autocomplete<SelectOption, true, false, false>
         multiple
         size="small"
+        sx={mergedSx}
         options={options}
         getOptionLabel={o => o.label}
         isOptionEqualToValue={(opt, val) => opt.value === val.value}
@@ -49,6 +52,7 @@ export default function MultiSelect({ label, options, value, onChange, placehold
     <Autocomplete<string, true, false, false>
       multiple
       size="small"
+      sx={mergedSx}
       options={options as string[]}
       value={value}
       onChange={(_, newVal) => onChange(newVal)}
