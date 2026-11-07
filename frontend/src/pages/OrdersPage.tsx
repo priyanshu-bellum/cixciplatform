@@ -958,7 +958,7 @@ export default function OrdersPage() {
         slotProps={{
           paper: {
             sx: {
-              width: 580,
+              width: 720,
               maxWidth: '100%',
               p: 3,
               display: 'flex',
@@ -1116,15 +1116,15 @@ export default function OrdersPage() {
                 No line items found.
               </Typography>
             ) : (
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1 }}>
-                <Table size="small">
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, overflowX: 'auto' }}>
+                <Table size="small" sx={{ minWidth: 620 }}>
                   <TableHead>
                     <TableRow>
                       <TableCell>Product / SKU</TableCell>
-                      <TableCell>Vendor / Details</TableCell>
+                      <TableCell>Vendor</TableCell>
                       <TableCell align="right">Qty</TableCell>
                       <TableCell align="right">MSRP</TableCell>
-                      <TableCell align="right">{isVendor ? 'Vendor Wholesale Price' : 'Wholesale Price'}</TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{isVendor ? 'Vendor Price' : 'Wholesale'}</TableCell>
                       <TableCell align="right">Total</TableCell>
                     </TableRow>
                   </TableHead>
