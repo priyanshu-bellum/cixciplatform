@@ -110,7 +110,7 @@ export default function LoginPage() {
             right: '-20%',
             width: '70%',
             height: '70%',
-            background: 'radial-gradient(circle, rgba(37,99,235,0.08) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(8,67,135,0.08) 0%, transparent 70%)',
             pointerEvents: 'none',
           },
           '&::after': {
@@ -120,7 +120,7 @@ export default function LoginPage() {
             left: '-10%',
             width: '50%',
             height: '50%',
-            background: 'radial-gradient(circle, rgba(79,142,247,0.06) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(11,106,176,0.06) 0%, transparent 70%)',
             pointerEvents: 'none',
           },
         }}
@@ -170,8 +170,8 @@ export default function LoginPage() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    bgcolor: 'rgba(79,142,247,0.1)',
-                    color: '#4f8ef7',
+                    bgcolor: 'rgba(11,106,176,0.1)',
+                    color: '#0B6AB0',
                     flexShrink: 0,
                   }}
                 >

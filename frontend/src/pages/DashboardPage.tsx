@@ -998,10 +998,10 @@ function WelcomeBanner({ userName, highlights }: { userName: string; highlights?
         mb: 3,
         background: (t) =>
           t.palette.mode === 'dark'
-            ? 'linear-gradient(135deg, rgba(79,142,247,0.08) 0%, rgba(168,85,247,0.08) 100%)'
-            : 'linear-gradient(135deg, rgba(79,142,247,0.06) 0%, rgba(168,85,247,0.04) 100%)',
+            ? 'linear-gradient(135deg, rgba(11,106,176,0.08) 0%, rgba(243,107,28,0.08) 100%)'
+            : 'linear-gradient(135deg, rgba(8,67,135,0.06) 0%, rgba(206,73,18,0.04) 100%)',
         borderColor: (t) =>
-          t.palette.mode === 'dark' ? 'rgba(79,142,247,0.2)' : 'rgba(79,142,247,0.15)',
+          t.palette.mode === 'dark' ? 'rgba(11,106,176,0.2)' : 'rgba(8,67,135,0.15)',
       }}
     >
       <CardContent sx={{ py: 2.5, px: 3, '&:last-child': { pb: 2.5 } }}>
@@ -1088,7 +1088,7 @@ function NeedsAttention({ items }: { items: AttentionItem[] }) {
 }
 
 const ACTIVITY_COLORS: Record<string, string> = {
-  completed: '#22c55e', success: '#22c55e', active: '#4f8ef7',
+  completed: '#22c55e', success: '#22c55e', active: '#0B6AB0',
   pending: '#f59e0b', warning: '#f59e0b', failed: '#ef4444',
   error: '#ef4444', unknown: '#94a3b8',
 }
@@ -1294,7 +1294,7 @@ function AdminDashboard({ count, user }: any) {
     { name: 'Devices', value: Number(dCount) || 0 },
     { name: 'Products', value: Number(pCount) || 0 },
   ]
-  const ADMIN_COLORS = ['#a855f7', '#4f8ef7', '#22c55e', '#f59e0b']
+  const ADMIN_COLORS = ['#0B6AB0', '#F36B1C', '#22c55e', '#F3D649']
 
   const userName = user?.first_name || user?.username || 'Admin'
 

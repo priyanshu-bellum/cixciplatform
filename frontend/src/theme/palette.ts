@@ -1,5 +1,9 @@
 import type { PaletteOptions } from '@mui/material/styles';
 
+// ── CIXCI Brand Palette ─────────────────────────────────────────────────────
+// Primary Blues: Catalina Blue #042C71, Dark Cerulean #084387, Green-blue #0B6AB0
+// Secondary:    Sinopia #CE4912, Orange-red #F36B1C, Sandstorm #F3D649
+
 export const darkPalette: PaletteOptions = {
   mode: 'dark',
   background: {
@@ -7,14 +11,14 @@ export const darkPalette: PaletteOptions = {
     paper: '#111827',
   },
   primary: {
-    main: '#4f8ef7',
-    light: '#7db3ff',
-    dark: '#2563eb',
+    main: '#0B6AB0',
+    light: '#4E9BD6',
+    dark: '#084387',
   },
   secondary: {
-    main: '#a855f7',
-    light: '#c084fc',
-    dark: '#7c3aed',
+    main: '#F36B1C',
+    light: '#F5923E',
+    dark: '#CE4912',
   },
   success: {
     main: '#22c55e',
@@ -22,9 +26,9 @@ export const darkPalette: PaletteOptions = {
     dark: '#16a34a',
   },
   warning: {
-    main: '#f59e0b',
-    light: '#fbbf24',
-    dark: '#d97706',
+    main: '#F3D649',
+    light: '#F5E070',
+    dark: '#D4B830',
   },
   error: {
     main: '#ef4444',
@@ -38,8 +42,8 @@ export const darkPalette: PaletteOptions = {
   },
   divider: '#1e293b',
   action: {
-    hover: 'rgba(79, 142, 247, 0.08)',
-    selected: 'rgba(79, 142, 247, 0.12)',
+    hover: 'rgba(11, 106, 176, 0.08)',
+    selected: 'rgba(11, 106, 176, 0.12)',
   },
 };
 
@@ -50,14 +54,14 @@ export const lightPalette: PaletteOptions = {
     paper: '#ffffff',
   },
   primary: {
-    main: '#2563eb',
-    light: '#4f8ef7',
-    dark: '#1d4ed8',
+    main: '#084387',
+    light: '#0B6AB0',
+    dark: '#042C71',
   },
   secondary: {
-    main: '#7c3aed',
-    light: '#a855f7',
-    dark: '#6d28d9',
+    main: '#CE4912',
+    light: '#F36B1C',
+    dark: '#A83A0E',
   },
   success: {
     main: '#16a34a',
@@ -66,7 +70,7 @@ export const lightPalette: PaletteOptions = {
   },
   warning: {
     main: '#d97706',
-    light: '#f59e0b',
+    light: '#F3D649',
     dark: '#b45309',
   },
   error: {
@@ -81,7 +85,7 @@ export const lightPalette: PaletteOptions = {
   },
   divider: '#e2e8f0',
   action: {
-    hover: 'rgba(37, 99, 235, 0.06)',
-    selected: 'rgba(37, 99, 235, 0.10)',
+    hover: 'rgba(8, 67, 135, 0.06)',
+    selected: 'rgba(8, 67, 135, 0.10)',
   },
 };

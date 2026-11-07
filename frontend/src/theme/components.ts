@@ -54,8 +54,8 @@ export const components: Components<Theme> = {
         '&.Mui-focused': {
           boxShadow: `0 0 0 3px ${
             theme.palette.mode === 'dark'
-              ? 'rgba(79,142,247,0.15)'
-              : 'rgba(37,99,235,0.1)'
+              ? 'rgba(11,106,176,0.15)'
+              : 'rgba(8,67,135,0.1)'
           }`,
         },
       }),
