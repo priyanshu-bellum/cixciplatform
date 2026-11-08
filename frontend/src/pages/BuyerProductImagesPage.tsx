@@ -89,13 +89,12 @@ export default function BuyerProductImagesPage() {
     page_size: PAGE_SIZE,
   }), [debouncedSearch, filterBrand, filterCategory, page])
 
-  const { data: dropdownData } = useQuery({
-    queryKey: ['dropdown-configs'],
-    queryFn: () => api.get('/catalog/dropdown-configs/?paginate=false').then(r => r.data),
+  const { data: filterOptionsData } = useQuery({
+    queryKey: ['buyer-product-images-filter-options'],
+    queryFn: () => api.get('/media/buyer-product-images/filter-options/').then(r => r.data),
   })
-  const dropdownConfigs = Array.isArray(dropdownData) ? dropdownData : (dropdownData?.results ?? [])
-  const brandOptions: string[] = dropdownConfigs.filter((c: any) => c.field_name === 'brand').map((c: any) => c.value)
-  const categoryOptions: string[] = dropdownConfigs.filter((c: any) => c.field_name === 'product_category').map((c: any) => c.value)
+  const brandOptions: string[] = filterOptionsData?.brands ?? []
+  const categoryOptions: string[] = filterOptionsData?.categories ?? []
 
   const { data, isLoading } = useQuery({
     queryKey: ['buyer-product-images', params],

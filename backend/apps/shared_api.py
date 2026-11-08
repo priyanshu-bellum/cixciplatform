@@ -1781,6 +1781,7 @@ class BuyerProductImagesViewSet(CheckAccessMixin, viewsets.ViewSet):
     action_capability_map = {
         "list": "media.buyer_images.list",
         "images": "media.buyer_images.list",
+        "filter_options": "media.buyer_images.list",
         "download_image": "media.buyer_images.download",
         "download_all": "media.buyer_images.download",
     }
@@ -1942,6 +1943,20 @@ class BuyerProductImagesViewSet(CheckAccessMixin, viewsets.ViewSet):
             "sku": product.sku,
             "images": data,
         })
+
+    @action(detail=False, methods=["get"], url_path="filter-options")
+    def filter_options(self, request):
+        company = self._assert_buyer(request)
+        qs = self._buyer_product_queryset(request, company)
+        brands = sorted(
+            qs.exclude(brand__isnull=True).exclude(brand="")
+            .values_list("brand", flat=True).distinct()
+        )
+        categories = sorted(
+            qs.exclude(product_category__isnull=True).exclude(product_category="")
+            .values_list("product_category", flat=True).distinct()
+        )
+        return Response({"brands": brands, "categories": categories})
 
     @action(detail=True, methods=["get"], url_path="download-image/(?P<asset_id>[0-9a-f-]+)")
     def download_image(self, request, pk=None, asset_id=None):
