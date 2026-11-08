@@ -30,6 +30,7 @@ import { SettingsPage } from './pages/StubPages'
 import BuyerProductImagesPage from './pages/BuyerProductImagesPage'
 import ConfirmEmailPage from './pages/ConfirmEmailPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import NotFoundPage from './pages/NotFoundPage'
 
 function extractErrorMessage(error: unknown): string {
   const err = error as any
@@ -126,7 +127,7 @@ function AppWithQuery() {
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/telco-cellular" element={<TelcoCellularPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

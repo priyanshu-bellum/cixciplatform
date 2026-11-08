@@ -33,6 +33,7 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Divider from '@mui/material/Divider'
+import Skeleton from '@mui/material/Skeleton'
 
 // MUI Icons
 import SmartphoneIcon from '@mui/icons-material/Smartphone'
@@ -1255,11 +1256,12 @@ export default function DashboardPage() {
 // ─── CIXCI ADMIN DASHBOARD ───────────────────────────────────────────────────
 function AdminDashboard({ count, user }: any) {
   const [showOnboardModal, setShowOnboardModal] = useState(false)
-  const { data: companies } = useQuery({ queryKey: ['admin-companies'], queryFn: () => api.get('/tenant/companies/').then(r => r.data) })
-  const { data: users } = useQuery({ queryKey: ['admin-users'], queryFn: () => api.get('/tenant/users/').then(r => r.data) })
-  const { data: devices } = useQuery({ queryKey: ['admin-devices'], queryFn: () => api.get('/devices/devices/').then(r => r.data) })
-  const { data: products } = useQuery({ queryKey: ['admin-products'], queryFn: () => api.get('/catalog/products/').then(r => r.data) })
-  const { data: orders } = useQuery({ queryKey: ['admin-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data).catch(() => []) })
+  const { data: companies, isLoading: companiesLoading } = useQuery({ queryKey: ['admin-companies'], queryFn: () => api.get('/tenant/companies/').then(r => r.data) })
+  const { data: users, isLoading: usersLoading } = useQuery({ queryKey: ['admin-users'], queryFn: () => api.get('/tenant/users/').then(r => r.data) })
+  const { data: devices, isLoading: devicesLoading } = useQuery({ queryKey: ['admin-devices'], queryFn: () => api.get('/devices/devices/').then(r => r.data) })
+  const { data: products, isLoading: productsLoading } = useQuery({ queryKey: ['admin-products'], queryFn: () => api.get('/catalog/products/').then(r => r.data) })
+  const { data: orders, isLoading: ordersLoading } = useQuery({ queryKey: ['admin-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data).catch(() => []) })
+  const statsLoading = companiesLoading || usersLoading || devicesLoading || productsLoading || ordersLoading
 
   const cCount = count(companies)
   const uCount = count(users)
@@ -1323,27 +1325,27 @@ function AdminDashboard({ count, user }: any) {
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/settings" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<BusinessIcon />} title="Active Companies" value={cCount} subtitle="registered tenants" color="secondary.main" />
+            <StatCard icon={<BusinessIcon />} title="Active Companies" value={cCount} subtitle="registered tenants" color="secondary.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/settings" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<PeopleIcon />} title="System Admins & Users" value={uCount} subtitle="onboarded members" color="primary.main" />
+            <StatCard icon={<PeopleIcon />} title="System Admins & Users" value={uCount} subtitle="onboarded members" color="primary.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/devices" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<SmartphoneIcon />} title="Global Devices" value={dCount} subtitle="in master catalog" color="success.main" />
+            <StatCard icon={<SmartphoneIcon />} title="Global Devices" value={dCount} subtitle="in master catalog" color="success.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/catalog" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ShoppingBagIcon />} title="Catalog Products" value={pCount} subtitle="wholesale accessories" color="warning.main" />
+            <StatCard icon={<ShoppingBagIcon />} title="Catalog Products" value={pCount} subtitle="wholesale accessories" color="warning.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/orders" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<InventoryIcon />} title="Platform Orders" value={oCount} subtitle="total routed" color="error.main" />
+            <StatCard icon={<InventoryIcon />} title="Platform Orders" value={oCount} subtitle="total routed" color="error.main" loading={statsLoading} />
           </Link>
         </Grid>
       </Grid>
@@ -1356,35 +1358,43 @@ function AdminDashboard({ count, user }: any) {
                 <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Platform Distribution</Typography>
                 <Chip label="Live" size="small" color="success" />
               </Box>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    paddingAngle={4}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {pieData.map((_, index) => (
-                      <Cell key={index} fill={ADMIN_COLORS[index % ADMIN_COLORS.length]} />
+              {statsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <Skeleton variant="circular" width={170} height={170} />
+                </Box>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={4}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {pieData.map((_, index) => (
+                          <Cell key={index} fill={ADMIN_COLORS[index % ADMIN_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 2, mt: 1 }}>
+                    {pieData.map((entry, i) => (
+                      <Box key={entry.name} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ADMIN_COLORS[i] }} />
+                        <Typography sx={{ fontSize: '0.6875rem', color: 'text.secondary' }}>
+                          {entry.name}: {entry.value}
+                        </Typography>
+                      </Box>
                     ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 2, mt: 1 }}>
-                {pieData.map((entry, i) => (
-                  <Box key={entry.name} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ADMIN_COLORS[i] }} />
-                    <Typography sx={{ fontSize: '0.6875rem', color: 'text.secondary' }}>
-                      {entry.name}: {entry.value}
-                    </Typography>
                   </Box>
-                ))}
-              </Box>
+                </>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -1442,11 +1452,12 @@ function AdminDashboard({ count, user }: any) {
 
 // ─── BUYER DASHBOARD ─────────────────────────────────────────────────────────
 function BuyerDashboard({ count, user }: any) {
-  const { data: myDevices } = useQuery({ queryKey: ['buyer-portfolio'], queryFn: () => api.get('/devices/portfolio/my_devices/').then(r => r.data) })
-  const { data: projection } = useQuery({ queryKey: ['buyer-projection'], queryFn: () => api.get('/catalog/my-projection/my_projection/').then(r => r.data) })
-  const { data: orders } = useQuery({ queryKey: ['buyer-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data) })
-  const { data: invoices } = useQuery({ queryKey: ['buyer-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data) })
-  const { data: returns } = useQuery({ queryKey: ['buyer-returns'], queryFn: () => api.get('/fulfillment/return-requests/').then(r => r.data).catch(() => []) })
+  const { data: myDevices, isLoading: devicesLoading } = useQuery({ queryKey: ['buyer-portfolio'], queryFn: () => api.get('/devices/portfolio/my_devices/').then(r => r.data) })
+  const { data: projection, isLoading: projLoading } = useQuery({ queryKey: ['buyer-projection'], queryFn: () => api.get('/catalog/my-projection/my_projection/').then(r => r.data) })
+  const { data: orders, isLoading: ordersLoading } = useQuery({ queryKey: ['buyer-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data) })
+  const { data: invoices, isLoading: invoicesLoading } = useQuery({ queryKey: ['buyer-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data) })
+  const { data: returns, isLoading: returnsLoading } = useQuery({ queryKey: ['buyer-returns'], queryFn: () => api.get('/fulfillment/return-requests/').then(r => r.data).catch(() => []) })
+  const statsLoading = devicesLoading || projLoading || ordersLoading || invoicesLoading || returnsLoading
 
   const dCount = count(myDevices)
   const cCount = projection?.compatible_product_count ?? 0
@@ -1504,27 +1515,27 @@ function BuyerDashboard({ count, user }: any) {
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/devices" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<SmartphoneIcon />} title="My Device Portfolio" value={dCount} subtitle="compatible targets" color="primary.main" />
+            <StatCard icon={<SmartphoneIcon />} title="My Device Portfolio" value={dCount} subtitle="compatible targets" color="primary.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/catalog" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ShoppingBagIcon />} title="Compatible Accessories" value={cCount} subtitle="available in catalog" color="secondary.main" />
+            <StatCard icon={<ShoppingBagIcon />} title="Compatible Accessories" value={cCount} subtitle="available in catalog" color="secondary.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/orders" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<InventoryIcon />} title="Orders Placed" value={oCount} subtitle="tracked packages" color="success.main" />
+            <StatCard icon={<InventoryIcon />} title="Orders Placed" value={oCount} subtitle="tracked packages" color="success.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/invoicing" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ReceiptLongIcon />} title="Procurement Invoices" value={iCount} subtitle="issued total" color="warning.main" />
+            <StatCard icon={<ReceiptLongIcon />} title="Procurement Invoices" value={iCount} subtitle="issued total" color="warning.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/fulfillment" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<LocalShippingIcon />} title="Return Requests" value={retCount} subtitle="submitted total" color="error.main" />
+            <StatCard icon={<LocalShippingIcon />} title="Return Requests" value={retCount} subtitle="submitted total" color="error.main" loading={statsLoading} />
           </Link>
         </Grid>
       </Grid>
@@ -1537,21 +1548,25 @@ function BuyerDashboard({ count, user }: any) {
                 <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>My Weekly Order Volume</Typography>
                 <Chip icon={<TrendingUpIcon sx={{ fontSize: 14 }} />} label="Scoped Placed" size="small" color="primary" />
               </Box>
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={orderVolumeTrend}>
-                  <defs>
-                    <linearGradient id="buyerOrders" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="day" stroke="var(--text-muted)" />
-                  <YAxis stroke="var(--text-muted)" />
-                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }} />
-                  <Area type="monotone" dataKey="orders" stroke="var(--accent)" strokeWidth={2} fill="url(#buyerOrders)" name="Orders" />
-                </AreaChart>
-              </ResponsiveContainer>
+              {ordersLoading ? (
+                <Skeleton variant="rounded" width="100%" height={220} />
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={orderVolumeTrend}>
+                    <defs>
+                      <linearGradient id="buyerOrders" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="day" stroke="var(--text-muted)" />
+                    <YAxis stroke="var(--text-muted)" />
+                    <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }} />
+                    <Area type="monotone" dataKey="orders" stroke="var(--accent)" strokeWidth={2} fill="url(#buyerOrders)" name="Orders" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -1616,11 +1631,12 @@ function BuyerDashboard({ count, user }: any) {
 
 // ─── VENDOR DASHBOARD ────────────────────────────────────────────────────────
 function VendorDashboard({ count, user }: any) {
-  const { data: products } = useQuery({ queryKey: ['vendor-products'], queryFn: () => api.get('/catalog/products/').then(r => r.data) })
-  const { data: orders } = useQuery({ queryKey: ['vendor-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data) })
-  const { data: relationships } = useQuery({ queryKey: ['vendor-relationships'], queryFn: () => api.get('/tenant/relationships/').then(r => r.data) })
-  const { data: invoices } = useQuery({ queryKey: ['vendor-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data) })
-  const { data: returns } = useQuery({ queryKey: ['vendor-returns'], queryFn: () => api.get('/fulfillment/return-requests/').then(r => r.data) })
+  const { data: products, isLoading: productsLoading } = useQuery({ queryKey: ['vendor-products'], queryFn: () => api.get('/catalog/products/').then(r => r.data) })
+  const { data: orders, isLoading: ordersLoading } = useQuery({ queryKey: ['vendor-orders'], queryFn: () => api.get('/routing/orders/').then(r => r.data) })
+  const { data: relationships, isLoading: relsLoading } = useQuery({ queryKey: ['vendor-relationships'], queryFn: () => api.get('/tenant/relationships/').then(r => r.data) })
+  const { data: invoices, isLoading: invoicesLoading } = useQuery({ queryKey: ['vendor-invoices'], queryFn: () => api.get('/invoicing/invoices/').then(r => r.data) })
+  const { data: returns, isLoading: returnsLoading } = useQuery({ queryKey: ['vendor-returns'], queryFn: () => api.get('/fulfillment/return-requests/').then(r => r.data) })
+  const statsLoading = productsLoading || ordersLoading || relsLoading || invoicesLoading || returnsLoading
 
   const pCount = count(products)
   const oCount = count(orders)
@@ -1689,25 +1705,25 @@ function VendorDashboard({ count, user }: any) {
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/catalog" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ShoppingBagIcon />} title="Listed Accessories" value={pCount} subtitle="in active catalog" color="secondary.main" />
+            <StatCard icon={<ShoppingBagIcon />} title="Listed Accessories" value={pCount} subtitle="in active catalog" color="secondary.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/orders" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<InventoryIcon />} title="Assigned Orders" value={oCount} subtitle="pending fulfillment" color="success.main" />
+            <StatCard icon={<InventoryIcon />} title="Assigned Orders" value={oCount} subtitle="pending fulfillment" color="success.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
-          <StatCard icon={<BusinessIcon />} title="Active Buyers" value={rCount} subtitle="retailer partnerships" color="primary.main" />
+          <StatCard icon={<BusinessIcon />} title="Active Buyers" value={rCount} subtitle="retailer partnerships" color="primary.main" loading={statsLoading} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/invoicing" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<ReceiptLongIcon />} title="Invoices Issued" value={iCount} subtitle="billing total" color="warning.main" />
+            <StatCard icon={<ReceiptLongIcon />} title="Invoices Issued" value={iCount} subtitle="billing total" color="warning.main" loading={statsLoading} />
           </Link>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
           <Link to="/fulfillment" style={{ textDecoration: 'none' }}>
-            <StatCard icon={<LocalShippingIcon />} title="Return Requests" value={retCount} subtitle="import & manage" color="error.main" />
+            <StatCard icon={<LocalShippingIcon />} title="Return Requests" value={retCount} subtitle="import & manage" color="error.main" loading={statsLoading} />
           </Link>
         </Grid>
       </Grid>
@@ -1720,16 +1736,20 @@ function VendorDashboard({ count, user }: any) {
                 <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Fulfillment SLA Performance</Typography>
                 <Chip label="On-time vs Late" size="small" color="success" />
               </Box>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={fulfillData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="day" stroke="var(--text-muted)" />
-                  <YAxis stroke="var(--text-muted)" />
-                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }} />
-                  <Bar dataKey="on_time" fill="var(--green)" radius={[4, 4, 0, 0]} name="On Time" />
-                  <Bar dataKey="late" fill="var(--red)" radius={[4, 4, 0, 0]} name="Late" />
-                </BarChart>
-              </ResponsiveContainer>
+              {ordersLoading ? (
+                <Skeleton variant="rounded" width="100%" height={220} />
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={fulfillData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="day" stroke="var(--text-muted)" />
+                    <YAxis stroke="var(--text-muted)" />
+                    <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }} />
+                    <Bar dataKey="on_time" fill="var(--green)" radius={[4, 4, 0, 0]} name="On Time" />
+                    <Bar dataKey="late" fill="var(--red)" radius={[4, 4, 0, 0]} name="Late" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </Grid>

@@ -3,6 +3,7 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
+import Skeleton from '@mui/material/Skeleton';
 
 interface StatCardProps {
   title: string;
@@ -10,9 +11,10 @@ interface StatCardProps {
   subtitle?: string;
   icon?: ReactNode;
   color?: string;
+  loading?: boolean;
 }
 
-export default function StatCard({ title, value, subtitle, icon, color }: StatCardProps) {
+export default function StatCard({ title, value, subtitle, icon, color, loading }: StatCardProps) {
   return (
     <Card
       variant="outlined"
@@ -44,16 +46,20 @@ export default function StatCard({ title, value, subtitle, icon, color }: StatCa
             >
               {title}
             </Typography>
-            <Typography
-              sx={{
-                fontSize: '1.75rem',
-                fontWeight: 700,
-                lineHeight: 1.1,
-                color: color ?? 'text.primary',
-              }}
-            >
-              {value}
-            </Typography>
+            {loading ? (
+              <Skeleton variant="text" width={48} sx={{ fontSize: '1.75rem' }} />
+            ) : (
+              <Typography
+                sx={{
+                  fontSize: '1.75rem',
+                  fontWeight: 700,
+                  lineHeight: 1.1,
+                  color: color ?? 'text.primary',
+                }}
+              >
+                {value}
+              </Typography>
+            )}
             {subtitle && (
               <Typography sx={{ fontSize: '0.6875rem', color: 'text.disabled', mt: 0.5 }}>
                 {subtitle}

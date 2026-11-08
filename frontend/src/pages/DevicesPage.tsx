@@ -30,6 +30,7 @@ import Alert from '@mui/material/Alert'
 import Checkbox from '@mui/material/Checkbox'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import Divider from '@mui/material/Divider'
 import Paper from '@mui/material/Paper'
 import AddIcon from '@mui/icons-material/Add'
@@ -1258,10 +1259,32 @@ export default function DevicesPage() {
 
           <Paper variant="outlined">
             {isLoading ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 6 }}>
-                <CircularProgress size={24} />
-                <Typography variant="body2" color="text.secondary">Loading devices...</Typography>
-              </Box>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Device Name</TableCell>
+                      <TableCell>Manufacturer</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Status</TableCell>
+                      {isBuyer && <TableCell>Action</TableCell>}
+                      <TableCell sx={{ width: 32 }} />
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton width="70%" /></TableCell>
+                        <TableCell><Skeleton width="60%" /></TableCell>
+                        <TableCell><Skeleton width="50%" /></TableCell>
+                        <TableCell><Skeleton variant="rounded" width={72} height={24} /></TableCell>
+                        {isBuyer && <TableCell><Skeleton variant="rounded" width={100} height={28} /></TableCell>}
+                        <TableCell><Skeleton variant="circular" width={18} height={18} /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             ) : devices.length === 0 ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
                 <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />

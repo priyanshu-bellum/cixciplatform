@@ -27,6 +27,7 @@ import MenuItem from '@mui/material/MenuItem'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import Alert from '@mui/material/Alert'
 import Divider from '@mui/material/Divider'
 import Stack from '@mui/material/Stack'
@@ -511,11 +512,22 @@ export default function FulfillmentPage() {
     </>
   ) : null
 
-  // Loading spinner helper
-  const LoadingState = () => (
-    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
-      <CircularProgress />
-    </Box>
+  const LoadingState = ({ cols = 6 }: { cols?: number }) => (
+    <TableContainer>
+      <Table size="small">
+        <TableBody>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <TableRow key={i}>
+              {Array.from({ length: cols }).map((_, j) => (
+                <TableCell key={j}>
+                  <Skeleton width={`${55 + (j % 3) * 15}%`} />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
   )
 
   // Empty state helper
@@ -580,7 +592,7 @@ export default function FulfillmentPage() {
         <>
           <Card variant="outlined">
             {hLoading ? (
-              <LoadingState />
+              <LoadingState cols={9} />
             ) : handoffs.length === 0 ? (
               <EmptyState
                 icon={<LocalShippingIcon sx={{ fontSize: 40 }} />}
@@ -673,7 +685,7 @@ export default function FulfillmentPage() {
         <>
           <Card variant="outlined">
             {sLoading ? (
-              <LoadingState />
+              <LoadingState cols={5} />
             ) : slaEvals.length === 0 ? (
               <EmptyState
                 icon={<AccessTimeIcon sx={{ fontSize: 40 }} />}
@@ -749,7 +761,7 @@ export default function FulfillmentPage() {
         <>
           <Card variant="outlined">
             {pLoading ? (
-              <LoadingState />
+              <LoadingState cols={6} />
             ) : policies.length === 0 ? (
               <EmptyState
                 icon={<ShieldIcon sx={{ fontSize: 40 }} />}
@@ -819,7 +831,7 @@ export default function FulfillmentPage() {
         <>
           <Card variant="outlined">
             {lLoading ? (
-              <LoadingState />
+              <LoadingState cols={12} />
             ) : exportLogs.length === 0 ? (
               <EmptyState
                 icon={<LocalShippingIcon sx={{ fontSize: 40 }} />}
@@ -1114,7 +1126,7 @@ export default function FulfillmentPage() {
         <>
           <Card variant="outlined">
             {rLoading ? (
-              <LoadingState />
+              <LoadingState cols={10} />
             ) : returnsError ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8, gap: 1, color: 'error.main' }}>
                 <DescriptionIcon sx={{ fontSize: 40 }} />
@@ -1219,7 +1231,7 @@ export default function FulfillmentPage() {
         <>
           <Card variant="outlined">
             {rlLoading ? (
-              <LoadingState />
+              <LoadingState cols={7} />
             ) : returnImportLogs.length === 0 ? (
               <EmptyState
                 icon={<LocalShippingIcon sx={{ fontSize: 40 }} />}
@@ -1295,7 +1307,7 @@ export default function FulfillmentPage() {
         <>
           <Card variant="outlined">
             {slLoading ? (
-              <LoadingState />
+              <LoadingState cols={6} />
             ) : shippingImportLogs.length === 0 ? (
               <EmptyState
                 icon={<LocalShippingIcon sx={{ fontSize: 40 }} />}

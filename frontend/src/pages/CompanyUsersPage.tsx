@@ -23,6 +23,7 @@ import MenuItem from '@mui/material/MenuItem'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import Alert from '@mui/material/Alert'
 import Stack from '@mui/material/Stack'
 import Tooltip from '@mui/material/Tooltip'
@@ -369,11 +370,63 @@ export default function CompanyUsersPage() {
 
       {/* Content Table */}
       {loading ? (
-        <Card sx={{ p: 7.5, textAlign: 'center' }}>
-          <CircularProgress size={24} sx={{ mb: 1.5 }} />
-          <Typography variant="body2" color="text.secondary">
-            Loading user management records...
-          </Typography>
+        <Card>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  {activeTab === 'members' ? (
+                    <>
+                      <TableCell>User</TableCell>
+                      <TableCell>Company</TableCell>
+                      <TableCell>Role & Authority</TableCell>
+                      <TableCell>Assigned Capabilities</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </>
+                  ) : (
+                    <>
+                      <TableCell>Invitee</TableCell>
+                      <TableCell>Role</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Expires</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </>
+                  )}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <TableRow key={i}>
+                    {activeTab === 'members' ? (
+                      <>
+                        <TableCell>
+                          <Skeleton width="60%" sx={{ mb: 0.5 }} />
+                          <Skeleton width="40%" height={14} />
+                        </TableCell>
+                        <TableCell><Skeleton width="50%" /></TableCell>
+                        <TableCell><Skeleton variant="rounded" width={90} height={24} /></TableCell>
+                        <TableCell><Skeleton variant="rounded" width={110} height={28} /></TableCell>
+                        <TableCell><Skeleton variant="rounded" width={60} height={24} /></TableCell>
+                        <TableCell align="right"><Skeleton variant="rounded" width={160} height={28} /></TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell>
+                          <Skeleton width="60%" sx={{ mb: 0.5 }} />
+                          <Skeleton width="40%" height={14} />
+                        </TableCell>
+                        <TableCell><Skeleton variant="rounded" width={90} height={24} /></TableCell>
+                        <TableCell><Skeleton variant="rounded" width={60} height={24} /></TableCell>
+                        <TableCell><Skeleton width="50%" /></TableCell>
+                        <TableCell align="right"><Skeleton variant="rounded" width={120} height={28} /></TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Card>
       ) : activeTab === 'members' ? (
         <Card>

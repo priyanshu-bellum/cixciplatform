@@ -21,6 +21,7 @@ import DialogActions from '@mui/material/DialogActions'
 import Drawer from '@mui/material/Drawer'
 import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import Alert from '@mui/material/Alert'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -416,9 +417,32 @@ export default function OrdersPage() {
       {/* ---- Orders Table ---- */}
       <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
-            <CircularProgress size={32} />
-          </Box>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Order ID</TableCell>
+                  <TableCell>Buyer Order #</TableCell>
+                  <TableCell>Buyer</TableCell>
+                  <TableCell>Placed</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Customer Name</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton width="70%" /></TableCell>
+                    <TableCell><Skeleton width="60%" /></TableCell>
+                    <TableCell><Skeleton width="50%" /></TableCell>
+                    <TableCell><Skeleton width="55%" /></TableCell>
+                    <TableCell><Skeleton variant="rounded" width={64} height={24} /></TableCell>
+                    <TableCell><Skeleton width="65%" /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         ) : orders.length === 0 ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8, color: 'text.disabled', gap: 1 }}>
             <InventoryIcon sx={{ fontSize: 40 }} />
@@ -1108,9 +1132,32 @@ export default function OrdersPage() {
               <ShoppingBagIcon sx={{ fontSize: 14 }} /> Items Ordered
             </Typography>
             {isLoadingLines ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress size={24} />
-              </Box>
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Product / SKU</TableCell>
+                      <TableCell>Vendor</TableCell>
+                      <TableCell align="right">Qty</TableCell>
+                      <TableCell align="right">MSRP</TableCell>
+                      <TableCell align="right">Wholesale</TableCell>
+                      <TableCell align="right">Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}><Skeleton variant="rounded" width={40} height={40} /><Box><Skeleton width={120} /><Skeleton width={80} height={12} /></Box></Box></TableCell>
+                        <TableCell><Skeleton width={60} /></TableCell>
+                        <TableCell align="right"><Skeleton width={20} sx={{ ml: 'auto' }} /></TableCell>
+                        <TableCell align="right"><Skeleton width={50} sx={{ ml: 'auto' }} /></TableCell>
+                        <TableCell align="right"><Skeleton width={50} sx={{ ml: 'auto' }} /></TableCell>
+                        <TableCell align="right"><Skeleton width={50} sx={{ ml: 'auto' }} /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             ) : !orderLines || orderLines.length === 0 ? (
               <Typography variant="body2" color="text.disabled" sx={{ py: 2.5 }}>
                 No line items found.
@@ -1289,9 +1336,26 @@ export default function OrdersPage() {
               <LocalShippingIcon sx={{ fontSize: 14 }} /> Vendor Suborders
             </Typography>
             {isLoadingSubs ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress size={24} />
-              </Box>
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Vendor Reference</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Array.from({ length: 2 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton width="60%" /></TableCell>
+                        <TableCell><Skeleton variant="rounded" width={64} height={24} /></TableCell>
+                        <TableCell align="right"><Skeleton width={80} sx={{ ml: 'auto' }} /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             ) : !suborders || suborders.length === 0 ? (
               <Typography variant="body2" color="text.disabled" sx={{ py: 2.5 }}>
                 No vendor suborders routed.

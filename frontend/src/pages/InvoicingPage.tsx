@@ -17,6 +17,7 @@ import Button from '@mui/material/Button'
 import Drawer from '@mui/material/Drawer'
 import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import MenuItem from '@mui/material/MenuItem'
 import Select, { type SelectChangeEvent } from '@mui/material/Select'
 import FormControl from '@mui/material/FormControl'
@@ -553,9 +554,32 @@ export default function InvoicingPage() {
       {/* Invoice Table */}
       <TableContainer component={Paper} variant="outlined">
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
-            <CircularProgress />
-          </Box>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Invoice</TableCell>
+                <TableCell>Counterparty</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Grand Total</TableCell>
+                <TableCell>Issued</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton width={70} /></TableCell>
+                  <TableCell><Skeleton width="80%" /><Skeleton width="50%" sx={{ mt: 0.5 }} /></TableCell>
+                  <TableCell><Skeleton variant="rounded" width={55} height={24} /></TableCell>
+                  <TableCell><Skeleton variant="rounded" width={90} height={24} /></TableCell>
+                  <TableCell><Skeleton variant="rounded" width={60} height={24} /></TableCell>
+                  <TableCell><Skeleton width={80} /></TableCell>
+                  <TableCell><Skeleton width={75} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         ) : rawInvoices.length === 0 ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8, color: 'text.secondary' }}>
             <ReceiptLongIcon sx={{ fontSize: 40, mb: 1, color: 'text.disabled' }} />
@@ -683,8 +707,29 @@ export default function InvoicingPage() {
         </Box>
 
         {isLoadingDetail ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress />
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box>
+              <Skeleton width={120} height={16} sx={{ mb: 1.5 }} />
+              <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Skeleton width={100} />
+                    <Skeleton width={80} />
+                  </Box>
+                ))}
+              </Paper>
+            </Box>
+            <Box>
+              <Skeleton width={140} height={16} sx={{ mb: 1.5 }} />
+              <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Skeleton width={120} />
+                    <Skeleton width={90} />
+                  </Box>
+                ))}
+              </Paper>
+            </Box>
           </Box>
         ) : (
           <>
@@ -828,9 +873,28 @@ export default function InvoicingPage() {
                 <DescriptionIcon sx={{ fontSize: 14 }} /> Line Items
               </Typography>
               {isLoadingLines ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-                  <CircularProgress size={24} />
-                </Box>
+                <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: 'action.hover' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Description</TableCell>
+                        <TableCell>Qty</TableCell>
+                        <TableCell>Unit Price</TableCell>
+                        <TableCell>Total</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell><Skeleton width="70%" /><Skeleton width="40%" sx={{ mt: 0.5 }} /></TableCell>
+                          <TableCell><Skeleton width={30} /></TableCell>
+                          <TableCell><Skeleton width={60} /></TableCell>
+                          <TableCell><Skeleton width={70} /></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               ) : !invoiceLines || invoiceLines.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
                   No line items recorded
