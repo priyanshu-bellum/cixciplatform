@@ -1948,14 +1948,18 @@ class BuyerProductImagesViewSet(CheckAccessMixin, viewsets.ViewSet):
     def filter_options(self, request):
         company = self._assert_buyer(request)
         qs = self._buyer_product_queryset(request, company)
-        brands = sorted(
+        brands = sorted({
+            b.strip() for b in
             qs.exclude(brand__isnull=True).exclude(brand="")
-            .values_list("brand", flat=True).distinct()
-        )
-        categories = sorted(
+            .values_list("brand", flat=True)
+            if b and b.strip()
+        })
+        categories = sorted({
+            c.strip() for c in
             qs.exclude(product_category__isnull=True).exclude(product_category="")
-            .values_list("product_category", flat=True).distinct()
-        )
+            .values_list("product_category", flat=True)
+            if c and c.strip()
+        })
         return Response({"brands": brands, "categories": categories})
 
     @action(detail=True, methods=["get"], url_path="download-image/(?P<asset_id>[0-9a-f-]+)")
