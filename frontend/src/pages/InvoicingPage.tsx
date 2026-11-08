@@ -29,6 +29,7 @@ import DialogActions from '@mui/material/DialogActions'
 import Alert from '@mui/material/Alert'
 import Tooltip from '@mui/material/Tooltip'
 import TextField from '@mui/material/TextField'
+import Autocomplete from '@mui/material/Autocomplete'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import CloseIcon from '@mui/icons-material/Close'
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney'
@@ -1119,25 +1120,19 @@ export default function InvoicingPage() {
                 </Select>
               </FormControl>
             </Stack>
-            <FormControl fullWidth size="small">
-              <InputLabel>Counterparty</InputLabel>
-              <Select
-                value={createCounterparty}
-                label="Counterparty"
-                onChange={(e) => setCreateCounterparty(e.target.value)}
-              >
-                {filteredCompanies.map((c) => (
-                  <MenuItem key={c.id} value={c.id}>
-                    {c.name} ({c.company_type})
-                  </MenuItem>
-                ))}
-                {filteredCompanies.length === 0 && (
-                  <MenuItem disabled value="">
-                    No {createRole} companies found
-                  </MenuItem>
-                )}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              size="small"
+              options={filteredCompanies}
+              getOptionLabel={(opt) => `${opt.name} (${opt.company_type})`}
+              value={filteredCompanies.find(c => c.id === createCounterparty) || null}
+              onChange={(_e, newVal) => setCreateCounterparty(newVal?.id ?? '')}
+              isOptionEqualToValue={(opt, val) => opt.id === val.id}
+              noOptionsText={`No ${createRole} companies found`}
+              renderInput={(params) => (
+                <TextField {...params} label="Counterparty" placeholder="Search company..." />
+              )}
+              fullWidth
+            />
           </Stack>
 
           {/* Billing Period */}
