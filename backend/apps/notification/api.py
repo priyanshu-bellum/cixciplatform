@@ -187,6 +187,31 @@ class NotificationRequestViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet
         return Response(DeliveryAttemptSerializer(attempts, many=True).data)
 
 
+class DeliveryAttemptViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    queryset = DeliveryAttempt.objects.all()
+    serializer_class = DeliveryAttemptSerializer
+    action_capability_map = {
+        "list": "notifications.request.list",
+        "retrieve": "notifications.request.read",
+    }
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["channel", "status", "provider_name"]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return DeliveryAttempt.objects.none()
+        qs = DeliveryAttempt.objects.select_related("notification_request")
+        if getattr(user, "is_cixci_admin", False):
+            return qs.order_by("-created_at")
+        company = getattr(user, "company", None) or (user.entity.company if getattr(user, "entity", None) else None)
+        if company:
+            return qs.filter(
+                notification_request__company_scope_reference=company.id
+            ).order_by("-created_at")
+        return DeliveryAttempt.objects.none()
+
+
 class InAppNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = InAppNotificationSerializer
@@ -263,6 +288,7 @@ router = DefaultRouter()
 router.register("templates", NotificationTemplateViewSet, basename="notification-template")
 router.register("preferences", NotificationPreferenceViewSet, basename="notification-preference")
 router.register("requests", NotificationRequestViewSet, basename="notification-request")
+router.register("delivery-attempts", DeliveryAttemptViewSet, basename="delivery-attempt")
 router.register("in-app", InAppNotificationViewSet, basename="notification-in-app")
 router.register("summary-config", ActivitySummaryConfigViewSet, basename="summary-config")
 
