@@ -66,6 +66,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         localStorage.removeItem('access')
         localStorage.removeItem('refresh')
         set({ user: null, loading: false, initialized: true })
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
+          return
+        }
       } else {
         set((state) => ({ ...state, loading: false, initialized: true }))
       }
