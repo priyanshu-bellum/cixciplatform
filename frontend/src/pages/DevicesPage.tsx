@@ -548,8 +548,6 @@ export default function DevicesPage() {
   }
 
   const selectedEditTypeObj = deviceTypes.find((t: any) => t.id === editDeviceType)
-  const selectedEditTypeName = selectedEditTypeObj ? selectedEditTypeObj.name : ''
-  const selectedEditCategory = getDeviceCategory(selectedEditTypeName)
 
   const handleEditStorageChange = (val: string) => {
     setEditStorage(val)
@@ -610,124 +608,62 @@ export default function DevicesPage() {
       lifecycle_status: editStatus,
     }
 
-    if (selectedEditCategory === 'phone') {
-      if (!editCharging) {
-        setEditError('Charging Interface is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (!editStorage) {
-        setEditError('Storage Expansion is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (editStorage !== 'Not Compatible' && !editMaxStorage) {
-        setEditError('Maximum Expansion is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (!editHeadphone) {
-        setEditError('Headphone Jack is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (!editBluetooth) {
-        setEditError('Bluetooth Compatibility is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (editWireless.length === 0) {
-        setEditError('Wireless Charging Compatibility is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      payload.compatible_charging_interface = editCharging
-      payload.storage_expansion_compatibility = editStorage
-      payload.maximum_supported_storage = editStorage !== 'Not Compatible' ? editMaxStorage : 'Not Compatible'
-      payload.headphone_jack_compatibility = editHeadphone
-      payload.bluetooth_compatibility = editBluetooth
-      payload.wireless_charging_compatibility = editWireless.join('+') || 'Not Compatible'
-      payload.compatible_watch_case_size = 'Not Compatible'
-    } else if (selectedEditCategory === 'tablet') {
-      if (!editCharging) {
-        setEditError('Charging Interface is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (!editStorage) {
-        setEditError('Storage Expansion is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (editStorage !== 'Not Compatible' && !editMaxStorage) {
-        setEditError('Maximum Expansion is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (!editHeadphone) {
-        setEditError('Headphone Jack is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (!editBluetooth) {
-        setEditError('Bluetooth Compatibility is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      payload.compatible_charging_interface = editCharging
-      payload.storage_expansion_compatibility = editStorage
-      payload.maximum_supported_storage = editStorage !== 'Not Compatible' ? editMaxStorage : 'Not Compatible'
-      payload.headphone_jack_compatibility = editHeadphone
-      payload.bluetooth_compatibility = editBluetooth
-      payload.wireless_charging_compatibility = 'Not Compatible'
-      payload.compatible_watch_case_size = 'Not Compatible'
-    } else if (selectedEditCategory === 'smartwatch') {
-      if (!editBluetooth) {
-        setEditError('Bluetooth Compatibility is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (editWireless.length === 0) {
-        setEditError('Wireless Charging Compatibility is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (!editWatchCase) {
-        setEditError('Compatible Watch Case Size is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      payload.compatible_charging_interface = 'Not Compatible'
-      payload.storage_expansion_compatibility = 'Not Compatible'
-      payload.maximum_supported_storage = 'Not Compatible'
-      payload.headphone_jack_compatibility = 'Not Compatible'
-      payload.bluetooth_compatibility = editBluetooth
-      payload.wireless_charging_compatibility = editWireless.join('+') || 'Not Compatible'
-      payload.compatible_watch_case_size = editWatchCase
-    } else if (selectedEditCategory === 'laptop') {
-      if (!editCharging) {
-        setEditError('Charging Interface is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (!editHeadphone) {
-        setEditError('Headphone Jack is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      if (!editBluetooth) {
-        setEditError('Bluetooth Compatibility is required.')
-        setIsSubmittingEdit(false)
-        return
-      }
-      payload.compatible_charging_interface = editCharging
-      payload.storage_expansion_compatibility = 'Not Compatible'
-      payload.maximum_supported_storage = 'Not Compatible'
-      payload.headphone_jack_compatibility = editHeadphone
-      payload.bluetooth_compatibility = editBluetooth
-      payload.wireless_charging_compatibility = 'Not Compatible'
-      payload.compatible_watch_case_size = 'Not Compatible'
+    // Dynamic validation and payload based on device type compatibility_rules
+    const editRules = selectedEditTypeObj?.compatibility_rules || {}
+    const editIsReq = (key: string) => editRules[key]?.mode === 'required'
+    const editIsVisible = (key: string) => (editRules[key]?.mode || 'hidden') !== 'hidden'
+
+    const EDIT_FIELD_LABELS: Record<string, string> = {
+      compatible_charging_interface: 'Charging Interface',
+      storage_expansion_compatibility: 'Storage Expansion',
+      maximum_supported_storage: 'Maximum Expansion',
+      headphone_jack_compatibility: 'Headphone Jack',
+      bluetooth_compatibility: 'Bluetooth Compatibility',
+      wireless_charging_compatibility: 'Wireless Charging Compatibility',
+      compatible_watch_case_size: 'Watch Case Size',
     }
+    const EDIT_FIELD_VALUES: Record<string, string | string[]> = {
+      compatible_charging_interface: editCharging,
+      storage_expansion_compatibility: editStorage,
+      maximum_supported_storage: editMaxStorage,
+      headphone_jack_compatibility: editHeadphone,
+      bluetooth_compatibility: editBluetooth,
+      wireless_charging_compatibility: editWireless,
+      compatible_watch_case_size: editWatchCase,
+    }
+
+    for (const [key, label] of Object.entries(EDIT_FIELD_LABELS)) {
+      if (editIsReq(key)) {
+        const val = EDIT_FIELD_VALUES[key]
+        if (key === 'wireless_charging_compatibility') {
+          if (!Array.isArray(val) || val.length === 0) {
+            setEditError(`${label} is required.`)
+            setIsSubmittingEdit(false)
+            return
+          }
+        } else if (key === 'maximum_supported_storage') {
+          if (editStorage !== 'Not Compatible' && (!val || (typeof val === 'string' && !val.trim()))) {
+            setEditError(`${label} is required.`)
+            setIsSubmittingEdit(false)
+            return
+          }
+        } else {
+          if (!val || (typeof val === 'string' && !val.trim())) {
+            setEditError(`${label} is required.`)
+            setIsSubmittingEdit(false)
+            return
+          }
+        }
+      }
+    }
+
+    payload.compatible_charging_interface = editIsVisible('compatible_charging_interface') ? editCharging || 'Not Compatible' : 'Not Compatible'
+    payload.storage_expansion_compatibility = editIsVisible('storage_expansion_compatibility') ? editStorage || 'Not Compatible' : 'Not Compatible'
+    payload.maximum_supported_storage = editIsVisible('maximum_supported_storage') && editStorage !== 'Not Compatible' ? editMaxStorage || 'Not Compatible' : 'Not Compatible'
+    payload.headphone_jack_compatibility = editIsVisible('headphone_jack_compatibility') ? editHeadphone || 'Not Compatible' : 'Not Compatible'
+    payload.bluetooth_compatibility = editIsVisible('bluetooth_compatibility') ? editBluetooth || 'Yes' : 'Yes'
+    payload.wireless_charging_compatibility = editIsVisible('wireless_charging_compatibility') ? (editWireless.join('+') || 'Not Compatible') : 'Not Compatible'
+    payload.compatible_watch_case_size = editIsVisible('compatible_watch_case_size') ? editWatchCase || 'Not Compatible' : 'Not Compatible'
 
     try {
       await api.put(`/devices/devices/${editingDevice.id}/`, payload)
@@ -761,18 +697,7 @@ export default function DevicesPage() {
     }
   }
 
-  function getDeviceCategory(typeName: string) {
-    const name = typeName.toLowerCase().trim()
-    if (name === 'phone' || name === 'smartphone') return 'phone'
-    if (name === 'tablet') return 'tablet'
-    if (name === 'smartwatch' || name === 'wearable' || name === 'watch') return 'smartwatch'
-    if (name === 'laptop') return 'laptop'
-    return ''
-  }
-
   const selectedTypeObj = deviceTypes.find((t: any) => t.id === addDeviceType)
-  const selectedTypeName = selectedTypeObj ? selectedTypeObj.name : ''
-  const selectedCategory = getDeviceCategory(selectedTypeName)
 
   const handleStorageChange = (val: string) => {
     setAddStorage(val)
@@ -847,124 +772,62 @@ export default function DevicesPage() {
       lifecycle_status: 'available',
     }
 
-    if (selectedCategory === 'phone') {
-      if (!addCharging) {
-        setAddError('Charging Interface is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (!addStorage) {
-        setAddError('Storage Expansion is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (addStorage !== 'Not Compatible' && !addMaxStorage) {
-        setAddError('Maximum Expansion is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (!addHeadphone) {
-        setAddError('Headphone Jack is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (!addBluetooth) {
-        setAddError('Bluetooth Compatibility is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (addWireless.length === 0) {
-        setAddError('Wireless Charging Compatibility is required.')
-        setIsSubmitting(false)
-        return
-      }
-      payload.compatible_charging_interface = addCharging
-      payload.storage_expansion_compatibility = addStorage
-      payload.maximum_supported_storage = addStorage !== 'Not Compatible' ? addMaxStorage : 'Not Compatible'
-      payload.headphone_jack_compatibility = addHeadphone
-      payload.bluetooth_compatibility = addBluetooth
-      payload.wireless_charging_compatibility = addWireless.join('+') || 'Not Compatible'
-      payload.compatible_watch_case_size = 'Not Compatible'
-    } else if (selectedCategory === 'tablet') {
-      if (!addCharging) {
-        setAddError('Charging Interface is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (!addStorage) {
-        setAddError('Storage Expansion is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (addStorage !== 'Not Compatible' && !addMaxStorage) {
-        setAddError('Maximum Expansion is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (!addHeadphone) {
-        setAddError('Headphone Jack is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (!addBluetooth) {
-        setAddError('Bluetooth Compatibility is required.')
-        setIsSubmitting(false)
-        return
-      }
-      payload.compatible_charging_interface = addCharging
-      payload.storage_expansion_compatibility = addStorage
-      payload.maximum_supported_storage = addStorage !== 'Not Compatible' ? addMaxStorage : 'Not Compatible'
-      payload.headphone_jack_compatibility = addHeadphone
-      payload.bluetooth_compatibility = addBluetooth
-      payload.wireless_charging_compatibility = 'Not Compatible'
-      payload.compatible_watch_case_size = 'Not Compatible'
-    } else if (selectedCategory === 'smartwatch') {
-      if (!addBluetooth) {
-        setAddError('Bluetooth Compatibility is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (addWireless.length === 0) {
-        setAddError('Wireless Charging Compatibility is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (!addWatchCase) {
-        setAddError('Compatible Watch Case Size is required.')
-        setIsSubmitting(false)
-        return
-      }
-      payload.compatible_charging_interface = 'Not Compatible'
-      payload.storage_expansion_compatibility = 'Not Compatible'
-      payload.maximum_supported_storage = 'Not Compatible'
-      payload.headphone_jack_compatibility = 'Not Compatible'
-      payload.bluetooth_compatibility = addBluetooth
-      payload.wireless_charging_compatibility = addWireless.join('+') || 'Not Compatible'
-      payload.compatible_watch_case_size = addWatchCase
-    } else if (selectedCategory === 'laptop') {
-      if (!addCharging) {
-        setAddError('Charging Interface is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (!addHeadphone) {
-        setAddError('Headphone Jack is required.')
-        setIsSubmitting(false)
-        return
-      }
-      if (!addBluetooth) {
-        setAddError('Bluetooth Compatibility is required.')
-        setIsSubmitting(false)
-        return
-      }
-      payload.compatible_charging_interface = addCharging
-      payload.storage_expansion_compatibility = 'Not Compatible'
-      payload.maximum_supported_storage = 'Not Compatible'
-      payload.headphone_jack_compatibility = addHeadphone
-      payload.bluetooth_compatibility = addBluetooth
-      payload.wireless_charging_compatibility = 'Not Compatible'
-      payload.compatible_watch_case_size = 'Not Compatible'
+    // Dynamic validation and payload based on device type compatibility_rules
+    const rules = selectedTypeObj?.compatibility_rules || {}
+    const isReq = (key: string) => rules[key]?.mode === 'required'
+    const isVisible = (key: string) => (rules[key]?.mode || 'hidden') !== 'hidden'
+
+    const FIELD_LABELS: Record<string, string> = {
+      compatible_charging_interface: 'Charging Interface',
+      storage_expansion_compatibility: 'Storage Expansion',
+      maximum_supported_storage: 'Maximum Expansion',
+      headphone_jack_compatibility: 'Headphone Jack',
+      bluetooth_compatibility: 'Bluetooth Compatibility',
+      wireless_charging_compatibility: 'Wireless Charging Compatibility',
+      compatible_watch_case_size: 'Watch Case Size',
     }
+    const FIELD_VALUES: Record<string, string | string[]> = {
+      compatible_charging_interface: addCharging,
+      storage_expansion_compatibility: addStorage,
+      maximum_supported_storage: addMaxStorage,
+      headphone_jack_compatibility: addHeadphone,
+      bluetooth_compatibility: addBluetooth,
+      wireless_charging_compatibility: addWireless,
+      compatible_watch_case_size: addWatchCase,
+    }
+
+    for (const [key, label] of Object.entries(FIELD_LABELS)) {
+      if (isReq(key)) {
+        const val = FIELD_VALUES[key]
+        if (key === 'wireless_charging_compatibility') {
+          if (!Array.isArray(val) || val.length === 0) {
+            setAddError(`${label} is required.`)
+            setIsSubmitting(false)
+            return
+          }
+        } else if (key === 'maximum_supported_storage') {
+          if (addStorage !== 'Not Compatible' && (!val || (typeof val === 'string' && !val.trim()))) {
+            setAddError(`${label} is required.`)
+            setIsSubmitting(false)
+            return
+          }
+        } else {
+          if (!val || (typeof val === 'string' && !val.trim())) {
+            setAddError(`${label} is required.`)
+            setIsSubmitting(false)
+            return
+          }
+        }
+      }
+    }
+
+    payload.compatible_charging_interface = isVisible('compatible_charging_interface') ? addCharging || 'Not Compatible' : 'Not Compatible'
+    payload.storage_expansion_compatibility = isVisible('storage_expansion_compatibility') ? addStorage || 'Not Compatible' : 'Not Compatible'
+    payload.maximum_supported_storage = isVisible('maximum_supported_storage') && addStorage !== 'Not Compatible' ? addMaxStorage || 'Not Compatible' : 'Not Compatible'
+    payload.headphone_jack_compatibility = isVisible('headphone_jack_compatibility') ? addHeadphone || 'Not Compatible' : 'Not Compatible'
+    payload.bluetooth_compatibility = isVisible('bluetooth_compatibility') ? addBluetooth || 'Yes' : 'Yes'
+    payload.wireless_charging_compatibility = isVisible('wireless_charging_compatibility') ? (addWireless.join('+') || 'Not Compatible') : 'Not Compatible'
+    payload.compatible_watch_case_size = isVisible('compatible_watch_case_size') ? addWatchCase || 'Not Compatible' : 'Not Compatible'
 
     try {
       await api.post('/devices/devices/', payload)
@@ -1598,122 +1461,133 @@ export default function DevicesPage() {
                 slotProps={{ inputLabel: { shrink: true } }}
               />
 
-              {selectedCategory && (
+              {/* Dynamic compatibility fields based on device type rules */}
+              {selectedTypeObj?.compatibility_rules && Object.keys(selectedTypeObj.compatibility_rules).some(
+                k => (selectedTypeObj.compatibility_rules[k]?.mode || 'hidden') !== 'hidden'
+              ) && (
                 <Box sx={{ gridColumn: 'span 2' }}>
                   <Divider sx={{ my: 1 }} />
                 </Box>
               )}
 
-              {/* Phone / Tablet / Laptop fields */}
-              {(selectedCategory === 'phone' || selectedCategory === 'tablet' || selectedCategory === 'laptop') && (
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Charging Interface *</InputLabel>
-                  <Select
-                    value={addCharging}
-                    onChange={e => setAddCharging(e.target.value)}
-                    label="Charging Interface *"
-                  >
-                    <MenuItem value="Type-C">Type-C</MenuItem>
-                    {selectedCategory !== 'laptop' && <MenuItem value="Lightning">Lightning</MenuItem>}
-                    <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                  </Select>
-                </FormControl>
-              )}
+              {(() => {
+                const rules = selectedTypeObj?.compatibility_rules || {}
+                const isVisible = (key: string) => {
+                  const mode = rules[key]?.mode || 'hidden'
+                  return mode !== 'hidden'
+                }
+                const isReq = (key: string) => rules[key]?.mode === 'required'
+                const star = (key: string) => isReq(key) ? ' *' : ''
 
-              {(selectedCategory === 'phone' || selectedCategory === 'tablet') && (
-                <>
-                  <FormControl size="small" fullWidth>
-                    <InputLabel>Storage Expansion *</InputLabel>
-                    <Select
-                      value={addStorage}
-                      onChange={e => handleStorageChange(e.target.value)}
-                      label="Storage Expansion *"
-                    >
-                      <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                      <MenuItem value="microSDXC">microSDXC</MenuItem>
-                      <MenuItem value="microSDHC">microSDHC</MenuItem>
-                    </Select>
-                  </FormControl>
+                return (
+                  <>
+                    {isVisible('compatible_charging_interface') && (
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>{`Charging Interface${star('compatible_charging_interface')}`}</InputLabel>
+                        <Select
+                          value={addCharging}
+                          onChange={e => setAddCharging(e.target.value)}
+                          label={`Charging Interface${star('compatible_charging_interface')}`}
+                        >
+                          <MenuItem value="Type-C">Type-C</MenuItem>
+                          <MenuItem value="Lightning">Lightning</MenuItem>
+                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                        </Select>
+                      </FormControl>
+                    )}
 
-                  {(addStorage === 'microSDXC' || addStorage === 'microSDHC') && (
-                    <FormControl size="small" fullWidth>
-                      <InputLabel>Maximum Expansion *</InputLabel>
-                      <Select
-                        value={addMaxStorage}
-                        onChange={e => setAddMaxStorage(e.target.value)}
-                        label="Maximum Expansion *"
-                      >
-                        {addStorage === 'microSDXC' ? (
-                          ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(v => (
+                    {isVisible('storage_expansion_compatibility') && (
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>{`Storage Expansion${star('storage_expansion_compatibility')}`}</InputLabel>
+                        <Select
+                          value={addStorage}
+                          onChange={e => handleStorageChange(e.target.value)}
+                          label={`Storage Expansion${star('storage_expansion_compatibility')}`}
+                        >
+                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                          <MenuItem value="microSDXC">microSDXC</MenuItem>
+                          <MenuItem value="microSDHC">microSDHC</MenuItem>
+                        </Select>
+                      </FormControl>
+                    )}
+
+                    {isVisible('maximum_supported_storage') && (addStorage === 'microSDXC' || addStorage === 'microSDHC') && (
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>{`Maximum Expansion${star('maximum_supported_storage')}`}</InputLabel>
+                        <Select
+                          value={addMaxStorage}
+                          onChange={e => setAddMaxStorage(e.target.value)}
+                          label={`Maximum Expansion${star('maximum_supported_storage')}`}
+                        >
+                          {addStorage === 'microSDXC' ? (
+                            ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(v => (
+                              <MenuItem key={v} value={v}>{v}</MenuItem>
+                            ))
+                          ) : (
+                            ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB'].map(v => (
+                              <MenuItem key={v} value={v}>{v}</MenuItem>
+                            ))
+                          )}
+                        </Select>
+                      </FormControl>
+                    )}
+
+                    {isVisible('headphone_jack_compatibility') && (
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>{`Headphone Jack${star('headphone_jack_compatibility')}`}</InputLabel>
+                        <Select
+                          value={addHeadphone}
+                          onChange={e => setAddHeadphone(e.target.value)}
+                          label={`Headphone Jack${star('headphone_jack_compatibility')}`}
+                        >
+                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                          <MenuItem value="Type-C">Type-C</MenuItem>
+                          <MenuItem value="Lightning">Lightning</MenuItem>
+                        </Select>
+                      </FormControl>
+                    )}
+
+                    {isVisible('bluetooth_compatibility') && (
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>{`Bluetooth Compatibility${star('bluetooth_compatibility')}`}</InputLabel>
+                        <Select
+                          value={addBluetooth}
+                          onChange={e => setAddBluetooth(e.target.value)}
+                          label={`Bluetooth Compatibility${star('bluetooth_compatibility')}`}
+                        >
+                          <MenuItem value="Yes">Yes</MenuItem>
+                          <MenuItem value="No">No</MenuItem>
+                        </Select>
+                      </FormControl>
+                    )}
+
+                    {isVisible('wireless_charging_compatibility') && (
+                      <Box sx={{ gridColumn: 'span 2' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                          {`Wireless Charging Compatibility${star('wireless_charging_compatibility')}`}
+                        </Typography>
+                        <WirelessCheckboxGroup wireless={addWireless} onChange={handleWirelessChange} />
+                      </Box>
+                    )}
+
+                    {isVisible('compatible_watch_case_size') && (
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>{`Watch Case Size${star('compatible_watch_case_size')}`}</InputLabel>
+                        <Select
+                          value={addWatchCase}
+                          onChange={e => setAddWatchCase(e.target.value)}
+                          label={`Watch Case Size${star('compatible_watch_case_size')}`}
+                        >
+                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                          {['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm'].map(v => (
                             <MenuItem key={v} value={v}>{v}</MenuItem>
-                          ))
-                        ) : (
-                          ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB'].map(v => (
-                            <MenuItem key={v} value={v}>{v}</MenuItem>
-                          ))
-                        )}
-                      </Select>
-                    </FormControl>
-                  )}
-                </>
-              )}
-
-              {(selectedCategory === 'phone' || selectedCategory === 'tablet' || selectedCategory === 'laptop') && (
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Headphone Jack *</InputLabel>
-                  <Select
-                    value={addHeadphone}
-                    onChange={e => setAddHeadphone(e.target.value)}
-                    label="Headphone Jack *"
-                  >
-                    <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                    <MenuItem value="Type-C">Type-C</MenuItem>
-                    {selectedCategory !== 'laptop' && <MenuItem value="Lightning">Lightning</MenuItem>}
-                  </Select>
-                </FormControl>
-              )}
-
-              {/* Bluetooth (all categories) */}
-              {selectedCategory && (
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Bluetooth Compatibility *</InputLabel>
-                  <Select
-                    value={addBluetooth}
-                    onChange={e => setAddBluetooth(e.target.value)}
-                    label="Bluetooth Compatibility *"
-                  >
-                    <MenuItem value="Yes">Yes</MenuItem>
-                    <MenuItem value="No">No</MenuItem>
-                  </Select>
-                </FormControl>
-              )}
-
-              {/* Wireless Charging (Phone / Smartwatch) */}
-              {(selectedCategory === 'phone' || selectedCategory === 'smartwatch') && (
-                <Box sx={{ gridColumn: 'span 2' }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                    Wireless Charging Compatibility *
-                  </Typography>
-                  <WirelessCheckboxGroup wireless={addWireless} onChange={handleWirelessChange} />
-                </Box>
-              )}
-
-              {/* Watch Case Size (Smartwatch) */}
-              {selectedCategory === 'smartwatch' && (
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Watch Case Size *</InputLabel>
-                  <Select
-                    value={addWatchCase}
-                    onChange={e => setAddWatchCase(e.target.value)}
-                    label="Watch Case Size *"
-                  >
-                    <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                    {['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm'].map(v => (
-                      <MenuItem key={v} value={v}>{v}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
+                          ))}
+                        </Select>
+                      </FormControl>
+                    )}
+                  </>
+                )
+              })()}
             </Box>
           </DialogContent>
           <DialogActions>
@@ -2277,133 +2151,115 @@ export default function DevicesPage() {
                   </>
                 )}
 
-                {isCixciAdmin && selectedEditCategory && (
-                  <Box sx={{ gridColumn: 'span 2' }}>
-                    <Divider sx={{ my: 1 }} />
-                  </Box>
-                )}
+                {/* Dynamic compatibility fields — admin only in details tab */}
+                {(() => {
+                  const eRules = selectedEditTypeObj?.compatibility_rules || {}
+                  const eVisible = (k: string) => (eRules[k]?.mode || 'hidden') !== 'hidden'
+                  const eStar = (k: string) => eRules[k]?.mode === 'required' ? ' *' : ''
+                  const hasAny = Object.keys(eRules).some(k => eVisible(k))
+                  if (!isCixciAdmin || !hasAny) return null
+                  return (
+                    <>
+                      <Box sx={{ gridColumn: 'span 2' }}><Divider sx={{ my: 1 }} /></Box>
 
-                {/* Conditional Compatibility Fields - admin only in details tab */}
-                {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Charging Interface *</Typography>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        value={editCharging}
-                        onChange={e => setEditCharging(e.target.value)}
-                        displayEmpty
-                      >
-                        <MenuItem value="">Select Charging Interface</MenuItem>
-                        <MenuItem value="Type-C">Type-C</MenuItem>
-                        {selectedEditCategory !== 'laptop' && <MenuItem value="Lightning">Lightning</MenuItem>}
-                        <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                )}
+                      {eVisible('compatible_charging_interface') && (
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Charging Interface${eStar('compatible_charging_interface')}`}</Typography>
+                          <FormControl size="small" fullWidth>
+                            <Select value={editCharging} onChange={e => setEditCharging(e.target.value)} displayEmpty>
+                              <MenuItem value="">Select Charging Interface</MenuItem>
+                              <MenuItem value="Type-C">Type-C</MenuItem>
+                              <MenuItem value="Lightning">Lightning</MenuItem>
+                              <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Box>
+                      )}
 
-                {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet') && (
-                  <>
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Storage Expansion *</Typography>
-                      <FormControl size="small" fullWidth>
-                        <Select
-                          value={editStorage}
-                          onChange={e => handleEditStorageChange(e.target.value)}
-                          displayEmpty
-                        >
-                          <MenuItem value="">Select Storage Expansion</MenuItem>
-                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                          <MenuItem value="microSDXC">microSDXC</MenuItem>
-                          <MenuItem value="microSDHC">microSDHC</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </Box>
+                      {eVisible('storage_expansion_compatibility') && (
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Storage Expansion${eStar('storage_expansion_compatibility')}`}</Typography>
+                          <FormControl size="small" fullWidth>
+                            <Select value={editStorage} onChange={e => handleEditStorageChange(e.target.value)} displayEmpty>
+                              <MenuItem value="">Select Storage Expansion</MenuItem>
+                              <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                              <MenuItem value="microSDXC">microSDXC</MenuItem>
+                              <MenuItem value="microSDHC">microSDHC</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Box>
+                      )}
 
-                    {(editStorage === 'microSDXC' || editStorage === 'microSDHC') && (
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Maximum Expansion *</Typography>
-                        <FormControl size="small" fullWidth>
-                          <Select
-                            value={editMaxStorage}
-                            onChange={e => setEditMaxStorage(e.target.value)}
-                          >
-                            {editStorage === 'microSDXC' ? (
-                              ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(v => (
+                      {eVisible('maximum_supported_storage') && (editStorage === 'microSDXC' || editStorage === 'microSDHC') && (
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Maximum Expansion${eStar('maximum_supported_storage')}`}</Typography>
+                          <FormControl size="small" fullWidth>
+                            <Select value={editMaxStorage} onChange={e => setEditMaxStorage(e.target.value)}>
+                              {editStorage === 'microSDXC' ? (
+                                ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(v => (
+                                  <MenuItem key={v} value={v}>{v}</MenuItem>
+                                ))
+                              ) : (
+                                ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB'].map(v => (
+                                  <MenuItem key={v} value={v}>{v}</MenuItem>
+                                ))
+                              )}
+                            </Select>
+                          </FormControl>
+                        </Box>
+                      )}
+
+                      {eVisible('headphone_jack_compatibility') && (
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Headphone Jack${eStar('headphone_jack_compatibility')}`}</Typography>
+                          <FormControl size="small" fullWidth>
+                            <Select value={editHeadphone} onChange={e => setEditHeadphone(e.target.value)} displayEmpty>
+                              <MenuItem value="">Select Headphone Jack</MenuItem>
+                              <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                              <MenuItem value="Type-C">Type-C</MenuItem>
+                              <MenuItem value="Lightning">Lightning</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Box>
+                      )}
+
+                      {eVisible('bluetooth_compatibility') && (
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Bluetooth Compatibility${eStar('bluetooth_compatibility')}`}</Typography>
+                          <FormControl size="small" fullWidth>
+                            <Select value={editBluetooth} onChange={e => setEditBluetooth(e.target.value)} displayEmpty>
+                              <MenuItem value="">Select Bluetooth Compatibility</MenuItem>
+                              <MenuItem value="Yes">Yes</MenuItem>
+                              <MenuItem value="No">No</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Box>
+                      )}
+
+                      {eVisible('wireless_charging_compatibility') && (
+                        <Box sx={{ gridColumn: 'span 2' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Wireless Charging Compatibility${eStar('wireless_charging_compatibility')}`}</Typography>
+                          <WirelessCheckboxGroup wireless={editWireless} onChange={handleEditWirelessChange} />
+                        </Box>
+                      )}
+
+                      {eVisible('compatible_watch_case_size') && (
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Watch Case Size${eStar('compatible_watch_case_size')}`}</Typography>
+                          <FormControl size="small" fullWidth>
+                            <Select value={editWatchCase} onChange={e => setEditWatchCase(e.target.value)} displayEmpty>
+                              <MenuItem value="">Select Watch Case Size</MenuItem>
+                              <MenuItem value="Not Compatible">Not Compatible</MenuItem>
+                              {['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm'].map(v => (
                                 <MenuItem key={v} value={v}>{v}</MenuItem>
-                              ))
-                            ) : (
-                              ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB'].map(v => (
-                                <MenuItem key={v} value={v}>{v}</MenuItem>
-                              ))
-                            )}
-                          </Select>
-                        </FormControl>
-                      </Box>
-                    )}
-                  </>
-                )}
-
-                {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Headphone Jack *</Typography>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        value={editHeadphone}
-                        onChange={e => setEditHeadphone(e.target.value)}
-                        displayEmpty
-                      >
-                        <MenuItem value="">Select Headphone Jack</MenuItem>
-                        <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                        <MenuItem value="Type-C">Type-C</MenuItem>
-                        {selectedEditCategory !== 'laptop' && <MenuItem value="Lightning">Lightning</MenuItem>}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                )}
-
-                {isCixciAdmin && selectedEditCategory && (
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Bluetooth Compatibility *</Typography>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        value={editBluetooth}
-                        onChange={e => setEditBluetooth(e.target.value)}
-                        displayEmpty
-                      >
-                        <MenuItem value="">Select Bluetooth Compatibility</MenuItem>
-                        <MenuItem value="Yes">Yes</MenuItem>
-                        <MenuItem value="No">No</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                )}
-
-                {isCixciAdmin && (selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
-                  <Box sx={{ gridColumn: 'span 2' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Wireless Charging Compatibility *</Typography>
-                    <WirelessCheckboxGroup wireless={editWireless} onChange={handleEditWirelessChange} />
-                  </Box>
-                )}
-
-                {isCixciAdmin && selectedEditCategory === 'smartwatch' && (
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Watch Case Size *</Typography>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        value={editWatchCase}
-                        onChange={e => setEditWatchCase(e.target.value)}
-                        displayEmpty
-                      >
-                        <MenuItem value="">Select Watch Case Size</MenuItem>
-                        <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                        {['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm'].map(v => (
-                          <MenuItem key={v} value={v}>{v}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                )}
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Box>
+                      )}
+                    </>
+                  )
+                })()}
               </Box>
             </DialogContent>
             <DialogActions>
@@ -2426,63 +2282,40 @@ export default function DevicesPage() {
               </Typography>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
-                {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Charging Interface</Typography>
-                    <ReadOnlyField>{editingDevice?.compatible_charging_interface || 'Not Compatible'}</ReadOnlyField>
-                  </Box>
-                )}
-
-                {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet') && (
-                  <>
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Storage Expansion</Typography>
-                      <ReadOnlyField>{editingDevice?.storage_expansion_compatibility || 'Not Compatible'}</ReadOnlyField>
-                    </Box>
-                    {editingDevice?.storage_expansion_compatibility && editingDevice.storage_expansion_compatibility !== 'Not Compatible' && (
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Maximum Supported Storage</Typography>
-                        <ReadOnlyField>{editingDevice?.maximum_supported_storage || 'Not Compatible'}</ReadOnlyField>
+                {(() => {
+                  const roRules = selectedEditTypeObj?.compatibility_rules || {}
+                  const roVisible = (k: string) => (roRules[k]?.mode || 'hidden') !== 'hidden'
+                  const roFields: Array<{ key: string; label: string; getValue: () => string; span2?: boolean }> = [
+                    { key: 'compatible_charging_interface', label: 'Charging Interface', getValue: () => editingDevice?.compatible_charging_interface || 'Not Compatible' },
+                    { key: 'storage_expansion_compatibility', label: 'Storage Expansion', getValue: () => editingDevice?.storage_expansion_compatibility || 'Not Compatible' },
+                    { key: 'maximum_supported_storage', label: 'Maximum Supported Storage', getValue: () => editingDevice?.maximum_supported_storage || 'Not Compatible' },
+                    { key: 'headphone_jack_compatibility', label: 'Headphone Jack', getValue: () => editingDevice?.headphone_jack_compatibility || 'Not Compatible' },
+                    { key: 'bluetooth_compatibility', label: 'Bluetooth Compatibility', getValue: () => editingDevice?.bluetooth_compatibility || 'N/A' },
+                    { key: 'wireless_charging_compatibility', label: 'Wireless Charging Compatibility', getValue: () => parseWirelessCharging(editingDevice?.wireless_charging_compatibility).join(', ') || 'Not Compatible', span2: true },
+                    { key: 'compatible_watch_case_size', label: 'Watch Case Size', getValue: () => editingDevice?.compatible_watch_case_size || 'Not Compatible' },
+                  ]
+                  const visible = roFields.filter(f => {
+                    if (f.key === 'maximum_supported_storage') {
+                      return roVisible(f.key) && editingDevice?.storage_expansion_compatibility && editingDevice.storage_expansion_compatibility !== 'Not Compatible'
+                    }
+                    return roVisible(f.key)
+                  })
+                  if (visible.length === 0) {
+                    return (
+                      <Box sx={{ gridColumn: 'span 2', py: 3, textAlign: 'center' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          No compatibility data available for this device type.
+                        </Typography>
                       </Box>
-                    )}
-                  </>
-                )}
-
-                {(selectedEditCategory === 'phone' || selectedEditCategory === 'tablet' || selectedEditCategory === 'laptop') && (
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Headphone Jack</Typography>
-                    <ReadOnlyField>{editingDevice?.headphone_jack_compatibility || 'Not Compatible'}</ReadOnlyField>
-                  </Box>
-                )}
-
-                {selectedEditCategory && (
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Bluetooth Compatibility</Typography>
-                    <ReadOnlyField>{editingDevice?.bluetooth_compatibility || 'N/A'}</ReadOnlyField>
-                  </Box>
-                )}
-
-                {(selectedEditCategory === 'phone' || selectedEditCategory === 'smartwatch') && (
-                  <Box sx={{ gridColumn: 'span 2' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Wireless Charging Compatibility</Typography>
-                    <ReadOnlyField>{parseWirelessCharging(editingDevice?.wireless_charging_compatibility).join(', ') || 'Not Compatible'}</ReadOnlyField>
-                  </Box>
-                )}
-
-                {selectedEditCategory === 'smartwatch' && (
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Watch Case Size</Typography>
-                    <ReadOnlyField>{editingDevice?.compatible_watch_case_size || 'Not Compatible'}</ReadOnlyField>
-                  </Box>
-                )}
-
-                {!selectedEditCategory && (
-                  <Box sx={{ gridColumn: 'span 2', py: 3, textAlign: 'center' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      No compatibility data available for this device type.
-                    </Typography>
-                  </Box>
-                )}
+                    )
+                  }
+                  return visible.map(f => (
+                    <Box key={f.key} sx={f.span2 ? { gridColumn: 'span 2' } : undefined}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{f.label}</Typography>
+                      <ReadOnlyField>{f.getValue()}</ReadOnlyField>
+                    </Box>
+                  ))
+                })()}
               </Box>
             </DialogContent>
             <DialogActions>
