@@ -136,6 +136,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.routing.tasks.run_manual_vendor_exports",
         "schedule": 900.0,
     },
+    "update_device_lifecycle_statuses_hourly": {
+        "task": "apps.devices.tasks.update_device_lifecycle_statuses",
+        "schedule": 3600.0,
+    },
+    "update_product_statuses_by_date_hourly": {
+        "task": "apps.catalog.tasks.update_product_statuses_by_date",
+        "schedule": 3600.0,
+    },
 }
 
 # ─── REST Framework ───────────────────────────────────────────────────────────

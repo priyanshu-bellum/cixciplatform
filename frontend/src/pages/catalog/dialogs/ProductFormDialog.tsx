@@ -45,6 +45,7 @@ interface ProductFormDialogProps {
   devices: any[]
   deviceTypes: any[]
   activeCompatibilities?: any[]
+  dropdownConfigs?: any[]
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +211,7 @@ export default function ProductFormDialog({
   devices,
   deviceTypes,
   activeCompatibilities,
+  dropdownConfigs = [],
 }: ProductFormDialogProps) {
   const form = useProductForm()
   const { confirm, dialogProps } = useConfirmDialog()
@@ -559,130 +561,155 @@ export default function ProductFormDialog({
   }, [devices, form.deviceSearch])
 
   // -------------------------------------------------------------------------
-  // Category-specific compatibility fields
+  // Category-specific compatibility fields (dynamically driven by rules)
   // -------------------------------------------------------------------------
   const renderCategorySpecificCompatibility = () => {
-    const cat = (form.prodCategory || '').toLowerCase().replace(/[\s&]+/g, '_')
+    if (!form.prodCategory) return null
 
-    const bluetoothOptions = ['Bluetooth 4.0', 'Bluetooth 4.1', 'Bluetooth 4.2', 'Bluetooth 5.0', 'Bluetooth 5.1', 'Bluetooth 5.2', 'Bluetooth 5.3', 'Not Compatible']
-    const headphoneJackOptions = ['3.5mm', 'USB-C', 'Lightning', 'Not Compatible']
-    const chargingInterfaceOptions = ['USB-C', 'Lightning', 'Micro-USB', 'USB-A', 'Wireless Only', 'Not Compatible']
-    const wirelessChargingOptions = ['Qi', 'MagSafe', 'Not Compatible']
-    const storageExpansionOptions = ['microSD', 'SD', 'NM Card', 'Not Compatible']
-    const memoryCapacityOptions = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB']
-    const watchCaseSizeOptions = ['38mm', '40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '47mm', '49mm']
-
-    const renderSelect = (label: string, value: string, onChange: (v: string) => void, options: string[]) => (
-      <FormControl size="small" fullWidth>
-        <InputLabel>{label}</InputLabel>
-        <Select value={value} onChange={e => onChange(e.target.value as string)} label={label}>
-          <MenuItem value=""><em>Select...</em></MenuItem>
-          {options.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-        </Select>
-      </FormControl>
+    const catConfig = dropdownConfigs.find(
+      (c: any) => c.field_name === 'product_category' && c.value === form.prodCategory
     )
+    if (!catConfig) return null
 
-    const renderWirelessChargingCheckboxes = () => (
-      <Box>
-        <Typography variant="caption" sx={{ color: 'text.secondary', mb: 0.5, display: 'block' }}>
-          Wireless Charging Compatibility
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {wirelessChargingOptions.map(opt => (
-            <FormControlLabel
-              key={opt}
-              control={
-                <Checkbox
-                  size="small"
-                  checked={form.compWirelessCharging.includes(opt)}
-                  onChange={() => form.handleWirelessChargingChange(opt)}
-                />
-              }
-              label={opt}
-              sx={{ '& .MuiFormControlLabel-label': { fontSize: 14 } }}
-            />
-          ))}
+    const rules: Record<string, any> = catConfig.compatibility_rules || {}
+
+    const getMemoryCapacityOptions = () => {
+      if (form.compStorageExpansion === 'microSDXC') return ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
+      if (form.compStorageExpansion === 'microSDHC') return ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
+      return ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB', '2TB']
+    }
+
+    const FIELD_DEFS: Array<{
+      key: string
+      label: string
+      type: 'select' | 'checkbox'
+      getValue: () => string
+      onChange: (v: string) => void
+      getOptions: () => string[]
+      isDisabled?: () => boolean
+    }> = [
+      {
+        key: 'bluetooth_compatibility',
+        label: 'Bluetooth',
+        type: 'select',
+        getValue: () => form.compBluetooth,
+        onChange: form.setCompBluetooth,
+        getOptions: () => ['Yes', 'No'],
+      },
+      {
+        key: 'headphone_jack_compatibility',
+        label: 'Headphone Jack',
+        type: 'select',
+        getValue: () => form.compHeadphoneJack,
+        onChange: form.setCompHeadphoneJack,
+        getOptions: () => ['Type-C', 'Lightning', 'Not Compatible'],
+      },
+      {
+        key: 'compatible_charging_interface',
+        label: 'Charging Interface',
+        type: 'select',
+        getValue: () => form.compChargingInterface,
+        onChange: form.setCompChargingInterface,
+        getOptions: () => ['Type-C', 'Lightning', 'Not Compatible'],
+      },
+      {
+        key: 'wireless_charging_compatibility',
+        label: 'Wireless Charging',
+        type: 'checkbox',
+        getValue: () => form.compWirelessCharging.join('+'),
+        onChange: () => {},
+        getOptions: () => ['Qi', 'MagSafe', 'Qi2', 'Not Compatible'],
+      },
+      {
+        key: 'storage_expansion_compatibility',
+        label: 'Storage Expansion',
+        type: 'select',
+        getValue: () => form.compStorageExpansion,
+        onChange: form.setCompStorageExpansion,
+        getOptions: () => ['microSDXC', 'microSDHC', 'Not Compatible'],
+      },
+      {
+        key: 'memory_capacity',
+        label: 'Memory Capacity',
+        type: 'select',
+        getValue: () => form.compMemoryCapacity,
+        onChange: form.setCompMemoryCapacity,
+        getOptions: getMemoryCapacityOptions,
+        isDisabled: () => form.compStorageExpansion === 'Not Compatible' || !form.compStorageExpansion,
+      },
+      {
+        key: 'compatible_watch_case_size',
+        label: 'Watch Case Size',
+        type: 'select',
+        getValue: () => form.compWatchCaseSize,
+        onChange: form.setCompWatchCaseSize,
+        getOptions: () => ['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm', 'Not Compatible'],
+      },
+    ]
+
+    const visibleFields = FIELD_DEFS.filter(fd => {
+      const rule = rules[fd.key]
+      const mode = rule?.mode || 'hidden'
+      return mode !== 'hidden'
+    })
+
+    if (visibleFields.length === 0) return null
+
+    const catDisplayName = catConfig.display_name || catConfig.value || form.prodCategory
+
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Typography sx={sectionTitleSx}>Category Compatibility ({catDisplayName})</Typography>
+        <Box sx={gridTwoCol}>
+          {visibleFields.map(fd => {
+            const rule = rules[fd.key]
+            const isRequired = rule?.mode === 'required'
+
+            if (fd.type === 'checkbox') {
+              return (
+                <Box key={fd.key} sx={{ gridColumn: '1 / -1' }}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', mb: 0.5, display: 'block' }}>
+                    {fd.label}{isRequired ? ' *' : ''}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    {fd.getOptions().map(opt => (
+                      <FormControlLabel
+                        key={opt}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={form.compWirelessCharging.includes(opt)}
+                            onChange={() => form.handleWirelessChargingChange(opt)}
+                          />
+                        }
+                        label={opt}
+                        sx={{ '& .MuiFormControlLabel-label': { fontSize: 14 } }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )
+            }
+
+            const options = fd.getOptions()
+            const label = `${fd.label}${isRequired ? ' *' : ''}`
+            return (
+              <FormControl key={fd.key} size="small" fullWidth disabled={fd.isDisabled?.()}>
+                <InputLabel>{label}</InputLabel>
+                <Select
+                  value={fd.getValue()}
+                  onChange={e => fd.onChange(e.target.value as string)}
+                  label={label}
+                >
+                  <MenuItem value=""><em>Select...</em></MenuItem>
+                  {options.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                </Select>
+              </FormControl>
+            )
+          })}
         </Box>
       </Box>
     )
-
-    if (cat === 'headphones') {
-      return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography sx={sectionTitleSx}>Category Compatibility (Headphones)</Typography>
-          <Box sx={gridTwoCol}>
-            {renderSelect('Headphone Jack', form.compHeadphoneJack, form.setCompHeadphoneJack, headphoneJackOptions)}
-            {renderSelect('Bluetooth', form.compBluetooth, form.setCompBluetooth, bluetoothOptions)}
-          </Box>
-        </Box>
-      )
-    }
-
-    if (cat === 'speakers') {
-      return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography sx={sectionTitleSx}>Category Compatibility (Speakers)</Typography>
-          <Box sx={gridTwoCol}>
-            {renderSelect('Charging Interface', form.compChargingInterface, form.setCompChargingInterface, chargingInterfaceOptions)}
-            {renderSelect('Bluetooth', form.compBluetooth, form.setCompBluetooth, bluetoothOptions)}
-          </Box>
-        </Box>
-      )
-    }
-
-    if (cat === 'chargers_and_cables' || cat === 'chargers' || cat === 'cables') {
-      return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography sx={sectionTitleSx}>Category Compatibility (Chargers & Cables)</Typography>
-          {renderSelect('Charging Interface', form.compChargingInterface, form.setCompChargingInterface, chargingInterfaceOptions)}
-          {renderWirelessChargingCheckboxes()}
-        </Box>
-      )
-    }
-
-    if (cat === 'memory' || cat === 'memory_cards') {
-      return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography sx={sectionTitleSx}>Category Compatibility (Memory)</Typography>
-          <Box sx={gridTwoCol}>
-            {renderSelect('Storage Expansion', form.compStorageExpansion, form.setCompStorageExpansion, storageExpansionOptions)}
-            <FormControl size="small" fullWidth disabled={form.compStorageExpansion === 'Not Compatible'}>
-              <InputLabel>Memory Capacity</InputLabel>
-              <Select
-                value={form.compMemoryCapacity}
-                onChange={e => form.setCompMemoryCapacity(e.target.value as string)}
-                label="Memory Capacity"
-              >
-                <MenuItem value=""><em>Select...</em></MenuItem>
-                {memoryCapacityOptions.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-              </Select>
-            </FormControl>
-          </Box>
-        </Box>
-      )
-    }
-
-    if (cat === 'wearable_tech' || cat === 'wearables') {
-      return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography sx={sectionTitleSx}>Category Compatibility (Wearable Tech)</Typography>
-          {renderSelect('Charging Interface', form.compChargingInterface, form.setCompChargingInterface, chargingInterfaceOptions)}
-          {renderWirelessChargingCheckboxes()}
-        </Box>
-      )
-    }
-
-    if (cat === 'watch_accessories') {
-      return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography sx={sectionTitleSx}>Category Compatibility (Watch Accessories)</Typography>
-          {renderSelect('Watch Case Size', form.compWatchCaseSize, form.setCompWatchCaseSize, watchCaseSizeOptions)}
-          {renderWirelessChargingCheckboxes()}
-        </Box>
-      )
-    }
-
-    return null
   }
 
   // -------------------------------------------------------------------------

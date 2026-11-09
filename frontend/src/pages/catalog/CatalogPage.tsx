@@ -241,6 +241,7 @@ export default function CatalogPage() {
         allowedColors={allowedColors}
         devices={devices}
         deviceTypes={deviceTypes}
+        dropdownConfigs={dropdownConfigs}
       />
 
       <ProductFormDialog
@@ -256,6 +257,7 @@ export default function CatalogPage() {
         devices={devices}
         deviceTypes={deviceTypes}
         activeCompatibilities={activeCompatibilities}
+        dropdownConfigs={dropdownConfigs}
       />
 
       <ManageProductDialog

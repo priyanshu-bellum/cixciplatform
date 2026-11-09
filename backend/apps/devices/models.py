@@ -193,9 +193,8 @@ class Device(models.Model):
             today = timezone.localdate()
             if self.launch_date > today:
                 self.lifecycle_status = "inactive"
-            elif not is_new and self.lifecycle_status == "inactive":
-                if _original and _original.launch_date and _original.launch_date > today:
-                    self.lifecycle_status = "available"
+            elif self.lifecycle_status == "inactive" and self.launch_date <= today:
+                self.lifecycle_status = "available"
 
         actor_id = kwargs.pop("actor_id", None)
         old_status = None
