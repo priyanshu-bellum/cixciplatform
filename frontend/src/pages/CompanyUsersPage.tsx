@@ -320,7 +320,7 @@ export default function CompanyUsersPage() {
   const availableCapabilities = allCapabilities.filter(c => !assignedCodes.has(c.code))
 
   return (
-    <Box sx={{ p: 3.5 }}>
+    <Box>
       {/* Header */}
       <PageHeader
         title="Company User & Capability Management"

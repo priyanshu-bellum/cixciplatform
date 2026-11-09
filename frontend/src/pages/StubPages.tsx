@@ -20,6 +20,7 @@ import MenuItem from '@mui/material/MenuItem'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import Alert from '@mui/material/Alert'
+import Card from '@mui/material/Card'
 import Paper from '@mui/material/Paper'
 import Divider from '@mui/material/Divider'
 import Checkbox from '@mui/material/Checkbox'
@@ -1128,102 +1129,104 @@ export function SettingsPage() {
 
       {/* CHILD ONBOARDING TAB */}
       {hasChildOnboardingCapability && activeTab === 'onboarding' && (
-        <div>
-          <div className="section-header" style={{ marginBottom: 16 }}>
-            <span className="section-title">Child Company Onboarding Requests</span>
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">Child Company Onboarding Requests</Typography>
             {!isAdmin && (
-              <button className="btn btn-primary btn-sm" onClick={() => setShowOnboardingModal(true)}>
-                <AddIcon sx={{ fontSize: 14 }} /> Request Child Company
-              </button>
+              <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setShowOnboardingModal(true)}>
+                Request Child Company
+              </Button>
             )}
-          </div>
-          <div className="table-wrap">
-            {onboardingRequestsList.length === 0 ? (
-              <div className="empty-state">
-                <ApartmentIcon sx={{ fontSize: 40, color: "text.disabled" }} />
-                <div>No onboarding requests found</div>
-              </div>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Child Name</th>
-                    <th>Brand/Entity</th>
-                    <th>Requester</th>
-                    <th>Status</th>
-                    <th>Contact & Domain</th>
-                    <th>Region</th>
-                    <th>Rejection Reason</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+          </Box>
+          {onboardingRequestsList.length === 0 ? (
+            <Card sx={{ textAlign: 'center', py: 6, px: 2 }}>
+              <ApartmentIcon sx={{ fontSize: 40, color: "text.disabled" }} />
+              <Typography color="text.secondary" sx={{ mt: 1 }}>No onboarding requests found</Typography>
+            </Card>
+          ) : (
+            <TableContainer component={Card}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Child Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Brand/Entity</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Requester</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Contact & Domain</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Region</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Rejection Reason</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
                   {onboardingRequestsList.map((req: any) => (
-                    <tr key={req.id}>
-                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{req.company_name}</td>
-                      <td>{req.brand_name}</td>
-                      <td>
-                        <div style={{ fontWeight: 500 }}>{req.requester_name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{req.parent_company_name}</div>
-                      </td>
-                      <td>
-                        <span className={`badge ${
-                          req.status === 'approved' ? 'badge-green' :
-                          req.status === 'rejected' ? 'badge-red' :
-                          req.status === 'withdrawn' ? 'badge-muted' :
-                          'badge-blue'
-                        }`}>
-                          {req.status}
-                        </span>
-                      </td>
-                      <td>
+                    <TableRow key={req.id}>
+                      <TableCell sx={{ fontWeight: 600 }}>{req.company_name}</TableCell>
+                      <TableCell>{req.brand_name}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>{req.requester_name}</Typography>
+                        <Typography variant="caption" color="text.secondary">{req.parent_company_name}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={req.status}
+                          size="small"
+                          color={
+                            req.status === 'approved' ? 'success' :
+                            req.status === 'rejected' ? 'error' :
+                            req.status === 'withdrawn' ? 'default' :
+                            'info'
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
                         {req.website && (
-                          <div>
-                            <a href={req.website} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'underline' }}>
-                              {req.website}
-                            </a>
-                          </div>
+                          <Typography variant="caption" component="a" href={req.website} target="_blank" rel="noreferrer" sx={{ color: 'primary.main', textDecoration: 'underline', display: 'block' }}>
+                            {req.website}
+                          </Typography>
                         )}
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        <Typography variant="caption" color="text.secondary" display="block">
                           Domain: {req.business_email_domain}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
                           Contact: {req.primary_contact}
-                        </div>
-                      </td>
-                      <td>{req.region}</td>
-                      <td style={{ color: 'var(--red)', fontSize: 11 }}>{req.rejection_reason || '—'}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{req.region}</TableCell>
+                      <TableCell>
+                        <Typography variant="caption" color="error">{req.rejection_reason || '—'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={0.75}>
                           {isAdmin && req.status === 'submitted' && (
                             <>
-                              <button className="btn btn-green btn-xs" onClick={() => handleApproveOnboardingRequest(req.id)}>Approve</button>
-                              <button className="btn btn-red btn-xs" onClick={() => {
+                              <Button variant="contained" color="success" size="small" onClick={() => handleApproveOnboardingRequest(req.id)}>Approve</Button>
+                              <Button variant="contained" color="error" size="small" onClick={() => {
                                 setSelectedOnboardingReqId(req.id)
                                 setShowRejectModal(true)
-                              }}>Reject</button>
+                              }}>Reject</Button>
                             </>
                           )}
                           {!isAdmin && req.status === 'submitted' && (
-                            <button className="btn btn-red btn-xs" onClick={() => handleWithdrawOnboardingRequest(req.id)}>Withdraw</button>
+                            <Button variant="outlined" color="error" size="small" onClick={() => handleWithdrawOnboardingRequest(req.id)}>Withdraw</Button>
                           )}
-                        </div>
-                      </td>
-                    </tr>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
       )}
 
       {/* COMPANIES TAB */}
       {isAdmin && activeTab === 'companies' && (
-        <div>
-          <div className="section-header" style={{ marginBottom: 16 }}>
-            <span className="section-title">All Registered Companies (Tenants)</span>
-            <button className="btn btn-primary btn-sm" onClick={() => {
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">All Registered Companies (Tenants)</Typography>
+            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => {
               setCompanyName('')
               setCompanyDisplayName('')
               setCompanyType('')
@@ -1253,68 +1256,74 @@ export function SettingsPage() {
               setErrorMsg(null)
               setShowCompanyModal(true)
             }}>
-              <AddIcon sx={{ fontSize: 14 }} /> Add Company
-            </button>
-          </div>
-          <div className="table-wrap">
-            {companiesList.length === 0 ? (
-              <div className="empty-state">
-                <BusinessIcon sx={{ fontSize: 40, color: "text.disabled" }} />
-                <div>No companies found</div>
-              </div>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Company Name / Display</th><th>Type</th><th>Status</th><th>Parent Status</th><th>Website & Contact</th><th>Slug</th><th>Country</th><th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+              Add Company
+            </Button>
+          </Box>
+          {companiesList.length === 0 ? (
+            <Card sx={{ textAlign: 'center', py: 6, px: 2 }}>
+              <BusinessIcon sx={{ fontSize: 40, color: "text.disabled" }} />
+              <Typography color="text.secondary" sx={{ mt: 1 }}>No companies found</Typography>
+            </Card>
+          ) : (
+            <TableContainer component={Card}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Company Name / Display</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Parent Status</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Website & Contact</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Slug</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Country</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
                   {companiesList.map((c: any) => (
-                    <tr key={c.id}>
-                      <td>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</div>
+                    <TableRow key={c.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{c.name}</Typography>
                         {c.display_name && c.display_name !== c.name && (
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.display_name}</div>
+                          <Typography variant="caption" color="text.secondary">{c.display_name}</Typography>
                         )}
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell>
                         <Chip label={c.company_type?.replace(/_/g, ' ')} size="small" color={TYPE_COLOR[c.company_type?.toLowerCase()] ?? 'default'} />
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell>
                         <StatusChip status={c.status ?? 'unknown'} />
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell>
                         {c.is_parent ? (
                           <Chip label="Parent Company" size="small" color="secondary" />
                         ) : c.parent_company ? (
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                            Child of: <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Child of: <Typography component="span" variant="caption" sx={{ fontWeight: 500 }}>
                               {companiesList.find((p: any) => p.id === c.parent_company)?.name || 'Parent'}
-                            </span>
-                          </div>
+                            </Typography>
+                          </Typography>
                         ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
+                          <Typography variant="caption" color="text.secondary">—</Typography>
                         )}
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell>
                         {c.website && (
-                          <div>
-                            <a href={c.website} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'underline' }}>
-                              {c.website}
-                            </a>
-                          </div>
+                          <Typography variant="caption" component="a" href={c.website} target="_blank" rel="noreferrer" sx={{ color: 'primary.main', textDecoration: 'underline', display: 'block' }}>
+                            {c.website}
+                          </Typography>
                         )}
                         {c.primary_contact_name && (
-                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                          <Typography variant="caption" color="text.secondary" display="block">
                             {c.primary_contact_name} ({c.primary_contact_email || 'No email'})
-                          </div>
+                          </Typography>
                         )}
-                      </td>
-                      <td className="mono" style={{ fontSize: 12 }}>{c.slug}</td>
-                      <td>{c.country_code || '—'}</td>
-                      <td>
-                        <button className="btn btn-secondary btn-xs" onClick={() => {
+                      </TableCell>
+                      <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{c.slug}</Typography></TableCell>
+                      <TableCell>{c.country_code || '—'}</TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={0.75}>
+                        <Button variant="outlined" size="small" onClick={() => {
                           setSelectedCompany(c)
                           setIsManageFormDirty(false)
                           setEditLogoFile(null)
@@ -1415,42 +1424,38 @@ export function SettingsPage() {
                             setEditCompanyZip('')
                           }
                           setShowCompanyDetailsModal(true)
-                        }}>Manage</button>
-                        <button
-                          className="btn btn-xs"
+                        }}>Manage</Button>
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
                           disabled={c.company_type === 'cixci_internal'}
-                          title={c.company_type === 'cixci_internal' ? 'System companies cannot be deleted' : 'Delete company'}
-                          style={{
-                            background: c.company_type === 'cixci_internal' ? 'var(--bg-elevated)' : 'var(--red-dim)',
-                            color: c.company_type === 'cixci_internal' ? 'var(--text-muted)' : 'var(--red)',
-                            border: `1px solid ${c.company_type === 'cixci_internal' ? 'var(--border)' : 'var(--red)'}`,
-                            cursor: c.company_type === 'cixci_internal' ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', gap: 4
-                          }}
+                          startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
                           onClick={() => {
                             if (c.company_type !== 'cixci_internal') {
                               setDeleteConfirm({ type: 'company', id: c.id, label: c.name, subLabel: c.company_type?.replace(/_/g, ' ') })
                             }
                           }}
                         >
-                          <DeleteIcon sx={{ fontSize: 12 }} /> Delete
-                        </button>
-                      </td>
-                    </tr>
+                          Delete
+                        </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
       )}
 
       {/* ENTITIES TAB */}
       {isAdmin && activeTab === 'entities' && (
-        <div>
-          <div className="section-header" style={{ marginBottom: 16 }}>
-            <span className="section-title">All Company Entities</span>
-            <button className="btn btn-primary btn-sm" onClick={() => {
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">All Company Entities</Typography>
+            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => {
               setEntityName('')
               setEntityCompanyId('')
               setEntityStatus('')
@@ -1460,71 +1465,70 @@ export function SettingsPage() {
               setErrorMsg(null)
               setShowEntityModal(true)
             }}>
-              <AddIcon sx={{ fontSize: 14 }} /> Add Entity
-            </button>
-          </div>
-          <div className="table-wrap">
-            {entitiesList.length === 0 ? (
-              <div className="empty-state">
-                <ApartmentIcon sx={{ fontSize: 40, color: "text.disabled" }} />
-                <div>No entities found</div>
-              </div>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Entity Name</th><th>Parent Company</th><th>Status</th><th>Country</th><th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+              Add Entity
+            </Button>
+          </Box>
+          {entitiesList.length === 0 ? (
+            <Card sx={{ textAlign: 'center', py: 6, px: 2 }}>
+              <ApartmentIcon sx={{ fontSize: 40, color: "text.disabled" }} />
+              <Typography color="text.secondary" sx={{ mt: 1 }}>No entities found</Typography>
+            </Card>
+          ) : (
+            <TableContainer component={Card}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Entity Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Parent Company</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Country</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
                   {entitiesList.map((e: any) => {
                     const companySiblings = entitiesList.filter((x: any) => x.company === e.company || x.company_name === e.company_name)
                     const isLastEntity = companySiblings.length <= 1
                     return (
-                      <tr key={e.id}>
-                        <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{e.name}</td>
-                        <td>{e.company_name}</td>
-                        <td>
+                      <TableRow key={e.id} hover>
+                        <TableCell sx={{ fontWeight: 500 }}>{e.name}</TableCell>
+                        <TableCell>{e.company_name}</TableCell>
+                        <TableCell>
                           <StatusChip status={e.status ?? 'unknown'} />
-                        </td>
-                        <td>{e.country_code || '—'}</td>
-                        <td>
-                          <button
-                            className="btn btn-xs"
+                        </TableCell>
+                        <TableCell>{e.country_code || '—'}</TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            size="small"
                             disabled={isLastEntity}
-                            title={isLastEntity ? 'Cannot delete the only entity of a company' : 'Delete entity'}
-                            style={{
-                              background: isLastEntity ? 'var(--bg-elevated)' : 'var(--red-dim)',
-                              color: isLastEntity ? 'var(--text-muted)' : 'var(--red)',
-                              border: `1px solid ${isLastEntity ? 'var(--border)' : 'var(--red)'}`,
-                              cursor: isLastEntity ? 'not-allowed' : 'pointer',
-                              display: 'flex', alignItems: 'center', gap: 4
-                            }}
+                            startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
                             onClick={() => {
                               if (!isLastEntity) {
                                 setDeleteConfirm({ type: 'entity', id: e.id, label: e.name, subLabel: e.company_name })
                               }
                             }}
                           >
-                            <DeleteIcon sx={{ fontSize: 12 }} /> Delete
-                          </button>
-                        </td>
-                      </tr>
+                            Delete
+                          </Button>
+                        </TableCell>
+                      </TableRow>
                     )
                   })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
       )}
 
       {/* USERS TAB */}
       {isAdmin && activeTab === 'users' && (
-        <div>
-          <div className="section-header" style={{ marginBottom: 16 }}>
-            <span className="section-title">User Directory</span>
-            <button className="btn btn-primary btn-sm" onClick={() => {
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">User Directory</Typography>
+            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => {
               setUserEmail('')
               setUserFirstName('')
               setUserLastName('')
@@ -1534,52 +1538,51 @@ export function SettingsPage() {
               setErrorMsg(null)
               setShowUserModal(true)
             }}>
-              <AddIcon sx={{ fontSize: 14 }} /> Add User
-            </button>
-          </div>
-          <div className="table-wrap">
-            {usersList.length === 0 ? (
-              <div className="empty-state">
-                <PeopleIcon sx={{ fontSize: 40, color: "text.disabled" }} />
-                <div>No users found</div>
-              </div>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th><th>Email</th><th>Company & Entity Scope</th><th>Access</th><th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+              Add User
+            </Button>
+          </Box>
+          {usersList.length === 0 ? (
+            <Card sx={{ textAlign: 'center', py: 6, px: 2 }}>
+              <PeopleIcon sx={{ fontSize: 40, color: "text.disabled" }} />
+              <Typography color="text.secondary" sx={{ mt: 1 }}>No users found</Typography>
+            </Card>
+          ) : (
+            <TableContainer component={Card}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Company & Entity Scope</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Access</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
                   {usersList.map((u: any) => {
                     const isSelf = u.id === user?.id
                     return (
-                      <tr key={u.id}>
-                        <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{u.first_name} {u.last_name}</td>
-                        <td className="mono" style={{ fontSize: 12 }}>{u.email}</td>
-                        <td>
-                          <div>{u.company_name || 'System'}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{u.entity_name || 'CIXCI Scope'}</div>
-                        </td>
-                        <td>
+                      <TableRow key={u.id} hover>
+                        <TableCell sx={{ fontWeight: 500 }}>{u.first_name} {u.last_name}</TableCell>
+                        <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{u.email}</Typography></TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{u.company_name || 'System'}</Typography>
+                          <Typography variant="caption" color="text.secondary">{u.entity_name || 'CIXCI Scope'}</Typography>
+                        </TableCell>
+                        <TableCell>
                           {u.is_cixci_admin ? (
                             <Chip icon={<SecurityIcon sx={{ fontSize: 12 }} />} label="CIXCI Admin" size="small" color="secondary" />
                           ) : (
                             <Chip label="Org User" size="small" color="info" />
                           )}
-                        </td>
-                        <td>
-                          <button
-                            className="btn btn-xs"
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            size="small"
                             disabled={isSelf}
-                            title={isSelf ? 'You cannot delete your own account' : 'Delete user'}
-                            style={{
-                              background: isSelf ? 'var(--bg-elevated)' : 'var(--red-dim)',
-                              color: isSelf ? 'var(--text-muted)' : 'var(--red)',
-                              border: `1px solid ${isSelf ? 'var(--border)' : 'var(--red)'}`,
-                              cursor: isSelf ? 'not-allowed' : 'pointer',
-                              display: 'flex', alignItems: 'center', gap: 4
-                            }}
+                            startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
                             onClick={() => {
                               if (!isSelf) {
                                 setDeleteConfirm({
@@ -1591,82 +1594,77 @@ export function SettingsPage() {
                               }
                             }}
                           >
-                            <DeleteIcon sx={{ fontSize: 12 }} /> Delete
-                          </button>
-                        </td>
-                      </tr>
+                            Delete
+                          </Button>
+                        </TableCell>
+                      </TableRow>
                     )
                   })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
       )}
 
       {/* DELETE CONFIRM MODAL */}
-      {deleteConfirm && (
-        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setDeleteConfirm(null) }}>
-          <div className="modal-content" style={{ width: 420 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-              <div style={{
+      <Dialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} maxWidth="xs" fullWidth>
+        {deleteConfirm && (
+          <>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
+              <Box sx={{
                 width: 36, height: 36, borderRadius: '50%',
-                background: 'var(--red-dim)', border: '1px solid var(--red)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                bgcolor: 'error.light', opacity: 0.15,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                position: 'relative',
               }}>
-                <DeleteIcon sx={{ fontSize: 16, color: "error.main" }} />
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
+                <DeleteIcon sx={{ fontSize: 16, color: "error.main", position: 'absolute' }} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Delete {deleteConfirm.type === 'company' ? 'Company' : deleteConfirm.type === 'entity' ? 'Entity' : 'User'}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>This action cannot be undone.</div>
-              </div>
-            </div>
+                </Typography>
+                <Typography variant="caption" color="text.secondary">This action cannot be undone.</Typography>
+              </Box>
+            </DialogTitle>
+            <DialogContent>
+              <Card variant="outlined" sx={{ p: 1.5, mb: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>{deleteConfirm.label}</Typography>
+                {deleteConfirm.subLabel && (
+                  <Typography variant="caption" color="text.secondary">{deleteConfirm.subLabel}</Typography>
+                )}
+              </Card>
 
-            <div style={{
-              background: 'var(--bg-elevated)', border: '1px solid var(--border-light)',
-              borderRadius: 'var(--radius-sm)', padding: '12px 14px', marginBottom: 16
-            }}>
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>{deleteConfirm.label}</div>
-              {deleteConfirm.subLabel && (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>{deleteConfirm.subLabel}</div>
-              )}
-            </div>
-
-            <div style={{
-              fontSize: 12, color: 'var(--text-secondary)', lineHeight: '1.6',
-              background: 'var(--red-dim)', border: '1px solid var(--red)',
-              borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: 20
-            }}>
-              {deleteConfirm.type === 'company' && (
-                <span>⚠️ Deleting a company will fail if it still has <strong>entities or users</strong> attached. Remove those first, or the server will reject this request.</span>
-              )}
-              {deleteConfirm.type === 'entity' && (
-                <span>⚠️ Deleting an entity will fail if <strong>users are still assigned</strong> to it. Reassign or delete those users first.</span>
-              )}
-              {deleteConfirm.type === 'user' && (
-                <span>⚠️ This will <strong>permanently remove</strong> the user account and revoke all access. The last active company admin cannot be deleted.</span>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => setDeleteConfirm(null)}>Cancel</button>
-              <button
-                className="btn btn-sm"
-                style={{ background: 'var(--red)', color: '#fff', border: '1px solid var(--red)', display: 'flex', alignItems: 'center', gap: 6 }}
+              <Alert severity="error" variant="outlined" sx={{ '& .MuiAlert-message': { fontSize: 12 } }}>
+                {deleteConfirm.type === 'company' && (
+                  <>Deleting a company will fail if it still has <strong>entities or users</strong> attached. Remove those first, or the server will reject this request.</>
+                )}
+                {deleteConfirm.type === 'entity' && (
+                  <>Deleting an entity will fail if <strong>users are still assigned</strong> to it. Reassign or delete those users first.</>
+                )}
+                {deleteConfirm.type === 'user' && (
+                  <>This will <strong>permanently remove</strong> the user account and revoke all access. The last active company admin cannot be deleted.</>
+                )}
+              </Alert>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<DeleteIcon />}
                 onClick={() => {
                   if (deleteConfirm.type === 'company') handleDeleteCompany(deleteConfirm.id)
                   else if (deleteConfirm.type === 'entity') handleDeleteEntity(deleteConfirm.id)
                   else handleDeleteUser(deleteConfirm.id)
                 }}
               >
-                <DeleteIcon sx={{ fontSize: 13 }} /> Delete permanently
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                Delete permanently
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       {/* ADD COMPANY MODAL */}
       <Dialog open={showCompanyModal} onClose={() => { if (isCreateFormDirty()) setShowConfirmCloseCreate(true); else setShowCompanyModal(false) }} maxWidth="sm" fullWidth>
