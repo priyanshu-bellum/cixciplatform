@@ -2147,66 +2147,54 @@ export function SettingsPage() {
       </Dialog>
 
       {/* ADD ENTITY MODAL */}
-      {showEntityModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ width: '540px' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Create Company Entity</h3>
-            {errorMsg && (
-              <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-            <form onSubmit={handleCreateEntity}>
-              <div className="card-grid card-grid-2">
-                <div className="form-group">
-                  <label className="label">Entity Name</label>
-                  <input type="text" className="input" required value={entityName} onChange={e => setEntityName(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="label">Parent Company</label>
-                  <select className="input" value={entityCompanyId} onChange={e => setEntityCompanyId(e.target.value)}>
-                    <option value="">Select one</option>
-                    {companiesList.map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.company_type})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="card-grid card-grid-3" style={{ marginTop: 10 }}>
-                <div className="form-group">
-                  <label className="label">Status</label>
-                  <select className="input" value={entityStatus} onChange={e => setEntityStatus(e.target.value)}>
-                    <option value="">Select one</option>
-                    <option value="active">Active</option>
-                    <option value="draft">Draft</option>
-                    <option value="suspended">Suspended</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="label">Country Code</label>
-                  <input type="text" className="input" value={entityCountry} onChange={e => setEntityCountry(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="label">Region Code</label>
-                  <input type="text" className="input" placeholder="e.g. CA" value={entityRegion} onChange={e => setEntityRegion(e.target.value)} />
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginTop: 12 }}>
-                <label className="label" style={{ marginBottom: 6 }}>Channel Eligibility Override (Optional)</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  {[
-                    { val: 'online_dtc', lbl: 'Online DTC' },
-                    { val: 'bulk_po', lbl: 'Bulk PO' },
-                    { val: 'owned_channel', lbl: 'Owned Channel' },
-                    { val: 'buyer_storefront', lbl: 'Buyer Storefront' },
-                    { val: 'marketplace', lbl: 'Marketplace' },
-                    { val: 'retail_pos', lbl: 'Retail POS' },
-                  ].map(ch => (
-                    <label key={ch.val} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
+      <Dialog open={showEntityModal} onClose={() => setShowEntityModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Create Company Entity</DialogTitle>
+        <DialogContent dividers>
+          {errorMsg && (
+            <Alert severity="error" icon={<ErrorOutlinedIcon fontSize="small" />} sx={{ mb: 2 }}>{errorMsg}</Alert>
+          )}
+          <Box component="form" id="entity-form" onSubmit={handleCreateEntity} sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+              <TextField label="Entity Name" size="small" required fullWidth value={entityName} onChange={e => setEntityName(e.target.value)} />
+              <FormControl size="small" fullWidth>
+                <InputLabel>Parent Company</InputLabel>
+                <Select label="Parent Company" value={entityCompanyId} onChange={e => setEntityCompanyId(e.target.value as string)}>
+                  {companiesList.map((c: any) => (
+                    <MenuItem key={c.id} value={c.id}>{c.name} ({c.company_type})</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select label="Status" value={entityStatus} onChange={e => setEntityStatus(e.target.value as string)}>
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="draft">Draft</MenuItem>
+                  <MenuItem value="suspended">Suspended</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField label="Country Code" size="small" fullWidth value={entityCountry} onChange={e => setEntityCountry(e.target.value)} />
+              <TextField label="Region Code" size="small" fullWidth placeholder="e.g. CA" value={entityRegion} onChange={e => setEntityRegion(e.target.value)} />
+            </Box>
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 1 }}>
+                Channel Eligibility Override (Optional)
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5 }}>
+                {[
+                  { val: 'online_dtc', lbl: 'Online DTC' },
+                  { val: 'bulk_po', lbl: 'Bulk PO' },
+                  { val: 'owned_channel', lbl: 'Owned Channel' },
+                  { val: 'buyer_storefront', lbl: 'Buyer Storefront' },
+                  { val: 'marketplace', lbl: 'Marketplace' },
+                  { val: 'retail_pos', lbl: 'Retail POS' },
+                ].map(ch => (
+                  <FormControlLabel
+                    key={ch.val}
+                    control={
+                      <Checkbox
+                        size="small"
                         checked={entityChannelsOverride.includes(ch.val)}
                         onChange={e => {
                           if (e.target.checked) {
@@ -2216,189 +2204,126 @@ export function SettingsPage() {
                           }
                         }}
                       />
-                      {ch.lbl}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowEntityModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Create Entity</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                    }
+                    label={<Typography variant="body2">{ch.lbl}</Typography>}
+                  />
+                ))}
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setShowEntityModal(false)}>Cancel</Button>
+          <Button type="submit" form="entity-form" variant="contained">Create Entity</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ADD USER MODAL */}
-      {showUserModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Onboard Admin User</h3>
-            {errorMsg && (
-              <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-            <form onSubmit={handleCreateUser}>
-              <div className="card-grid card-grid-2">
-                <div className="form-group">
-                  <label className="label">First Name</label>
-                  <input type="text" className="input" required value={userFirstName} onChange={e => setUserFirstName(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="label">Last Name</label>
-                  <input type="text" className="input" required value={userLastName} onChange={e => setUserLastName(e.target.value)} />
-                </div>
-              </div>
-              <div className="form-group" style={{ marginTop: 10 }}>
-                <label className="label">Email Address</label>
-                <input type="email" className="input" required value={userEmail} onChange={e => setUserEmail(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="label">Assign Company Entity Scope</label>
-                <select className="input" value={userEntityId} onChange={e => setUserEntityId(e.target.value)}>
-                  <option value="">Select one</option>
-                  {entitiesList.map((ent: any) => (
-                    <option key={ent.id} value={ent.id}>{ent.company_name} — {ent.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                <div className="form-group">
-                  <label className="label">Password (Optional)</label>
-                  <input type="password" className="input" placeholder="e.g. secret123" value={userPassword} onChange={e => setUserPassword(e.target.value)} />
-                </div>
-                <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 10 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={userIsActive}
-                      onChange={e => setUserIsActive(e.target.checked)}
-                    />
-                    <strong>Activate immediately</strong>
-                  </label>
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowUserModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Onboard User</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <Dialog open={showUserModal} onClose={() => setShowUserModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Onboard Admin User</DialogTitle>
+        <DialogContent dividers>
+          {errorMsg && (
+            <Alert severity="error" icon={<ErrorOutlinedIcon fontSize="small" />} sx={{ mb: 2 }}>{errorMsg}</Alert>
+          )}
+          <Box component="form" id="user-form" onSubmit={handleCreateUser} sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+              <TextField label="First Name" size="small" required fullWidth value={userFirstName} onChange={e => setUserFirstName(e.target.value)} />
+              <TextField label="Last Name" size="small" required fullWidth value={userLastName} onChange={e => setUserLastName(e.target.value)} />
+            </Box>
+            <TextField label="Email Address" type="email" size="small" required fullWidth value={userEmail} onChange={e => setUserEmail(e.target.value)} />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Assign Company Entity Scope</InputLabel>
+              <Select label="Assign Company Entity Scope" value={userEntityId} onChange={e => setUserEntityId(e.target.value as string)}>
+                {entitiesList.map((ent: any) => (
+                  <MenuItem key={ent.id} value={ent.id}>{ent.company_name} — {ent.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, alignItems: 'center' }}>
+              <TextField label="Password (Optional)" type="password" size="small" fullWidth placeholder="e.g. secret123" value={userPassword} onChange={e => setUserPassword(e.target.value)} />
+              <FormControlLabel
+                control={<Checkbox checked={userIsActive} onChange={e => setUserIsActive(e.target.checked)} />}
+                label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Activate immediately</Typography>}
+              />
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setShowUserModal(false)}>Cancel</Button>
+          <Button type="submit" form="user-form" variant="contained">Onboard User</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* CHILD ONBOARDING MODAL */}
-      {showOnboardingModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ width: '580px' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Request Child Onboarding</h3>
-            {errorMsg && (
-              <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
-                <span style={{ fontSize: 12 }}>{errorMsg}</span>
-              </div>
-            )}
-            <form onSubmit={handleCreateOnboardingRequest}>
-              <div className="card-grid card-grid-2">
-                <div className="form-group">
-                  <label className="label">Child Company Legal Name</label>
-                  <input type="text" className="input" placeholder="e.g. Sub Corp" required value={onboardCompanyName} onChange={e => setOnboardCompanyName(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="label">Brand Name</label>
-                  <input type="text" className="input" placeholder="e.g. Sub Brand" required value={onboardBrandName} onChange={e => setOnboardBrandName(e.target.value)} />
-                </div>
-              </div>
-              <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                <div className="form-group">
-                  <label className="label">Website</label>
-                  <input type="text" className="input" placeholder="e.g. https://sub.com" required value={onboardWebsite} onChange={e => setOnboardWebsite(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="label">Region</label>
-                  <input type="text" className="input" placeholder="e.g. US" required value={onboardRegion} onChange={e => setOnboardRegion(e.target.value)} />
-                </div>
-              </div>
-              <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                <div className="form-group">
-                  <label className="label">Primary Contact</label>
-                  <input type="text" className="input" placeholder="e.g. John Doe" required value={onboardContact} onChange={e => setOnboardContact(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="label">Business Email Domain</label>
-                  <input type="text" className="input" placeholder="e.g. sub.com" required value={onboardDomain} onChange={e => setOnboardDomain(e.target.value)} />
-                </div>
-              </div>
-              <div className="card-grid card-grid-2" style={{ marginTop: 10 }}>
-                <div className="form-group">
-                  <label className="label">Requested Commission Percentage (%)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    className="input"
-                    placeholder="e.g. 14.00"
-                    value={onboardCommissionPercentage}
-                    onChange={e => setOnboardCommissionPercentage(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 10 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={onboardAllowPersonalEmailException}
-                      onChange={e => setOnboardAllowPersonalEmailException(e.target.checked)}
-                    />
-                    <strong>Allow personal email domain exception</strong>
-                  </label>
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowOnboardingModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Submit Request</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <Dialog open={showOnboardingModal} onClose={() => setShowOnboardingModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Request Child Onboarding</DialogTitle>
+        <DialogContent dividers>
+          {errorMsg && (
+            <Alert severity="error" icon={<ErrorOutlinedIcon fontSize="small" />} sx={{ mb: 2 }}>{errorMsg}</Alert>
+          )}
+          <Box component="form" id="onboarding-form" onSubmit={handleCreateOnboardingRequest} sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+              <TextField label="Child Company Legal Name" size="small" required fullWidth placeholder="e.g. Sub Corp" value={onboardCompanyName} onChange={e => setOnboardCompanyName(e.target.value)} />
+              <TextField label="Brand Name" size="small" required fullWidth placeholder="e.g. Sub Brand" value={onboardBrandName} onChange={e => setOnboardBrandName(e.target.value)} />
+            </Box>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+              <TextField label="Website" size="small" required fullWidth placeholder="e.g. https://sub.com" value={onboardWebsite} onChange={e => setOnboardWebsite(e.target.value)} />
+              <TextField label="Region" size="small" required fullWidth placeholder="e.g. US" value={onboardRegion} onChange={e => setOnboardRegion(e.target.value)} />
+            </Box>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+              <TextField label="Primary Contact" size="small" required fullWidth placeholder="e.g. John Doe" value={onboardContact} onChange={e => setOnboardContact(e.target.value)} />
+              <TextField label="Business Email Domain" size="small" required fullWidth placeholder="e.g. sub.com" value={onboardDomain} onChange={e => setOnboardDomain(e.target.value)} />
+            </Box>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, alignItems: 'center' }}>
+              <TextField
+                label="Requested Commission (%)"
+                type="number"
+                size="small"
+                required
+                fullWidth
+                placeholder="e.g. 14.00"
+                slotProps={{ htmlInput: { step: '0.01', min: '0', max: '100' } }}
+                value={onboardCommissionPercentage}
+                onChange={e => setOnboardCommissionPercentage(e.target.value)}
+              />
+              <FormControlLabel
+                control={<Checkbox checked={onboardAllowPersonalEmailException} onChange={e => setOnboardAllowPersonalEmailException(e.target.checked)} />}
+                label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Allow personal email domain exception</Typography>}
+              />
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setShowOnboardingModal(false)}>Cancel</Button>
+          <Button type="submit" form="onboarding-form" variant="contained">Submit Request</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* REJECT ONBOARDING MODAL */}
-      {showRejectModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Reject Onboarding Request</h3>
-            {errorMsg && (
-              <div style={{ display: 'flex', gap: 8, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-                <ErrorOutlinedIcon sx={{ fontSize: 16 }} />
-                <span style={{ fontSize: 12 }}>{errorMsg}</span>
-              </div>
-            )}
-            <form onSubmit={handleRejectOnboardingRequest}>
-              <div className="form-group">
-                <label className="label">Rejection Reason (Mandatory)</label>
-                <textarea
-                  className="input"
-                  rows={4}
-                  required
-                  placeholder="Explain why this request is rejected..."
-                  value={rejectionReason}
-                  onChange={e => setRejectionReason(e.target.value)}
-                />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowRejectModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Reject Request</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <Dialog open={showRejectModal} onClose={() => setShowRejectModal(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Reject Onboarding Request</DialogTitle>
+        <DialogContent dividers>
+          {errorMsg && (
+            <Alert severity="error" icon={<ErrorOutlinedIcon fontSize="small" />} sx={{ mb: 2 }}>{errorMsg}</Alert>
+          )}
+          <Box component="form" id="reject-form" onSubmit={handleRejectOnboardingRequest} sx={{ pt: 1 }}>
+            <TextField
+              label="Rejection Reason (Mandatory)"
+              multiline
+              rows={4}
+              required
+              fullWidth
+              placeholder="Explain why this request is rejected..."
+              value={rejectionReason}
+              onChange={e => setRejectionReason(e.target.value)}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setShowRejectModal(false)}>Cancel</Button>
+          <Button type="submit" form="reject-form" variant="contained" color="error">Reject Request</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* COMPANY DETAILS & GOVERNANCE MODAL */}
       <Dialog
