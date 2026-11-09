@@ -1185,10 +1185,10 @@ export function SettingsPage() {
                             {req.website}
                           </Typography>
                         )}
-                        <Typography variant="caption" color="text.secondary" display="block">
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                           Domain: {req.business_email_domain}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                           Contact: {req.primary_contact}
                         </Typography>
                       </TableCell>
@@ -1314,7 +1314,7 @@ export function SettingsPage() {
                           </Typography>
                         )}
                         {c.primary_contact_name && (
-                          <Typography variant="caption" color="text.secondary" display="block">
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                             {c.primary_contact_name} ({c.primary_contact_email || 'No email'})
                           </Typography>
                         )}
