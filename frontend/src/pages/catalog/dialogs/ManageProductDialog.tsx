@@ -346,7 +346,7 @@ export default function ManageProductDialog({
         fullWidth
         maxWidth="lg"
         scroll="paper"
-        PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }}
+        slotProps={{ paper: { sx: { borderRadius: 3, overflow: 'hidden' } } }}
       >
         {/* ── Branded Gradient Header ──────────────────────────────────────── */}
         <Box sx={{
