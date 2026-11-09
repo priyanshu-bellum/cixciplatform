@@ -47,6 +47,7 @@ import SearchBar from '../components/forms/SearchBar'
 import ConfirmDialog from '../components/feedback/ConfirmDialog'
 import { useSnackbar } from '../components/feedback/SnackbarProvider'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import { useAuthStore } from '../stores/authStore'
 
 interface CapabilityItem {
   id: string
@@ -86,6 +87,7 @@ interface Invitation {
 export default function CompanyUsersPage() {
   const { showSnackbar } = useSnackbar()
   const { dialogProps, confirm } = useConfirmDialog()
+  const authUser = useAuthStore((s) => s.user)
 
   const [activeTab, setActiveTab] = useState<'members' | 'invitations'>('members')
   const [memberships, setMemberships] = useState<Membership[]>([])
@@ -102,6 +104,8 @@ export default function CompanyUsersPage() {
   const [inviteRole, setInviteRole] = useState('standard_user')
   const [inviteJobTitle, setInviteJobTitle] = useState('')
   const [submittingInvite, setSubmittingInvite] = useState(false)
+  const [inviteTargetCompany, setInviteTargetCompany] = useState('')
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([])
 
   // Capability management modal state
   const [selectedMember, setSelectedMember] = useState<Membership | null>(null)
@@ -122,6 +126,15 @@ export default function CompanyUsersPage() {
   useEffect(() => {
     fetchCapabilities()
   }, [])
+
+  useEffect(() => {
+    if (authUser?.is_cixci_admin) {
+      api.get('/tenant/companies/').then(res => {
+        const data = res.data.results || res.data
+        setCompanies(data.map((c: any) => ({ id: c.id, name: c.name })))
+      }).catch(() => {})
+    }
+  }, [authUser])
 
   const fetchData = async () => {
     setLoading(true)
@@ -160,6 +173,12 @@ export default function CompanyUsersPage() {
       return
     }
 
+    const targetCompanyId = authUser?.is_cixci_admin ? inviteTargetCompany : authUser?.company_id
+    if (!targetCompanyId) {
+      showSnackbar('Please select a target company', 'error')
+      return
+    }
+
     setSubmittingInvite(true)
     try {
       await api.post('/tenant/invitations/invite/', {
@@ -167,7 +186,8 @@ export default function CompanyUsersPage() {
         first_name: inviteFirstName,
         last_name: inviteLastName,
         role_bundle: inviteRole,
-        job_title: inviteJobTitle
+        job_title: inviteJobTitle,
+        target_company: targetCompanyId,
       })
 
       showSnackbar(`Invitation sent to ${inviteEmail}`, 'success')
@@ -176,6 +196,7 @@ export default function CompanyUsersPage() {
       setInviteFirstName('')
       setInviteLastName('')
       setInviteJobTitle('')
+      setInviteTargetCompany('')
       fetchData()
     } catch (err: any) {
       const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to send invitation'
@@ -823,6 +844,20 @@ export default function CompanyUsersPage() {
         <form onSubmit={handleSendInvite}>
           <DialogContent dividers>
             <Stack spacing={2}>
+              {authUser?.is_cixci_admin && (
+                <FormControl size="small" fullWidth required>
+                  <InputLabel>Target Company</InputLabel>
+                  <Select
+                    value={inviteTargetCompany}
+                    onChange={(e) => setInviteTargetCompany(e.target.value)}
+                    label="Target Company"
+                  >
+                    {companies.map((c) => (
+                      <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
               <TextField
                 label="Email Address"
                 type="email"

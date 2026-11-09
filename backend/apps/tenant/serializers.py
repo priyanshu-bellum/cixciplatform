@@ -243,20 +243,22 @@ class UserCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop("password", None)
         is_active = validated_data.pop("is_active", False)
+        explicit_password = bool(password)
 
         # If password is provided and is_active was not explicitly specified in input, activate user
         if password and "is_active" not in self.initial_data:
             is_active = True
 
         if not password:
-            from django.contrib.auth.models import BaseUserManager
-            password = BaseUserManager().make_random_password(length=16)
+            import secrets
+            password = secrets.token_urlsafe(16)
         user = User.objects.create_user(password=password, **validated_data)
         user.is_active = is_active
         user.save()
 
-        # Send onboarding invite email only if user is not active
-        if not is_active:
+        # Send onboarding invite when user isn't active OR when no explicit
+        # password was provided (user needs a way to set their own password).
+        if not is_active or not explicit_password:
             from apps.tenant.services import send_onboarding_invite
             send_onboarding_invite(user)
 

@@ -380,7 +380,7 @@ export function SettingsPage() {
   const [userLastName, setUserLastName] = useState('')
   const [userEntityId, setUserEntityId] = useState('')
   const [userPassword, setUserPassword] = useState('')
-  const [userIsActive, setUserIsActive] = useState(true)
+  const [userIsActive, setUserIsActive] = useState(false)
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
@@ -749,7 +749,7 @@ export function SettingsPage() {
       setUserLastName('')
       setUserEntityId('')
       setUserPassword('')
-      setUserIsActive(true)
+      setUserIsActive(false)
       refetchUsers()
     } catch (err: any) {
       setErrorMsg(err.response?.data?.error || 'Failed to onboard organization admin.')
@@ -1534,7 +1534,7 @@ export function SettingsPage() {
               setUserLastName('')
               setUserEntityId('')
               setUserPassword('')
-              setUserIsActive(true)
+              setUserIsActive(false)
               setErrorMsg(null)
               setShowUserModal(true)
             }}>
