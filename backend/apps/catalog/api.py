@@ -1436,42 +1436,58 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             from apps.integration.models import CompanyAPIKey
             is_api_key_auth = isinstance(self.request.auth, CompanyAPIKey)
 
-            # API key auth uses device portfolio compatibility (same as browser UI).
-            # The export-job gate is intentionally removed for API key auth so that
-            # integrations see the same 9 compatible products as the buyer sees in the UI.
-
             if getattr(self, "action", None) == "list":
                 device_id_param = self.request.query_params.get("device_id")
-                from apps.devices.models import BuyerDevicePortfolioReference
-                portfolio_device_ids = list(BuyerDevicePortfolioReference.objects.filter(
-                    company_scope_reference=company.id,
-                    active_flag=True
-                ).values_list("device_id", flat=True))
 
-                if not portfolio_device_ids and not device_id_param:
-                    # No portfolio devices and no explicit device filter — nothing compatible
-                    return Product.objects.none()
-
-                if device_id_param:
-                    from uuid import UUID
-                    try:
-                        dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
-                        target_device_ids = [d for d in dev_uuids if d in portfolio_device_ids] if portfolio_device_ids else dev_uuids
-                        if not target_device_ids:
+                if is_api_key_auth:
+                    # B2B API key auth: return only explicitly exported products.
+                    # BuyerProductExportDate tracks which products were selected and
+                    # exported to this buyer — the buyer's storefront should see
+                    # exactly those products, not the entire compatible catalog.
+                    from apps.catalog.models import BuyerProductExportDate
+                    export_qs = BuyerProductExportDate.objects.filter(
+                        company_scope_reference=company.id,
+                    )
+                    if device_id_param:
+                        from uuid import UUID
+                        try:
+                            dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
+                            export_qs = export_qs.filter(device_reference__in=dev_uuids)
+                        except ValueError:
                             return Product.objects.none()
-                    except ValueError:
-                        return Product.objects.none()
+                    exported_product_ids = export_qs.values_list("product_id", flat=True)
+                    qs = qs.filter(id__in=exported_product_ids)
                 else:
-                    target_device_ids = portfolio_device_ids
+                    # Browser/JWT auth: use device portfolio compatibility
+                    from apps.devices.models import BuyerDevicePortfolioReference
+                    portfolio_device_ids = list(BuyerDevicePortfolioReference.objects.filter(
+                        company_scope_reference=company.id,
+                        active_flag=True
+                    ).values_list("device_id", flat=True))
 
-                if target_device_ids:
-                    compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
-                        device_reference__in=target_device_ids,
-                        is_compatible=True,
-                        is_excluded=False
-                    ).values_list("product_id", flat=True)
+                    if not portfolio_device_ids and not device_id_param:
+                        return Product.objects.none()
 
-                    qs = qs.filter(id__in=compatible_product_ids)
+                    if device_id_param:
+                        from uuid import UUID
+                        try:
+                            dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
+                            target_device_ids = [d for d in dev_uuids if d in portfolio_device_ids] if portfolio_device_ids else dev_uuids
+                            if not target_device_ids:
+                                return Product.objects.none()
+                        except ValueError:
+                            return Product.objects.none()
+                    else:
+                        target_device_ids = portfolio_device_ids
+
+                    if target_device_ids:
+                        compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
+                            device_reference__in=target_device_ids,
+                            is_compatible=True,
+                            is_excluded=False
+                        ).values_list("product_id", flat=True)
+
+                        qs = qs.filter(id__in=compatible_product_ids)
 
         buyer_regions = company.approved_regions or []
         if not isinstance(buyer_regions, list):
