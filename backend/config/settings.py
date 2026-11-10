@@ -189,7 +189,7 @@ SIMPLE_JWT = {
         days=config("JWT_REFRESH_TOKEN_LIFETIME_DAYS", default=14, cast=int)
     ),
     "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
+    "BLACKLIST_AFTER_ROTATION": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
