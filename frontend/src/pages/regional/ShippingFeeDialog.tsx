@@ -13,6 +13,9 @@ import MenuItem from '@mui/material/MenuItem'
 import api from '../../lib/apiClient'
 import { useSnackbar } from '../../components/feedback/SnackbarProvider'
 import { useAuthStore } from '../../stores/authStore'
+import { useQuery } from '@tanstack/react-query'
+import { useSupplierCompanies } from '../../hooks/useSupplierCompanies'
+import { apiError } from '../../hooks/useCompatibilityOptions'
 
 const FEE_TYPES = [
   { value: 'flat', label: 'Flat Rate' },
@@ -41,18 +44,23 @@ export default function ShippingFeeDialog({ open, onClose, onSaved, editItem }: 
 
   const [regionCode, setRegionCode] = useState('')
   const [feeAmount, setFeeAmount] = useState('')
-  const [currency, setCurrency] = useState('USD')
+  const [currency, setCurrency] = useState('')
   const [feeType, setFeeType] = useState('flat')
   const [status, setStatus] = useState('draft')
   const [effectiveFrom, setEffectiveFrom] = useState('')
   const [effectiveTo, setEffectiveTo] = useState('')
+  const [supplierId, setSupplierId] = useState('')
+  const isAdmin = !!user?.is_cixci_admin
+  const { data: suppliers = [] } = useSupplierCompanies(open && isAdmin)
+  const { data: regions = [] } = useQuery({ queryKey: ['operating-regions'], enabled: open, queryFn: async () => (await api.get('/tenant/operating-regions/')).data })
 
   useEffect(() => {
     if (open) {
+      setSupplierId(editItem?.vendor_company_reference || '')
       if (editItem) {
         setRegionCode(editItem.region_code || '')
         setFeeAmount(editItem.fee_amount || '')
-        setCurrency(editItem.currency || 'USD')
+        setCurrency(editItem.currency || '')
         setFeeType(editItem.fee_type || 'flat')
         setStatus(editItem.status || 'draft')
         setEffectiveFrom(editItem.effective_from ? editItem.effective_from.slice(0, 16) : '')
@@ -60,7 +68,7 @@ export default function ShippingFeeDialog({ open, onClose, onSaved, editItem }: 
       } else {
         setRegionCode('')
         setFeeAmount('')
-        setCurrency('USD')
+        setCurrency('')
         setFeeType('flat')
         setStatus('draft')
         setEffectiveFrom('')
@@ -71,8 +79,8 @@ export default function ShippingFeeDialog({ open, onClose, onSaved, editItem }: 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!regionCode || !feeAmount) {
-      showSnackbar('Region code and fee amount are required', 'error')
+    if (!regionCode || !feeAmount || !currency.trim() || (isAdmin && !supplierId)) {
+      showSnackbar('Vendor, canonical region, fee amount and approved currency are required', 'error')
       return
     }
 
@@ -89,7 +97,7 @@ export default function ShippingFeeDialog({ open, onClose, onSaved, editItem }: 
       }
 
       if (!editItem) {
-        payload.vendor_company_reference = user?.company_id
+        if (isAdmin) payload.vendor_company_reference = supplierId
       }
 
       if (editItem) {
@@ -102,7 +110,7 @@ export default function ShippingFeeDialog({ open, onClose, onSaved, editItem }: 
       onSaved()
       onClose()
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.response?.data?.error || 'Failed to save shipping fee'
+      const msg = apiError(err)
       showSnackbar(msg, 'error')
     } finally {
       setSubmitting(false)
@@ -115,15 +123,20 @@ export default function ShippingFeeDialog({ open, onClose, onSaved, editItem }: 
         <DialogTitle>{editItem ? 'Edit Shipping Fee' : 'Create Shipping Fee'}</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt: 1 }}>
+            {isAdmin && <TextField select label="Vendor" size="small" value={supplierId} disabled={!!editItem} onChange={event => setSupplierId(event.target.value)}>
+              {suppliers.map((supplier: any) => <MenuItem key={supplier.id} value={supplier.id}>{supplier.name}</MenuItem>)}
+            </TextField>}
             <TextField
-              label="Region Code"
+              select
+              label="Operating Region"
               required
               fullWidth
               size="small"
               value={regionCode}
               onChange={(e) => setRegionCode(e.target.value)}
-              placeholder="e.g. US, EU, APAC"
-            />
+            >
+              {regions.filter((region: any) => region.is_active || region.code === regionCode).map((region: any) => <MenuItem key={region.id} value={region.code} disabled={!region.is_active}>{region.name} ({region.code})</MenuItem>)}
+            </TextField>
             <TextField
               label="Fee Amount"
               required

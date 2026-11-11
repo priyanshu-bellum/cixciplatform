@@ -1,4 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
+import CompatibilityFields from '../components/CompatibilityFields'
+import CompatibilityValuesManager from '../components/CompatibilityValuesManager'
+import { normalizedRules, COMPATIBILITY_LABELS } from '../hooks/useCompatibilityOptions'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import Box from '@mui/material/Box'
@@ -147,7 +150,7 @@ export default function DevicesPage() {
   const [typeConfigStatus, setTypeConfigStatus] = useState('active')
   const [typeConfigAutoMappingEligible, setTypeConfigAutoMappingEligible] = useState(true)
   const [typeConfigSupportedCategories, setTypeConfigSupportedCategories] = useState<string[]>([])
-  const [typeConfigRules, setTypeConfigRules] = useState<Record<string, { mode: string, default?: string }>>({})
+  const [typeConfigRules, setTypeConfigRules] = useState<Record<string, { mode: string; default?: string; default_value?: string; condition_field?: string; condition_values?: string[] }>>({})
 
   const { data: dropdownConfigsData } = useQuery({
     queryKey: ['dropdown-configs'],
@@ -164,7 +167,8 @@ export default function DevicesPage() {
       setTypeConfigAutoMappingEligible(editingTypeConfig.auto_mapping_eligible !== false)
       const existingCats = editingTypeConfig.supported_accessory_categories || []
       setTypeConfigSupportedCategories(existingCats.length > 0 ? existingCats : (categories || []))
-      setTypeConfigRules(editingTypeConfig.compatibility_rules || {})
+      const rules = normalizedRules(editingTypeConfig.compatibility_rules)
+      setTypeConfigRules({ ...rules, maximum_supported_storage: rules.memory_capacity })
     }
   }, [editingTypeConfig, categories])
 
@@ -207,7 +211,7 @@ export default function DevicesPage() {
   // Compatible Products Query
   const { data: compProductsData, isLoading: isLoadingCompProducts } = useQuery({
     queryKey: ['device-compatible-products', selectedDeviceIdForAudit],
-    queryFn: () => api.get('/catalog/products/', { params: { device_id: selectedDeviceIdForAudit, limit: 1000 } }).then(r => r.data),
+    queryFn: () => api.get('/catalog/products/', { params: { device_id: selectedDeviceIdForAudit, paginate: 'false' } }).then(r => r.data),
     enabled: !!selectedDeviceIdForAudit && editTab === 'products',
   })
 
@@ -549,36 +553,6 @@ export default function DevicesPage() {
 
   const selectedEditTypeObj = deviceTypes.find((t: any) => t.id === editDeviceType)
 
-  const handleEditStorageChange = (val: string) => {
-    setEditStorage(val)
-    if (val === 'microSDXC') {
-      setEditMaxStorage('32GB')
-    } else if (val === 'microSDHC') {
-      setEditMaxStorage('16GB')
-    } else {
-      setEditMaxStorage('Not Compatible')
-    }
-  }
-
-  const handleEditWirelessChange = (val: string) => {
-    if (val === 'Not Compatible') {
-      setEditWireless(['Not Compatible'])
-      return
-    }
-    let updated = [...editWireless].filter(v => v !== 'Not Compatible')
-    if (updated.includes(val)) {
-      updated = updated.filter(v => v !== val)
-    } else {
-      if (val === 'Qi') {
-        updated = ['Qi']
-      } else {
-        updated = updated.filter(v => v !== 'Qi')
-        updated.push(val)
-      }
-    }
-    setEditWireless(updated)
-  }
-
   const handleUpdateDevice = async (e: React.FormEvent) => {
     e.preventDefault()
     setEditError('')
@@ -609,7 +583,8 @@ export default function DevicesPage() {
     }
 
     // Dynamic validation and payload based on device type compatibility_rules
-    const editRules = selectedEditTypeObj?.compatibility_rules || {}
+    const editNormalized = normalizedRules(selectedEditTypeObj?.compatibility_rules)
+    const editRules: Record<string, any> = { ...editNormalized, maximum_supported_storage: editNormalized.memory_capacity }
     const editIsReq = (key: string) => editRules[key]?.mode === 'required'
     const editIsVisible = (key: string) => (editRules[key]?.mode || 'hidden') !== 'hidden'
 
@@ -657,13 +632,13 @@ export default function DevicesPage() {
       }
     }
 
-    payload.compatible_charging_interface = editIsVisible('compatible_charging_interface') ? editCharging || 'Not Compatible' : 'Not Compatible'
-    payload.storage_expansion_compatibility = editIsVisible('storage_expansion_compatibility') ? editStorage || 'Not Compatible' : 'Not Compatible'
-    payload.maximum_supported_storage = editIsVisible('maximum_supported_storage') && editStorage !== 'Not Compatible' ? editMaxStorage || 'Not Compatible' : 'Not Compatible'
-    payload.headphone_jack_compatibility = editIsVisible('headphone_jack_compatibility') ? editHeadphone || 'Not Compatible' : 'Not Compatible'
-    payload.bluetooth_compatibility = editIsVisible('bluetooth_compatibility') ? editBluetooth || 'Yes' : 'Yes'
-    payload.wireless_charging_compatibility = editIsVisible('wireless_charging_compatibility') ? (editWireless.join('+') || 'Not Compatible') : 'Not Compatible'
-    payload.compatible_watch_case_size = editIsVisible('compatible_watch_case_size') ? editWatchCase || 'Not Compatible' : 'Not Compatible'
+    payload.compatible_charging_interface = editIsVisible('compatible_charging_interface') ? editCharging : 'Not Compatible'
+    payload.storage_expansion_compatibility = editIsVisible('storage_expansion_compatibility') ? editStorage : 'Not Compatible'
+    payload.maximum_supported_storage = editIsVisible('maximum_supported_storage') && editStorage !== 'Not Compatible' ? editMaxStorage : 'Not Compatible'
+    payload.headphone_jack_compatibility = editIsVisible('headphone_jack_compatibility') ? editHeadphone : 'Not Compatible'
+    payload.bluetooth_compatibility = editIsVisible('bluetooth_compatibility') ? editBluetooth : 'No'
+    payload.wireless_charging_compatibility = editIsVisible('wireless_charging_compatibility') ? editWireless.join('+') : 'Not Compatible'
+    payload.compatible_watch_case_size = editIsVisible('compatible_watch_case_size') ? editWatchCase : 'Not Compatible'
 
     try {
       await api.put(`/devices/devices/${editingDevice.id}/`, payload)
@@ -698,45 +673,6 @@ export default function DevicesPage() {
   }
 
   const selectedTypeObj = deviceTypes.find((t: any) => t.id === addDeviceType)
-
-  const handleStorageChange = (val: string) => {
-    setAddStorage(val)
-    if (val === 'microSDXC') {
-      setAddMaxStorage('32GB')
-    } else if (val === 'microSDHC') {
-      setAddMaxStorage('16GB')
-    } else {
-      setAddMaxStorage('Not Compatible')
-    }
-  }
-
-  const handleWirelessChange = (val: string) => {
-    if (val === 'Not Compatible') {
-      setAddWireless(['Not Compatible'])
-      return
-    }
-    let updated = [...addWireless].filter(v => v !== 'Not Compatible')
-    if (updated.includes(val)) {
-      updated = updated.filter(v => v !== val)
-    } else {
-      if (val === 'Qi') {
-        updated = ['Qi']
-      } else {
-        updated = updated.filter(v => v !== 'Qi')
-        updated.push(val)
-      }
-    }
-    setAddWireless(updated)
-  }
-
-  const formatLaunchDate = (dateStr: string) => {
-    if (!dateStr) return ''
-    const parts = dateStr.split('-')
-    if (parts.length === 3) {
-      return `${parts[1]}/${parts[2]}/${parts[0]}`
-    }
-    return dateStr
-  }
 
   const handleSubmitDevice = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -773,7 +709,8 @@ export default function DevicesPage() {
     }
 
     // Dynamic validation and payload based on device type compatibility_rules
-    const rules = selectedTypeObj?.compatibility_rules || {}
+    const normalized = normalizedRules(selectedTypeObj?.compatibility_rules)
+    const rules: Record<string, any> = { ...normalized, maximum_supported_storage: normalized.memory_capacity }
     const isReq = (key: string) => rules[key]?.mode === 'required'
     const isVisible = (key: string) => (rules[key]?.mode || 'hidden') !== 'hidden'
 
@@ -821,13 +758,13 @@ export default function DevicesPage() {
       }
     }
 
-    payload.compatible_charging_interface = isVisible('compatible_charging_interface') ? addCharging || 'Not Compatible' : 'Not Compatible'
-    payload.storage_expansion_compatibility = isVisible('storage_expansion_compatibility') ? addStorage || 'Not Compatible' : 'Not Compatible'
-    payload.maximum_supported_storage = isVisible('maximum_supported_storage') && addStorage !== 'Not Compatible' ? addMaxStorage || 'Not Compatible' : 'Not Compatible'
-    payload.headphone_jack_compatibility = isVisible('headphone_jack_compatibility') ? addHeadphone || 'Not Compatible' : 'Not Compatible'
-    payload.bluetooth_compatibility = isVisible('bluetooth_compatibility') ? addBluetooth || 'Yes' : 'Yes'
-    payload.wireless_charging_compatibility = isVisible('wireless_charging_compatibility') ? (addWireless.join('+') || 'Not Compatible') : 'Not Compatible'
-    payload.compatible_watch_case_size = isVisible('compatible_watch_case_size') ? addWatchCase || 'Not Compatible' : 'Not Compatible'
+    payload.compatible_charging_interface = isVisible('compatible_charging_interface') ? addCharging : 'Not Compatible'
+    payload.storage_expansion_compatibility = isVisible('storage_expansion_compatibility') ? addStorage : 'Not Compatible'
+    payload.maximum_supported_storage = isVisible('maximum_supported_storage') && addStorage !== 'Not Compatible' ? addMaxStorage : 'Not Compatible'
+    payload.headphone_jack_compatibility = isVisible('headphone_jack_compatibility') ? addHeadphone : 'Not Compatible'
+    payload.bluetooth_compatibility = isVisible('bluetooth_compatibility') ? addBluetooth : 'No'
+    payload.wireless_charging_compatibility = isVisible('wireless_charging_compatibility') ? addWireless.join('+') : 'Not Compatible'
+    payload.compatible_watch_case_size = isVisible('compatible_watch_case_size') ? addWatchCase : 'Not Compatible'
 
     try {
       await api.post('/devices/devices/', payload)
@@ -943,76 +880,11 @@ export default function DevicesPage() {
     </Box>
   )
 
-  // Helper: render a wireless charging checkbox group
-  const WirelessCheckboxGroup = ({
-    wireless,
-    onChange,
-  }: {
-    wireless: string[]
-    onChange: (val: string) => void
-  }) => (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2, 1fr)',
-        gap: 1,
-        p: 1.25,
-        bgcolor: 'action.hover',
-        border: 1,
-        borderColor: 'divider',
-        borderRadius: 1,
-      }}
-    >
-      <FormControlLabel
-        control={
-          <Checkbox
-            size="small"
-            checked={wireless.includes('MagSafe')}
-            disabled={wireless.includes('Not Compatible') || wireless.includes('Qi')}
-            onChange={() => onChange('MagSafe')}
-          />
-        }
-        label={<Typography variant="body2">MagSafe</Typography>}
-      />
-      <FormControlLabel
-        control={
-          <Checkbox
-            size="small"
-            checked={wireless.includes('Qi2')}
-            disabled={wireless.includes('Not Compatible') || wireless.includes('Qi')}
-            onChange={() => onChange('Qi2')}
-          />
-        }
-        label={<Typography variant="body2">Qi2</Typography>}
-      />
-      <FormControlLabel
-        control={
-          <Checkbox
-            size="small"
-            checked={wireless.includes('Qi')}
-            disabled={wireless.includes('Not Compatible') || wireless.includes('MagSafe') || wireless.includes('Qi2')}
-            onChange={() => onChange('Qi')}
-          />
-        }
-        label={<Typography variant="body2">Qi</Typography>}
-      />
-      <FormControlLabel
-        control={
-          <Checkbox
-            size="small"
-            checked={wireless.includes('Not Compatible')}
-            onChange={() => onChange('Not Compatible')}
-          />
-        }
-        label={<Typography variant="body2">Not Compatible</Typography>}
-      />
-    </Box>
-  )
-
-  const getDisplayStatus = (lifecycleStatus: string, launchDate?: string) => {
-    const isLaunching = lifecycleStatus === 'launching' || (lifecycleStatus === 'inactive' && launchDate && new Date(launchDate) > new Date())
-    return isLaunching ? 'launching' : lifecycleStatus
+  const formatLaunchDate = (value: string) => {
+    const parts = value.split('-')
+    return parts.length === 3 ? `${parts[1]}/${parts[2]}/${parts[0]}` : value
   }
+  const getDisplayStatus = (status: string, launchDate?: string) => status === 'launching' || (status === 'inactive' && launchDate && new Date(launchDate) > new Date()) ? 'launching' : status
 
   return (
     <Box>
@@ -1470,125 +1342,17 @@ export default function DevicesPage() {
                 </Box>
               )}
 
-              {(() => {
-                const rules = selectedTypeObj?.compatibility_rules || {}
-                const isVisible = (key: string) => {
-                  const mode = rules[key]?.mode || 'hidden'
-                  return mode !== 'hidden'
-                }
-                const isReq = (key: string) => rules[key]?.mode === 'required'
-                const star = (key: string) => isReq(key) ? ' *' : ''
-
-                return (
-                  <>
-                    {isVisible('compatible_charging_interface') && (
-                      <FormControl size="small" fullWidth>
-                        <InputLabel>{`Charging Interface${star('compatible_charging_interface')}`}</InputLabel>
-                        <Select
-                          value={addCharging}
-                          onChange={e => setAddCharging(e.target.value)}
-                          label={`Charging Interface${star('compatible_charging_interface')}`}
-                        >
-                          <MenuItem value="Type-C">Type-C</MenuItem>
-                          <MenuItem value="Lightning">Lightning</MenuItem>
-                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                        </Select>
-                      </FormControl>
-                    )}
-
-                    {isVisible('storage_expansion_compatibility') && (
-                      <FormControl size="small" fullWidth>
-                        <InputLabel>{`Storage Expansion${star('storage_expansion_compatibility')}`}</InputLabel>
-                        <Select
-                          value={addStorage}
-                          onChange={e => handleStorageChange(e.target.value)}
-                          label={`Storage Expansion${star('storage_expansion_compatibility')}`}
-                        >
-                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                          <MenuItem value="microSDXC">microSDXC</MenuItem>
-                          <MenuItem value="microSDHC">microSDHC</MenuItem>
-                        </Select>
-                      </FormControl>
-                    )}
-
-                    {isVisible('maximum_supported_storage') && (addStorage === 'microSDXC' || addStorage === 'microSDHC') && (
-                      <FormControl size="small" fullWidth>
-                        <InputLabel>{`Maximum Expansion${star('maximum_supported_storage')}`}</InputLabel>
-                        <Select
-                          value={addMaxStorage}
-                          onChange={e => setAddMaxStorage(e.target.value)}
-                          label={`Maximum Expansion${star('maximum_supported_storage')}`}
-                        >
-                          {addStorage === 'microSDXC' ? (
-                            ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(v => (
-                              <MenuItem key={v} value={v}>{v}</MenuItem>
-                            ))
-                          ) : (
-                            ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB'].map(v => (
-                              <MenuItem key={v} value={v}>{v}</MenuItem>
-                            ))
-                          )}
-                        </Select>
-                      </FormControl>
-                    )}
-
-                    {isVisible('headphone_jack_compatibility') && (
-                      <FormControl size="small" fullWidth>
-                        <InputLabel>{`Headphone Jack${star('headphone_jack_compatibility')}`}</InputLabel>
-                        <Select
-                          value={addHeadphone}
-                          onChange={e => setAddHeadphone(e.target.value)}
-                          label={`Headphone Jack${star('headphone_jack_compatibility')}`}
-                        >
-                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                          <MenuItem value="Type-C">Type-C</MenuItem>
-                          <MenuItem value="Lightning">Lightning</MenuItem>
-                        </Select>
-                      </FormControl>
-                    )}
-
-                    {isVisible('bluetooth_compatibility') && (
-                      <FormControl size="small" fullWidth>
-                        <InputLabel>{`Bluetooth Compatibility${star('bluetooth_compatibility')}`}</InputLabel>
-                        <Select
-                          value={addBluetooth}
-                          onChange={e => setAddBluetooth(e.target.value)}
-                          label={`Bluetooth Compatibility${star('bluetooth_compatibility')}`}
-                        >
-                          <MenuItem value="Yes">Yes</MenuItem>
-                          <MenuItem value="No">No</MenuItem>
-                        </Select>
-                      </FormControl>
-                    )}
-
-                    {isVisible('wireless_charging_compatibility') && (
-                      <Box sx={{ gridColumn: 'span 2' }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                          {`Wireless Charging Compatibility${star('wireless_charging_compatibility')}`}
-                        </Typography>
-                        <WirelessCheckboxGroup wireless={addWireless} onChange={handleWirelessChange} />
-                      </Box>
-                    )}
-
-                    {isVisible('compatible_watch_case_size') && (
-                      <FormControl size="small" fullWidth>
-                        <InputLabel>{`Watch Case Size${star('compatible_watch_case_size')}`}</InputLabel>
-                        <Select
-                          value={addWatchCase}
-                          onChange={e => setAddWatchCase(e.target.value)}
-                          label={`Watch Case Size${star('compatible_watch_case_size')}`}
-                        >
-                          <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                          {['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm'].map(v => (
-                            <MenuItem key={v} value={v}>{v}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    )}
-                  </>
-                )
-              })()}
-            </Box>
+              <Box sx={{ gridColumn: '1 / -1' }}><CompatibilityFields
+                rules={selectedTypeObj?.compatibility_rules || {}} deviceType={selectedTypeObj?.code}
+                values={{ compatible_charging_interface: addCharging, headphone_jack_compatibility: addHeadphone, bluetooth_compatibility: addBluetooth,
+                  wireless_charging_compatibility: addWireless.join('+'), storage_expansion_compatibility: addStorage,
+                  memory_capacity: addMaxStorage, compatible_watch_case_size: addWatchCase }}
+                onChange={(field, value) => {
+                  const setters: Record<string, (value: string) => void> = { compatible_charging_interface: setAddCharging, headphone_jack_compatibility: setAddHeadphone,
+                    bluetooth_compatibility: setAddBluetooth, wireless_charging_compatibility: value => setAddWireless(value.split('+').filter(Boolean)),
+                    storage_expansion_compatibility: setAddStorage, memory_capacity: setAddMaxStorage, compatible_watch_case_size: setAddWatchCase }
+                  setters[field]?.(value)
+                }} /></Box>            </Box>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setShowAddModal(false)} disabled={isSubmitting}>
@@ -1726,6 +1490,7 @@ export default function DevicesPage() {
           {editingTypeConfig ? 'Configure Device Type Rules' : 'Manage Dropdown Values'}
         </DialogTitle>
         <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {isCixciAdmin && !editingTypeConfig && <CompatibilityValuesManager />}
           {dropdownError && (
             <Alert severity="error" icon={<ErrorOutlineIcon />}>
               {dropdownError}
@@ -1826,6 +1591,7 @@ export default function DevicesPage() {
                             <MenuItem value="required">Required</MenuItem>
                             <MenuItem value="optional">Optional</MenuItem>
                             <MenuItem value="defaulted">Defaulted</MenuItem>
+                            <MenuItem value="conditional">Conditional</MenuItem>
                           </Select>
                         </Box>
                         {rule.mode === 'defaulted' && (
@@ -1833,11 +1599,11 @@ export default function DevicesPage() {
                             <Typography variant="caption" color="text.secondary">Default Value:</Typography>
                             <TextField
                               size="small"
-                              value={rule.default || ''}
+                              value={rule.default_value || rule.default || ''}
                               onChange={e => {
                                 setTypeConfigRules({
                                   ...typeConfigRules,
-                                  [opt.value]: { ...rule, default: e.target.value }
+                                  [opt.value]: { ...rule, default_value: e.target.value }
                                 })
                               }}
                               placeholder="Enter default value..."
@@ -1846,6 +1612,14 @@ export default function DevicesPage() {
                             />
                           </Box>
                         )}
+                        {rule.mode === 'conditional' && <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <TextField select size="small" label="Condition Field" value={rule.condition_field || ''} sx={{ minWidth: 190 }}
+                            onChange={event => setTypeConfigRules({ ...typeConfigRules, [opt.value]: { ...rule, condition_field: event.target.value, condition_values: [] } })}>
+                            {Object.entries(COMPATIBILITY_LABELS).filter(([field]) => field !== opt.value).map(([field, label]) => <MenuItem key={field} value={field}>{label}</MenuItem>)}
+                          </TextField>
+                          <TextField size="small" label="Condition Values (comma separated)" value={(rule.condition_values || []).join(', ')}
+                            onChange={event => setTypeConfigRules({ ...typeConfigRules, [opt.value]: { ...rule, condition_values: event.target.value.split(',').map(value => value.trim()).filter(Boolean) } })} />
+                        </Box>}
                       </Paper>
                     )
                   })}
@@ -1980,11 +1754,18 @@ export default function DevicesPage() {
       <Dialog
         open={!!editingDevice}
         onClose={() => setEditingDevice(null)}
-        maxWidth="sm"
+        aria-labelledby="device-details-history-title"
+        maxWidth="lg"
         fullWidth
-        slotProps={{ paper: { sx: { maxHeight: '90vh' } } }}
+        slotProps={{ paper: { sx: {
+          height: '90dvh',
+          maxHeight: '90dvh',
+          minWidth: 0,
+          '& .MuiDialogContent-root': { minHeight: 0, minWidth: 0 },
+          '& .MuiDialogActions-root': { flexShrink: 0 },
+        } } }}
       >
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <DialogTitle id="device-details-history-title" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           Device Details & History
           <IconButton size="small" onClick={() => setEditingDevice(null)}>
             <CloseIcon />
@@ -2010,7 +1791,7 @@ export default function DevicesPage() {
         </Box>
 
         {editTab === 'details' ? (
-          <form onSubmit={handleUpdateDevice}>
+          <form onSubmit={handleUpdateDevice} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <DialogContent dividers>
               {editError && (
                 <Alert severity="error" icon={<ErrorOutlineIcon />} sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>
@@ -2152,115 +1933,17 @@ export default function DevicesPage() {
                 )}
 
                 {/* Dynamic compatibility fields — admin only in details tab */}
-                {(() => {
-                  const eRules = selectedEditTypeObj?.compatibility_rules || {}
-                  const eVisible = (k: string) => (eRules[k]?.mode || 'hidden') !== 'hidden'
-                  const eStar = (k: string) => eRules[k]?.mode === 'required' ? ' *' : ''
-                  const hasAny = Object.keys(eRules).some(k => eVisible(k))
-                  if (!isCixciAdmin || !hasAny) return null
-                  return (
-                    <>
-                      <Box sx={{ gridColumn: 'span 2' }}><Divider sx={{ my: 1 }} /></Box>
-
-                      {eVisible('compatible_charging_interface') && (
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Charging Interface${eStar('compatible_charging_interface')}`}</Typography>
-                          <FormControl size="small" fullWidth>
-                            <Select value={editCharging} onChange={e => setEditCharging(e.target.value)} displayEmpty>
-                              <MenuItem value="">Select Charging Interface</MenuItem>
-                              <MenuItem value="Type-C">Type-C</MenuItem>
-                              <MenuItem value="Lightning">Lightning</MenuItem>
-                              <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      )}
-
-                      {eVisible('storage_expansion_compatibility') && (
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Storage Expansion${eStar('storage_expansion_compatibility')}`}</Typography>
-                          <FormControl size="small" fullWidth>
-                            <Select value={editStorage} onChange={e => handleEditStorageChange(e.target.value)} displayEmpty>
-                              <MenuItem value="">Select Storage Expansion</MenuItem>
-                              <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                              <MenuItem value="microSDXC">microSDXC</MenuItem>
-                              <MenuItem value="microSDHC">microSDHC</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      )}
-
-                      {eVisible('maximum_supported_storage') && (editStorage === 'microSDXC' || editStorage === 'microSDHC') && (
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Maximum Expansion${eStar('maximum_supported_storage')}`}</Typography>
-                          <FormControl size="small" fullWidth>
-                            <Select value={editMaxStorage} onChange={e => setEditMaxStorage(e.target.value)}>
-                              {editStorage === 'microSDXC' ? (
-                                ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(v => (
-                                  <MenuItem key={v} value={v}>{v}</MenuItem>
-                                ))
-                              ) : (
-                                ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB'].map(v => (
-                                  <MenuItem key={v} value={v}>{v}</MenuItem>
-                                ))
-                              )}
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      )}
-
-                      {eVisible('headphone_jack_compatibility') && (
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Headphone Jack${eStar('headphone_jack_compatibility')}`}</Typography>
-                          <FormControl size="small" fullWidth>
-                            <Select value={editHeadphone} onChange={e => setEditHeadphone(e.target.value)} displayEmpty>
-                              <MenuItem value="">Select Headphone Jack</MenuItem>
-                              <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                              <MenuItem value="Type-C">Type-C</MenuItem>
-                              <MenuItem value="Lightning">Lightning</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      )}
-
-                      {eVisible('bluetooth_compatibility') && (
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Bluetooth Compatibility${eStar('bluetooth_compatibility')}`}</Typography>
-                          <FormControl size="small" fullWidth>
-                            <Select value={editBluetooth} onChange={e => setEditBluetooth(e.target.value)} displayEmpty>
-                              <MenuItem value="">Select Bluetooth Compatibility</MenuItem>
-                              <MenuItem value="Yes">Yes</MenuItem>
-                              <MenuItem value="No">No</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      )}
-
-                      {eVisible('wireless_charging_compatibility') && (
-                        <Box sx={{ gridColumn: 'span 2' }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Wireless Charging Compatibility${eStar('wireless_charging_compatibility')}`}</Typography>
-                          <WirelessCheckboxGroup wireless={editWireless} onChange={handleEditWirelessChange} />
-                        </Box>
-                      )}
-
-                      {eVisible('compatible_watch_case_size') && (
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{`Watch Case Size${eStar('compatible_watch_case_size')}`}</Typography>
-                          <FormControl size="small" fullWidth>
-                            <Select value={editWatchCase} onChange={e => setEditWatchCase(e.target.value)} displayEmpty>
-                              <MenuItem value="">Select Watch Case Size</MenuItem>
-                              <MenuItem value="Not Compatible">Not Compatible</MenuItem>
-                              {['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm'].map(v => (
-                                <MenuItem key={v} value={v}>{v}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      )}
-                    </>
-                  )
-                })()}
-              </Box>
+              <Box sx={{ gridColumn: '1 / -1' }}><CompatibilityFields
+                rules={selectedEditTypeObj?.compatibility_rules || {}} deviceType={selectedEditTypeObj?.code}
+                values={{ compatible_charging_interface: editCharging, headphone_jack_compatibility: editHeadphone, bluetooth_compatibility: editBluetooth,
+                  wireless_charging_compatibility: editWireless.join('+'), storage_expansion_compatibility: editStorage,
+                  memory_capacity: editMaxStorage, compatible_watch_case_size: editWatchCase }}
+                onChange={(field, value) => {
+                  const setters: Record<string, (value: string) => void> = { compatible_charging_interface: setEditCharging, headphone_jack_compatibility: setEditHeadphone,
+                    bluetooth_compatibility: setEditBluetooth, wireless_charging_compatibility: value => setEditWireless(value.split('+').filter(Boolean)),
+                    storage_expansion_compatibility: setEditStorage, memory_capacity: setEditMaxStorage, compatible_watch_case_size: setEditWatchCase }
+                  setters[field]?.(value)
+                }} /></Box>              </Box>
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setEditingDevice(null)}>
@@ -2326,8 +2009,8 @@ export default function DevicesPage() {
           </>
         ) : editTab === 'products' ? (
           <>
-            <DialogContent dividers>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column' }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0, gap: 2 }}>
                 {/* Header */}
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
@@ -2340,7 +2023,7 @@ export default function DevicesPage() {
                 </Box>
 
                 {/* Summary Cards */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1.5 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' }, gap: 1.5 }}>
                   <Card variant="outlined">
                     <CardContent sx={{ textAlign: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}>
                       <Typography variant="h5" sx={{ fontWeight: 700 }}>{stats.total}</Typography>
@@ -2432,7 +2115,7 @@ export default function DevicesPage() {
                 </Box>
 
                 {/* Table */}
-                <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 350 }}>
+                <TableContainer component={Paper} variant="outlined" sx={{ flex: 1, minHeight: 160, minWidth: 0, overflow: 'auto' }}>
                   {isLoadingCompProducts ? (
                     <Box sx={{ p: 3, textAlign: 'center' }}>
                       <Typography variant="body2" color="text.secondary">Loading compatible products...</Typography>
@@ -2450,7 +2133,7 @@ export default function DevicesPage() {
                       </Typography>
                     </Box>
                   ) : (
-                    <Table size="small" stickyHeader>
+                    <Table size="small" stickyHeader sx={{ minWidth: 900 }}>
                       <TableHead>
                         <TableRow>
                           <TableCell>Vendor</TableCell>
@@ -2536,7 +2219,7 @@ export default function DevicesPage() {
         ) : (
           <>
             <DialogContent dividers>
-              <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+              <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                 {!auditHistory || auditHistory.length === 0 ? (
                   <Box sx={{ p: 3, textAlign: 'center' }}>
                     <Typography variant="body2" color="text.secondary">
@@ -2551,7 +2234,7 @@ export default function DevicesPage() {
                         variant="outlined"
                         sx={{ p: 1.5 }}
                       >
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'space-between', mb: 0.75 }}>
                           <Chip
                             label={record.event_code}
                             color="info"

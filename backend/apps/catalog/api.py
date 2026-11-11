@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django_filters import rest_framework as django_filters
+from django.db import transaction
 from django.db.models import Q
 from django.urls import path, include
 from django.utils import timezone
@@ -30,6 +31,12 @@ class ProductSerializerBase(serializers.ModelSerializer):
     vendor_map_pricing_enforced = serializers.SerializerMethodField()
     exported_date = serializers.SerializerMethodField()
     vendor_name = serializers.SerializerMethodField()
+    universal_device_type_ids = serializers.SerializerMethodField()
+
+    def get_universal_device_type_ids(self, obj):
+        if obj.compatibility_mode != "universal_device_type":
+            return []
+        return [str(value) for value in obj.universal_type_scopes.filter(is_active=True).values_list("device_type_id", flat=True)]
 
     def get_vendor_name(self, obj):
         try:
@@ -70,6 +77,7 @@ class ProductSerializerBase(serializers.ModelSerializer):
         from apps.catalog.models import BuyerProductExportDate
         exported = BuyerProductExportDate.objects.filter(
             company_scope_reference=company.id,
+            buyer_entity_reference=request.user.entity_id,
             product_id=obj.id
         ).first()
         return exported.exported_at.isoformat() if exported else None
@@ -121,6 +129,12 @@ class ProductSerializerBase(serializers.ModelSerializer):
             is_buyer = (
                 hasattr(user, "company") and user.company and user.company.company_type == "buyer"
             )
+            if is_buyer and "device_compatibility" in ret:
+                from .compatibility_contract import buyer_portfolio_device_ids
+                if "_buyer_compatible_devices" not in self.context:
+                    self.context["_buyer_compatible_devices"] = {str(value) for value in (buyer_portfolio_device_ids(user) or set())}
+                allowed_devices = self.context["_buyer_compatible_devices"]
+                ret["device_compatibility"] = [row for row in ret["device_compatibility"] if str(row.get("device_id")) in allowed_devices]
 
             # Rule (§5/§6): a vendor admin must see "Vendor Wholesale Price"; a
             # buyer must never see it. Only strip for non-admin, non-vendor users.
@@ -140,27 +154,19 @@ class ProductSerializerBase(serializers.ModelSerializer):
             # Category Governance: Field visibility by role
             # Buyers see only canonical CIXCI category (product_category)
             if is_buyer:
+                ret.pop("compatibility_summary", None)
                 ret.pop("vendor_category", None)
                 ret.pop("vendor_category_raw", None)
                 ret.pop("product_category_override", None)
                 ret.pop("product_category_override_by", None)
                 ret.pop("product_category_override_at", None)
                 ret.pop("category_validation_status", None)
-            # Vendors see vendor_category + category_validation_status, not override or compat fields
+            if is_buyer:
+                for field in ("compatibility_mode", "compatible_device_types", "universal_device_type_ids", "headphone_jack_compatibility", "bluetooth_compatibility", "compatible_charging_interface", "wireless_charging_compatibility", "storage_expansion_compatibility", "memory_capacity", "compatible_watch_case_size"):
+                    ret.pop(field, None)
             elif is_vendor:
-                ret.pop("product_category_override", None)
-                ret.pop("product_category_override_by", None)
-                ret.pop("product_category_override_at", None)
-                ret.pop("vendor_category_raw", None)
-                # Compatibility fields are CIXCI-internal auto-mapping logic
-                ret.pop("compatibility_mode", None)
-                ret.pop("headphone_jack_compatibility", None)
-                ret.pop("bluetooth_compatibility", None)
-                ret.pop("compatible_charging_interface", None)
-                ret.pop("wireless_charging_compatibility", None)
-                ret.pop("storage_expansion_compatibility", None)
-                ret.pop("memory_capacity", None)
-                ret.pop("compatible_watch_case_size", None)
+                for field in ("product_category_override", "product_category_override_by", "product_category_override_at", "vendor_category_raw"):
+                    ret.pop(field, None)
             # Admins see all fields for governance purposes
 
         return ret
@@ -193,22 +199,44 @@ class ProductSerializerBase(serializers.ModelSerializer):
         except Exception:
             pass
 
+    @transaction.atomic
     def create(self, validated_data):
         request = self.context.get("request")
+        device_ids = validated_data.pop("device_ids", None)
+        update_type = validated_data.pop("compatibility_update_type", "add")
         actor_id = request.user.id if request and request.user and request.user.is_authenticated else None
         instance = self.Meta.model(**validated_data)
         instance.save(actor_id=actor_id)
+        self._save_explicit_devices(instance, device_ids, update_type, request)
         self._link_media_assets(instance)
         return instance
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         request = self.context.get("request")
+        device_ids = validated_data.pop("device_ids", None)
+        update_type = validated_data.pop("compatibility_update_type", "add")
         actor_id = request.user.id if request and request.user and request.user.is_authenticated else None
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save(actor_id=actor_id)
+        self._save_explicit_devices(instance, device_ids, update_type, request)
         self._link_media_assets(instance)
         return instance
+
+    def _save_explicit_devices(self, instance, device_ids, update_type, request):
+        if device_ids is None:
+            return
+        if request is None:
+            raise serializers.ValidationError({"device_ids": "An authorized actor is required."})
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from .compatibility_commands import update_explicit_selections
+        try:
+            update_explicit_selections(instance, device_ids, request.user, update_type=update_type,
+                change_source="Vendor API" if not getattr(request.user, "is_cixci_admin", False) else "CIXCI Admin")
+            instance.refresh_from_db(fields=["compatibility_status"])
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.message_dict if hasattr(error, "message_dict") else error.messages) from error
 
 
 class ProductListSerializer(ProductSerializerBase):
@@ -251,7 +279,7 @@ class ProductListSerializer(ProductSerializerBase):
             "vendor_return_zip_code",
             "recommended_accessory", "is_tied_to_activity",
             "vendor_map_pricing_enforced", "exported_date",
-            "compatibility_mode", "compatible_device_types",
+            "compatibility_mode", "compatible_device_types", "universal_device_type_ids",
         ]
         read_only_fields = ["id"]
 
@@ -383,10 +411,28 @@ class ProductListSerializer(ProductSerializerBase):
 
 
 class ProductDetailSerializer(ProductSerializerBase):
+    vendor_company_reference = serializers.UUIDField(required=False)
+    device_ids = serializers.ListField(child=serializers.UUIDField(), required=False, write_only=True)
+    compatibility_update_type = serializers.ChoiceField(choices=["add", "replace"], required=False, write_only=True)
+    compatibility_summary = serializers.SerializerMethodField()
+
+    def get_compatibility_summary(self, obj):
+        from django.db.models import Count
+        from .compatibility_contract import eligible_devices
+        counts = obj.compatibility_assertions.aggregate(
+            matched=Count("id", filter=Q(is_compatible=True, is_excluded=False, device_reference__in=eligible_devices().values_list("id", flat=True))),
+            excluded=Count("id", filter=Q(is_excluded=True)),
+            pending=Count("id", filter=Q(match_status="Pending")),
+        )
+        return {**counts, "status": obj.compatibility_status, "warning": "Compatibility Incomplete: no currently eligible devices match." if not counts["matched"] else ""}
     primary_image_url = serializers.SerializerMethodField()
+    device_compatibility = serializers.SerializerMethodField()
     buyer_wholesale_price = serializers.ReadOnlyField()
     is_tied_to_activity = serializers.ReadOnlyField()
     media_readiness = serializers.SerializerMethodField()
+
+    def get_device_compatibility(self, obj):
+        return ProductListSerializer.get_device_compatibility(self, obj)
 
     headphone_jack_compatibility = serializers.CharField(
         required=False, allow_null=True, allow_blank=True,
@@ -481,7 +527,8 @@ class ProductDetailSerializer(ProductSerializerBase):
             "meta_description",
 
             # Device Compatibility (at the end)
-            "compatibility_mode",
+            "compatibility_mode", "universal_device_type_ids", "device_compatibility",
+            "device_ids", "compatibility_update_type", "compatibility_summary",
             "compatible_device_types",
             "headphone_jack_compatibility",
             "bluetooth_compatibility",
@@ -557,9 +604,16 @@ class ProductDetailSerializer(ProductSerializerBase):
         user = request.user if request else None
         is_vendor = (
             user and hasattr(user, 'company') and user.company
-            and user.company.company_type == 'vendor'
+            and user.company.company_type == 'vendor' and not getattr(user, 'is_cixci_admin', False)
         )
         is_admin = user and getattr(user, 'is_cixci_admin', False)
+        if is_vendor:
+            attrs["vendor_company_reference"] = user.company.id
+        if self.instance is None:
+            from apps.tenant.models import Company
+            vendor_id = attrs.get("vendor_company_reference")
+            if not vendor_id or not Company.objects.filter(pk=vendor_id, company_type="vendor").exists():
+                raise serializers.ValidationError({"vendor_company_reference": "Select an existing supplier company; vendor requests use their authenticated company."})
 
         # ── Category Governance ──────────────────────────────────────────
         from apps.catalog.models import CategoryValidationStatus
@@ -618,137 +672,25 @@ class ProductDetailSerializer(ProductSerializerBase):
                 attrs['vendor_category_raw'] = vendor_category_input
                 attrs['vendor_category'] = vendor_category_input.strip()
 
-        category = attrs.get('product_category') or (self.instance.product_category if self.instance else None)
-        if category:
-            from apps.catalog.models import DynamicDropdownConfig
-            cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=category).first()
-            if not cat_cfg:
-                raise serializers.ValidationError({"product_category": "The selected product category is not recognized."})
-            
-            # Check status of product category
-            if cat_cfg.status != 'active':
-                raise serializers.ValidationError({"product_category": f"Product Category '{category}' is '{cat_cfg.status}' and cannot be used for products."})
-            
-            # Validate accessory compatibility fields according to the category rules
-            rules = cat_cfg.compatibility_rules or {}
-            compat_fields = [
-                "headphone_jack_compatibility",
-                "bluetooth_compatibility",
-                "compatible_charging_interface",
-                "wireless_charging_compatibility",
-                "storage_expansion_compatibility",
-                "memory_capacity",
-                "compatible_watch_case_size"
-            ]
-            
-            def get_default_value(f, r):
-                if r and "default_value" in r:
-                    return r["default_value"]
-                if f == "bluetooth_compatibility":
-                    return "Yes"
-                return "Not Compatible"
-
-            # Initialize defaults — use instance value if non-empty, otherwise default
-            for f in compat_fields:
-                val = attrs.get(f)
-                rule = rules.get(f)
-                mode = rule.get("mode", "hidden") if rule else "hidden"
-
-                if val is None or (isinstance(val, str) and val.strip() == ""):
-                    instance_val = getattr(self.instance, f, None) if self.instance else None
-                    if instance_val and isinstance(instance_val, str) and instance_val.strip():
-                        attrs[f] = instance_val
-                    else:
-                        attrs[f] = get_default_value(f, rule)
-
-            # Validate based on mode
-            for f in compat_fields:
-                val = attrs.get(f)
-                rule = rules.get(f)
-                mode = rule.get("mode", "hidden") if rule else "hidden"
-                
-                if mode == "required":
-                    if not val or val.strip() == "" or val == "Not Compatible":
-                        raise serializers.ValidationError({f: f"{f.replace('_', ' ').title()} is required."})
-                elif mode == "hidden":
-                    attrs[f] = get_default_value(f, rule)
-                elif mode == "conditional":
-                    cond_field = rule.get("condition_field")
-                    cond_values = rule.get("condition_values", [])
-                    cond_val = attrs.get(cond_field)
-                    if cond_field and cond_val in cond_values:
-                        if not val or val.strip() == "" or val == "Not Compatible":
-                            raise serializers.ValidationError({f: f"{f.replace('_', ' ').title()} is required when {cond_field.replace('_', ' ').title()} is {cond_val}."})
-                            
-                # Controlled value validations
-                val = attrs.get(f)
-                if val:
-                    val = val.strip()
-                    attrs[f] = val
-
-                if f == "compatible_charging_interface" or f == "headphone_jack_compatibility":
-                    if val not in ["Not Compatible", "Type-C", "Lightning"]:
-                        raise serializers.ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
-
-                elif f == "bluetooth_compatibility":
-                    if val not in ["Yes", "No"]:
-                        raise serializers.ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
-
-                elif f == "wireless_charging_compatibility":
-                    import re
-                    w_vals = [w.strip() for w in re.split(r'[\+,;]', val) if w.strip()]
-                    if not w_vals:
-                        raise serializers.ValidationError({f: "Wireless Charging Compatibility is required."})
-                    normalized = []
-                    for w in w_vals:
-                        wl = w.lower()
-                        if wl == "magsafe":
-                            normalized.append("MagSafe")
-                        elif wl == "qi":
-                            normalized.append("Qi")
-                        elif wl == "qi2":
-                            normalized.append("Qi2")
-                        elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
-                            normalized.append("Not Compatible")
-                        else:
-                            raise serializers.ValidationError({f: f"Invalid Wireless Charging value '{w}'."})
-                    if 'Not Compatible' in normalized and len(normalized) > 1:
-                        raise serializers.ValidationError({f: "Not Compatible cannot be selected with any other value."})
-                    if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
-                        raise serializers.ValidationError({f: "Qi cannot be selected with MagSafe or Qi2."})
-                    attrs[f] = "+".join(normalized)
-
-                elif f == "storage_expansion_compatibility":
-                    if val not in ["Not Compatible", "microSDXC", "microSDHC"]:
-                        raise serializers.ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
-
-                elif f == "memory_capacity":
-                    storage = attrs.get("storage_expansion_compatibility")
-                    if storage in ["microSDXC", "microSDHC"]:
-                        if storage == "microSDXC":
-                            allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
-                        else:
-                            allowed = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
-                        if val not in allowed:
-                            raise serializers.ValidationError({f: f"Memory Capacity must match the allowed list for the selected storage type."})
-                    else:
-                        attrs[f] = "Not Compatible"
-
-                elif f == "compatible_watch_case_size":
-                    if val not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
-                        raise serializers.ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
-
-        for f in [
-            "headphone_jack_compatibility",
-            "bluetooth_compatibility",
-            "compatible_charging_interface",
-            "wireless_charging_compatibility",
-            "storage_expansion_compatibility",
-            "memory_capacity",
-            "compatible_watch_case_size"
-        ]:
-            if f in attrs and attrs[f] is None:
-                attrs[f] = ""
+        category = attrs.get('product_category', self.instance.product_category if self.instance else None)
+        from copy import copy
+        from django.core.exceptions import ValidationError as CompatibilityValidationError
+        from .compatibility_contract import validate_product_scope
+        from .compatibility_values import validate_compatibility_values
+        candidate = copy(self.instance) if self.instance else Product()
+        for field, value in attrs.items():
+            setattr(candidate, field, value)
+        try:
+            original = self.instance if 'compatible_device_types' not in attrs else None
+            types = validate_product_scope(candidate, original=original)
+            attrs['compatible_device_types'] = [record.code for record in types]
+            if category:
+                config = DynamicDropdownConfig.objects.filter(field_name='product_category', value=category).first()
+                if config is None or config.status != 'active':
+                    raise CompatibilityValidationError({'product_category': 'Select an active configured product category.'})
+                validate_compatibility_values(attrs, instance=self.instance, rules=config.compatibility_rules, assigned_fields=config.accessory_fields)
+        except CompatibilityValidationError as error:
+            raise serializers.ValidationError(error.message_dict) from error
 
         # ── Media readiness gate (Rule §21/§31) ──
         # A product may be saved as Draft without media, but cannot become
@@ -821,6 +763,37 @@ class ProductDetailSerializer(ProductSerializerBase):
 
 
 class ProductCompatibilityAssertionSerializer(serializers.ModelSerializer):
+    device_name = serializers.SerializerMethodField()
+    device_type_name = serializers.SerializerMethodField()
+    device_record_found = serializers.SerializerMethodField()
+
+    def _device(self, instance):
+        if "_assertion_devices" not in self.context:
+            from apps.devices.models import Device
+            parent = getattr(self, "parent", None)
+            rows = getattr(parent, "instance", None) if parent else None
+            rows = rows if rows is not None else [instance]
+            ids = [row.device_reference for row in rows]
+            self.context["_assertion_devices"] = {row.id: row for row in Device.objects.filter(id__in=ids).select_related("manufacturer", "device_type")}
+        return self.context["_assertion_devices"].get(instance.device_reference)
+
+    def get_device_name(self, instance):
+        device = self._device(instance)
+        return str(device) if device else "Device record unavailable"
+
+    def get_device_type_name(self, instance):
+        device = self._device(instance)
+        return device.device_type.name if device and device.device_type else None
+
+    def get_device_record_found(self, instance):
+        return self._device(instance) is not None
+
+    def validate_device_reference(self, value):
+        from apps.devices.models import Device
+        if not Device.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Select an existing canonical device.")
+        return value
+
     class Meta:
         model = ProductCompatibilityAssertion
         fields = [
@@ -832,7 +805,7 @@ class ProductCompatibilityAssertionSerializer(serializers.ModelSerializer):
             "device_launch_date_at_mapping", "match_source", "match_reason",
             "match_status", "exclusion_source", "exclusion_reason",
             "created_by", "updated_by", "reviewed_by", "reviewed_date",
-            "created_at", "updated_at"
+            "created_at", "updated_at", "device_name", "device_type_name", "device_record_found", "match_evidence"
         ]
         read_only_fields = ["id", "created_at", "updated_at", "asserted_at"]
 
@@ -845,13 +818,8 @@ class ProductCompatibilityAssertionSerializer(serializers.ModelSerializer):
             is_vendor = getattr(user, "company", None) and getattr(user.company, "company_type", None) == "vendor"
             
             if not is_admin and not is_vendor:
-                sensitive_fields = [
-                    "notes", "match_reason", "match_source", "match_status",
-                    "exclusion_source", "exclusion_reason", "created_by",
-                    "updated_by", "reviewed_by", "reviewed_date"
-                ]
-                for field in sensitive_fields:
-                    ret.pop(field, None)
+                public_fields = {"id", "product", "device_reference", "device_name", "device_type_name", "device_record_found", "is_compatible"}
+                ret = {field: value for field, value in ret.items() if field in public_fields}
         return ret
 
 
@@ -962,8 +930,22 @@ class DynamicDropdownConfigSerializer(serializers.ModelSerializer):
         return Product.objects.filter(**{product_field: obj.value}).count()
 
     def validate(self, attrs):
-        if not attrs.get("display_name"):
-            attrs["display_name"] = attrs.get("value", "")
+        from django.core.exceptions import ValidationError as ConfigurationValidationError
+        from .compatibility_contract import validate_category_configuration
+        from .compatibility_values import MANAGED_FIELDS, WIRELESS_POLICY_FIELD, validate_managed_configuration
+        if self.instance is None or "display_name" in attrs:
+            attrs["display_name"] = attrs.get("display_name") or attrs.get("value", self.instance.value if self.instance else "")
+        try:
+            validate_managed_configuration(attrs, self.instance)
+            if attrs["field_name"] == "product_category":
+                validate_category_configuration(attrs, self.instance)
+            elif attrs["field_name"] in MANAGED_FIELDS + (WIRELESS_POLICY_FIELD,):
+                if self.instance is None:
+                    attrs.setdefault("status", "active")
+                if attrs.get("status", self.instance.status if self.instance else "active") not in ("active", "inactive", "retired", "setup_required"):
+                    raise ConfigurationValidationError({"status": "Invalid controlled value status."})
+        except ConfigurationValidationError as error:
+            raise serializers.ValidationError(error.message_dict) from error
         return attrs
 
 
@@ -985,6 +967,7 @@ class CSVInFilter(django_filters.BaseInFilter):
 
 
 class ProductFilterSet(django_filters.FilterSet):
+    sku = django_filters.CharFilter(field_name="sku", lookup_expr="exact")
     """
     Server-side filters for the Product Catalog list.
 
@@ -1114,16 +1097,10 @@ class ProductFilterSet(django_filters.FilterSet):
         if not user or user.is_anonymous or not getattr(user, "entity", None):
             return queryset.none()
 
-        from apps.catalog.models import BuyerScopedCompatibilityProjection
-        try:
-            projection = BuyerScopedCompatibilityProjection.objects.get(
-                buyer_reference=user.id,
-                company_scope_reference=user.entity.company_id,
-                buyer_entity_reference=user.entity_id,
-            )
-        except BuyerScopedCompatibilityProjection.DoesNotExist:
+        from .services import ensure_buyer_compatibility_projection
+        projection = ensure_buyer_compatibility_projection(user)
+        if projection is None:
             return queryset.none()
-
         ids = [str(i) for i in (projection.compatible_product_ids or [])]
         if not ids:
             return queryset.none()
@@ -1144,6 +1121,22 @@ class ProductPagination(PageNumberPagination):
 
 
 # ─── ViewSets ─────────────────────────────────────────────────────────────────
+
+class CatalogSearchFilter(filters.SearchFilter):
+    def get_search_fields(self, view, request):
+        from decimal import Decimal, InvalidOperation
+        fields = list(super().get_search_fields(view, request) or [])
+        try:
+            numeric = Decimal(str(request.query_params.get("search", ""))).is_finite()
+        except InvalidOperation:
+            numeric = False
+        if numeric:
+            fields.append("msrp")
+            company = getattr(request.user, "company", None)
+            if getattr(request.user, "is_cixci_admin", False) or (company and company.company_type == "vendor"):
+                fields.append("vendor_wholesale_price_amount")
+        return fields
+
 
 class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = Product.objects.all()
@@ -1168,7 +1161,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         from config.throttling import VendorRateThrottle, BuyerRateThrottle, AdminRateThrottle
         # Apply role-specific throttles (they auto-check user role)
         return [VendorRateThrottle(), BuyerRateThrottle(), AdminRateThrottle()]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, CatalogSearchFilter, filters.OrderingFilter]
     filterset_class = ProductFilterSet
     search_fields = [
         "name",
@@ -1248,7 +1241,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         media_url = getattr(settings, "MEDIA_URL", "/media/")
 
         # ── Media assets: primary images (by id) + owned assets (by owner id) ──
-        primary_ids = [p.primary_image_reference for p in products if p.primary_image_reference]
+        primary_ids = {p.primary_image_reference for p in products if p.primary_image_reference}
         assets = MediaAsset.objects.filter(
             Q(id__in=primary_ids) | Q(owner_record_id__in=product_ids)
         ).order_by("created_at").values("id", "owner_record_id", "status", "storage_key")
@@ -1353,6 +1346,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if company and company.company_type == "buyer":
             export_filter = dict(
                 company_scope_reference=company.id,
+                buyer_entity_reference=user.entity_id,
                 product_id=OuterRef("pk"),
             )
             device_id_param = self.request.query_params.get("device_id")
@@ -1432,89 +1426,37 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             ).values_list("id", flat=True)
             qs = qs.filter(primary_image_reference__in=list(ready_asset_ids))
 
-        if getattr(self, "action", None) in ["list", "retrieve"] and company.company_type == "buyer":
+        if company.company_type == "buyer":
             from apps.integration.models import CompanyAPIKey
-            is_api_key_auth = isinstance(self.request.auth, CompanyAPIKey)
+            from .compatibility_contract import buyer_portfolio_device_ids
+            portfolio_ids = buyer_portfolio_device_ids(user) or set()
+            if not portfolio_ids:
+                return qs.none()
+            target_ids = portfolio_ids
+            requested_devices = self.request.query_params.get("device_id")
+            if requested_devices:
+                from uuid import UUID
+                try:
+                    target_ids = portfolio_ids.intersection(UUID(value.strip()) for value in requested_devices.split(",") if value.strip())
+                except (ValueError, TypeError):
+                    return qs.none()
+                if not target_ids:
+                    return qs.none()
+            compatible_ids = ProductCompatibilityAssertion.objects.filter(
+                device_reference__in=target_ids, is_compatible=True, is_excluded=False,
+            ).values_list("product_id", flat=True)
+            qs = qs.filter(id__in=compatible_ids)
+            if isinstance(self.request.auth, CompanyAPIKey):
+                if str(self.request.auth.company_scope_reference) != str(company.id):
+                    return qs.none()
+                exported_ids = BuyerProductExportDate.objects.filter(
+                    company_scope_reference=company.id,
+                    buyer_entity_reference=user.entity_id,
+                ).filter(Q(device_reference__in=target_ids) | Q(device_reference__isnull=True)).values_list("product_id", flat=True)
+                qs = qs.filter(id__in=exported_ids)
 
-            if getattr(self, "action", None) == "list":
-                device_id_param = self.request.query_params.get("device_id")
-
-                if is_api_key_auth:
-                    # B2B API key auth: return only explicitly exported products.
-                    # BuyerProductExportDate tracks which products were selected and
-                    # exported to this buyer — the buyer's storefront should see
-                    # exactly those products, not the entire compatible catalog.
-                    from apps.catalog.models import BuyerProductExportDate
-                    export_qs = BuyerProductExportDate.objects.filter(
-                        company_scope_reference=company.id,
-                    )
-                    if device_id_param:
-                        from uuid import UUID
-                        try:
-                            dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
-                            export_qs = export_qs.filter(device_reference__in=dev_uuids)
-                        except ValueError:
-                            return Product.objects.none()
-                    exported_product_ids = export_qs.values_list("product_id", flat=True)
-                    qs = qs.filter(id__in=exported_product_ids)
-                else:
-                    # Browser/JWT auth: use device portfolio compatibility
-                    from apps.devices.models import BuyerDevicePortfolioReference
-                    portfolio_device_ids = list(BuyerDevicePortfolioReference.objects.filter(
-                        company_scope_reference=company.id,
-                        active_flag=True
-                    ).values_list("device_id", flat=True))
-
-                    if not portfolio_device_ids and not device_id_param:
-                        return Product.objects.none()
-
-                    if device_id_param:
-                        from uuid import UUID
-                        try:
-                            dev_uuids = [UUID(x.strip()) for x in device_id_param.split(",") if x.strip()]
-                            target_device_ids = [d for d in dev_uuids if d in portfolio_device_ids] if portfolio_device_ids else dev_uuids
-                            if not target_device_ids:
-                                return Product.objects.none()
-                        except ValueError:
-                            return Product.objects.none()
-                    else:
-                        target_device_ids = portfolio_device_ids
-
-                    if target_device_ids:
-                        compatible_product_ids = ProductCompatibilityAssertion.objects.filter(
-                            device_reference__in=target_device_ids,
-                            is_compatible=True,
-                            is_excluded=False
-                        ).values_list("product_id", flat=True)
-
-                        qs = qs.filter(id__in=compatible_product_ids)
-
-        buyer_regions = company.approved_regions or []
-        if not isinstance(buyer_regions, list):
-            buyer_regions = [buyer_regions]
-
-        # Only apply region filter when the buyer has regions configured.
-        # If buyer has no approved_regions, skip vendor region exclusion so all
-        # active vendors are visible (avoids silently hiding everything).
-        if buyer_regions:
-            region_filter = Q()
-            for r in buyer_regions:
-                region_filter |= Q(approved_regions__icontains=f'"{r}"')
-
-            # Exclude vendors that are NOT active OR NOT in the buyer's approved regions
-            invisible_vendor_ids = Company.objects.filter(
-                company_type=CompanyType.VENDOR
-            ).exclude(
-                Q(status=CompanyStatus.ACTIVE) & region_filter
-            ).values_list("id", flat=True)
-
-            qs = qs.exclude(vendor_company_reference__in=invisible_vendor_ids)
-        else:
-            # No region config on buyer — only exclude inactive vendors
-            inactive_vendor_ids = Company.objects.filter(
-                company_type=CompanyType.VENDOR
-            ).exclude(status=CompanyStatus.ACTIVE).values_list("id", flat=True)
-            qs = qs.exclude(vendor_company_reference__in=inactive_vendor_ids)
+        from apps.tenant.regional_visibility import filter_buyer_regional_products
+        qs = filter_buyer_regional_products(qs, company.id, user.entity_id)
 
         # MAP Pricing buyer visibility exclusions
         from apps.pricing.models import MapException
@@ -1592,46 +1534,24 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        kwargs = {}
-        if user and user.entity:
-            kwargs["company_scope_reference"] = user.entity.company_id
-            if user.entity.company and user.entity.company.company_type == "vendor":
-                kwargs["brand"] = user.entity.company.name
-                kwargs["vendor_company_reference"] = user.entity.company.id
-        else:
-            vcr = serializer.validated_data.get("vendor_company_reference")
-            if vcr:
-                kwargs["company_scope_reference"] = vcr
-                from apps.tenant.models import Company
-                try:
-                    comp = Company.objects.get(id=vcr)
-                    kwargs["brand"] = comp.name
-                except Company.DoesNotExist:
-                    pass
-            else:
-                kwargs["company_scope_reference"] = "00000000-0000-0000-0000-000000000000"
+        # The supplier owns source catalog data even when an Admin with an
+        # Internal/Buyer/Vendor entity acts on its behalf.
+        from apps.tenant.models import Company
+        vendor_id = serializer.validated_data["vendor_company_reference"]
+        vendor = Company.objects.get(pk=vendor_id, company_type="vendor")
+        kwargs = {"company_scope_reference": vendor.id}
+        if not getattr(user, "is_cixci_admin", False) or not serializer.validated_data.get("brand"):
+            kwargs["brand"] = vendor.name
         product = serializer.save(**kwargs)
-        if product.compatibility_mode == "universal_device_type" and product.compatible_device_types:
-            try:
-                from apps.catalog.compatibility_engine import run_universal_device_type_mapping
-                run_universal_device_type_mapping(product, actor_id=getattr(user, "id", None), change_source="Product Form Create")
-            except Exception:
-                pass
 
     def perform_update(self, serializer):
         kwargs = {}
         user = self.request.user
         if user and user.entity and user.entity.company:
-            if user.entity.company.company_type == "vendor":
+            if user.entity.company.company_type == "vendor" and not getattr(user, "is_cixci_admin", False):
                 kwargs["brand"] = user.entity.company.name
                 kwargs["vendor_company_reference"] = user.entity.company.id
         product = serializer.save(**kwargs)
-        if product.compatibility_mode == "universal_device_type" and product.compatible_device_types:
-            try:
-                from apps.catalog.compatibility_engine import run_universal_device_type_mapping
-                run_universal_device_type_mapping(product, actor_id=getattr(user, "id", None), change_source="Product Form Update")
-            except Exception:
-                pass
 
     @action(detail=True, methods=["post"])
     def set_selling_status(self, request, pk=None):
@@ -1651,189 +1571,33 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get", "post"])
     def compatibility(self, request, pk=None):
-        """List or update device compatibility assertions for this product."""
+        """Read canonical current mappings or apply audited, scoped commands."""
+        from django.core.exceptions import ValidationError as CompatibilityValidationError
+        from .compatibility_commands import update_explicit_selections, apply_mapping_control
+        from .compatibility_contract import buyer_portfolio_device_ids
         product = self.get_object()
         if request.method == "POST":
-            action_type = request.data.get("action")
-            if action_type:
-                device_ref = request.data.get("device_reference")
-                if not device_ref:
-                    return Response({"error": "device_reference is required"}, status=400)
-                is_admin = getattr(request.user, "is_cixci_admin", False)
-                
-                assertion, _ = ProductCompatibilityAssertion.objects.get_or_create(
-                    product=product,
-                    device_reference=device_ref,
-                    defaults={
-                        "is_compatible": True,
-                        "compatibility_basis": "manual_assertion",
-                    }
-                )
-                
-                from apps.devices.models import Device
-                try:
-                    device = Device.objects.get(id=device_ref)
-                    device_status = device.lifecycle_status
-                    device_launch = device.launch_date
-                except Exception:
-                    device_status = "available"
-                    device_launch = None
-                
-                from apps.catalog.compatibility_engine import log_compatibility_change
-                
-                if action_type == "exclude":
-                    exclusion_reason = request.data.get("exclusion_reason")
-                    notes = request.data.get("notes", "")
-                    
-                    if not exclusion_reason:
-                        return Response({"error": "exclusion_reason is required for exclusion"}, status=400)
-                    
-                    valid_reasons = ["physical_mismatch", "connector_incompatibility", "power_spec_conflict", "firmware_os_limitation", "performance_issue", "regulatory_unsupported", "other"]
-                    if exclusion_reason not in valid_reasons:
-                        return Response({"error": "invalid exclusion_reason"}, status=400)
-                    
-                    if exclusion_reason == "other" and not notes.strip():
-                        return Response({"error": "descriptive notes are required when exclusion reason is 'other'"}, status=400)
-                    
-                    prev_status = "Active" if assertion.is_compatible else "Excluded"
-                    assertion.is_compatible = False
-                    assertion.is_excluded = True
-                    assertion.exclusion_type = "admin" if is_admin else "vendor"
-                    assertion.exclusion_reason = exclusion_reason
-                    assertion.notes = notes
-                    assertion.exclusion_source = "admin" if is_admin else "vendor"
-                    assertion.device_status_at_mapping = device_status
-                    assertion.device_launch_date_at_mapping = device_launch
-                    assertion.save()
-                    log_compatibility_change(assertion, prev_status, "Excluded", actor_id=request.user.id, change_source="Manual Override", exclusion_reason=exclusion_reason, exclusion_source=assertion.exclusion_source)
-                
-                elif action_type == "restore":
-                    if not is_admin:
-                        if assertion.is_locked:
-                            return Response({"error": "Cannot restore a locked mapping."}, status=403)
-                        if assertion.exclusion_type != "vendor":
-                            return Response({"error": "Vendors can only restore vendor exclusions."}, status=403)
-                    
-                    prev_status = "Excluded"
-                    assertion.is_compatible = True
-                    assertion.is_excluded = False
-                    assertion.exclusion_type = None
-                    assertion.exclusion_reason = None
-                    assertion.exclusion_source = None
-                    assertion.save()
-                    log_compatibility_change(assertion, prev_status, "Active", actor_id=request.user.id, change_source="Manual Override")
-                
-                elif action_type == "lock":
-                    if not is_admin:
-                        return Response({"error": "Only CIXCI Admins can lock device mappings."}, status=403)
-                    prev_status = "Active" if assertion.is_compatible else "Excluded"
-                    assertion.is_locked = True
-                    assertion.save()
-                    log_compatibility_change(assertion, prev_status, "Locked", actor_id=request.user.id, change_source="Manual Override")
-                
-                elif action_type == "convert_to_admin_exclusion":
-                    if not is_admin:
-                        return Response({"error": "Only CIXCI Admins can convert exclusions to Admin exclusions."}, status=403)
-                    prev_status = "Excluded (Vendor)"
-                    assertion.is_compatible = False
-                    assertion.is_excluded = True
-                    assertion.exclusion_type = "admin"
-                    assertion.exclusion_source = "admin"
-                    assertion.save()
-                    log_compatibility_change(assertion, prev_status, "Excluded (Admin)", actor_id=request.user.id, change_source="Manual Override")
-                
-                else:
-                    return Response({"error": f"Unknown action: {action_type}"}, status=400)
-                
-                # Recalculate compatibility_status on the product
-                cnt = ProductCompatibilityAssertion.objects.filter(product=product, is_compatible=True, is_excluded=False).count()
-                new_status = "complete" if cnt >= 1 else "incomplete"
-                if product.compatibility_status != new_status:
-                    product.compatibility_status = new_status
-                    Product.objects.filter(id=product.id).update(compatibility_status=new_status)
-                
-                try:
-                    from apps.catalog.services import trigger_catalog_recalculation_for_product
-                    trigger_catalog_recalculation_for_product(product.id)
-                except Exception:
-                    pass
-                
-                assertions = product.compatibility_assertions.all()
-                return Response(ProductCompatibilityAssertionSerializer(assertions, many=True, context={"request": request}).data)
-
-            # Bulk update/save compatibility assertions for this product
-            assertions_data = request.data.get("assertions", [])
-            update_type = request.data.get("compatibility_update_type", "add")
-            
-            # If update_type is replace or remove, verify permission:
-            # if product is active and user is not admin, block it.
-            is_admin = getattr(request.user, "is_cixci_admin", False)
-            if update_type in ["replace", "remove"]:
-                if product.status == "active" and not is_admin:
-                    return Response({"error": "Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval."}, status=400)
-            
-            created = []
-            if update_type == "replace":
-                # Remove old assertions first
-                ProductCompatibilityAssertion.objects.filter(product=product).delete()
-                for item in assertions_data:
-                    device_id = item.get("device_id") or item.get("device_reference")
-                    is_compatible = item.get("is_compatible", True)
-                    notes = item.get("notes", "")
-                    if device_id:
-                        assertion = ProductCompatibilityAssertion.objects.create(
-                            product=product,
-                            device_reference=device_id,
-                            is_compatible=is_compatible,
-                            compatibility_basis="manual_assertion",
-                            notes=notes
-                        )
-                        created.append(assertion)
-            elif update_type == "remove":
-                for item in assertions_data:
-                    device_id = item.get("device_id") or item.get("device_reference")
-                    if device_id:
-                        ProductCompatibilityAssertion.objects.filter(product=product, device_reference=device_id).delete()
-            else: # add
-                for item in assertions_data:
-                    device_id = item.get("device_id") or item.get("device_reference")
-                    is_compatible = item.get("is_compatible", True)
-                    notes = item.get("notes", "")
-                    if device_id:
-                        assertion, created_bool = ProductCompatibilityAssertion.objects.update_or_create(
-                            product=product,
-                            device_reference=device_id,
-                            defaults={
-                                "is_compatible": is_compatible,
-                                "compatibility_basis": "manual_assertion",
-                                "notes": notes
-                            }
-                        )
-                        created.append(assertion)
-                        
-            # Recalculate product compatibility status based on active non-excluded assertions
-            cnt = ProductCompatibilityAssertion.objects.filter(
-                product=product,
-                is_compatible=True,
-                is_excluded=False
-            ).count()
-            new_status = "complete" if cnt >= 1 else "incomplete"
-            if product.compatibility_status != new_status:
-                product.compatibility_status = new_status
-                Product.objects.filter(id=product.id).update(compatibility_status=new_status)
-
             try:
-                from apps.catalog.services import trigger_catalog_recalculation_for_product
-                trigger_catalog_recalculation_for_product(product.id)
-            except Exception:
-                pass
-                
-            assertions = product.compatibility_assertions.all()
-            return Response(ProductCompatibilityAssertionSerializer(assertions, many=True, context={"request": request}).data)
-        
-        # GET returns current assertions
+                if request.data.get("action"):
+                    apply_mapping_control(
+                        product, request.user, request.data["action"], request.data.get("device_reference"),
+                        reason=request.data.get("exclusion_reason"), notes=request.data.get("notes", ""),
+                    )
+                else:
+                    items = request.data.get("assertions", request.data.get("device_ids", []))
+                    mode = request.data.get("update_type", request.data.get("compatibility_update_type", "add"))
+                    if mode == "remove" and request.data.get("exclusion_reason"):
+                        items = [dict(item, exclusion_reason=item.get("exclusion_reason", request.data["exclusion_reason"]), notes=item.get("notes", request.data.get("notes", ""))) if isinstance(item, dict) else {"device_id": item, "exclusion_reason": request.data["exclusion_reason"], "notes": request.data.get("notes", "")} for item in items]
+                    update_explicit_selections(product, items, request.user, update_type=mode)
+            except CompatibilityValidationError as error:
+                raise serializers.ValidationError(error.message_dict) from error
         assertions = product.compatibility_assertions.all()
-        return Response(ProductCompatibilityAssertionSerializer(assertions, many=True, context={"request": request}).data)
+        portfolio_ids = buyer_portfolio_device_ids(request.user)
+        if portfolio_ids is not None:
+            assertions = assertions.filter(device_reference__in=portfolio_ids, is_compatible=True, is_excluded=False)
+        elif request.query_params.get("include_archived") != "true":
+            assertions = assertions.filter(Q(is_compatible=True) | Q(is_excluded=True) | Q(is_locked=True) | Q(match_status="Pending"))
+        return Response(ProductCompatibilityAssertionSerializer(assertions.order_by("created_at", "id"), many=True, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="recalculate-compatibility")
     def recalculate_compatibility(self, request, pk=None):
@@ -2057,8 +1821,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         return response
 
     @action(detail=False, methods=["post"])
+    @transaction.atomic
     def bulk_upload(self, request):
         """Bulk upload products from a CSV or Excel (.xlsx) file with detailed validations."""
+        from django.conf import settings
         import csv
         import io
         import datetime
@@ -2203,210 +1969,20 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         seen_skus = set()
         seen_upcs = set()
 
-        # Feature keywords that should never be treated as device names
-        FEATURE_KEYWORDS = {
-            "iphone", "android", "lightning", "magsafe", "qi", "qi2", "type-c",
-            "bluetooth", "microsd", "microsdhc", "microsdxc", "not compatible",
-            "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm",
-            "16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb",
-            "galaxy", "pixel", "samsung", "google", "apple", "universal",
-        }
-
-        def lookup_device(dev_name):
-            if not dev_name:
-                return None
-            # Reject strings containing list delimiters (comma/semicolon)
-            if any(char in dev_name for char in [",", ";"]):
-                return None
-            # Reject feature keywords — these are NOT device names
-            if dev_name.strip().lower() in FEATURE_KEYWORDS:
-                return None
-
-            from apps.devices.models import Device, Manufacturer
-
-            # 1. Try exact match first (with any trailing '+' intact)
-            clean_name = dev_name.strip()
-            device = Device.objects.filter(name__iexact=clean_name).first()
-            if device:
-                return device
-
-            # Fallback: Canonical alias / shorthand mapping (e.g. "Galaxy S24+" -> "Galaxy S24")
-            target_name = clean_name
-            if target_name.endswith("+"):
-                target_name = target_name[:-1].strip()
-
-            # 2. Exact match without trailing '+'
-            device = Device.objects.filter(name__iexact=target_name).first()
-            if device:
-                return device
-            
-            # 2. Match with manufacturer name prepended (e.g. user submitted "iPhone 15", db has "Apple iPhone 15")
-            dev_name_lower = target_name.lower()
-            possible_mfgs = []
-            if "iphone" in dev_name_lower or "ipad" in dev_name_lower or "apple" in dev_name_lower:
-                possible_mfgs.append("Apple")
-            if "galaxy" in dev_name_lower or "samsung" in dev_name_lower:
-                possible_mfgs.append("Samsung")
-            if "pixel" in dev_name_lower or "google" in dev_name_lower:
-                possible_mfgs.append("Google")
-            
-            # Also get all existing manufacturers from database
-            for mfg in Manufacturer.objects.all():
-                if mfg.name not in possible_mfgs:
-                    possible_mfgs.append(mfg.name)
-            
-            for mfg_name in possible_mfgs:
-                if not dev_name_lower.startswith(mfg_name.lower()):
-                    device = Device.objects.filter(name__iexact=f"{mfg_name} {target_name}").first()
-                    if device:
-                        return device
-            
-            # 3. Match by stripping manufacturer from the beginning (e.g. user submitted "Apple iPhone 15", db has "iPhone 15")
-            words = target_name.split()
-            if len(words) > 1:
-                first_word = words[0]
-                rest_name = " ".join(words[1:])
-                if Manufacturer.objects.filter(name__iexact=first_word).exists():
-                    device = Device.objects.filter(name__iexact=rest_name).first()
-                    if device:
-                        return device
-            
-            return None
-
-        def match_devices_by_feature_string(comp_str):
-            if not comp_str:
-                return []
-
-            # Check direct exact or lookup device match first (e.g. "Samsung Galaxy S26+")
-            direct_dev = lookup_device(comp_str.strip())
-            if direct_dev:
-                return [direct_dev]
-
-            import re
-            g_item_clean = re.sub(r'\s*\bplus\b\s*', ' + ', comp_str, flags=re.IGNORECASE)
-            # Split by both semicolon and comma first
-            initial_parts = [p.strip() for p in re.split(r'\s*;\s*|\s*,\s*', g_item_clean) if p.strip()]
-            parts = []
-            for ip in initial_parts:
-                for p in re.split(r'\s*\+\s*(?!\s*\+|$)', ip):
-                    p_str = p.strip()
-                    if p_str:
-                        if p_str.lower() == "andnroid":
-                            p_str = "Android"
-                        parts.append(p_str)
-            if not parts:
-                return []
-
-            if len(parts) == 1:
-                dev_name = parts[0]
-                if dev_name.lower() not in FEATURE_KEYWORDS:
-                    dev = lookup_device(dev_name)
-                    if dev:
-                        return [dev]
-
-            # Separate feature keywords from device-name tokens
-            feature_parts = [p for p in parts if p.lower() in FEATURE_KEYWORDS
-                             or p.lower() in ("magsafe", "qi", "qi2", "lightning",
-                                               "type-c", "usb-c", "usb c", "bluetooth")]
-            name_parts = [p for p in parts if p not in feature_parts]
-
-            # If no feature keywords are present, this is purely a device name
-            # (e.g. "iPhone 18 Pro"). Use strict substring matching on the full
-            # original string instead of matching each word independently — this
-            # prevents "iPhone 18 Pro" from matching "iPhone 18 Pro Max".
-            if name_parts and not feature_parts:
-                from apps.devices.models import Device
-                from django.utils import timezone
-                now_date = timezone.now().date()
-                all_devices = Device.objects.filter(
-                    device_type__status='active'
-                ).exclude(
-                    lifecycle_status='retired'
-                )
-                all_devices = [d for d in all_devices if not (d.launch_date and d.launch_date > now_date)]
-
-                full_name_lower = comp_str.strip().lower()
-                matched_devices = []
-                for dev in all_devices:
-                    dev_name_lower = dev.name.lower()
-                    mfg_prefix = (dev.manufacturer.name.lower() + " ") if dev.manufacturer else ""
-                    full_dev_name = mfg_prefix + dev_name_lower
-                    # Require the full input string to appear as a substring of the device name
-                    if full_name_lower in full_dev_name or full_name_lower in dev_name_lower:
-                        matched_devices.append(dev)
-                return matched_devices
-
-            from apps.devices.models import Device
-            from django.utils import timezone
-            now_date = timezone.now().date()
-            all_devices = Device.objects.filter(
-                device_type__status='active'
-            ).exclude(
-                lifecycle_status='retired'
-            )
-            all_devices = [d for d in all_devices if not (d.launch_date and d.launch_date > now_date)]
-
-            matched_devices = []
-            for dev in all_devices:
-                match_all = True
-                for part in parts:
-                    p_lower = part.lower()
-                    if p_lower == "magsafe":
-                        wireless_val = (dev.wireless_charging_compatibility or "").lower()
-                        if "magsafe" not in wireless_val:
-                            match_all = False
-                            break
-                    elif p_lower == "qi":
-                        wireless_val = (dev.wireless_charging_compatibility or "").lower()
-                        if "qi" not in wireless_val:
-                            match_all = False
-                            break
-                    elif p_lower == "qi2":
-                        wireless_val = (dev.wireless_charging_compatibility or "").lower()
-                        if "qi2" not in wireless_val:
-                            match_all = False
-                            break
-                    elif p_lower == "lightning":
-                        charging_val = (dev.compatible_charging_interface or "").lower()
-                        jack_val = (dev.headphone_jack_compatibility or "").lower()
-                        if "lightning" not in charging_val and "lightning" not in jack_val:
-                            match_all = False
-                            break
-                    elif p_lower in ["type-c", "usb-c", "usb c"]:
-                        charging_val = (dev.compatible_charging_interface or "").lower()
-                        jack_val = (dev.headphone_jack_compatibility or "").lower()
-                        if "type-c" not in charging_val and "usb-c" not in charging_val and "type-c" not in jack_val:
-                            match_all = False
-                            break
-                    elif p_lower == "bluetooth":
-                        bt_val = (dev.bluetooth_compatibility or "").lower()
-                        if bt_val != "yes":
-                            match_all = False
-                            break
-                    else:
-                        dev_name_lower = dev.name.lower()
-                        mfg_name_lower = dev.manufacturer.name.lower() if dev.manufacturer else ""
-                        if p_lower not in dev_name_lower and p_lower not in mfg_name_lower:
-                            match_all = False
-                            break
-                if match_all:
-                    matched_devices.append(dev)
-
-            return matched_devices
-
-        def is_valid_device_name(p):
-            if not p:
-                return False
-            # Strictly lookup the device in DB to ensure it exists
-            return lookup_device(p) is not None
-
         vendor_company_id = request.user.entity.company_id if (request.user.entity and request.user.entity.company) else None
-        if not vendor_company_id:
-            # Fallback for admin users without a specific vendor company context
-            vendor_company_id = "00000000-0000-0000-0000-000000000000"
-            
         from apps.tenant.models import Company
+        if getattr(request.user, "is_cixci_admin", False):
+            vendor_company_id = request.data.get("vendor_company_reference") or request.query_params.get("vendor_company_reference")
+        if not vendor_company_id:
+            raise serializers.ValidationError({"vendor_company_reference": "Select the supplier company for this catalog import."})
+        import uuid
+        try:
+            vendor_company_id = uuid.UUID(str(vendor_company_id))
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({"vendor_company_reference": "Use a canonical supplier Company UUID."}) from None
         vendor = Company.objects.filter(id=vendor_company_id).first()
+        if not vendor or vendor.company_type != "vendor":
+            raise serializers.ValidationError({"vendor_company_reference": "Select an existing supplier company."})
         is_map_enforced = vendor.map_pricing_enforced if vendor else False
             
         est = pytz.timezone("US/Eastern")
@@ -2643,7 +2219,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 })
             else:
                 # Try to resolve via VendorCategoryMapping first
-                vendor_ref = request.user.company.id if (request and request.user and hasattr(request.user, 'company')) else None
+                vendor_ref = getattr(getattr(request.user, 'company', None), 'id', None)
 
                 mapping = None
                 if vendor_ref:
@@ -2983,542 +2559,17 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "recommended_correction": "Provide a descriptive text for the product."
                 })
 
-            # --- Universal Device Types ---
-            # Vendors write: "Phone", "Tablet", "Smartwatch" (comma or semicolon separated).
-            # These map to DeviceType.code values and the compatibility engine auto-maps
-            # the product to EVERY active device of those types — including future devices.
-            DEVICE_TYPE_ALIASES = {
-                "phone": "phone",
-                "phones": "phone",
-                "all phones": "phone",
-                "all phone": "phone",
-                "universal phone": "phone",
-                "universal phones": "phone",
-                "universal: phone": "phone",
-                "smartphone": "phone",
-                "smartphones": "phone",
-                "cell phone": "phone",
-                "mobile": "phone",
-                "tablet": "tablet",
-                "tablets": "tablet",
-                "all tablets": "tablet",
-                "all tablet": "tablet",
-                "universal tablet": "tablet",
-                "universal tablets": "tablet",
-                "universal: tablet": "tablet",
-                "ipad": "tablet",
-                "smartwatch": "smartwatch",
-                "smartwatches": "smartwatch",
-                "watch": "smartwatch",
-                "watches": "smartwatch",
-                "all smartwatches": "smartwatch",
-                "all watches": "smartwatch",
-                "universal watch": "smartwatch",
-                "universal smartwatch": "smartwatch",
-                "universal: smartwatch": "smartwatch",
-                "wearable": "smartwatch",
-                "laptop": "laptop",
-                "laptops": "laptop",
-            }
-
-            from apps.devices.models import DeviceType as DeviceTypeModel
-            active_device_types = DeviceTypeModel.objects.filter(status="active")
-            db_code_map = {dt.code.lower(): dt.code for dt in active_device_types}
-            db_name_map = {dt.name.lower(): dt.code for dt in active_device_types}
-
-            universal_device_types_raw = str(
-                row.get("universaldevicetypes") or
-                row.get("universaldevicetype") or
-                row.get("devicetypes") or
-                row.get("universalcompatibility") or
-                row.get("universaldevices") or
-                ""
-            ).strip()
-            row_universal_device_types = []  # will hold normalised code strings
-
-            if universal_device_types_raw:
-                import re as _re
-                raw_parts = [p.strip() for p in _re.split(r"[;,]", universal_device_types_raw) if p.strip()]
-                udt_errors = []
-                seen_codes = set()
-                for part in raw_parts:
-                    p_lower = part.lower()
-                    resolved_code = (
-                        DEVICE_TYPE_ALIASES.get(p_lower) or
-                        db_code_map.get(p_lower) or
-                        db_name_map.get(p_lower)
-                    )
-                    if not resolved_code:
-                        valid_options = ", ".join(
-                            sorted({v for v in DEVICE_TYPE_ALIASES.values()} | set(db_code_map.values()))
-                        )
-                        udt_errors.append(
-                            f"'{part}' is not a recognised device type. "
-                            f"Valid values: {valid_options}."
-                        )
-                    else:
-                        if resolved_code not in seen_codes:
-                            row_universal_device_types.append(resolved_code)
-                            seen_codes.add(resolved_code)
-
-                if udt_errors:
-                    row_errors.append({
-                        "row_number": row_num,
-                        "column_name": "Universal Device Types",
-                        "submitted_value": universal_device_types_raw,
-                        "validation_error": " | ".join(udt_errors),
-                        "recommended_correction": (
-                            "Use: Phone, Tablet, Smartwatch (comma or semicolon separated). "
-                            "These map all current and future devices of those types to this product."
-                        )
-                    })
-
-            # --- Device Compatibility ---
-            comp_val = row.get("devicecompatibility") or row.get("compatibility") or row.get("compatibilitynames") or ""
-            normalized_comp = ""
-            
-            row_keys = set(row.keys())
-            possible_compat_cols = [
-                "bluetoothcompatibility", "bluetooth",
-                "headphonejackcompatibility", "headphonejack",
-                "compatiblecharginginterface", "charginginterface",
-                "wirelesschargingcompatibility", "wirelesscharging",
-                "storageexpansioncompatibility", "storageexpansion",
-                "memorycapacity",
-                "compatiblewatchcasesize", "watchcasesize"
-            ]
-            has_separate_cols = any(k in row_keys for k in possible_compat_cols)
-            
-            def get_row_value(r_dict, *keys):
-                for k in keys:
-                    norm_k = "".join(c for c in str(k).lower() if c.isalnum())
-                    if norm_k in r_dict:
-                        return str(r_dict[norm_k] or "").strip()
-                return ""
-
-            row_bluetooth = get_row_value(row, "bluetooth_compatibility", "bluetooth", "bluetoothcompatibility")
-            row_jack = get_row_value(row, "headphone_jack_compatibility", "headphonejack", "headphonejackcompatibility")
-            row_charging = get_row_value(row, "compatible_charging_interface", "charginginterface", "compatiblecharginginterface")
-            row_wireless = get_row_value(row, "wireless_charging_compatibility", "wirelesscharging", "wirelesschargingcompatibility")
-            row_storage = get_row_value(row, "storage_expansion_compatibility", "storageexpansion", "storageexpansioncompatibility")
-            row_memory = get_row_value(row, "memory_capacity", "memorycapacity")
-            row_watch_size = get_row_value(row, "compatible_watch_case_size", "watchcasesize", "compatiblewatchcasesize")
-
-            comp_str = str(comp_val or "").strip()
-            comp_str_lower = comp_str.lower()
-            comp_errors = []
-
-            if comp_val or has_separate_cols:
-                # Parse from compatibility column if present
-                if comp_str:
-                    # Support both comma and semicolon separation
-                    unified_comp_str = comp_str.replace(",", ";")
-                    groups = [g.strip() for g in unified_comp_str.split(";") if g.strip()]
-                    seen_g = set()
-                    unique_groups = []
-                    for g in groups:
-                        import re
-                        g_clean = re.sub(r'\s*\bplus\b\s*', ' + ', g, flags=re.IGNORECASE)
-                        g_clean = " + ".join(p.strip() for p in re.split(r'\s*\+\s*(?!\s*\+|$)', g_clean) if p.strip())
-                        gl = g_clean.lower()
-                        if gl not in seen_g:
-                            seen_g.add(gl)
-                            unique_groups.append(g_clean)
-                else:
-                    unique_groups = []
-
-                acc_name_str = str(row.get("accessoryname") or row.get("name") or row.get("productname") or "").strip()
-                acc_name_lower = acc_name_str.lower()
-
-                # Pre-infer category features if separate columns are not provided
-                if not has_separate_cols:
-                    if product_category in ["Chargers and Cables", "Chargers & Cables"]:
-                        if not row_charging or row_charging == "Not Compatible":
-                            if any(x in acc_name_lower or x in comp_str_lower for x in ["type-c", "type c", "c to c", "usb-c", "usb c", "typec"]):
-                                row_charging = "Type-C"
-                            elif "lightning" in acc_name_lower or "lightning" in comp_str_lower:
-                                row_charging = "Lightning"
-                            else:
-                                from apps.devices.models import Device
-                                matched_devs = Device.objects.filter(name__in=[g for g in unique_groups if is_valid_device_name(g)])
-                                c_ifs = set(matched_devs.values_list("compatible_charging_interface", flat=True))
-                                if "Type-C" in c_ifs:
-                                    row_charging = "Type-C"
-                                elif "Lightning" in c_ifs:
-                                    row_charging = "Lightning"
-                                else:
-                                    row_charging = "Type-C"
-                        if not row_wireless:
-                            w_found = []
-                            if "magsafe" in acc_name_lower or "magsafe" in comp_str_lower:
-                                w_found.append("MagSafe")
-                            if "qi2" in acc_name_lower or "qi2" in comp_str_lower:
-                                w_found.append("Qi2")
-                            elif "qi" in acc_name_lower or "qi" in comp_str_lower:
-                                w_found.append("Qi")
-                            row_wireless = "+".join(w_found) if w_found else "Not Compatible"
-
-                    elif product_category in ["Headphones", "Headphones & Earbuds"]:
-                        if not row_bluetooth:
-                            row_bluetooth = "Yes"
-                        if not row_jack or row_jack == "Not Compatible":
-                            if "lightning" in acc_name_lower or "lightning" in comp_str_lower:
-                                row_jack = "Lightning"
-                            elif any(x in acc_name_lower or x in comp_str_lower for x in ["type-c", "type c"]):
-                                row_jack = "Type-C"
-                            else:
-                                row_jack = "Not Compatible"
-
-                    elif product_category in ["Speakers", "Speakers & Audio"]:
-                        if not row_bluetooth:
-                            row_bluetooth = "Yes"
-                        if not row_charging or row_charging == "Not Compatible":
-                            if "lightning" in acc_name_lower or "lightning" in comp_str_lower:
-                                row_charging = "Lightning"
-                            else:
-                                row_charging = "Type-C"
-
-                if unique_groups:
-                    # Set default variables based on parts for category-specific check below
-                    for g_item in unique_groups:
-                        parts = [p.strip() for p in re.split(r'\s*\+\s*(?!\s*\+|$)', g_item) if p.strip()]
-                        # Clean up common typos like 'Andnroid'
-                        parts_cleaned = []
-                        for p in parts:
-                            if p.lower() == "andnroid":
-                                parts_cleaned.append("Android")
-                            else:
-                                parts_cleaned.append(p)
-                        parts = parts_cleaned
-                        parts_lower = [p.lower() for p in parts]
-                        
-                        # If there's a device name in the parts of this group, auto-populate features if blank
-                        if not has_separate_cols and any(is_valid_device_name(pt) for pt in parts):
-                            if product_category == "Headphones":
-                                if not row_bluetooth: row_bluetooth = "Yes"
-                                if not row_jack: row_jack = "Not Compatible"
-                            elif product_category == "Speakers":
-                                if not row_bluetooth: row_bluetooth = "Yes"
-                                if not row_charging: row_charging = "Type-C"
-                            elif product_category in ["Chargers and Cables", "Chargers & Cables"]:
-                                if not row_charging or row_charging == "Not Compatible": row_charging = "Type-C"
-                                if not row_wireless: row_wireless = "Not Compatible"
-                            elif product_category == "Memory":
-                                if not row_storage: row_storage = "Not Compatible"
-                                if not row_memory: row_memory = "Not Compatible"
-                            elif product_category == "Wearable Tech":
-                                if not row_charging: row_charging = "Type-C"
-                                if not row_wireless: row_wireless = "Not Compatible"
-                            elif product_category == "Watch Accessories":
-                                if not row_watch_size: row_watch_size = "Not Compatible"
-                                if not row_wireless: row_wireless = "Not Compatible"
-
-                        if product_category == "Headphones":
-                            if not has_separate_cols:
-                                if "bluetooth" in parts_lower:
-                                    row_bluetooth = "Yes"
-                                if "lightning" in parts_lower:
-                                    row_jack = "Lightning"
-                                elif "type-c" in parts_lower:
-                                    row_jack = "Type-C"
-                                elif "not compatible" in parts_lower:
-                                    row_jack = "Not Compatible"
-                            
-                            if "not compatible" in parts_lower:
-                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                    comp_errors.append("Not Compatible cannot be combined with other values.")
-                            for p in parts:
-                                pl = p.lower()
-                                if pl in FEATURE_KEYWORDS:
-                                    continue
-                                if pl not in ["lightning", "type-c", "bluetooth", "not compatible"] and not is_valid_device_name(p):
-                                    comp_errors.append(f"Invalid attribute '{p}' for Headphones.")
-
-                        elif product_category == "Speakers":
-                            if not has_separate_cols:
-                                if "bluetooth" in parts_lower:
-                                    row_bluetooth = "Yes"
-                                if "lightning" in parts_lower:
-                                    row_charging = "Lightning"
-                                elif "type-c" in parts_lower:
-                                    row_charging = "Type-C"
-                                elif "not compatible" in parts_lower:
-                                    row_charging = "Not Compatible"
-                            
-                            if "not compatible" in parts_lower:
-                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                    comp_errors.append("Not Compatible cannot be combined with other values.")
-                            for p in parts:
-                                pl = p.lower()
-                                if pl in FEATURE_KEYWORDS:
-                                    continue
-                                if pl not in ["type-c", "lightning", "bluetooth", "not compatible"] and not is_valid_device_name(p):
-                                    comp_errors.append(f"Invalid attribute '{p}' for Speakers.")
-
-                        elif product_category == "Chargers and Cables":
-                            if not has_separate_cols:
-                                if "lightning" in parts_lower:
-                                    row_charging = "Lightning"
-                                elif "type-c" in parts_lower:
-                                    row_charging = "Type-C"
-                                elif "not compatible" in parts_lower:
-                                    row_charging = "Not Compatible"
-                                
-                                w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts_lower]
-                                if w_list:
-                                    case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
-                                    row_wireless = "+".join(case_map[w] for w in w_list)
-                                elif "not compatible" in parts_lower:
-                                    row_wireless = "Not Compatible"
-                            
-                            if "not compatible" in parts_lower:
-                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                    comp_errors.append("Not Compatible cannot be combined with other values.")
-                            for p in parts:
-                                pl = p.lower()
-                                if pl in FEATURE_KEYWORDS:
-                                    continue
-                                if pl not in ["iphone", "android", "lightning", "type-c", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
-                                    comp_errors.append(f"Invalid attribute '{p}' for Chargers and Cables.")
-
-                        elif product_category == "Memory":
-                            valid_sizes = ["16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "1.5tb", "2tb"]
-                            if not has_separate_cols:
-                                if "microsdxc" in parts_lower:
-                                    row_storage = "microSDXC"
-                                elif "microsdhc" in parts_lower:
-                                    row_storage = "microSDHC"
-                                elif "not compatible" in parts_lower:
-                                    row_storage = "Not Compatible"
-                                
-                                for p in parts_lower:
-                                    if p in valid_sizes:
-                                        row_memory = p.upper()
-                                        break
-                            
-                            if "not compatible" in parts_lower:
-                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                    comp_errors.append("Not Compatible cannot be combined with other values.")
-                            for p in parts:
-                                pl = p.lower()
-                                if pl in FEATURE_KEYWORDS:
-                                    continue
-                                if pl not in valid_sizes and pl not in ["microsdxc", "microsdhc", "not compatible", "mircosdxc", "mircosdhc", "512bg"] and not is_valid_device_name(p):
-                                    comp_errors.append(f"Invalid attribute '{p}' for Memory.")
-
-                        elif product_category == "Wearable Tech":
-                            if not has_separate_cols:
-                                if "lightning" in parts_lower:
-                                    row_charging = "Lightning"
-                                elif "type-c" in parts_lower:
-                                    row_charging = "Type-C"
-                                elif "not compatible" in parts_lower:
-                                    row_charging = "Not Compatible"
-                                
-                                w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts_lower]
-                                if w_list:
-                                    case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
-                                    row_wireless = "+".join(case_map[w] for w in w_list)
-                                elif "not compatible" in parts_lower:
-                                    row_wireless = "Not Compatible"
-                            
-                            if "not compatible" in parts_lower:
-                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                    comp_errors.append("Not Compatible cannot be combined with other values.")
-                            for p in parts:
-                                pl = p.lower()
-                                if pl in FEATURE_KEYWORDS:
-                                    continue
-                                if pl not in ["type-c", "lightning", "magsafe", "qi", "qi2", "not compatible"] and not is_valid_device_name(p):
-                                    comp_errors.append(f"Invalid attribute '{p}' for Wearable Tech.")
-
-                        elif product_category == "Watch Accessories":
-                            valid_sizes = ["40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]
-                            if not has_separate_cols:
-                                for p in parts_lower:
-                                    if p in valid_sizes:
-                                        row_watch_size = p
-                                        break
-                                
-                                w_list = [w for w in ["magsafe", "qi", "qi2"] if w in parts_lower]
-                                if w_list:
-                                    case_map = {"magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2"}
-                                    row_wireless = "+".join(case_map[w] for w in w_list)
-                                elif "not compatible" in parts_lower:
-                                    row_wireless = "Not Compatible"
-                            
-                            if "not compatible" in parts_lower:
-                                if len(parts_lower) > 1 and not any(is_valid_device_name(pt) for pt in parts):
-                                    comp_errors.append("Not Compatible cannot be combined with other values.")
-                            for p in parts:
-                                pl = p.lower()
-                                if pl in FEATURE_KEYWORDS:
-                                    continue
-                                if pl not in ["magsafe", "qi", "qi2", "not compatible"] and pl not in valid_sizes and not is_valid_device_name(p):
-                                    comp_errors.append(f"Invalid attribute '{p}' for Watch Accessories.")
-                        
-                        elif product_category not in ["Headphones", "Speakers", "Chargers and Cables", "Memory", "Wearable Tech", "Watch Accessories"]:
-                            # For standard categories, validate the device name itself or detect universal device types
-                            if len(parts) == 1:
-                                p = parts[0]
-                                pl = p.strip().lower()
-                                if pl in DEVICE_TYPE_ALIASES or pl in db_code_map or pl in db_name_map:
-                                    resolved_code = DEVICE_TYPE_ALIASES.get(pl) or db_code_map.get(pl) or db_name_map.get(pl)
-                                    if resolved_code and resolved_code not in row_universal_device_types:
-                                        row_universal_device_types.append(resolved_code)
-                                elif pl not in FEATURE_KEYWORDS:
-                                    if not is_valid_device_name(p):
-                                        comp_errors.append(f"Invalid device '{p}'.")
-                            else:
-                                for p in parts:
-                                    pl = p.strip().lower()
-                                    if pl in DEVICE_TYPE_ALIASES or pl in db_code_map or pl in db_name_map:
-                                        resolved_code = DEVICE_TYPE_ALIASES.get(pl) or db_code_map.get(pl) or db_name_map.get(pl)
-                                        if resolved_code and resolved_code not in row_universal_device_types:
-                                            row_universal_device_types.append(resolved_code)
-                                        continue
-                                    if pl in FEATURE_KEYWORDS:
-                                        continue
-                                    from apps.devices.models import Device
-                                    if not Device.objects.filter(name__icontains=pl).exists() and not Device.objects.filter(manufacturer__name__icontains=pl).exists():
-                                        comp_errors.append(f"Invalid device/feature part '{p}'.")
-                    
-                    normalized_comp = ";".join(unique_groups)
-                else:
-                    normalized_comp = ""
-
-                # Now perform precise validation on the values of the fields when explicitly provided
-                if product_category == "Headphones":
-                    if has_separate_cols and (not row_jack or not row_bluetooth):
-                        comp_errors.append("Headphone Jack Compatibility and Bluetooth Compatibility are required.")
-                    if row_jack and row_jack not in ["Not Compatible", "Lightning", "Type-C"]:
-                        comp_errors.append(f"Invalid Headphone Jack Compatibility '{row_jack}'.")
-                    if row_bluetooth and row_bluetooth not in ["Yes", "No"]:
-                        comp_errors.append(f"Invalid Bluetooth Compatibility '{row_bluetooth}'.")
-                    if row_jack == "Not Compatible" and row_bluetooth == "No":
-                        comp_errors.append("Headphones must support either Bluetooth or a compatible jack (cannot both be Not Compatible/No).")
-
-                elif product_category == "Speakers":
-                    if has_separate_cols and (not row_charging or not row_bluetooth):
-                        comp_errors.append("Compatible Charging Interface and Bluetooth Compatibility are required.")
-                    if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
-                        comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
-                    if row_bluetooth and row_bluetooth not in ["Yes", "No"]:
-                        comp_errors.append(f"Invalid Bluetooth Compatibility '{row_bluetooth}'.")
-
-                elif product_category == "Chargers and Cables":
-                    if has_separate_cols and (not row_charging or not row_wireless):
-                        comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
-                    if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
-                        comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
-                    if row_wireless:
-                        import re
-                        w_vals = [w.strip() for w in re.split(r'[\+,;]', row_wireless) if w.strip()]
-                        normalized = []
-                        for w in w_vals:
-                            wl = w.lower()
-                            if wl == "magsafe":
-                                normalized.append("MagSafe")
-                            elif wl == "qi":
-                                normalized.append("Qi")
-                            elif wl == "qi2":
-                                normalized.append("Qi2")
-                            elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
-                                normalized.append("Not Compatible")
-                            else:
-                                comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
-                        if 'Not Compatible' in normalized and len(normalized) > 1:
-                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
-                        if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
-                            comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
-
-                elif product_category == "Memory":
-                    if has_separate_cols and not row_storage:
-                        comp_errors.append("Storage Expansion Compatibility is required.")
-                    if row_storage and row_storage not in ["Not Compatible", "microSDXC", "microSDHC"]:
-                        # Attempt loose spellings
-                        if row_storage.lower() == "microsdxc" or row_storage.lower() == "mircosdxc":
-                            row_storage = "microSDXC"
-                        elif row_storage.lower() == "microsdhc" or row_storage.lower() == "mircosdhc":
-                            row_storage = "microSDHC"
-                        else:
-                            comp_errors.append(f"Invalid Storage Expansion Compatibility '{row_storage}'.")
-                    
-                    if row_storage in ["microSDXC", "microSDHC"]:
-                        if has_separate_cols and (not row_memory or row_memory == "Not Compatible"):
-                            comp_errors.append("Memory Capacity is required when storage expansion is enabled.")
-                        elif row_memory and row_memory != "Not Compatible":
-                            if row_storage == "microSDXC":
-                                allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
-                            else:
-                                allowed = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
-                            if row_memory.upper() not in [a.upper() for a in allowed]:
-                                comp_errors.append(f"Memory Capacity '{row_memory}' must match allowed list for {row_storage}.")
-                    else:
-                        if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
-                            comp_errors.append("Memory Capacity must be Not Compatible when Storage Expansion is Not Compatible.")
-
-                elif product_category == "Wearable Tech":
-                    if has_separate_cols and (not row_charging or not row_wireless):
-                        comp_errors.append("Compatible Charging Interface and Wireless Charging Compatibility are required.")
-                    if row_charging and row_charging not in ["Not Compatible", "Lightning", "Type-C"]:
-                        comp_errors.append(f"Invalid Compatible Charging Interface '{row_charging}'.")
-                    if row_wireless:
-                        import re
-                        w_vals = [w.strip() for w in re.split(r'[\+,;]', row_wireless) if w.strip()]
-                        normalized = []
-                        for w in w_vals:
-                            wl = w.lower()
-                            if wl == "magsafe":
-                                normalized.append("MagSafe")
-                            elif wl == "qi":
-                                normalized.append("Qi")
-                            elif wl == "qi2":
-                                normalized.append("Qi2")
-                            elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
-                                normalized.append("Not Compatible")
-                            else:
-                                comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
-                        if 'Not Compatible' in normalized and len(normalized) > 1:
-                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
-                        if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
-                            comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
-
-                elif product_category == "Watch Accessories":
-                    if has_separate_cols and (not row_watch_size or not row_wireless):
-                        comp_errors.append("Compatible Watch Case Size and Wireless Charging Compatibility are required.")
-                    if row_watch_size and row_watch_size not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
-                        comp_errors.append(f"Invalid Compatible Watch Case Size '{row_watch_size}'.")
-                    if row_wireless:
-                        import re
-                        w_vals = [w.strip() for w in re.split(r'[\+,;]', row_wireless) if w.strip()]
-                        normalized = []
-                        for w in w_vals:
-                            wl = w.lower()
-                            if wl == "magsafe":
-                                normalized.append("MagSafe")
-                            elif wl == "qi":
-                                normalized.append("Qi")
-                            elif wl == "qi2":
-                                normalized.append("Qi2")
-                            elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
-                                normalized.append("Not Compatible")
-                            else:
-                                comp_errors.append(f"Invalid Wireless Charging value '{w}'.")
-                        if 'Not Compatible' in normalized and len(normalized) > 1:
-                            comp_errors.append("Not Compatible cannot be combined with other wireless charging values.")
-                        if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
-                            comp_errors.append("Qi cannot be selected with MagSafe or Qi2.")
-
-                if comp_errors:
-                    row_errors.append({
-                        "row_number": row_num,
-                        "column_name": "Device Compatibility",
-                        "submitted_value": comp_str or f"Bluetooth:{row_bluetooth}, Jack:{row_jack}, Charging:{row_charging}, Wireless:{row_wireless}",
-                        "validation_error": " | ".join(comp_errors),
-                        "recommended_correction": "Provide correct category-specific compatibility formats."
-                    })
-
+            from apps.catalog.compatibility_import import parse_compatibility_row
+            cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=product_category).first()
+            try:
+                row_compatibility_values, row_universal_device_types, row_device_ids = parse_compatibility_row(row, cat_cfg)
+            except Exception as error:
+                from django.core.exceptions import ValidationError as DjangoValidationError
+                if not isinstance(error, DjangoValidationError):
+                    raise
+                row_compatibility_values, row_universal_device_types, row_device_ids = {}, [], []
+                row_errors.append({"row_number": row_num, "column_name": "Device Compatibility", "submitted_value": "",
+                    "validation_error": "; ".join(error.messages), "recommended_correction": "Use approved structured values and canonical device references."})
             # --- Image URLs (Rule §11/§22 URL validation) ---
             media_refs = []
             for k in ['imageurl1', 'imageurl2', 'imageurl3', 'imageurl4', 'imageurl5']:
@@ -3572,13 +2623,13 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if product is not None:
                 is_admin = getattr(request.user, "is_cixci_admin", False)
                 is_owner_or_admin = (str(product.vendor_company_reference) == str(vendor_company_id)) or is_admin
-                if product.status == "active" and compatibility_update_type in ["replace", "remove"]:
+                if product.status == "active" and compatibility_update_type == "replace":
                     if not is_admin:
                         row_errors.append({
                             "row_number": row_num,
                             "column_name": "Device Compatibility",
                             "submitted_value": compatibility_update_type,
-                            "validation_error": "Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval.",
+                            "validation_error": "Replacing device compatibility assertions on active products requires CIXCI Admin approval.",
                             "recommended_correction": "Contact CIXCI Admin or use Additive mode."
                         })
 
@@ -3804,219 +2855,15 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 product.status = final_status
                 product.selling_status = "for_sale" if final_status == "active" else "not_for_sale"
                 
-                # Fetch dynamic category config to respect required/optional modes during bulk upload
-                from apps.catalog.models import DynamicDropdownConfig
-                cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=product_category).first()
-                if not cat_cfg:
-                    cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value__iexact=product_category).first()
-                cat_rules = cat_cfg.compatibility_rules if (cat_cfg and cat_cfg.compatibility_rules) else {}
-
-                # 1. Wireless Charging Compatibility
-                rule = cat_rules.get("wireless_charging_compatibility", {})
-                default_mode = "optional" if (product_category in ["Chargers and Cables", "Chargers & Cables", "Wearable Tech", "Watch Accessories"] or row_wireless) else "hidden"
-                mode = rule.get("mode", default_mode)
-                w_val = None
-                if row_wireless:
-                    import re
-                    w_vals = [w.strip() for w in re.split(r'[\+,;]', row_wireless) if w.strip()]
-                    case_map_exact = {
-                        "magsafe": "MagSafe", "qi": "Qi", "qi2": "Qi2",
-                        "not compatible": "Not Compatible", "not_compatible": "Not Compatible",
-                        "none": "Not Compatible", "n/a": "Not Compatible"
-                    }
-                    normalized_w = []
-                    for w in w_vals:
-                        target = case_map_exact.get(w.lower())
-                        if target and target not in normalized_w:
-                            normalized_w.append(target)
-                    w_val = "+".join(normalized_w) if normalized_w else "Not Compatible"
-                else:
-                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
-                    w_found = []
-                    if "magsafe" in name_comp_lower:
-                        w_found.append("MagSafe")
-                    if "qi2" in name_comp_lower:
-                        w_found.append("Qi2")
-                    elif "qi" in name_comp_lower:
-                        w_found.append("Qi")
-                    w_val = "+".join(w_found) if w_found else "Not Compatible"
-                
-                if mode == "required":
-                    if not w_val or w_val == "Not Compatible":
-                        product.wireless_charging_compatibility = "MagSafe"
-                    else:
-                        product.wireless_charging_compatibility = w_val
-                elif mode == "hidden":
-                    product.wireless_charging_compatibility = "Not Compatible"
-                else:
-                    product.wireless_charging_compatibility = w_val or "Not Compatible"
-
-                # 2. Bluetooth Compatibility
-                rule = cat_rules.get("bluetooth_compatibility", {})
-                mode = rule.get("mode", "hidden")
-                bt_val = None
-                if row_bluetooth:
-                    bt_val = "Yes" if row_bluetooth.lower() in ["yes", "true", "1"] else "No"
-                else:
-                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
-                    if "bluetooth" in name_comp_lower:
-                        bt_val = "Yes"
-                    else:
-                        bt_val = "No"
-
-                if mode == "required":
-                    if not bt_val or bt_val == "No":
-                        product.bluetooth_compatibility = "Yes"
-                    else:
-                        product.bluetooth_compatibility = bt_val
-                elif mode == "hidden":
-                    product.bluetooth_compatibility = "No"
-                else:
-                    product.bluetooth_compatibility = bt_val or "No"
-
-                # 3. Headphone Jack Compatibility
-                rule = cat_rules.get("headphone_jack_compatibility", {})
-                mode = rule.get("mode", "hidden")
-                jack_val = None
-                if row_jack:
-                    jack_val = row_jack
-                else:
-                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
-                    if "lightning" in name_comp_lower:
-                        jack_val = "Lightning"
-                    elif "type-c" in name_comp_lower or "type c" in name_comp_lower:
-                        jack_val = "Type-C"
-                    else:
-                        jack_val = "Not Compatible"
-
-                if mode == "required":
-                    if not jack_val or jack_val == "Not Compatible":
-                        product.headphone_jack_compatibility = "Type-C"
-                    else:
-                        product.headphone_jack_compatibility = jack_val
-                elif mode == "hidden":
-                    product.headphone_jack_compatibility = "Not Compatible"
-                else:
-                    product.headphone_jack_compatibility = jack_val or "Not Compatible"
-
-                # 4. Compatible Charging Interface
-                rule = cat_rules.get("compatible_charging_interface", {})
-                mode = rule.get("mode", "hidden")
-                charging_val = None
-                if row_charging:
-                    charging_val = row_charging
-                else:
-                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
-                    if "lightning" in name_comp_lower:
-                        charging_val = "Lightning"
-                    elif "type-c" in name_comp_lower or "type c" in name_comp_lower:
-                        charging_val = "Type-C"
-                    else:
-                        charging_val = "Not Compatible"
-
-                if mode == "required":
-                    if not charging_val or charging_val == "Not Compatible":
-                        product.compatible_charging_interface = "Type-C"
-                    else:
-                        product.compatible_charging_interface = charging_val
-                elif mode == "hidden":
-                    product.compatible_charging_interface = "Not Compatible"
-                else:
-                    product.compatible_charging_interface = charging_val or "Not Compatible"
-
-                # 5. Storage Expansion Compatibility
-                rule = cat_rules.get("storage_expansion_compatibility", {})
-                mode = rule.get("mode", "hidden")
-                storage_val = None
-                if row_storage:
-                    storage_val = row_storage
-                else:
-                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
-                    if "microsdxc" in name_comp_lower:
-                        storage_val = "microSDXC"
-                    elif "microsdhc" in name_comp_lower:
-                        storage_val = "microSDHC"
-                    else:
-                        storage_val = "Not Compatible"
-
-                if mode == "required":
-                    if not storage_val or storage_val == "Not Compatible":
-                        product.storage_expansion_compatibility = "microSDXC"
-                    else:
-                        product.storage_expansion_compatibility = storage_val
-                elif mode == "hidden":
-                    product.storage_expansion_compatibility = "Not Compatible"
-                else:
-                    product.storage_expansion_compatibility = storage_val or "Not Compatible"
-
-                # 6. Memory Capacity
-                rule = cat_rules.get("memory_capacity", {})
-                mode = rule.get("mode", "hidden")
-                mem_val = None
-                if row_memory and row_memory.lower() not in ["not compatible", "none", ""]:
-                    mem_val = row_memory.upper()
-                else:
-                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
-                    for sz in ["16gb", "32gb", "64gb", "128gb", "256gb", "512gb", "1tb", "2tb"]:
-                        if sz in name_comp_lower:
-                            mem_val = sz.upper()
-                            break
-                    if not mem_val:
-                        mem_val = "Not Compatible"
-
-                if mode == "required":
-                    if not mem_val or mem_val == "Not Compatible":
-                        product.memory_capacity = "128GB"
-                    else:
-                        product.memory_capacity = mem_val
-                elif mode == "hidden":
-                    product.memory_capacity = "Not Compatible"
-                else:
-                    product.memory_capacity = mem_val or "Not Compatible"
-
-                # 7. Compatible Watch Case Size
-                rule = cat_rules.get("compatible_watch_case_size", {})
-                mode = rule.get("mode", "hidden")
-                watch_val = None
-                if row_watch_size:
-                    watch_val = row_watch_size
-                else:
-                    name_comp_lower = f"{cleaned_name.lower()} {comp_str_lower}"
-                    for sz in ["40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
-                        if sz in name_comp_lower:
-                            watch_val = sz
-                            break
-                    if not watch_val:
-                        watch_val = "Not Compatible"
-
-                if mode == "required":
-                    if not watch_val or watch_val == "Not Compatible":
-                        product.compatible_watch_case_size = "45mm"
-                    else:
-                        product.compatible_watch_case_size = watch_val
-                elif mode == "hidden":
-                    product.compatible_watch_case_size = "Not Compatible"
-                else:
-                    product.compatible_watch_case_size = watch_val or "Not Compatible"
-                # 8. Universal Device Types
-                if row_universal_device_types:
-                    if compatibility_update_type == "add":
-                        existing_udt = product.compatible_device_types or []
-                        product.compatible_device_types = sorted(list(set(existing_udt + row_universal_device_types)))
-                    elif compatibility_update_type == "remove":
-                        existing_udt = product.compatible_device_types or []
-                        product.compatible_device_types = [t for t in existing_udt if t not in row_universal_device_types]
-                    else:  # replace
-                        product.compatible_device_types = row_universal_device_types
-                    # Set compatibility_mode so subsequent API/form updates also
-                    # trigger run_universal_device_type_mapping correctly.
-                    if product.compatible_device_types:
-                        product.compatibility_mode = "universal_device_type"
-                    else:
-                        product.compatibility_mode = "direct_device"
-                
                 try:
+                    from apps.catalog.compatibility_import import apply_import_values
+                    apply_import_values(product, row_compatibility_values, row_universal_device_types, cat_cfg, compatibility_update_type)
                     product.save(actor_id=request.user.id)
+                    if row_device_ids:
+                        from apps.catalog.compatibility_commands import update_explicit_selections
+                        selections = [{"device_id": identifier, "exclusion_reason": row.get("exclusionreason"), "notes": row.get("exclusionnotes", "")} for identifier in row_device_ids] if compatibility_update_type == "remove" else row_device_ids
+                        update_explicit_selections(product, selections, request.user,
+                            update_type=compatibility_update_type, basis="imported", change_source="Bulk Import")
                 except Exception as ve:
                     from django.core.exceptions import ValidationError as DjangoValidationError
                     if "ValidationError" in ve.__class__.__name__ or isinstance(ve, DjangoValidationError):
@@ -4141,54 +2988,6 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                             product.status = "inactive"
                     super(Product, product).save()
 
-                # Parse and Save Device Compatibility
-                if normalized_comp:
-                    if compatibility_update_type == "replace":
-                        ProductCompatibilityAssertion.objects.filter(product=product).delete()
-                    
-                    # Split by both semicolon and comma to ensure discrete device assertions
-                    unified_normalized = normalized_comp.replace(",", ";")
-                    dev_names = [d.strip() for d in unified_normalized.split(';') if d.strip()]
-                    # Filter out feature keywords and universal device type names — only keep actual device names
-                    dev_names = [
-                        d for d in dev_names
-                        if d.strip().lower() not in FEATURE_KEYWORDS
-                        and d.strip().lower() not in DEVICE_TYPE_ALIASES
-                        and d.strip().lower() not in db_code_map
-                        and d.strip().lower() not in db_name_map
-                    ]
-                    if compatibility_update_type == "remove":
-                        for dev_name in dev_names:
-                            matching_devices = match_devices_by_feature_string(dev_name)
-                            for device in matching_devices:
-                                ProductCompatibilityAssertion.objects.filter(product=product, device_reference=device.id).delete()
-                    else: # add or replace
-                        for dev_name in dev_names:
-                            matching_devices = match_devices_by_feature_string(dev_name)
-                            for device in matching_devices:
-                                ProductCompatibilityAssertion.objects.update_or_create(
-                                    product=product,
-                                    device_reference=device.id,
-                                    defaults={
-                                        "is_compatible": True,
-                                        "compatibility_basis": "imported",
-                                        "notes": f"Auto-imported compatibility with {dev_name}"
-                                    }
-                                )
-                    # Recalculate compatibility status based on imported assertions
-                    try:
-                        from apps.catalog.compatibility_engine import run_compatibility_automapping
-                        run_compatibility_automapping(product)
-                    except Exception:
-                        pass
-
-                # Recalculate universal device type mappings
-                if product.compatible_device_types:
-                    try:
-                        from apps.catalog.compatibility_engine import run_universal_device_type_mapping
-                        run_universal_device_type_mapping(product, actor_id=request.user.id, change_source="Bulk Import")
-                    except Exception:
-                        pass
 
                 products_created.append(product)
                 
@@ -4210,13 +3009,27 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             actor_id=request.user.id
         )
 
+        from django.db.models import Count
+        from .compatibility_contract import eligible_devices
+        mapping_counts = {str(row["product_id"]): row for row in ProductCompatibilityAssertion.objects.filter(
+            product_id__in=[product.id for product in products_created]).values("product_id").annotate(
+                matched=Count("id", filter=Q(is_compatible=True, is_excluded=False, device_reference__in=eligible_devices().values_list("id", flat=True))),
+                excluded=Count("id", filter=Q(is_excluded=True)), pending=Count("id", filter=Q(match_status="Pending")))}
+        compatibility_results = []
+        for product in products_created:
+            counts = mapping_counts.get(str(product.id), {"matched": 0, "excluded": 0, "pending": 0})
+            compatibility_results.append({"product_id": str(product.id), "sku": product.sku,
+                **{key: counts[key] for key in ("matched", "excluded", "pending")},
+                "status": "complete" if counts["matched"] else "incomplete",
+                "warning": "Compatibility Incomplete: no currently eligible devices match." if not counts["matched"] else ""})
         return Response({
             "total_rows_processed": len(rows),
             "rows_passed": passed_count,
             "rows_failed": failed_count,
             "rows_staged": staged_count,
             "errors": validation_errors,
-            "products": ProductListSerializer(products_created, many=True).data
+            "products": ProductListSerializer(products_created, many=True, context=self.get_serializer_context()).data,
+            "compatibility_results": compatibility_results,
         }, status=200 if not validation_errors else 207)
 
 
@@ -4339,6 +3152,34 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
 
         device_id = request.data.get("device_id", None)
         product_ids = request.data.get("product_ids", [])
+        from rest_framework.exceptions import ValidationError, PermissionDenied
+        from .compatibility_contract import buyer_portfolio_device_ids
+        from .services import ensure_buyer_compatibility_projection
+        if request.user.entity.company.company_type != "buyer":
+            raise PermissionDenied("Only an authorized buyer entity can create buyer exports.")
+        decision = check_access(request.user, "catalog.product.read", company_id=request.user.entity.company_id)
+        if not decision.granted:
+            raise PermissionDenied("Catalog read access is required.")
+        if not isinstance(product_ids, list):
+            raise ValidationError({"product_ids": "Supply an array of Product IDs."})
+        import uuid
+        try:
+            product_ids = list(dict.fromkeys(str(uuid.UUID(str(value))) for value in product_ids))
+            selected_device = uuid.UUID(str(device_id)) if device_id else None
+        except (ValueError, TypeError, AttributeError):
+            raise ValidationError({"selection": "Use valid canonical product and device UUIDs."}) from None
+        portfolio = buyer_portfolio_device_ids(request.user) or set()
+        if selected_device and selected_device not in portfolio:
+            raise ValidationError({"device_id": "Select a current eligible device in this Buyer Entity portfolio."})
+        projection = ensure_buyer_compatibility_projection(request.user, trigger="export_request", force=True)
+        eligible_ids = set(projection.compatible_product_ids if projection else [])
+        if selected_device:
+            selected_ids = {str(value) for value in ProductCompatibilityAssertion.objects.filter(
+                device_reference=selected_device, is_compatible=True, is_excluded=False,
+            ).values_list("product_id", flat=True)}
+            eligible_ids &= selected_ids
+        if any(value not in eligible_ids for value in product_ids):
+            raise ValidationError({"product_ids": "Selection contains products outside this entity's current eligible compatible assortment."})
         if product_ids:
             from apps.catalog.models import Product
             from apps.tenant.models import Company
@@ -4425,8 +3266,8 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
             buyer_entity_reference=request.user.entity_id,
         ).order_by("-last_change_timestamp").first()
 
-        portfolio_snapshot_ref = None
-        if latest_ref:
+        portfolio_snapshot_ref = projection.portfolio_snapshot_reference if projection else None
+        if latest_ref and not portfolio_snapshot_ref:
             portfolio_snapshot_ref = latest_ref.current_portfolio_snapshot_reference
         if not portfolio_snapshot_ref:
             import uuid
@@ -4516,6 +3357,7 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
 
 
 class DynamicDropdownConfigViewSet(viewsets.ModelViewSet):
+    pagination_class = None
     queryset = DynamicDropdownConfig.objects.all()
     serializer_class = DynamicDropdownConfigSerializer
     filter_backends = [DjangoFilterBackend]
@@ -4529,13 +3371,38 @@ class DynamicDropdownConfigViewSet(viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         super().check_permissions(request)
-        if self.action in ["create", "update", "partial_update", "destroy"]:
-            if not request.user.is_authenticated or not request.user.is_cixci_admin:
-                from rest_framework.exceptions import PermissionDenied
-                raise PermissionDenied("Only CIXCI system admins can modify dropdown values.")
+        from apps.tenant.services import check_access
+        from rest_framework.exceptions import PermissionDenied
+        modifying = self.action in ("create", "update", "partial_update", "destroy")
+        result = check_access(request.user, "catalog.product.update" if modifying else "catalog.product.read")
+        if not result.granted or (modifying and result.reason != "cixci_admin"):
+            raise PermissionDenied("Only authorized CIXCI System Admins can change compatibility configuration." if modifying else "Catalog configuration access denied.")
+
+    @action(detail=False, methods=["get"], url_path="compatibility-options")
+    def compatibility_options(self, request):
+        from .compatibility_configuration import public_configuration_options
+        return Response(public_configuration_options())
+
+    def perform_create(self, serializer):
+        from .compatibility_configuration import save_configuration
+        save_configuration(serializer, self.request.user)
+
+    def perform_update(self, serializer):
+        from .compatibility_configuration import save_configuration
+        save_configuration(serializer, self.request.user)
+
+    def perform_destroy(self, instance):
+        from django.db import transaction
+        from .compatibility_configuration import audit_configuration, configuration_snapshot
+        with transaction.atomic():
+            audit_configuration(instance, configuration_snapshot(instance), self.request.user, deleted=True)
+            super().perform_destroy(instance)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        from .compatibility_values import MANAGED_FIELDS, WIRELESS_POLICY_FIELD
+        if instance.field_name in MANAGED_FIELDS + (WIRELESS_POLICY_FIELD,):
+            return Response({"detail": "Deactivate this controlled value or policy to preserve historical references."}, status=status.HTTP_409_CONFLICT)
         product_field = self._FIELD_TO_PRODUCT_COLUMN.get(instance.field_name)
         if product_field:
             count = Product.objects.filter(**{product_field: instance.value}).count()
@@ -4620,7 +3487,8 @@ class VendorCategoryMappingSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and request.user:
             validated_data['created_by'] = request.user.id
-            validated_data['company_scope_reference'] = request.user.entity
+            import uuid
+            validated_data['company_scope_reference'] = request.user.entity.company_id if request.user.entity else uuid.UUID(int=0)
         # Auto-populate cixci_category_reference
         validated_data['cixci_category_reference'] = self._resolve_category_reference(
             validated_data.get('cixci_category', '')
@@ -4671,12 +3539,14 @@ class VendorCategoryMappingViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
         return qs
 
+    @transaction.atomic
     def perform_create(self, serializer):
         instance = serializer.save()
         self._reprocess_affected_products(instance)
         self._audit_log("catalog.category_mapping.created", instance,
                         f"Created mapping: '{instance.vendor_category}' → '{instance.cixci_category}'")
 
+    @transaction.atomic
     def perform_update(self, serializer):
         old_category = serializer.instance.cixci_category
         instance = serializer.save()
@@ -4717,9 +3587,9 @@ class VendorCategoryMappingViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
         def get_default(f, rules):
             rule = rules.get(f, {})
-            if "default_value" in rule:
-                return rule["default_value"]
-            return "Yes" if f == "bluetooth_compatibility" else "Not Compatible"
+            if rule.get("mode") == "defaulted":
+                return rule.get("default_value", rule.get("default", ""))
+            return ""
 
         rules = (cat_cfg.compatibility_rules or {}) if cat_cfg else {}
 
@@ -4736,7 +3606,13 @@ class VendorCategoryMappingViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     setattr(product, f, get_default(f, rules))
                     update_fields.append(f)
 
-            product.save(update_fields=update_fields)
+            try:
+                product.save(update_fields=update_fields, actor_id=self.request.user.id)
+            except Exception as error:
+                from django.core.exceptions import ValidationError as DjangoValidationError
+                if not isinstance(error, DjangoValidationError):
+                    raise
+                raise serializers.ValidationError({"affected_products": {product.sku: error.messages}}) from error
             reprocessed_count += 1
 
         if reprocessed_count > 0:

@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.filters import SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
 
 from .models import (
     Company, CompanyEntity, User, CompanyRelationship, Capability,
@@ -105,10 +106,21 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @transaction.atomic
     def perform_update(self, serializer):
         instance = self.get_object()
         old_status = instance.status
+        previous_regions = list(instance.approved_regions or [])
         updated_instance = serializer.save()
+        if previous_regions != (updated_instance.approved_regions or []):
+            import json
+            from apps.audit.models import AuditRecord
+            from .regional_visibility import invalidate_regional_projections
+            AuditRecord.objects.create(event_code="tenant.company.supported_regions_changed",
+                event_description=json.dumps({"before": previous_regions, "after": updated_instance.approved_regions}),
+                status="success", actor_reference=self.request.user.id, company_scope_reference=updated_instance.id,
+                source_module="tenant", source_record_type="Company", source_record_id=updated_instance.id)
+            invalidate_regional_projections()
         if old_status != updated_instance.status:
             from apps.tenant.services import log_tenant_audit
             log_tenant_audit(
@@ -231,7 +243,7 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
 
 class CompanyEntityViewSet(TenantScopedQuerysetMixin, CheckAccessMixin, viewsets.ModelViewSet):
-    queryset = CompanyEntity.objects.select_related("company")
+    queryset = CompanyEntity.objects.select_related("company", "operating_region")
     serializer_class = CompanyEntitySerializer
     company_field = "company__id"   # Override for FK traversal
     action_capability_map = {
@@ -242,6 +254,34 @@ class CompanyEntityViewSet(TenantScopedQuerysetMixin, CheckAccessMixin, viewsets
         "partial_update": "tenant.entity.update",
         "destroy": "tenant.entity.delete",
     }
+
+    def perform_create(self, serializer):
+        from django.db import transaction
+        from apps.audit.models import AuditRecord
+        import json
+        with transaction.atomic():
+            record = serializer.save()
+            AuditRecord.objects.create(event_code="tenant.entity.created",
+                event_description=json.dumps({"company": str(record.company_id), "operating_region": str(record.operating_region_id or "")}),
+                status="success", actor_reference=self.request.user.id, company_scope_reference=record.company_id,
+                source_module="tenant", source_record_type="CompanyEntity", source_record_id=record.id)
+
+    def perform_update(self, serializer):
+        from django.db import transaction
+        from apps.audit.models import AuditRecord
+        from .regional_visibility import invalidate_regional_projections
+        import json
+        with transaction.atomic():
+            before = str(serializer.instance.operating_region_id or "")
+            record = serializer.save()
+            after = str(record.operating_region_id or "")
+            if before != after:
+                AuditRecord.objects.create(
+                    event_code="tenant.entity.operating_region_changed", event_description=json.dumps({"before": before, "after": after}),
+                    status="success", actor_reference=self.request.user.id, company_scope_reference=record.company_id,
+                    source_module="tenant", source_record_type="CompanyEntity", source_record_id=record.id,
+                )
+                invalidate_regional_projections(company_id=record.company_id, entity_id=record.id)
 
     def destroy(self, request, *args, **kwargs):
         from django.db.models.deletion import ProtectedError
@@ -568,6 +608,34 @@ class CompanyRelationshipViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["status", "buyer_company", "vendor_company"]
 
+    def get_queryset(self):
+        from django.db.models import Q
+        rows = super().get_queryset()
+        actor = self.request.user
+        if check_access(actor, "tenant.relationship.read").reason == "cixci_admin":
+            return rows
+        company = getattr(actor, "company", None)
+        return rows.filter(Q(buyer_company=company) | Q(vendor_company=company)) if company else rows.none()
+
+    def _save_relationship(self, serializer):
+        import json
+        from django.db import transaction
+        from apps.audit.models import AuditRecord
+        from .regional_visibility import invalidate_regional_projections
+        with transaction.atomic():
+            before = CompanyRelationshipSerializer(serializer.instance).data if serializer.instance else None
+            record = serializer.save()
+            AuditRecord.objects.create(event_code="tenant.relationship.configured", event_description=json.dumps({"before": before, "after": serializer.data}, default=str),
+                status="success", actor_reference=self.request.user.id, company_scope_reference=record.buyer_company_id,
+                source_module="tenant", source_record_type="CompanyRelationship", source_record_id=record.id)
+            invalidate_regional_projections(company_id=record.buyer_company_id)
+
+    def perform_create(self, serializer):
+        self._save_relationship(serializer)
+
+    def perform_update(self, serializer):
+        self._save_relationship(serializer)
+
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         """Approve a pending relationship."""
@@ -580,7 +648,15 @@ class CompanyRelationshipViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         rel.status = "active"
         rel.approved_at = timezone.now()
         rel.approved_by = request.user
-        rel.save()
+        from django.db import transaction
+        from apps.audit.models import AuditRecord
+        from .regional_visibility import invalidate_regional_projections
+        with transaction.atomic():
+            rel.save()
+            AuditRecord.objects.create(event_code="tenant.relationship.approved", event_description="Buyer/Vendor relationship approved",
+                status="success", actor_reference=request.user.id, company_scope_reference=rel.buyer_company_id,
+                source_module="tenant", source_record_type="CompanyRelationship", source_record_id=rel.id)
+            invalidate_regional_projections(company_id=rel.buyer_company_id)
         return Response(CompanyRelationshipSerializer(rel).data)
 
 

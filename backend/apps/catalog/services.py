@@ -56,7 +56,10 @@ def recalculate_buyer_compatibility_projection(
 
         # Load snapshot from Device Catalog (read-only consumption)
         try:
-            snapshot = BuyerDevicePortfolioSnapshot.objects.get(id=portfolio_snapshot_reference)
+            snapshot = BuyerDevicePortfolioSnapshot.objects.get(
+                id=portfolio_snapshot_reference, company_scope_reference=company_scope_reference,
+                buyer_entity_reference=buyer_entity_reference,
+            )
         except BuyerDevicePortfolioSnapshot.DoesNotExist:
             BuyerScopedCompatibilityProjection.objects.filter(id=projection.id).update(
                 status=ProjectionStatus.REVIEW_REQUIRED,
@@ -64,7 +67,9 @@ def recalculate_buyer_compatibility_projection(
             )
             return {"status": "review_required", "reason": "snapshot_not_found"}
 
-        device_ids = snapshot.device_ids
+        from .compatibility_contract import entity_portfolio_device_ids
+        current_ids = {str(value) for value in entity_portfolio_device_ids(company_scope_reference, buyer_entity_reference)}
+        device_ids = [value for value in snapshot.device_ids if str(value) in current_ids]
 
         # Filter out inactive, archived, or future launched devices from driving visibility
         if device_ids:
@@ -118,22 +123,8 @@ def recalculate_buyer_compatibility_projection(
         )
 
         if company:
-            buyer_regions = company.approved_regions or []
-            if not isinstance(buyer_regions, list):
-                buyer_regions = [buyer_regions]
-
-            region_filter = Q()
-            for r in buyer_regions:
-                region_filter |= Q(approved_regions__icontains=f'"{r}"')
-
-            # Find existing vendor companies that are NOT active OR NOT in the buyer's approved regions
-            invisible_vendor_ids = Company.objects.filter(
-                company_type=CompanyType.VENDOR
-            ).exclude(
-                Q(status=CompanyStatus.ACTIVE) & region_filter
-            ).values_list("id", flat=True)
-
-            product_qs = product_qs.exclude(vendor_company_reference__in=invisible_vendor_ids)
+            from apps.tenant.regional_visibility import filter_buyer_regional_products
+            product_qs = filter_buyer_regional_products(product_qs, company.id, buyer_entity_reference)
 
             # MAP Pricing buyer visibility exclusions
             from apps.pricing.models import MapException
@@ -295,7 +286,8 @@ def ensure_buyer_compatibility_projection(user, trigger="lazy_sync", force=False
 
     if projection is not None and not force:
         snapshot = BuyerDevicePortfolioSnapshot.objects.filter(
-            id=projection.portfolio_snapshot_reference
+            id=projection.portfolio_snapshot_reference,
+            company_scope_reference=company_id, buyer_entity_reference=entity_id,
         ).first()
         same_devices = (
             snapshot is not None
@@ -305,7 +297,18 @@ def ensure_buyer_compatibility_projection(user, trigger="lazy_sync", force=False
             ProjectionStatus.ACTIVE,
             ProjectionStatus.EMPTY_PORTFOLIO,
         ):
-            return projection
+            from django.conf import settings
+            from django.db.models import Q
+            from apps.pricing.models import VendorRegionalShippingFee
+            last = projection.last_recalculated_at
+            now = timezone.now()
+            regional_boundary = bool(getattr(settings, "REGIONAL_VISIBILITY_ENFORCE", False) and last and
+                VendorRegionalShippingFee.objects.filter(
+                    Q(effective_from__gt=last, effective_from__lte=now) |
+                    Q(effective_to__gt=last, effective_to__lte=now), status="active",
+                ).exists())
+            if not regional_boundary:
+                return projection
 
     snapshot = _resolve_company_portfolio_snapshot(
         company_id, entity_id, device_ids, buyer_reference=user.id

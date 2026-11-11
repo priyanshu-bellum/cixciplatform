@@ -6,6 +6,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from config.pagination import CixciCursorPagination
+from django.db import transaction
 
 from apps.tenant.mixins import CheckAccessMixin
 
@@ -1492,12 +1493,21 @@ class CompanyAPIKeySerializer(serializers.ModelSerializer):
             return company_cache.get_name(obj.company_scope_reference) or ""
         return ""
 
+    def validate_company_scope_reference(self, value):
+        from apps.tenant.models import Company
+        if self.instance and value != self.instance.company_scope_reference:
+            raise serializers.ValidationError("A company credential cannot be transferred to another company. Generate a new key instead.")
+        if value is None or not Company.objects.filter(pk=value).exclude(company_type="cixci_internal").exists():
+            raise serializers.ValidationError("Select an existing external company.")
+        return value
+
 class CompanyAPIKeyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     queryset = CompanyAPIKey.objects.all()
     serializer_class = CompanyAPIKeySerializer
     action_capability_map = {
         "list": "integration.connection.list", "retrieve": "integration.connection.read",
         "create": "integration.connection.manage", "destroy": "integration.connection.manage",
+        "update": "integration.connection.manage", "partial_update": "integration.connection.manage",
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["is_active"]
@@ -1510,6 +1520,7 @@ class CompanyAPIKeyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             return CompanyAPIKey.objects.none()
         return CompanyAPIKey.objects.filter(company_scope_reference=user.entity.company_id)
 
+    @transaction.atomic
     def perform_create(self, serializer):
         from rest_framework.exceptions import PermissionDenied
         user = self.request.user
@@ -1520,17 +1531,37 @@ class CompanyAPIKeyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             raise serializers.ValidationError({"company_scope_reference": "This field is required."})
         import secrets
         token = f"cixci_key_{secrets.token_hex(24)}"
-        serializer.save(
+        instance = serializer.save(
             company_scope_reference=company_id,
             token=token
         )
+        self._audit_key(instance, "created")
 
+    def _audit_key(self, instance, action):
+        import json
+        from apps.audit.models import AuditRecord
+        AuditRecord.objects.create(event_code=f"integration.api_key.{action}", status="success",
+            event_description=json.dumps({"key_id": str(instance.pk), "company": str(instance.company_scope_reference), "label": instance.label, "is_active": instance.is_active}),
+            actor_reference=self.request.user.id, company_scope_reference=instance.company_scope_reference,
+            source_module="integration", source_record_type="CompanyAPIKey", source_record_id=instance.pk)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        if not getattr(self.request.user, "is_cixci_admin", False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI system administrators can update company API keys.")
+        instance = serializer.save()
+        self._audit_key(instance, "updated")
+
+    @transaction.atomic
     def perform_destroy(self, instance):
         user = self.request.user
         if not getattr(user, "is_cixci_admin", False):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only CIXCI system administrators can revoke API keys.")
-        instance.delete()
+        instance.is_active = False
+        instance.save(update_fields=["is_active"])
+        self._audit_key(instance, "revoked")
 
 class WebhookDeliverySerializer(serializers.ModelSerializer):
     class Meta:

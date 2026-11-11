@@ -16,6 +16,7 @@ import Typography from '@mui/material/Typography'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloseIcon from '@mui/icons-material/Close'
 import api from '../../../lib/apiClient'
+import { useCompatibilityOptions } from '../../../hooks/useCompatibilityOptions'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,13 +29,6 @@ interface ExcludeDeviceDialogProps {
   device: any
 }
 
-const EXCLUSION_REASONS = [
-  { value: 'physical_mismatch', label: 'Physical Mismatch' },
-  { value: 'electronic_incompatibility', label: 'Electronic Incompatibility' },
-  { value: 'vendor_request', label: 'Vendor Request' },
-  { value: 'other', label: 'Other' },
-]
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -45,6 +39,8 @@ export default function ExcludeDeviceDialog({
   product,
   device,
 }: ExcludeDeviceDialogProps) {
+  const { data: options } = useCompatibilityOptions()
+  const exclusionReasons: string[] = options?.exclusion_reasons || []
   const [exclusionReason, setExclusionReason] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -124,9 +120,9 @@ export default function ExcludeDeviceDialog({
               label="Exclusion Reason"
               onChange={(e) => setExclusionReason(e.target.value)}
             >
-              {EXCLUSION_REASONS.map((r) => (
-                <MenuItem key={r.value} value={r.value}>
-                  {r.label}
+              {exclusionReasons.map((reason) => (
+                <MenuItem key={reason} value={reason}>
+                  {reason.replace(/_/g, ' ')}
                 </MenuItem>
               ))}
             </Select>

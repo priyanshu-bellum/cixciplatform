@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
+import Alert from '@mui/material/Alert'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
 import Button from '@mui/material/Button'
@@ -93,11 +94,14 @@ export default function CatalogPage() {
   })
   const devices = devicesData?.results ?? devicesData ?? []
 
-  const { data: activeCompatibilities, refetch: refetchCompatibilities } = useQuery({
+  const { data: activeCompatibilities, refetch: refetchCompatibilities, isFetching: compatibilityLoading, isError: compatibilityError } = useQuery({
     queryKey: ['compatibility', selectedManageProduct?.id],
-    queryFn: () => api.get(`/catalog/products/${selectedManageProduct.id}/compatibility/`).then(r => r.data).catch(() => []),
+    queryFn: () => api.get(`/catalog/products/${selectedManageProduct.id}/compatibility/`).then(r => r.data),
     enabled: !!selectedManageProduct && showManageDialog,
   })
+
+  const { data: regionalContext } = useQuery({ queryKey: ['buyer-regional-context', user?.id], enabled: isBuyer,
+    queryFn: async () => (await api.get('/tenant/operating-regions/context/')).data })
 
   // Buyer projection query
   const { data: projectionResponse, isLoading: isProjectionLoading, refetch: refreshProjection } = useQuery<{ projection: any | null; reason: string | null }>({
@@ -189,6 +193,9 @@ export default function CatalogPage() {
   return (
     <Box>
       <PageHeader title="Product Catalog" actions={headerActions} />
+      {isBuyer && regionalContext?.enforced && regionalContext.status === 'configuration_required' && <Alert severity="warning" sx={{ mb: 2 }}>
+        Configuration Required: contact your administrator to review your Entity Operating Region, Vendor eligibility and regional fee setup.
+      </Alert>}
 
       <Tabs
         value={tab}
@@ -270,6 +277,8 @@ export default function CatalogPage() {
         devices={devices}
         activeCompatibilities={activeCompatibilities || []}
         refetchCompatibilities={refetchCompatibilities}
+        compatibilityLoading={compatibilityLoading}
+        compatibilityError={compatibilityError}
       />
 
       <BulkUploadDialog

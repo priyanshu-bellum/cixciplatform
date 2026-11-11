@@ -49,6 +49,35 @@ class DeviceTypeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "code"]
 
+    def _save_configuration(self, serializer):
+        from rest_framework.exceptions import PermissionDenied
+        decision = check_access(self.request.user, "devices.type.manage")
+        if not decision.granted or decision.reason != "cixci_admin":
+            raise PermissionDenied("Device Type configuration requires CIXCI System Admin authority.")
+        import json
+        import uuid
+        from django.db import transaction
+        from apps.audit.models import AuditRecord
+        from apps.catalog.compatibility_engine import run_device_remapping
+        fields = ("name", "code", "status", "is_active", "auto_mapping_eligible", "compatibility_rules", "supported_accessory_categories")
+        with transaction.atomic():
+            before = {field: getattr(serializer.instance, field) for field in fields} if serializer.instance else None
+            instance = serializer.save()
+            after = {field: getattr(instance, field) for field in fields}
+            AuditRecord.objects.create(event_code="devices.type.configuration_changed", status="success",
+                event_description=json.dumps({"before": before, "after": after}, default=str),
+                actor_reference=self.request.user.id, company_scope_reference=uuid.UUID(int=0),
+                source_module="devices", source_record_type="DeviceType", source_record_id=instance.id)
+            if before and any(before[field] != after[field] for field in fields if field not in ("name", "code")):
+                for device in instance.devices.select_related("device_type", "manufacturer").iterator():
+                    run_device_remapping(device, actor_id=self.request.user.id, change_source="Device Type Configuration")
+
+    def perform_create(self, serializer):
+        self._save_configuration(serializer)
+
+    def perform_update(self, serializer):
+        self._save_configuration(serializer)
+
     @action(detail=True, methods=["post"], url_path="recalculate-compatibility")
     def recalculate_compatibility(self, request, pk=None):
         """Trigger remapping for all devices belonging to this Device Type."""
@@ -71,6 +100,10 @@ class DeviceTypeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        from apps.catalog.models import DynamicDropdownConfig
+        from apps.catalog.compatibility_contract import configured_type_ids
+        if any(str(instance.id) in configured_type_ids(config) for config in DynamicDropdownConfig.objects.filter(field_name="product_category")):
+            return Response({"error": "This type is referenced by category configuration. Deactivate it to preserve history."}, status=400)
         if instance.devices.exists():
             return Response(
                 {"error": "Cannot delete Device Type. It is already tied to existing devices. You may deactivate it instead."},

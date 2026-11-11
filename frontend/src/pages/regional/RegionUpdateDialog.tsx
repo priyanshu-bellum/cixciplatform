@@ -13,6 +13,9 @@ import FormControl from '@mui/material/FormControl'
 import FormLabel from '@mui/material/FormLabel'
 import Typography from '@mui/material/Typography'
 import api from '../../lib/apiClient'
+import { useQuery } from '@tanstack/react-query'
+import MenuItem from '@mui/material/MenuItem'
+import { apiError } from '../../hooks/useCompatibilityOptions'
 import { useSnackbar } from '../../components/feedback/SnackbarProvider'
 
 interface RegionUpdateDialogProps {
@@ -29,6 +32,7 @@ export default function RegionUpdateDialog({ open, onClose, onSaved, companyId, 
   const [action, setAction] = useState<'activate' | 'deactivate'>('activate')
   const [regionCode, setRegionCode] = useState('')
   const [reason, setReason] = useState('')
+  const { data: regions = [] } = useQuery({ queryKey: ['operating-regions'], enabled: open, queryFn: async () => (await api.get('/tenant/operating-regions/')).data })
 
   useEffect(() => {
     if (open) {
@@ -56,7 +60,7 @@ export default function RegionUpdateDialog({ open, onClose, onSaved, companyId, 
       onSaved()
       onClose()
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.response?.data?.error || 'Failed to update region'
+      const msg = apiError(err)
       showSnackbar(msg, 'error')
     } finally {
       setSubmitting(false)
@@ -86,14 +90,16 @@ export default function RegionUpdateDialog({ open, onClose, onSaved, companyId, 
               </RadioGroup>
             </FormControl>
             <TextField
-              label="Region Code"
+              select
+              label="Operating Region"
               required
               fullWidth
               size="small"
               value={regionCode}
               onChange={(e) => setRegionCode(e.target.value)}
-              placeholder="e.g. US, EU, APAC"
-            />
+            >
+              {regions.filter((region: any) => action === 'deactivate' || region.is_active).map((region: any) => <MenuItem key={region.id} value={region.code}>{region.name} ({region.code})</MenuItem>)}
+            </TextField>
             <TextField
               label="Reason (optional)"
               fullWidth

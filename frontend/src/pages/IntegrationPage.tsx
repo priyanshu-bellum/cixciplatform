@@ -443,6 +443,8 @@ export default function IntegrationPage() {
 
       {/* ── B2B API Keys Tab ── */}
       {tab === 'api-keys' && (
+        <Box>
+        <Alert severity="info" sx={{ mb: 2 }}>API keys belong to the company and can support its authorized users. Send X-CIXCI-Entity with the authorized Entity ID to select a store/entity. A single eligible entity is selected automatically; requests never combine other entities.</Alert>
         <DataTable
           columns={apiKeyColumns}
           rows={apiKeys}
@@ -451,6 +453,7 @@ export default function IntegrationPage() {
           emptyMessage="No B2B API Keys"
           emptyIcon={<VpnKeyOutlinedIcon sx={{ fontSize: 48 }} />}
         />
+        </Box>
       )}
 
       {/* ── API Key Generation Dialog ── */}

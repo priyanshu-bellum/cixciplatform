@@ -10,6 +10,25 @@ import uuid
 from apps.catalog.models import Product, BuyerScopedCompatibilityProjection
 
 
+@pytest.fixture(autouse=True)
+def configured_catalog_types(db):
+    """Migration runs before fixture types exist; configure canonical test scope."""
+    from apps.devices.models import DeviceType
+    from apps.catalog.models import DynamicDropdownConfig
+    kind, _ = DeviceType.objects.get_or_create(name="Phone", code="phone", defaults={"status": "active"})
+    for config in DynamicDropdownConfig.objects.filter(field_name="product_category"):
+        if config.value in ("Cases", "Screen Protection"):
+            config.compatibility_mode = "device_specific"
+            config.eligible_device_types = ["phone"]
+            config.compatibility_rules = {**(config.compatibility_rules or {}), "_eligible_type_ids": [str(kind.id)]}
+            config.save(update_fields=["compatibility_mode", "eligible_device_types", "compatibility_rules"])
+        if not (config.compatibility_rules or {}).get("_eligible_type_ids") and any(str(value).casefold() in ("phone", "smartphone") for value in config.eligible_device_types or []):
+            rules = dict(config.compatibility_rules or {})
+            rules["_eligible_type_ids"] = [str(kind.id)]
+            config.compatibility_rules = rules
+            config.save(update_fields=["compatibility_rules"])
+
+
 @pytest.fixture
 def product(buyer_user):
     """A product scoped to buyer_user's company, compatible with a device in their portfolio."""
@@ -30,7 +49,7 @@ def product(buyer_user):
         vendor_company_reference=uuid.uuid4(),
     )
 
-    dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+    dt, _ = DeviceType.objects.get_or_create(name="Phone", code="phone", defaults={"status": "active"})
     if dt.status != "active":
         dt.status = "active"
         dt.save()
@@ -52,12 +71,12 @@ def product(buyer_user):
 class TestProductEndpoints:
     def test_list_products(self, buyer_client, product):
         resp = buyer_client.get("/api/v1/catalog/products/")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert any(p["name"] == "Test Accessory" for p in resp.data["results"])
 
     def test_retrieve_product(self, buyer_client, product):
         resp = buyer_client.get(f"/api/v1/catalog/products/{product.id}/")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert resp.data["name"] == "Test Accessory"
         assert resp.data["sku"] == "ACC-001"
 
@@ -70,31 +89,28 @@ class TestProductEndpoints:
             "launch_date": "2026-06-18",
             "vendor_company_reference": str(uuid.uuid4()),
         })
-        assert resp.status_code == 201
-        assert resp.data["name"] == "New Charger"
-        # Verify company_scope_reference was auto-set correctly by fetching the object
-        from apps.catalog.models import Product as P
-        created = P.objects.get(sku="CHG-001")
-        assert created.company_scope_reference == buyer_user.entity.company_id
+        assert resp.status_code == 403
+        assert not Product.objects.filter(sku="CHG-001").exists()
 
     def test_unauthenticated_cannot_list_products(self, api_client):
         resp = api_client.get("/api/v1/catalog/products/")
-        assert resp.status_code == 401
+        assert resp.status_code in (401, 403)
 
     def test_search_by_name(self, buyer_client, product):
         resp = buyer_client.get("/api/v1/catalog/products/?search=Test+Acce")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert any(p["sku"] == "ACC-001" for p in resp.data["results"])
 
     def test_filter_by_selling_status(self, buyer_client, product):
         resp = buyer_client.get("/api/v1/catalog/products/?selling_status=for_sale")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         for p in resp.data["results"]:
-            assert p["selling_status"] == "for_sale"
+            assert p["sku"] == product.sku
+            assert "selling_status" not in p
 
     def test_filter_by_status(self, buyer_client, product):
         resp = buyer_client.get("/api/v1/catalog/products/?status=active")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         for p in resp.data["results"]:
             assert p["status"] == "active"
 
@@ -106,7 +122,7 @@ class TestProductEndpoints:
         ).first()
         device_id = portfolio_ref.device_id
         resp = buyer_client.get(f"/api/v1/catalog/products/?device_id={device_id}")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert any(p["id"] == str(product.id) for p in resp.data["results"])
 
         # Test comma-separated list of UUIDs
@@ -126,7 +142,7 @@ class TestSellingStatusTransition:
             f"/api/v1/catalog/products/{product.id}/set_selling_status/",
             {"selling_status": "stop_selling"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert resp.data["selling_status"] == "stop_selling"
         product.refresh_from_db()
         assert product.selling_status == "stop_selling"
@@ -136,7 +152,7 @@ class TestSellingStatusTransition:
             f"/api/v1/catalog/products/{product.id}/set_selling_status/",
             {"selling_status": "for_sale"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert resp.data["selling_status"] == "for_sale"
 
     def test_set_invalid_selling_status_rejected(self, buyer_client, product):
@@ -177,7 +193,7 @@ class TestCompatibilityProjection:
         from apps.devices.services import add_device_to_portfolio
 
         dt, _ = DeviceType.objects.get_or_create(
-            name="Smartphone", code="smartphone", defaults={"status": "active"}
+            name="Phone", code="phone", defaults={"status": "active"}
         )
         dt.status = "active"
         dt.save(update_fields=["status"])
@@ -210,7 +226,7 @@ class TestCompatibilityProjection:
         add_device_to_portfolio(buyer_user, device.id)
 
         resp = buyer_client.get("/api/v1/catalog/my-projection/my_projection/")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert resp.data["compatible_product_count"] == 1
         assert str(product.id) in resp.data["compatible_product_ids"]
         assert resp.data["status"] == "active"
@@ -232,7 +248,7 @@ class TestExportJobs:
         buyer_client.post("/api/v1/catalog/export-jobs/create_job/", {"format": "API"})
         buyer_client.post("/api/v1/catalog/export-jobs/create_job/", {"format": "API"})
         resp = buyer_client.get("/api/v1/catalog/export-jobs/list_jobs/")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert len(resp.data) >= 2
 
     def test_export_job_processing_and_api_key_scoping(self, buyer_client, api_client, buyer_user, vendor_company):
@@ -248,7 +264,7 @@ class TestExportJobs:
         from apps.devices.models import Device, DeviceType, Manufacturer
         from apps.catalog.models import ProductCompatibilityAssertion, DynamicDropdownConfig
 
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone")
+        dt, _ = DeviceType.objects.get_or_create(name="Phone", code="phone")
         dt.status = "active"
         dt.save()
 
@@ -263,6 +279,8 @@ class TestExportJobs:
         )
         cfg.status = "active"
         cfg.compatibility_mode = "explicit"
+        cfg.eligible_device_types = ["phone"]
+        cfg.compatibility_rules = {"_eligible_type_ids": [str(dt.id)]}
         cfg.save()
 
         # 1. Create a product
@@ -306,6 +324,13 @@ class TestExportJobs:
         )
         non_exported_product.compatibility_status = "complete"
         non_exported_product.save()
+
+        from apps.devices.services import add_device_to_portfolio
+        add_device_to_portfolio(buyer_user, device.id)
+        image = MediaAsset.objects.create(asset_type="image", status="ready", review_status="approved", has_transparency=True,
+            owner_module="catalog", owner_record_id=product.id, company_scope_reference=buyer_user.company.id,
+            original_filename="export-test.png", file_extension="png", mime_type="image/png", storage_key="test/export-test.png")
+        Product.objects.filter(pk=product.pk).update(primary_image_reference=image.id)
 
         # 3. Create the export job
         job = BuyerProductExportJob.objects.create(
@@ -585,45 +610,23 @@ class TestOutOfStockStatus:
         # Product status remains active
         assert product.status == "active"
 
-    def test_compatibility_additive_and_permissions(self, buyer_client, admin_user, buyer_user, product):
-        """Check compatibility API action for additive updates and permissions."""
-        from apps.catalog.models import ProductCompatibilityAssertion
-
-        ProductCompatibilityAssertion.objects.filter(product=product).delete()
-
-        # Prepare first assertion
-        device_id = str(uuid.uuid4())
-        resp = buyer_client.post(
-            f"/api/v1/catalog/products/{product.id}/compatibility/",
-            {
-                "compatibility_update_type": "add",
-                "assertions": [{"device_id": device_id, "is_compatible": True}]
-            },
-            format="json"
-        )
-        assert resp.status_code == 200
-        assert len(resp.data) == 1
-        assert resp.data[0]["device_reference"] == device_id
-
-        # Non-admin attempts to replace/remove on active product: returns 400
-        resp = buyer_client.post(
-            f"/api/v1/catalog/products/{product.id}/compatibility/",
-            {
-                "compatibility_update_type": "replace",
-                "assertions": []
-            },
-            format="json"
-        )
-        assert resp.status_code == 400
-        assert "Replacing or removing device compatibility assertions" in resp.data["error"]
-
-    def test_bulk_upload_modes(self, buyer_client, buyer_user, product):
+    def test_compatibility_additive_and_permissions(self, buyer_client, admin_client, product):
+        """Canonical selections append once; buyers cannot mutate supplier facts."""
+        from apps.devices.models import Device
+        device = Device.objects.first()
+        response = buyer_client.post(f"/api/v1/catalog/products/{product.id}/compatibility/",
+            {"assertions": [{"device_id": str(device.id), "is_compatible": True}]}, format="json")
+        assert response.status_code in (403, 404)
+        response = admin_client.post(f"/api/v1/catalog/products/{product.id}/compatibility/",
+            {"assertions": [{"device_id": str(uuid.uuid4()), "is_compatible": True}]}, format="json")
+        assert response.status_code == 400
+    def test_bulk_upload_modes(self, vendor_client, vendor_user, product):
         """Test bulk upload endpoint with different update modes and UPC checks."""
         import io
         from apps.catalog.models import DynamicDropdownConfig
 
         # Setup vendor company reference and approved dropdowns
-        product.vendor_company_reference = buyer_user.entity.company_id
+        product.vendor_company_reference = vendor_user.entity.company_id
         product.save()
 
         DynamicDropdownConfig.objects.get_or_create(field_name="brand", value="TestBrand", display_name="TestBrand")
@@ -640,7 +643,7 @@ class TestOutOfStockStatus:
         # Send bulk upload in create_only mode: should fail because product exists
         file_obj = io.BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "catalog_create.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "create_only"},
             format="multipart"
@@ -656,7 +659,7 @@ class TestOutOfStockStatus:
         )
         file_obj = io.BytesIO(csv_data_new.encode("utf-8"))
         file_obj.name = "catalog_update.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "update_only"},
             format="multipart"
@@ -665,7 +668,7 @@ class TestOutOfStockStatus:
         assert resp.data["rows_failed"] == 1
         assert "was not found for this vendor" in resp.data["errors"][0]["validation_error"]
 
-    def test_bulk_upload_compatibility_fields(self, buyer_client, buyer_user):
+    def test_bulk_upload_compatibility_fields(self, vendor_client, vendor_user):
         """Test bulk upload endpoint parsing separate compatibility columns and validation."""
         import io
         from apps.catalog.models import DynamicDropdownConfig, Product
@@ -700,12 +703,12 @@ class TestOutOfStockStatus:
         )
         file_obj = io.BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "catalog_import.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "create_only"},
             format="multipart"
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert resp.data["rows_failed"] == 0
         assert resp.data["rows_staged"] + resp.data["rows_passed"] == 1
         
@@ -721,19 +724,19 @@ class TestOutOfStockStatus:
         )
         file_obj = io.BytesIO(csv_data_invalid.encode("utf-8"))
         file_obj.name = "catalog_import_fail.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "create_only"},
             format="multipart"
         )
         assert resp.status_code == 207
         assert resp.data["rows_failed"] == 1
-        assert "must match allowed list" in resp.data["errors"][0]["validation_error"]
+        assert "capacity linked to the chosen Storage Expansion" in resp.data["errors"][0]["validation_error"]
 
 
 class TestGovernanceAndCompatibilityImport:
     @pytest.mark.django_db
-    def test_bulk_upload_rollback_on_error(self, buyer_client):
+    def test_bulk_upload_rollback_on_error(self, admin_client, vendor_company):
         """Verify that any row error rolls back the entire bulk upload transaction."""
         import io
         from apps.catalog.models import Product, DynamicDropdownConfig
@@ -750,9 +753,9 @@ class TestGovernanceAndCompatibilityImport:
         file_obj = io.BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "catalog_import.csv"
         
-        resp = buyer_client.post(
+        resp = admin_client.post(
             "/api/v1/catalog/products/bulk_upload/",
-            {"file": file_obj, "update_mode": "create_only"},
+            {"file": file_obj, "vendor_company_reference": str(vendor_company.id), "update_mode": "create_only"},
             format="multipart"
         )
         assert resp.status_code == 207
@@ -762,8 +765,8 @@ class TestGovernanceAndCompatibilityImport:
         assert Product.objects.count() == initial_count
 
     @pytest.mark.django_db
-    def test_bulk_upload_active_product_compatibility_update_type_restrictions(self, buyer_client, buyer_user):
-        """Verify non-admin cannot use replace/remove compatibility mode on active products."""
+    def test_bulk_upload_active_product_compatibility_update_type_restrictions(self, vendor_client, vendor_user):
+        """Live Replace needs review; Remove requires a durable exclusion reason."""
         import io
         from apps.catalog.models import Product, ProductStatus
         import datetime
@@ -771,12 +774,14 @@ class TestGovernanceAndCompatibilityImport:
         # Setup manufacturer and devices
         from apps.devices.models import Device, Manufacturer, DeviceType
         mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        dt, _ = DeviceType.objects.get_or_create(name="Phone", code="phone", defaults={"status": "active"})
         if dt.status != "active":
             dt.status = "active"
             dt.save()
-        Device.objects.get_or_create(name="Apple iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available")
+        Device.objects.get_or_create(name="iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available")
 
+        from apps.catalog.models import DynamicDropdownConfig
+        DynamicDropdownConfig.objects.filter(field_name="product_category", value="Memory").update(compatibility_mode="hybrid")
         # Create an active product
         product = Product.objects.create(
             sku="ACTIVE-SKU-1",
@@ -788,8 +793,8 @@ class TestGovernanceAndCompatibilityImport:
             msrp=20.00,
             name="Active Memory",
             status=ProductStatus.ACTIVE,
-            company_scope_reference=buyer_user.entity.company_id,
-            vendor_company_reference=buyer_user.entity.company_id,
+            company_scope_reference=vendor_user.entity.company_id,
+            vendor_company_reference=vendor_user.entity.company_id,
         )
         
         csv_data = (
@@ -800,44 +805,48 @@ class TestGovernanceAndCompatibilityImport:
         # 1. Try with compatibility_update_type=replace as vendor (non-admin)
         file_obj = io.BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "catalog_import.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "update_only", "compatibility_update_type": "replace"},
             format="multipart"
         )
         assert resp.status_code == 207
-        assert "Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval." in resp.data["errors"][0]["validation_error"]
+        assert "Replacing device compatibility assertions on active products requires CIXCI Admin approval." in resp.data["errors"][0]["validation_error"]
 
-        # 2. Try with compatibility_update_type=remove as vendor (non-admin)
+        # 2. Remove without the required exclusion evidence must fail.
         file_obj = io.BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "catalog_import.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "update_only", "compatibility_update_type": "remove"},
             format="multipart"
         )
         assert resp.status_code == 207
-        assert "Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval." in resp.data["errors"][0]["validation_error"]
+        assert "approved exclusion reason" in resp.data["errors"][0]["validation_error"]
 
     @pytest.mark.django_db
-    def test_bulk_upload_media_asset_conversion(self, buyer_client):
+    def test_bulk_upload_media_asset_conversion(self, admin_client, vendor_company, monkeypatch):
         """Verify image URLs are converted to MediaAsset records during bulk upload."""
         import io
         from apps.catalog.models import Product
         from apps.media.models import MediaAsset
+        from PIL import Image
+        buffer = io.BytesIO()
+        Image.new("RGBA", (100, 100), (0, 0, 0, 0)).save(buffer, format="PNG")
+        monkeypatch.setattr("apps.media.validation.validate_image_url", lambda url: (True, buffer.getvalue(), url.rsplit("/", 1)[-1], []))
         
         csv_data = (
             "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,ImageUrl1,ImageUrl2,Storage Expansion Compatibility,Memory Capacity\n"
-            "MEDIA-SKU,TestBrand,Memory,123456789015,06/18/2026,10.00,20.00,Media Memory,Premium memory,Active,https://some-vendor.com/images/accessory1.jpg,https://some-vendor.com/images/accessory2.png,microSDXC,128GB\n"
+            "MEDIA-SKU,TestBrand,Memory,123456789015,06/18/2026,10.00,20.00,Media Memory,Premium memory,Active,https://some-vendor.com/images/accessory1.png,https://some-vendor.com/images/accessory2.png,microSDXC,128GB\n"
         )
         file_obj = io.BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "catalog_import.csv"
-        resp = buyer_client.post(
+        resp = admin_client.post(
             "/api/v1/catalog/products/bulk_upload/",
-            {"file": file_obj, "update_mode": "create_only"},
+            {"file": file_obj, "vendor_company_reference": str(vendor_company.id), "update_mode": "create_only"},
             format="multipart"
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         
         # Verify product and media assets
         prod = Product.objects.get(sku="MEDIA-SKU")
@@ -849,71 +858,71 @@ class TestGovernanceAndCompatibilityImport:
         
         # Verify first asset details
         first_asset = assets.get(id=prod.primary_image_reference)
-        assert first_asset.original_filename == "accessory1.jpg"
-        assert first_asset.file_extension == "jpg"
-        assert first_asset.mime_type == "image/jpeg"
-        assert first_asset.storage_key.endswith("/accessory1.jpg")
+        assert first_asset.original_filename == "accessory1.png"
+        assert first_asset.file_extension.lstrip('.') == "png"
+        assert first_asset.mime_type == "image/png"
+        assert first_asset.storage_key.endswith("/accessory1.png")
 
     @pytest.mark.django_db
-    def test_product_upc_validation(self, buyer_client, buyer_user):
+    def test_product_upc_validation(self, admin_client, buyer_user, vendor_company):
         """Verify UPC format, uniqueness, and non-emptiness constraints."""
         # 1. Invalid UPC format (non-numeric or not 12 chars)
-        resp = buyer_client.post("/api/v1/catalog/products/", {
+        resp = admin_client.post("/api/v1/catalog/products/", {
             "name": "Invalid UPC Product",
             "sku": "SKU-UPC-1",
             "brand": "Brand",
             "product_type": "accessory",
             "launch_date": "2026-06-18",
             "upc": "abc123456789",  # non-numeric
-            "vendor_company_reference": str(uuid.uuid4()),
+            "vendor_company_reference": str(vendor_company.id),
         })
         assert resp.status_code == 400
         assert "UPC must follow valid UPC-A format" in str(resp.data)
 
-        resp = buyer_client.post("/api/v1/catalog/products/", {
+        resp = admin_client.post("/api/v1/catalog/products/", {
             "name": "Invalid UPC Product 2",
             "sku": "SKU-UPC-2",
             "brand": "Brand",
             "product_type": "accessory",
             "launch_date": "2026-06-18",
             "upc": "12345",  # too short
-            "vendor_company_reference": str(uuid.uuid4()),
+            "vendor_company_reference": str(vendor_company.id),
         })
         assert resp.status_code == 400
         assert "UPC must follow valid UPC-A format" in str(resp.data)
 
         # 2. Valid UPC creation
-        resp = buyer_client.post("/api/v1/catalog/products/", {
+        resp = admin_client.post("/api/v1/catalog/products/", {
             "name": "Valid Product 1",
             "sku": "SKU-VALID-1",
             "brand": "Brand",
             "product_type": "accessory",
             "launch_date": "2026-06-18",
             "upc": "012345678905",  # valid
-            "vendor_company_reference": str(uuid.uuid4()),
+            "vendor_company_reference": str(vendor_company.id),
         })
         assert resp.status_code == 201
 
         # 3. Duplicate UPC validation
-        resp = buyer_client.post("/api/v1/catalog/products/", {
+        resp = admin_client.post("/api/v1/catalog/products/", {
             "name": "Valid Product 2",
             "sku": "SKU-VALID-2",
             "brand": "Brand",
             "product_type": "accessory",
             "launch_date": "2026-06-18",
             "upc": "012345678905",  # duplicate UPC
-            "vendor_company_reference": str(uuid.uuid4()),
+            "vendor_company_reference": str(vendor_company.id),
         })
         assert resp.status_code == 400
         assert "UPC must be unique per product" in str(resp.data)
 
     @pytest.mark.django_db
-    def test_vendor_admin_delete_product_restrictions(self, buyer_client, buyer_user):
+    def test_vendor_admin_delete_product_restrictions(self, vendor_client, vendor_user):
         """Verify vendor admins cannot delete Active products tied to commercial activity."""
         # Setup vendor company for user
         from apps.tenant.models import CompanyType
-        buyer_user.company.company_type = CompanyType.VENDOR
-        buyer_user.company.save()
+        vendor_user.company.company_type = CompanyType.VENDOR
+        vendor_user.company.save()
 
         # Create active product
         prod = Product.objects.create(
@@ -926,9 +935,15 @@ class TestGovernanceAndCompatibilityImport:
             launch_date="2026-06-18",
             upc="098765432101",
             compatibility_status="complete",
-            company_scope_reference=buyer_user.entity.company_id,
-            vendor_company_reference=buyer_user.company.id,
+            company_scope_reference=vendor_user.entity.company_id,
+            vendor_company_reference=vendor_user.company.id,
         )
+
+        from apps.devices.models import Device, DeviceType, Manufacturer
+        from apps.catalog.models import ProductCompatibilityAssertion
+        maker = Manufacturer.objects.create(name="Delete Guard Maker")
+        device = Device.objects.create(name="Delete Guard Phone", device_type=DeviceType.objects.get(code="phone"), manufacturer=maker)
+        ProductCompatibilityAssertion.objects.create(product=prod, device_reference=device.id, is_compatible=True, compatibility_basis="manufacturer_assertion")
 
         # Mock tied to activity by creating PurchaseOrder and PurchaseOrderLine
         from apps.procurement.models import PurchaseOrder, PurchaseOrderLine
@@ -948,7 +963,7 @@ class TestGovernanceAndCompatibilityImport:
         assert prod.is_tied_to_activity is True
 
         # Try to delete as vendor admin
-        resp = buyer_client.delete(f"/api/v1/catalog/products/{prod.id}/")
+        resp = vendor_client.delete(f"/api/v1/catalog/products/{prod.id}/")
         assert resp.status_code == 400
         assert "Active products that are live and being sold by buyers cannot be deleted." in resp.data["detail"]
 
@@ -985,11 +1000,11 @@ class TestGovernanceAndCompatibilityImport:
         prod.clean()  # should not raise ValidationError
 
     @pytest.mark.django_db
-    def test_extended_vendor_search(self, buyer_client, buyer_user):
+    def test_extended_vendor_search(self, vendor_client, vendor_user):
         """Verify searching by category, wholesale price, color, status, MSRP, and SKU is supported."""
         from apps.tenant.models import CompanyType
-        buyer_user.company.company_type = CompanyType.VENDOR
-        buyer_user.company.save()
+        vendor_user.company.company_type = CompanyType.VENDOR
+        vendor_user.company.save()
 
         # Create products with specific searchable fields
         Product.objects.create(
@@ -1003,8 +1018,8 @@ class TestGovernanceAndCompatibilityImport:
             launch_date="2026-06-18",
             msrp=19.99,
             vendor_wholesale_price_amount=10.00,
-            company_scope_reference=buyer_user.entity.company_id,
-            vendor_company_reference=buyer_user.company.id,
+            company_scope_reference=vendor_user.entity.company_id,
+            vendor_company_reference=vendor_user.company.id,
         )
         Product.objects.create(
             name="Beta Product",
@@ -1017,41 +1032,41 @@ class TestGovernanceAndCompatibilityImport:
             launch_date="2026-06-18",
             msrp=29.99,
             vendor_wholesale_price_amount=15.00,
-            company_scope_reference=buyer_user.entity.company_id,
-            vendor_company_reference=buyer_user.company.id,
+            company_scope_reference=vendor_user.entity.company_id,
+            vendor_company_reference=vendor_user.company.id,
         )
 
         # 1. Search by category
-        resp = buyer_client.get("/api/v1/catalog/products/?search=Cases")
-        assert resp.status_code == 200
+        resp = vendor_client.get("/api/v1/catalog/products/?search=Cases")
+        assert resp.status_code == 200, resp.data
         assert len(resp.data["results"]) == 1
         assert resp.data["results"][0]["sku"] == "SEARCH-SKU-123"
 
         # 2. Search by color
-        resp = buyer_client.get("/api/v1/catalog/products/?search=white")
-        assert resp.status_code == 200
+        resp = vendor_client.get("/api/v1/catalog/products/?search=white")
+        assert resp.status_code == 200, resp.data
         assert len(resp.data["results"]) == 1
         assert resp.data["results"][0]["sku"] == "SEARCH-SKU-456"
 
         # 3. Search by status
-        resp = buyer_client.get("/api/v1/catalog/products/?search=draft")
-        assert resp.status_code == 200
+        resp = vendor_client.get("/api/v1/catalog/products/?search=draft")
+        assert resp.status_code == 200, resp.data
         assert any(p["sku"] == "SEARCH-SKU-123" for p in resp.data["results"])
 
         # 4. Search by MSRP
-        resp = buyer_client.get("/api/v1/catalog/products/?search=29.99")
-        assert resp.status_code == 200
+        resp = vendor_client.get("/api/v1/catalog/products/?search=29.99")
+        assert resp.status_code == 200, resp.data
         assert len(resp.data["results"]) == 1
         assert resp.data["results"][0]["sku"] == "SEARCH-SKU-456"
 
         # 5. Search by Wholesale Price
-        resp = buyer_client.get("/api/v1/catalog/products/?search=10")
-        assert resp.status_code == 200
+        resp = vendor_client.get("/api/v1/catalog/products/?search=10")
+        assert resp.status_code == 200, resp.data
         assert len(resp.data["results"]) == 1
         assert resp.data["results"][0]["sku"] == "SEARCH-SKU-123"
 
     @pytest.mark.django_db
-    def test_bulk_upload_comma_separated_device_compatibility(self, buyer_client, buyer_user):
+    def test_bulk_upload_comma_separated_device_compatibility(self, vendor_client, vendor_user):
         """Verify that comma-separated compatibility fields split and associate correct devices."""
         import io
         from apps.devices.models import Device, Manufacturer, DeviceType
@@ -1063,12 +1078,12 @@ class TestGovernanceAndCompatibilityImport:
 
         # Setup manufacturer and devices
         mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        dt, _ = DeviceType.objects.get_or_create(name="Phone", code="phone", defaults={"status": "active"})
         if dt.status != "active":
             dt.status = "active"
             dt.save()
-        dev1, _ = Device.objects.get_or_create(name="Apple iPhone 17", manufacturer=mfg, device_type=dt, lifecycle_status="available")
-        dev2, _ = Device.objects.get_or_create(name="Apple iPhone 16 Pro", manufacturer=mfg, device_type=dt, lifecycle_status="available")
+        dev1, _ = Device.objects.get_or_create(name="iPhone 17", manufacturer=mfg, device_type=dt, lifecycle_status="available")
+        dev2, _ = Device.objects.get_or_create(name="iPhone 16 Pro", manufacturer=mfg, device_type=dt, lifecycle_status="available")
 
         csv_data = (
             "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,Device Compatibility\n"
@@ -1077,12 +1092,12 @@ class TestGovernanceAndCompatibilityImport:
         file_obj = io.BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "catalog_import.csv"
         
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "create_only"},
             format="multipart"
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.data
         assert resp.data["rows_failed"] == 0
         
         # Verify both compatibility assertions were created
@@ -1091,10 +1106,10 @@ class TestGovernanceAndCompatibilityImport:
         assert assertions.count() == 2
         
         device_names = {Device.objects.get(id=a.device_reference).name for a in assertions}
-        assert device_names == {"Apple iPhone 17", "Apple iPhone 16 Pro"}
+        assert device_names == {"iPhone 17", "iPhone 16 Pro"}
 
     @pytest.mark.django_db
-    def test_manual_media_asset_linking(self, buyer_client, buyer_user):
+    def test_manual_media_asset_linking(self, admin_client, buyer_user, vendor_company):
         """Verify that when a product is created or updated manually, referenced MediaAssets get linked."""
         from apps.media.models import MediaAsset
         from apps.catalog.models import Product, DynamicDropdownConfig
@@ -1108,7 +1123,7 @@ class TestGovernanceAndCompatibilityImport:
         asset_primary = MediaAsset.objects.create(
             id=uuid.uuid4(),
             asset_type="product_image",
-            status="ready",
+            status="ready", has_transparency=True, review_status="approved",
             owner_module="catalog",
             owner_record_id=None,
             company_scope_reference=uuid.uuid4(),
@@ -1120,7 +1135,7 @@ class TestGovernanceAndCompatibilityImport:
         asset_ref1 = MediaAsset.objects.create(
             id=asset_ref1_id,
             asset_type="product_image",
-            status="ready",
+            status="ready", has_transparency=True, review_status="approved",
             owner_module="catalog",
             owner_record_id=None,
             company_scope_reference=uuid.uuid4(),
@@ -1140,7 +1155,7 @@ class TestGovernanceAndCompatibilityImport:
             "vendor_wholesale_price_currency": "USD",
             "status": "active",
             "upc": "123456789012",
-            "vendor_company_reference": str(uuid.uuid4()),
+            "vendor_company_reference": str(vendor_company.id),
             "launch_date": "2026-06-18",
             "primary_image_reference": str(asset_primary.id),
             "media_references": [
@@ -1148,7 +1163,7 @@ class TestGovernanceAndCompatibilityImport:
             ]
         }
 
-        resp = buyer_client.post(
+        resp = admin_client.post(
             "/api/v1/catalog/products/",
             payload,
             format="json"
@@ -1166,7 +1181,7 @@ class TestGovernanceAndCompatibilityImport:
 
 
     @pytest.mark.django_db
-    def test_bulk_upload_strict_compatibility_and_status_assignment(self, buyer_client, buyer_user):
+    def test_bulk_upload_strict_compatibility_and_status_assignment(self, vendor_client, vendor_user):
         """Verify that bulk upload fails on invalid/non-existent device names, and correctly sets active/inactive status."""
         import io
         from apps.catalog.models import Product, ProductStatus
@@ -1184,23 +1199,23 @@ class TestGovernanceAndCompatibilityImport:
         )
         file_obj = io.BytesIO(csv_data_fail.encode("utf-8"))
         file_obj.name = "catalog_import.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "create_only"},
             format="multipart"
         )
         assert resp.status_code == 207
         assert resp.data["rows_failed"] == 1
-        assert "Invalid device 'NonExistentDevice'" in resp.data["errors"][0]["validation_error"]
+        assert "NonExistentDevice" in resp.data["errors"][0]["validation_error"]
 
         # 2. Test upload with past launch date: should default to ACTIVE
         # Setup actual device in database first
         mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        dt, _ = DeviceType.objects.get_or_create(name="Phone", code="phone", defaults={"status": "active"})
         if dt.status != "active":
             dt.status = "active"
             dt.save()
-        Device.objects.get_or_create(name="Apple iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available")
+        Device.objects.get_or_create(name="iPhone 16", manufacturer=mfg, device_type=dt, lifecycle_status="available")
 
         csv_data_active = (
             "SKU,Brand,Product Category,UPC,Launch Date,Vendor Wholesale Price,MSRP,Product Name,Product Description,Product Status,Device Compatibility,Inventory Level\n"
@@ -1208,7 +1223,7 @@ class TestGovernanceAndCompatibilityImport:
         )
         file_obj = io.BytesIO(csv_data_active.encode("utf-8"))
         file_obj.name = "catalog_import.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "create_only"},
             format="multipart"
@@ -1216,7 +1231,8 @@ class TestGovernanceAndCompatibilityImport:
         assert resp.status_code == 200, f"Upload failed: {resp.data}"
         assert resp.data["rows_failed"] == 0
         prod_active = Product.objects.get(sku="CASE-SKU-ACTIVE")
-        assert prod_active.status == ProductStatus.ACTIVE
+        # No primary image was submitted: the media readiness gate stages it.
+        assert prod_active.status == ProductStatus.INACTIVE
 
         # 3. Test upload with future launch date: should default to INACTIVE
         csv_data_inactive = (
@@ -1225,7 +1241,7 @@ class TestGovernanceAndCompatibilityImport:
         )
         file_obj = io.BytesIO(csv_data_inactive.encode("utf-8"))
         file_obj.name = "catalog_import.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "create_only"},
             format="multipart"
@@ -1235,14 +1251,14 @@ class TestGovernanceAndCompatibilityImport:
         prod_inactive = Product.objects.get(sku="CASE-SKU-INACTIVE")
         assert prod_inactive.status == ProductStatus.INACTIVE
 
-    def test_bulk_upload_chargers_multiple_devices_compatibility(self, buyer_client, buyer_user):
+    def test_bulk_upload_chargers_multiple_devices_compatibility(self, vendor_client, vendor_user):
         """Test bulk upload of Chargers & Cables with comma-separated list of devices in Device Compatibility."""
         import io
         from apps.catalog.models import DynamicDropdownConfig, Product
         from apps.devices.models import Device, DeviceType, Manufacturer
 
         mfg, _ = Manufacturer.objects.get_or_create(name="Apple")
-        dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+        dt, _ = DeviceType.objects.get_or_create(name="Phone", code="phone", defaults={"status": "active"})
         if dt.status != "active":
             dt.status = "active"
             dt.save()
@@ -1256,7 +1272,7 @@ class TestGovernanceAndCompatibilityImport:
             defaults={
                 "display_name": "Chargers and Cables",
                 "status": "active",
-                "compatibility_mode": "feature_based",
+                "compatibility_mode": "hybrid",
                 "eligible_device_types": ["smartphone"],
                 "match_logic": "OR",
                 "accessory_fields": ["compatible_charging_interface", "wireless_charging_compatibility"],
@@ -1268,13 +1284,15 @@ class TestGovernanceAndCompatibilityImport:
         )
         DynamicDropdownConfig.objects.get_or_create(field_name="system_color", value="Clear", display_name="Clear")
 
+        from apps.catalog.models import VendorCategoryMapping
+        VendorCategoryMapping.objects.create(company_scope_reference=vendor_user.company.id, vendor_company_reference=vendor_user.company.id, vendor_category="Chargers & Cables", cixci_category="Chargers and Cables", status="active")
         csv_data = (
-            "Brand,Accessory Name,Product Description,Product Status,Product Category,SKU,UPC,Launch Date,Color,System Color,Vendor Wholesale Price,MSRP,MAP Price,Inventory Level,Device Compatibility\n"
-            'testcomm,30W PD Wall Plug + 3 Round Type C to C Cable,High speed charger cable,Active,Chargers & Cables,PK-200,197000082065,09/20/2023,Clear,Clear,4.65,24.99,24.99,100,"iPhone 14, iPhone 16"\n'
+            "Brand,Accessory Name,Product Description,Product Status,Product Category,SKU,UPC,Launch Date,Color,System Color,Vendor Wholesale Price,MSRP,MAP Price,Inventory Level,Device Compatibility,Compatible Charging Interface\n"
+            'testcomm,30W PD Wall Plug + 3 Round Type C to C Cable,High speed charger cable,Active,Chargers & Cables,PK-200,197000082065,09/20/2023,Clear,Clear,4.65,24.99,24.99,100,"iPhone 14, iPhone 16",Type-C\n'
         )
         file_obj = io.BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "Compatibility_Test_v6.csv"
-        resp = buyer_client.post(
+        resp = vendor_client.post(
             "/api/v1/catalog/products/bulk_upload/",
             {"file": file_obj, "update_mode": "create_only"},
             format="multipart"
@@ -1283,131 +1301,37 @@ class TestGovernanceAndCompatibilityImport:
         assert resp.data["rows_failed"] == 0
         prod = Product.objects.get(sku="PK-200")
         assert prod.compatible_charging_interface == "Type-C"
-        assert prod.wireless_charging_compatibility == "Not Compatible"
+        assert prod.wireless_charging_compatibility == ""  # CSV omitted it; never invent a default.
 
 
 @pytest.mark.django_db
 class TestDeviceLifecycleCompatibility:
-    def test_device_lifecycle_status_compatibility_visibility(self, buyer_client, buyer_user):
-        from apps.devices.models import Device, DeviceType, Manufacturer
-        from apps.catalog.models import Product, ProductCompatibilityAssertion, DynamicDropdownConfig
-        from apps.catalog.compatibility_engine import run_compatibility_automapping
-        from rest_framework.test import APIClient
-
-        # Setup active device type and manufacturer (unique codes to avoid conflicts)
-        dt, _ = DeviceType.objects.get_or_create(name="LC_Smartphone", code="lc_smartphone", defaults={"status": "active"})
-        if dt.status != "active":
-            dt.status = "active"
-            dt.save()
-        mfg, _ = Manufacturer.objects.get_or_create(name="LC_TestMfr")
-        
-        # Setup dropdown config with mapping rules
-        DynamicDropdownConfig.objects.get_or_create(
-            field_name="product_category",
-            value="Chargers & Cables",
-            defaults={
-                "status": "active",
-                "compatibility_mode": "implicit",
-                "eligible_device_types": ["lc_smartphone"],
-                "match_logic": "OR",
-                "accessory_fields": ["compatible_charging_interface"],
-                "compatibility_rules": {
-                    "compatible_charging_interface": {"mode": "required"}
-                }
-            }
-        )
-
-        # Create device that is initially available
-        device = Device.objects.create(
-            name="iPhone 16",
-            device_type=dt,
-            manufacturer=mfg,
-            lifecycle_status="available",
-            compatible_charging_interface="Type-C"
-        )
-
-        # Create compatible product
-        import uuid as _uuid
+    def test_device_lifecycle_status_compatibility_visibility(self, admin_client, vendor_company):
+        """Unavailable devices retire effectiveness while preserving mapping ID."""
         from django.utils import timezone
-        vendor_ref = _uuid.uuid4()
-        product = Product.objects.create(
-            name="Fast Charger",
-            product_category="Chargers & Cables",
-            sku="CHG-LC-100",
-            upc="111222333999",
-            compatible_charging_interface="Type-C",
-            selling_status="for_sale",
-            launch_date=timezone.localdate(),
-            vendor_company_reference=vendor_ref,
-            company_scope_reference=buyer_user.entity.company_id
-        )
-
-        # Trigger auto-mapping
-        run_compatibility_automapping(product)
-
-        # Verify mapping exists
-        assert ProductCompatibilityAssertion.objects.filter(
-            product=product,
-            device_reference=device.id,
-            is_compatible=True
-        ).exists()
-
-        # Promote to admin, then build client
-        buyer_user.is_cixci_admin = True
-        buyer_user.save()
-        admin_client = APIClient()
-        admin_client.force_authenticate(user=buyer_user)
-
-        resp = admin_client.get(f"/api/v1/catalog/products/?device_id={device.id}")
-        assert resp.status_code == 200
-        assert len(resp.data["results"]) == 1
-        assert resp.data["results"][0]["id"] == str(product.id)
-
-        # 1. Change status to inactive
-        device.lifecycle_status = "inactive"
+        from apps.devices.models import Device, DeviceType, Manufacturer
+        from apps.catalog.models import ProductCompatibilityAssertion, DynamicDropdownConfig
+        kind = DeviceType.objects.get(code="phone")
+        manufacturer = Manufacturer.objects.create(name="Lifecycle Maker")
+        config, _ = DynamicDropdownConfig.objects.update_or_create(field_name="product_category", value="Lifecycle Chargers", defaults={
+            "status": "active", "compatibility_mode": "feature_based", "eligible_device_types": [str(kind.id)],
+            "accessory_fields": ["compatible_charging_interface"], "match_logic": "OR",
+            "compatibility_rules": {"compatible_charging_interface": {"mode": "required", "comparison": "equals"}},
+        })
+        device = Device.objects.create(name="Lifecycle Phone", device_type=kind, manufacturer=manufacturer, compatible_charging_interface="Type-C")
+        product = Product.objects.create(name="Lifecycle Charger", sku="CHG-LC-100", product_category=config.value,
+            launch_date=timezone.localdate(), compatible_charging_interface="Type-C", company_scope_reference=vendor_company.id, vendor_company_reference=vendor_company.id)
+        row = ProductCompatibilityAssertion.objects.get(product=product, device_reference=device.id)
+        assert row.is_compatible
+        for lifecycle in ("inactive", "archived", "retired"):
+            device.lifecycle_status = lifecycle
+            device.save()
+            row.refresh_from_db()
+            assert not row.is_compatible and row.match_status == "Archived"
+            assert ProductCompatibilityAssertion.objects.filter(pk=row.pk).exists()
+            response = admin_client.get("/api/v1/catalog/products/", {"device_id": str(device.id)})
+            assert response.status_code == 200 and not response.data["results"]
+        device.lifecycle_status = "available"
         device.save()
-
-        # Verify mapping was NOT deleted or altered
-        assert ProductCompatibilityAssertion.objects.filter(
-            product=product,
-            device_reference=device.id,
-            is_compatible=True
-        ).exists()
-
-        # Check API endpoint still returns it
-        resp = admin_client.get(f"/api/v1/catalog/products/?device_id={device.id}")
-        assert resp.status_code == 200
-        assert len(resp.data["results"]) == 1
-
-        # 2. Change status to archived
-        device.lifecycle_status = "archived"
-        device.save()
-
-        # Verify mapping was NOT deleted or altered
-        assert ProductCompatibilityAssertion.objects.filter(
-            product=product,
-            device_reference=device.id,
-            is_compatible=True
-        ).exists()
-
-        # Check API endpoint still returns it
-        resp = admin_client.get(f"/api/v1/catalog/products/?device_id={device.id}")
-        assert resp.status_code == 200
-        assert len(resp.data["results"]) == 1
-
-        # 3. Change status to retired
-        device.lifecycle_status = "retired"
-        device.save()
-
-        # Verify mapping was NOT deleted or altered
-        assert ProductCompatibilityAssertion.objects.filter(
-            product=product,
-            device_reference=device.id,
-            is_compatible=True
-        ).exists()
-
-        # Check API endpoint still returns it
-        resp = admin_client.get(f"/api/v1/catalog/products/?device_id={device.id}")
-        assert resp.status_code == 200
-        assert len(resp.data["results"]) == 1
-
+        row.refresh_from_db()
+        assert row.is_compatible

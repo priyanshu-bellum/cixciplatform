@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { SyntheticEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
@@ -24,6 +24,7 @@ import ShippingFeeDialog from './regional/ShippingFeeDialog'
 import DistributionCenterDialog from './regional/DistributionCenterDialog'
 import RegionUpdateDialog from './regional/RegionUpdateDialog'
 import ReviewRegionConfigDialog from './regional/ReviewRegionConfigDialog'
+import OperatingRegionSetup from './regional/OperatingRegionSetup'
 
 /* ── Tab type ── */
 
@@ -49,12 +50,12 @@ const companyRegionColumns: Column<any>[] = [
   },
   {
     id: 'region_code',
-    label: 'Region',
+    label: 'Address State / Region',
     render: (c) => c.region_code || '\u2014',
   },
   {
     id: 'approved_regions',
-    label: 'Approved Regions',
+    label: 'Supported Operating Regions',
     render: (c) => {
       const regions = c.approved_regions || []
       if (!regions.length) return <Typography variant="caption" color="text.secondary">None</Typography>
@@ -226,6 +227,7 @@ export default function RegionalPage() {
 
   const defaultTab: TabValue = isBuyer ? 'buyer-fees' : isAdmin ? 'company-regions' : 'shipping-fees'
   const [tab, setTab] = useState<TabValue>(defaultTab)
+  useEffect(() => { setTab(defaultTab) }, [defaultTab])
 
   // ── Dialog state ──
   const [shippingFeeOpen, setShippingFeeOpen] = useState(false)
@@ -255,6 +257,8 @@ export default function RegionalPage() {
     queryFn: () => api.get('/pricing/shipping-fee-snapshots/').then((r) => r.data),
     enabled: isBuyer && tab === 'buyer-fees',
   })
+  const currentVendorFees = useQuery({ queryKey: ['buyer-current-vendor-fees', user?.id], enabled: isBuyer && tab === 'buyer-fees',
+    queryFn: async () => (await api.get('/tenant/operating-regions/vendors/')).data })
 
   const { data: dcsData, isLoading: dcsLoading, error: dcsError } = useQuery({
     queryKey: ['distribution-centers'],
@@ -416,6 +420,8 @@ export default function RegionalPage() {
         </Tabs>
       )}
 
+      {isAdmin && tab === 'company-regions' && <OperatingRegionSetup />}
+
       {isBuyer && (
         <Alert severity="info" sx={{ mb: 2 }}>
           These are the shipping fee snapshots applied to your orders. Fees are set by vendors and captured at order time.
@@ -455,6 +461,12 @@ export default function RegionalPage() {
       {/* Buyer Fees tab — Buyer only */}
       {tab === 'buyer-fees' && isBuyer && (
         <>
+          <Typography variant="h6" sx={{ mb: 1 }}>Current Vendor Regional Fees</Typography>
+          {currentVendorFees.isError && <Alert severity="error">Current regional fees could not be loaded.</Alert>}
+          {currentVendorFees.data?.status === 'configuration_required' && <Alert severity="info" sx={{ mb: 2 }}>Regional fee setup needs administrator review.</Alert>}
+          <DataTable columns={[{ id: 'name', label: 'Vendor' }, { id: 'region_code', label: 'Operating Region' }, { id: 'fee_amount', label: 'Configured Fee', render: (row: any) => row.fee_type === 'percentage' ? `${row.fee_amount}%` : formatCurrency(row.fee_amount, row.currency) }, { id: 'fee_type', label: 'Saved Fee Basis', render: (row: any) => row.fee_type?.replace(/_/g, ' ') }]}
+            rows={currentVendorFees.data?.results || []} loading={currentVendorFees.isLoading} rowKey={(row: any) => row.id} emptyMessage="No eligible regional fee configuration" />
+          <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Historical Order Shipping Fees</Typography>
           {buyerFeesError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load shipping fee snapshots.</Alert>}
           <DataTable
             columns={buyerFeeColumns}

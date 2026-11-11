@@ -26,100 +26,52 @@ class DeviceTypeSerializer(serializers.ModelSerializer):
         if name:
             name_stripped = name.strip()
             name_lower = name_stripped.lower()
-            if name_lower not in ["phone", "tablet", "smartwatch", "laptop", "smartphone"]:
-                raise serializers.ValidationError({"name": "Device Type must be Phone, Tablet, Smartwatch or Laptop."})
             if name_lower == "smartphone":
                 data["name"] = "Phone"
             else:
-                data["name"] = name_stripped.title()
+                data["name"] = name_stripped
             if not data.get("code") and (not self.instance or not self.instance.code):
                 from django.utils.text import slugify
-                data["code"] = slugify(name_stripped)
+                data["code"] = slugify(data["name"])
+            if self.instance and data.get("code", self.instance.code) != self.instance.code:
+                raise serializers.ValidationError({"code": "The canonical type code is stable; edit the display label instead."})
+            if not self.instance and data.get("code") == "smartphone":
+                data["code"] = "phone"
+            duplicates = DeviceType.objects.filter(code=data.get("code", self.instance.code if self.instance else ""))
+            if self.instance:
+                duplicates = duplicates.exclude(pk=self.instance.pk)
+            if duplicates.exists():
+                raise serializers.ValidationError({"code": "This canonical Device Type code already exists."})
+            from apps.catalog.compatibility_contract import CURRENT_DEVICE_TYPE_CODES
+            code = data.get("code", self.instance.code if self.instance else "")
+            if code not in CURRENT_DEVICE_TYPE_CODES and (self.instance is None or data.get("status", self.instance.status) == "active"):
+                raise serializers.ValidationError({"code": "Current eligible types are Phone, Tablet and Smartwatch. Preserve other historical types as inactive."})
 
-        # Enforce compatibility rules
-        name = data.get("name") or (self.instance.name if self.instance else "")
-        compatibility_rules = data.get("compatibility_rules") or (self.instance.compatibility_rules if self.instance else {})
-        if name and not compatibility_rules:
-            # Auto-configure default compatibility rules using backend keys
-            name_lower = name.strip().lower()
-            if name_lower in ["phone", "smart phone", "smartphone"]:
-                compatibility_rules = {
-                    "charging_interface": {"mode": "required"},
-                    "storage_expansion_type": {"mode": "required"},
-                    "max_supported_storage": {"mode": "conditional", "condition_field": "storage_expansion_type", "condition_values": ["microSDXC", "microSDHC"]},
-                    "headphone_jack_type": {"mode": "required"},
-                    "bluetooth_supported": {"mode": "required", "default_value": "Yes"},
-                    "wireless_charging_type": {"mode": "required"}
-                }
-            elif name_lower == "tablet":
-                compatibility_rules = {
-                    "charging_interface": {"mode": "required"},
-                    "storage_expansion_type": {"mode": "required"},
-                    "max_supported_storage": {"mode": "conditional", "condition_field": "storage_expansion_type", "condition_values": ["microSDXC", "microSDHC"]},
-                    "headphone_jack_type": {"mode": "required"},
-                    "bluetooth_supported": {"mode": "required", "default_value": "Yes"}
-                }
-            elif name_lower in ["smartwatch", "watch"]:
-                compatibility_rules = {
-                    "bluetooth_supported": {"mode": "required", "default_value": "Yes"},
-                    "wireless_charging_type": {"mode": "required"},
-                    "watch_case_size": {"mode": "required"}
-                }
-            elif name_lower == "laptop":
-                compatibility_rules = {
-                    "charging_interface": {"mode": "required"},
-                    "headphone_jack_type": {"mode": "required"},
-                    "bluetooth_supported": {"mode": "required", "default_value": "Yes"}
-                }
-            else:
-                compatibility_rules = {
-                    "bluetooth_supported": {"mode": "optional"}
-                }
-            data["compatibility_rules"] = compatibility_rules
-
-        # Set status to active if rules are present
-        if compatibility_rules and (not self.instance or self.instance.status == "setup_required"):
-            cats = data.get("supported_accessory_categories", self.instance.supported_accessory_categories if self.instance else [])
-            if not cats:
-                from apps.catalog.models import DynamicDropdownConfig
-                cats = list(DynamicDropdownConfig.objects.filter(field_name="product_category", status="active").values_list("value", flat=True))
-                if not cats:
-                    cats = ["Phone Cases", "Chargers & Cables", "Screen Protectors", "Watch Bands", "Audio Accessories", "Mounts & Stands", "Power Banks"]
-                data["supported_accessory_categories"] = cats
-            data["status"] = "active"
-
-        status = data.get("status", self.instance.status if self.instance else "setup_required")
-        if status == "active":
-            if not compatibility_rules:
-                compatibility_rules = {"bluetooth_supported": {"mode": "optional"}}
-                data["compatibility_rules"] = compatibility_rules
-            
-            # Active Device Type must define eligible Product Categories
-            cats = data.get("supported_accessory_categories", self.instance.supported_accessory_categories if self.instance else [])
-            if not cats:
-                from apps.catalog.models import DynamicDropdownConfig
-                cats = list(DynamicDropdownConfig.objects.filter(field_name="product_category", status="active").values_list("value", flat=True))
-                if not cats:
-                    cats = ["Phone Cases", "Chargers & Cables", "Screen Protectors", "Watch Bands", "Audio Accessories", "Mounts & Stands", "Power Banks"]
-                data["supported_accessory_categories"] = cats
-
-            valid_fields = [
-                "compatible_charging_interface", "charging_interface",
-                "storage_expansion_compatibility", "storage_expansion_type",
-                "maximum_supported_storage", "max_supported_storage",
-                "headphone_jack_compatibility", "headphone_jack_type",
-                "bluetooth_compatibility", "bluetooth_supported",
-                "wireless_charging_compatibility", "wireless_charging_type",
-                "compatible_watch_case_size", "watch_case_size"
-            ]
-            valid_modes = ["required", "optional", "hidden", "defaulted", "conditional"]
-            for field, rule in compatibility_rules.items():
-                if field not in valid_fields:
-                    raise serializers.ValidationError({"compatibility_rules": f"Invalid compatibility field: '{field}'"})
-                if not isinstance(rule, dict) or "mode" not in rule:
-                    raise serializers.ValidationError({"compatibility_rules": f"Rule for '{field}' must specify a 'mode'."})
-                if rule["mode"] not in valid_modes:
-                    raise serializers.ValidationError({"compatibility_rules": f"Invalid mode '{rule['mode']}' for field '{field}'."})
+        from apps.catalog.compatibility_contract import normalized_rules, COMPATIBILITY_FIELDS, ENTRY_MODES, canonical_field
+        from apps.catalog.compatibility_values import normalized_value, normalized_wireless
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            rules = normalized_rules(data.get("compatibility_rules", self.instance.compatibility_rules if self.instance else {}) or {})
+            for field, rule in rules.items():
+                if field not in COMPATIBILITY_FIELDS or not isinstance(rule, dict) or rule.get("mode") not in ENTRY_MODES:
+                    raise serializers.ValidationError({"compatibility_rules": f"Configure a valid field and data-entry mode for {field}."})
+                if rule["mode"] == "defaulted":
+                    value = rule.get("default_value", rule.get("default", ""))
+                    if not value:
+                        raise serializers.ValidationError({"compatibility_rules": f"Set an approved default for {field}."})
+                    rule["default_value"] = normalized_wireless(value) if field == "wireless_charging_compatibility" else normalized_value(field, value)
+                if rule["mode"] == "conditional":
+                    parent = canonical_field(rule.get("condition_field"))
+                    if parent not in rules or parent == field or not isinstance(rule.get("condition_values"), list) or not rule["condition_values"]:
+                        raise serializers.ValidationError({"compatibility_rules": f"Configure an applicable condition for {field}."})
+                    rule["condition_field"] = parent
+                    rule["condition_values"] = [normalized_wireless(value) if parent == "wireless_charging_compatibility" else normalized_value(parent, value) for value in rule["condition_values"]]
+            if data.get("status", self.instance.status if self.instance else "setup_required") == "active" and not rules:
+                raise serializers.ValidationError({"compatibility_rules": "Configure applicable fields before activating a Device Type."})
+            if "compatibility_rules" in data:
+                data["compatibility_rules"] = {("maximum_supported_storage" if field == "memory_capacity" else field): rule for field, rule in rules.items()}
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.message_dict) from error
         return data
 
 
@@ -245,201 +197,16 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
             elif device_type.status != 'active':
                 raise serializers.ValidationError({"device_type": f"Device Type '{device_type.name}' is not Active."})
 
-        # 3. Dynamic Compatibility Rules
-        rules = device_type.compatibility_rules or {}
-        
-        # We have 7 compatibility fields. Let's map model fields to backend keys and vice versa:
-        FIELD_MAP = {
-            "compatible_charging_interface": "charging_interface",
-            "storage_expansion_compatibility": "storage_expansion_type",
-            "maximum_supported_storage": "max_supported_storage",
-            "headphone_jack_compatibility": "headphone_jack_type",
-            "bluetooth_compatibility": "bluetooth_supported",
-            "wireless_charging_compatibility": "wireless_charging_type",
-            "compatible_watch_case_size": "watch_case_size"
-        }
-        
-        # Resolve the rule mode and details for each model field:
-        def get_rule_for_field(model_field):
-            b_key = FIELD_MAP[model_field]
-            if model_field in rules:
-                return rules[model_field]
-            if b_key in rules:
-                return rules[b_key]
-            return None
+        from django.core.exceptions import ValidationError as CompatibilityValidationError
+        from apps.catalog.compatibility_contract import CURRENT_DEVICE_TYPE_CODES
+        from apps.catalog.compatibility_values import validate_compatibility_values
+        if device_type.code not in CURRENT_DEVICE_TYPE_CODES:
+            raise serializers.ValidationError({'device_type': 'Select Phone, Tablet or Smartwatch for current device entry.'})
+        try:
+            validate_compatibility_values(attrs, instance=self.instance, rules=device_type.compatibility_rules, device_type=device_type)
+        except CompatibilityValidationError as error:
+            raise serializers.ValidationError(error.message_dict) from error
 
-        # Clean/normalize all fields first
-        cleaned_vals = {}
-        for f in FIELD_MAP.keys():
-            val = attrs.get(f)
-            if val is None:
-                if self.instance and hasattr(self.instance, f):
-                    val = getattr(self.instance, f)
-                else:
-                    val = ""
-            cleaned_vals[f] = str(val).strip()
-
-        # Helper to check if a value is "empty"
-        def is_empty(val, field_name):
-            val_str = str(val).strip().lower()
-            return not val or val_str in ["", "select", "select...", "select options", "select option"]
-
-        # Apply rules for each field
-        for f, b_key in FIELD_MAP.items():
-            rule = get_rule_for_field(f)
-            mode = rule.get("mode", "optional") if rule else "optional"
-            
-            # 1. Hidden mode
-            if mode == "hidden":
-                attrs[f] = "No" if f == "bluetooth_compatibility" else "Not Compatible"
-                cleaned_vals[f] = attrs[f]
-                continue
-                
-            # 2. Defaulted mode
-            if mode == "defaulted":
-                if is_empty(cleaned_vals[f], f):
-                    default_val = rule.get("default_value")
-                    if not default_val:
-                        default_val = "Yes" if f == "bluetooth_compatibility" else "Not Compatible"
-                    attrs[f] = default_val
-                    cleaned_vals[f] = default_val
-
-            # 3. Required mode
-            if mode == "required":
-                if is_empty(cleaned_vals[f], f):
-                    raise serializers.ValidationError({f: f"{f.replace('_', ' ').title().replace('Compatibility', '').strip()} is required."})
-
-            # 4. Conditional mode
-            if mode == "conditional":
-                cond_field = rule.get("condition_field")
-                cond_values = rule.get("condition_values", [])
-                cond_model_field = cond_field
-                if cond_field in FIELD_MAP.values():
-                    for k, v in FIELD_MAP.items():
-                        if v == cond_field:
-                            cond_model_field = k
-                            break
-                            
-                cond_val = cleaned_vals.get(cond_model_field, "")
-                cond_val_norm = cond_val.lower()
-                cond_values_norm = [cv.lower() for cv in cond_values]
-                
-                if cond_val_norm in cond_values_norm:
-                    if is_empty(cleaned_vals[f], f):
-                        raise serializers.ValidationError({f: f"{f.replace('_', ' ').title().replace('Compatibility', '').strip()} is required."})
-                else:
-                    if is_empty(cleaned_vals[f], f):
-                        attrs[f] = "No" if f == "bluetooth_compatibility" else "Not Compatible"
-                        cleaned_vals[f] = attrs[f]
-
-        # 4. Validate value lists for each field
-        for f, val in cleaned_vals.items():
-            rule = get_rule_for_field(f)
-            mode = rule.get("mode", "optional") if rule else "optional"
-            if mode == "hidden":
-                continue
-
-            if f == "bluetooth_compatibility":
-                if val.lower() == "yes" or not val:
-                    attrs[f] = "Yes"
-                elif val.lower() == "no":
-                    attrs[f] = "No"
-                else:
-                    raise serializers.ValidationError({f: "Bluetooth Compatibility must be Yes or No."})
-                    
-            elif f == "compatible_charging_interface":
-                vl = val.lower()
-                if vl == "type-c":
-                    attrs[f] = "Type-C"
-                elif vl == "lightning":
-                    attrs[f] = "Lightning"
-                elif vl in ["micro-usb", "microusb"]:
-                    attrs[f] = "Micro-USB"
-                elif vl in ["not compatible", "n/a", "none"] or not val:
-                    attrs[f] = "Not Compatible"
-                else:
-                    raise serializers.ValidationError({f: "Compatible Charging Interface must be Type-C, Lightning, Micro-USB, or Not Compatible."})
-                    
-            elif f == "headphone_jack_compatibility":
-                vl = val.lower()
-                if vl == "type-c":
-                    attrs[f] = "Type-C"
-                elif vl == "lightning":
-                    attrs[f] = "Lightning"
-                elif vl in ["3.5mm", "3.5 mm"]:
-                    attrs[f] = "3.5mm"
-                elif vl in ["not compatible", "n/a", "none"] or not val:
-                    attrs[f] = "Not Compatible"
-                else:
-                    raise serializers.ValidationError({f: "Headphone Jack Compatibility must be 3.5mm, Type-C, Lightning, or Not Compatible."})
-                    
-            elif f == "storage_expansion_compatibility":
-                vl = val.lower()
-                if vl == "microsdxc":
-                    attrs[f] = "microSDXC"
-                elif vl == "microsdhc":
-                    attrs[f] = "microSDHC"
-                elif vl in ["not compatible", "n/a", "none"] or not val:
-                    attrs[f] = "Not Compatible"
-                else:
-                    raise serializers.ValidationError({f: "Storage Expansion Compatibility must be microSDXC, microSDHC, or Not Compatible."})
-                    
-            elif f == "maximum_supported_storage":
-                se_val = attrs.get("storage_expansion_compatibility", "Not Compatible")
-                if se_val in ["microSDXC", "microSDHC"]:
-                    vu = val.upper()
-                    if se_val == "microSDXC":
-                        allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
-                    else:
-                        allowed = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
-                    if vu not in allowed:
-                        raise serializers.ValidationError({f: f"Maximum Supported Storage must match the allowed list ({', '.join(allowed)}) for {se_val}."})
-                    attrs[f] = vu
-                else:
-                    attrs[f] = "Not Compatible"
-                    
-            elif f == "compatible_watch_case_size":
-                vl = val.lower()
-                allowed_wcs = ["not compatible", "38mm", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "47mm", "49mm"]
-                if not val or vl in ["", "not compatible", "n/a", "none"]:
-                    attrs[f] = "Not Compatible"
-                elif vl not in allowed_wcs:
-                    raise serializers.ValidationError({f: "Compatible Watch Case Size must be 38mm, 40mm, 41mm, 42mm, 44mm, 45mm, 46mm, 47mm, 49mm, or Not Compatible."})
-                else:
-                    attrs[f] = vl
-
-                # BUG-DEV-012: Watch case size is only valid for Watch device type
-                dt_name = device_type.name.lower() if device_type and hasattr(device_type, "name") else ""
-                if dt_name not in ["watch", "smartwatch"] and attrs[f] != "Not Compatible":
-                    raise serializers.ValidationError({f: "Compatible Watch Case Size is only applicable for Watch device types."})
-                    
-            elif f == "wireless_charging_compatibility":
-                if not val or val.lower() == "not compatible":
-                    attrs[f] = "Not Compatible"
-                else:
-                    import re
-                    parts = [p.strip() for p in re.split(r'[\+,;]', val) if p.strip()]
-                    normalized = []
-                    for p in parts:
-                        pl = p.lower()
-                        if pl == "magsafe":
-                            normalized.append("MagSafe")
-                        elif pl == "qi":
-                            normalized.append("Qi")
-                        elif pl == "qi2":
-                            normalized.append("Qi2")
-                        elif pl == "not compatible":
-                            normalized.append("Not Compatible")
-                        else:
-                            raise serializers.ValidationError({f: f"Invalid Wireless Charging value '{p}'."})
-                            
-                    if "Not Compatible" in normalized and len(normalized) > 1:
-                        raise serializers.ValidationError({f: "Not Compatible cannot be selected with any other value."})
-                    if "Qi" in normalized and ("MagSafe" in normalized or "Qi2" in normalized):
-                        raise serializers.ValidationError({f: "Qi cannot be selected with MagSafe or Qi2."})
-                        
-                    attrs[f] = "+".join(normalized)
-                    
         return attrs
 
     def create(self, validated_data):

@@ -22,6 +22,8 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import DownloadIcon from '@mui/icons-material/Download'
 import { parseCSV, validateCsvRows, formatExcelDate } from '../utils'
 import api from '../../../lib/apiClient'
+import TextField from '@mui/material/TextField'
+import { useSupplierCompanies } from '../../../hooks/useSupplierCompanies'
 
 // ---------------------------------------------------------------------------
 // CellInput -- inline editable table cell
@@ -149,6 +151,9 @@ export default function BulkUploadDialog({
   dropdownsLoaded,
   imagesOnly = false,
 }: BulkUploadDialogProps) {
+  const [supplierId, setSupplierId] = useState('')
+  const isAdmin = !!user?.is_cixci_admin
+  const { data: suppliers = [] } = useSupplierCompanies(open && isAdmin)
   const [activeStep, setActiveStep] = useState(0)
 
   // Step 1 state
@@ -180,6 +185,7 @@ export default function BulkUploadDialog({
     if (open) {
       setActiveStep(imagesOnly ? 1 : 0)
       setCsvFile(null)
+      setSupplierId('')
       setCsvHeaders([])
       setCsvPreviewRows([])
       setCsvErrors({ hasErrors: false, rowErrors: {}, cellErrors: {} })
@@ -309,6 +315,10 @@ export default function BulkUploadDialog({
       const formData = new FormData()
       formData.append('file', csvFile)
       formData.append('update_mode', updateMode)
+      if (isAdmin) {
+        if (!supplierId) throw new Error('Select the supplier company before importing.')
+        formData.append('vendor_company_reference', supplierId)
+      }
 
       const res = await api.post('/catalog/products/bulk_upload/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -339,7 +349,7 @@ export default function BulkUploadDialog({
     } finally {
       setUploading(false)
     }
-  }, [csvFile, updateMode, csvPreviewRows.length, onUploaded])
+  }, [csvFile, updateMode, csvPreviewRows.length, onUploaded, isAdmin, supplierId])
 
   // ---------------------------------------------------------------------------
   // Step 2 -- ZIP upload
@@ -468,6 +478,9 @@ export default function BulkUploadDialog({
         {/* ============================================================== */}
         {activeStep === 0 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {isAdmin && <TextField select size="small" fullWidth label="Supplier Company" value={supplierId} onChange={event => setSupplierId(event.target.value)}>
+              {suppliers.map((supplier: any) => <MenuItem key={supplier.id} value={supplier.id}>{supplier.name}</MenuItem>)}
+            </TextField>}
             {/* Hidden file input */}
             <input
               ref={csvInputRef}

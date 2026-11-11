@@ -7,59 +7,23 @@ logger = logging.getLogger(__name__)
 @shared_task
 def recalculate_affected_buyer_visibility(vendor_company_id, region_code, event_id):
     """
-    Find all active buyer companies whose approved_regions contains the changed
-    region_code and recalculate their compatibility projections.
+    Recalculate active Buyers at their explicit Entity Operating Region scope.
+    Company address/coverage fields never choose an entity or user.
 
     Updates the RegionChangeEvent with affected_buyer_count.
     """
-    from apps.tenant.models import Company, CompanyStatus, CompanyType, RegionChangeEvent
-    from django.db.models import Q
-
-    # Find all active buyer companies whose approved_regions contains this region
-    region_filter = Q(approved_regions__icontains=f'"{region_code}"')
-    affected_buyers = Company.objects.filter(
-        company_type=CompanyType.BUYER,
-        status=CompanyStatus.ACTIVE,
-    ).filter(region_filter)
-
-    affected_count = 0
-    for buyer in affected_buyers:
-        try:
-            # Find active users for this buyer to resolve the buyer scope triad
-            from apps.tenant.models import User
-            buyer_user = User.objects.filter(
-                entity__company=buyer,
-                is_active=True,
-            ).first()
-
-            if not buyer_user or not buyer_user.entity:
-                continue
-
-            from apps.catalog.services import recalculate_buyer_compatibility_projection
-            from apps.devices.models import BuyerDevicePortfolioSnapshot
-
-            # Get the latest portfolio snapshot for this buyer
-            snapshot = BuyerDevicePortfolioSnapshot.objects.filter(
-                buyer_reference=buyer_user.id,
-                company_scope_reference=buyer.id,
-                buyer_entity_reference=buyer_user.entity_id,
-            ).order_by("-created_at").first()
-
-            if not snapshot:
-                continue
-
-            recalculate_buyer_compatibility_projection(
-                buyer_reference=buyer_user.id,
-                company_scope_reference=buyer.id,
-                buyer_entity_reference=buyer_user.entity_id,
-                portfolio_snapshot_reference=snapshot.id,
-                trigger="vendor_region_changed",
-            )
-            affected_count += 1
-        except Exception as e:
-            logger.error(
-                f"Failed to recalculate buyer visibility for buyer {buyer.id}: {e}"
-            )
+    from apps.tenant.models import User, RegionChangeEvent
+    from apps.catalog.services import ensure_buyer_compatibility_projection
+    users = User.objects.filter(
+        is_active=True, entity__status="active", entity__company__status="active",
+        entity__company__company_type="buyer", entity__operating_region__code=region_code,
+    ).select_related("entity__company")
+    affected_companies = set()
+    for user in users.iterator():
+        # Never choose an arbitrary first user/entity or reuse another entity's snapshot.
+        ensure_buyer_compatibility_projection(user, trigger="vendor_region_changed", force=True)
+        affected_companies.add(user.entity.company_id)
+    affected_count = len(affected_companies)
 
     # Update the event with affected buyer count (direct SQL to avoid immutability)
     try:

@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.urls import path, include
+from django.db import transaction
 from rest_framework.routers import DefaultRouter
 
 from apps.tenant.mixins import CheckAccessMixin
@@ -351,6 +352,50 @@ class MapExceptionViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
 
 class VendorRegionalShippingFeeSerializer(serializers.ModelSerializer):
+    vendor_company_reference = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        from apps.tenant.models import Company, OperatingRegion
+        from apps.tenant.services import check_access
+        from django.utils import timezone
+        from django.db.models import Q
+        actor = self.context["request"].user
+        admin = check_access(actor, "pricing.shipping_fee.update").reason == "cixci_admin"
+        company = getattr(actor, "company", None)
+        previous = self.instance
+        vendor_id = attrs.get("vendor_company_reference", previous.vendor_company_reference if previous else None)
+        if not admin:
+            if not company or company.company_type != "vendor":
+                raise serializers.ValidationError("Only an authorized Vendor or CIXCI Admin can configure regional fees.")
+            if vendor_id and str(vendor_id) != str(company.id):
+                raise serializers.ValidationError({"vendor_company_reference": "A Vendor can only configure its own fees."})
+            attrs["vendor_company_reference"] = vendor_id = company.id
+        if not Company.objects.filter(pk=vendor_id, company_type="vendor").exists():
+            raise serializers.ValidationError({"vendor_company_reference": "Select an existing Vendor company."})
+        if previous and vendor_id != previous.vendor_company_reference:
+            raise serializers.ValidationError({"vendor_company_reference": "Fee ownership is immutable."})
+        code = attrs.get("region_code", previous.region_code if previous else None)
+        if not OperatingRegion.objects.filter(code=code, is_active=True).exists():
+            raise serializers.ValidationError({"region_code": "Select an active canonical Operating Region."})
+        if previous is None and not attrs.get("currency"):
+            raise serializers.ValidationError({"currency": "Declare the approved fee currency explicitly; no currency is inferred."})
+        if attrs.get("fee_amount", previous.fee_amount if previous else 0) < 0:
+            raise serializers.ValidationError({"fee_amount": "Fee cannot be negative."})
+        starts = attrs.get("effective_from", previous.effective_from if previous else timezone.now())
+        ends = attrs.get("effective_to", previous.effective_to if previous else None)
+        if ends and ends <= starts:
+            raise serializers.ValidationError({"effective_to": "The effective end must follow the start."})
+        if attrs.get("status", previous.status if previous else "draft") == "active":
+            others = VendorRegionalShippingFee.objects.filter(vendor_company_reference=vendor_id, region_code=code, status="active")
+            if previous:
+                others = others.exclude(pk=previous.pk)
+            others = others.filter(Q(effective_to__isnull=True) | Q(effective_to__gt=starts))
+            if ends:
+                others = others.filter(effective_from__lt=ends)
+            if others.exists():
+                raise serializers.ValidationError({"effective_from": "Another active fee overlaps this effective period; retire or end it explicitly."})
+        return attrs
+
     class Meta:
         model = VendorRegionalShippingFee
         fields = [
@@ -359,7 +404,7 @@ class VendorRegionalShippingFeeSerializer(serializers.ModelSerializer):
             "effective_from", "effective_to", "superseded_by",
             "created_by", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
 
 
 class ShippingFeeSnapshotSerializer(serializers.ModelSerializer):
@@ -413,7 +458,7 @@ class VendorRegionalShippingFeeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         Hard server-side check: vendor can only create/update shipping fees
         for regions in their approved_regions list.  Admins bypass.
         """
-        if getattr(self.request.user, "is_cixci_admin", False):
+        if getattr(self.request.user, "is_cixci_admin", False) or serializer.validated_data.get("status", getattr(serializer.instance, "status", "draft")) != "active":
             return
         region_code = serializer.validated_data.get(
             "region_code",
@@ -438,13 +483,22 @@ class VendorRegionalShippingFeeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                      f"Approved regions: {approved}"}
                 )
 
+    @transaction.atomic
     def perform_create(self, serializer):
         self._validate_region(serializer)
         serializer.save(created_by=self.request.user.id)
+        from apps.tenant.regional_visibility import invalidate_regional_projections
+        invalidate_regional_projections()
 
+    @transaction.atomic
     def perform_update(self, serializer):
         self._validate_region(serializer)
         serializer.save(created_by=self.request.user.id)
+        from apps.tenant.regional_visibility import invalidate_regional_projections
+        invalidate_regional_projections()
+
+    def perform_destroy(self, instance):
+        raise serializers.ValidationError("Retire regional fees instead of deleting commercial history.")
 
 
 class ShippingFeeSnapshotViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
@@ -475,6 +529,10 @@ class ShippingFeeSnapshotViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet
             return ShippingFeeSnapshot.objects.none()
         if company.company_type == "vendor":
             return qs.filter(vendor_company_reference=company.id)
+        if company.company_type == "buyer" and user.entity:
+            from apps.routing.models import Order
+            orders = Order.objects.filter(company_scope_reference=company.id, buyer_entity_reference=user.entity_id)
+            return qs.filter(order_reference__in=orders.values("id"))
         return ShippingFeeSnapshot.objects.none()
 
 

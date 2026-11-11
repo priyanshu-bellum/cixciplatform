@@ -11,6 +11,8 @@ from apps.tenant.views import (
 from apps.audit.views import AuditRecordViewSet
 
 router = DefaultRouter()
+from apps.tenant.regional_api import OperatingRegionViewSet
+router.register("operating-regions", OperatingRegionViewSet, basename="operating-region")
 router.register("companies", CompanyViewSet, basename="company")
 router.register("entities", CompanyEntityViewSet, basename="entity")
 router.register("users", UserViewSet, basename="user")

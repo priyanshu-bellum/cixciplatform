@@ -163,13 +163,24 @@ class TestBuyerDataIntegrationSpec:
         assert data2["order_status"] == "Delivered"
         assert str(data2["delivered_date"]) == str(handoff.delivered_date)
 
-    def test_product_export_task_headers(self):
+    def test_product_export_task_headers(self, cap_factory):
         """Component 4: Product export task generates rows matching the full Data Integration Spec."""
         from apps.catalog.tasks import process_buyer_export_job
+        from apps.catalog.models import DynamicDropdownConfig, ProductCompatibilityAssertion
+        from apps.devices.models import DeviceType, Device, Manufacturer
+        from apps.devices.services import add_device_to_portfolio
+        from apps.media.models import MediaAsset
+        self.buyer_entity.status = "active"
+        self.buyer_entity.save()
+        self.buyer_user.capabilities.add(cap_factory("catalog.product.read"))
+        kind = DeviceType.objects.create(code="phone", name="Phone", status="active")
+        device = Device.objects.create(name="Export Spec Phone", device_type=kind, manufacturer=Manufacturer.objects.create(name="Export Spec Maker"))
+        config = DynamicDropdownConfig.objects.create(field_name="product_category", value="Export Spec Cases", status="active", compatibility_mode="device_specific", eligible_device_types=[str(kind.id)])
         import json
 
         p = Product.objects.create(
             sku="CASE-001",
+            product_category=config.value,
             name="Super Shield Case",
             upc="012345678901",
             status=ProductStatus.ACTIVE,
@@ -184,9 +195,15 @@ class TestBuyerDataIntegrationSpec:
             height=decimal.Decimal("0.5"),
             weight=decimal.Decimal("0.2"),
         )
+        ProductCompatibilityAssertion.objects.create(product=p, device_reference=device.id, is_compatible=True, compatibility_basis="manufacturer_assertion")
+        image = MediaAsset.objects.create(asset_type="image", status="ready", review_status="approved", has_transparency=True,
+            owner_module="catalog", owner_record_id=p.id, company_scope_reference=self.vendor_company.id,
+            original_filename="export-spec.png", file_extension="png", mime_type="image/png", storage_key="test/export-spec.png")
+        Product.objects.filter(pk=p.pk).update(primary_image_reference=image.id)
+        add_device_to_portfolio(self.buyer_user, device.id)
 
         job = BuyerProductExportJob.objects.create(
-            buyer_reference=self.buyer_company.id,
+            buyer_reference=self.buyer_user.id,
             company_scope_reference=self.buyer_company.id,
             buyer_entity_reference=self.buyer_entity.id,
             requested_by=self.buyer_user.id,

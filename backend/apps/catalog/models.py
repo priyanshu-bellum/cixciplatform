@@ -13,7 +13,7 @@ Architecture rules (spec.md):
   derived from Device Catalog's BuyerDevicePortfolioSnapshot (read-only reference)
 """
 import uuid
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 
@@ -205,6 +205,7 @@ class Product(models.Model):
         indexes = [
             models.Index(fields=["product_type", "status", "selling_status"]),
             models.Index(fields=["vendor_company_reference", "status"]),
+            models.Index(fields=["vendor_company_reference", "sku"], name="catalog_vendor_sku_idx"),
             models.Index(fields=["sku"]),
         ]
 
@@ -253,32 +254,6 @@ class Product(models.Model):
         super().clean()
         from django.core.exceptions import ValidationError
 
-        # Mutual exclusion: universal_device_type mode requires compatible_device_types
-        # and direct_device mode must not have compatible_device_types set
-        if self.compatibility_mode == "universal_device_type" and not self.compatible_device_types:
-            raise ValidationError({
-                "compatible_device_types": "Universal Device Type mode requires at least one device type."
-            })
-        if self.compatibility_mode == "direct_device" and self.compatible_device_types:
-            raise ValidationError({
-                "compatible_device_types": (
-                    "Cannot set universal device types when using Direct Device mode. "
-                    "Switch to Universal Device Type mode first."
-                )
-            })
-
-        for f in [
-            "headphone_jack_compatibility",
-            "bluetooth_compatibility",
-            "compatible_charging_interface",
-            "wireless_charging_compatibility",
-            "storage_expansion_compatibility",
-            "memory_capacity",
-            "compatible_watch_case_size"
-        ]:
-            if getattr(self, f) is None:
-                setattr(self, f, "")
-        from django.core.exceptions import ValidationError
         from datetime import datetime, date
         import pytz
         
@@ -359,110 +334,16 @@ class Product(models.Model):
                 raise ValidationError({"eol_date": "EOL Date cannot conflict with open orders. Product has active open orders."})
 
 
-        # Validate category-specific accessory fields
+        from .compatibility_contract import validate_product_scope
+        from .compatibility_values import validate_compatibility_values
+        validate_product_scope(self, original=getattr(self, "_original", None))
         if self.product_category:
-            from config.cache_service import dropdown_cache
-            all_cats = dropdown_cache.get_by_field("product_category", status=None)
-            cat_cfg = next((c for c in all_cats if c["value"] == self.product_category), None)
-            if not cat_cfg:
-                raise ValidationError({"product_category": "The selected product category is not recognized."})
-            if cat_cfg["status"] != 'active':
-                raise ValidationError({"product_category": f"Product Category '{self.product_category}' is '{cat_cfg['status']}' and cannot be used for products."})
-            
-            rules = (cat_cfg.get("compatibility_rules") if isinstance(cat_cfg, dict) else getattr(cat_cfg, "compatibility_rules", None)) or {}
-            compat_fields = [
-                "headphone_jack_compatibility",
-                "bluetooth_compatibility",
-                "compatible_charging_interface",
-                "wireless_charging_compatibility",
-                "storage_expansion_compatibility",
-                "memory_capacity",
-                "compatible_watch_case_size"
-            ]
-
-            # Validate based on mode and specific values
-            for f in compat_fields:
-                val = getattr(self, f)
-                if isinstance(val, str):
-                    val = val.strip()
-                    setattr(self, f, val)
-
-                rule = rules.get(f)
-                mode = rule.get("mode", "hidden") if rule else "hidden"
-
-                if mode == "required":
-                    if not val or val.strip() == "" or val == "Not Compatible":
-                        raise ValidationError({f: f"{f.replace('_', ' ').title()} is required."})
-                elif mode == "hidden":
-                    pass
-                elif mode == "conditional":
-                    cond_field = rule.get("condition_field")
-                    cond_values = rule.get("condition_values", [])
-                    cond_val = getattr(self, cond_field, None)
-                    if cond_field and cond_val in cond_values:
-                        if not val or val.strip() == "" or val == "Not Compatible":
-                            raise ValidationError({f: f"{f.replace('_', ' ').title()} is required when {cond_field.replace('_', ' ').title()} is {cond_val}."})
-
-                if val:
-                    if f == "compatible_charging_interface" or f == "headphone_jack_compatibility":
-                        if val not in ["Not Compatible", "Type-C", "Lightning"]:
-                            raise ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
-
-                    elif f == "bluetooth_compatibility":
-                        if val not in ["Yes", "No"]:
-                            raise ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
-
-                    elif f == "wireless_charging_compatibility":
-                        import re
-                        w_vals = [w.strip() for w in re.split(r'[\+,;]', val) if w.strip()]
-                        if not w_vals:
-                            raise ValidationError({f: "Wireless Charging Compatibility is required."})
-                        normalized = []
-                        for w in w_vals:
-                            wl = w.lower()
-                            if wl == "magsafe":
-                                normalized.append("MagSafe")
-                            elif wl == "qi":
-                                normalized.append("Qi")
-                            elif wl == "qi2":
-                                normalized.append("Qi2")
-                            elif wl in ["not compatible", "not_compatible", "none", "n/a"]:
-                                normalized.append("Not Compatible")
-                            else:
-                                raise ValidationError({f: f"Invalid Wireless Charging value '{w}'."})
-                        if 'Not Compatible' in normalized and len(normalized) > 1:
-                            raise ValidationError({f: "Not Compatible cannot be selected with any other value."})
-                        if 'Qi' in normalized and ('MagSafe' in normalized or 'Qi2' in normalized):
-                            raise ValidationError({f: "Qi cannot be selected with MagSafe or Qi2."})
-                        setattr(self, f, "+".join(normalized))
-
-                    elif f == "storage_expansion_compatibility":
-                        if val not in ["Not Compatible", "microSDXC", "microSDHC"]:
-                            raise ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
-
-                    elif f == "memory_capacity":
-                        storage = getattr(self, "storage_expansion_compatibility", None)
-                        if storage in ["microSDXC", "microSDHC"]:
-                            if storage == "microSDXC":
-                                allowed = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
-                            else:
-                                allowed = ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
-                            if val not in allowed:
-                                raise ValidationError({f: "Memory Capacity must match the allowed list for the selected storage type."})
-                        else:
-                            if val != "Not Compatible":
-                                setattr(self, f, "Not Compatible")
-
-                    elif f == "compatible_watch_case_size":
-                        if val not in ["Not Compatible", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm"]:
-                            raise ValidationError({f: f"Invalid value for {f.replace('_', ' ').title()}."})
-
-            # Extra logical rules
-            if self.product_category == "Headphones":
-                jack = getattr(self, "headphone_jack_compatibility", None)
-                bluetooth = getattr(self, "bluetooth_compatibility", None)
-                if jack == "Not Compatible" and bluetooth == "No":
-                    raise ValidationError({"headphone_jack_compatibility": "Headphones must support either Bluetooth or a compatible jack (cannot both be Not Compatible/No)."})
+            config = DynamicDropdownConfig.objects.filter(field_name="product_category", value=self.product_category).first()
+            if config is None or config.status != "active":
+                raise ValidationError({"product_category": "Select an active configured product category."})
+            values = validate_compatibility_values({}, instance=self, rules=config.compatibility_rules, assigned_fields=config.accessory_fields)
+            for field, value in values.items():
+                setattr(self, field, value)
 
         # Resolve vendor
         from apps.tenant.models import Company
@@ -632,6 +513,7 @@ class Product(models.Model):
                             if getattr(self, field) != getattr(orig, field):
                                 raise ValidationError({field: f"Field '{label}' cannot be updated for active products without CIXCI Admin approval."})
 
+    @transaction.atomic
     def save(self, *args, actor_id=None, **kwargs):
         from django.utils import timezone
         import re as _re
@@ -645,6 +527,26 @@ class Product(models.Model):
             except Product.DoesNotExist:
                 pass
         self._original = _original
+
+        from .compatibility_contract import validate_product_scope
+        universal_types = validate_product_scope(self, original=_original)
+        normalized_type_codes = [device_type.code for device_type in universal_types]
+        if self.compatible_device_types != normalized_type_codes:
+            self.compatible_device_types = normalized_type_codes
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"compatible_device_types"}
+
+        from .compatibility_contract import COMPATIBILITY_FIELDS
+        fields_changed = is_new or (_original and _original.product_category != self.product_category) or any(_original and getattr(_original, field) != getattr(self, field) for field in COMPATIBILITY_FIELDS)
+        if fields_changed and any(getattr(self, field) not in (None, "") for field in COMPATIBILITY_FIELDS):
+            from .compatibility_values import validate_compatibility_values
+            config = DynamicDropdownConfig.objects.filter(field_name="product_category", value=self.product_category).first()
+            values = validate_compatibility_values({}, instance=self, rules=config.compatibility_rules if config else {}, assigned_fields=config.accessory_fields if config else list(COMPATIBILITY_FIELDS))
+            for field, value in values.items():
+                if getattr(self, field) != value:
+                    setattr(self, field, value)
+                    if kwargs.get("update_fields") is not None:
+                        kwargs["update_fields"] = set(kwargs["update_fields"]) | {field}
 
         colors_pattern = _re.compile(
             r"\b(?:red|orange|yellow|green|blue|purple|pink|brown|black|white|silver|multi-color)\b",
@@ -757,20 +659,10 @@ class Product(models.Model):
 
         super().save(*args, **kwargs)
 
-        # Run compatibility auto-mapping
-        try:
-            from apps.catalog.compatibility_engine import run_compatibility_automapping
-            run_compatibility_automapping(self)
-        except Exception:
-            pass
-
-        # Run universal device-type mapping when applicable
-        if self.compatibility_mode == "universal_device_type" and self.compatible_device_types:
-            try:
-                from apps.catalog.compatibility_engine import run_universal_device_type_mapping
-                run_universal_device_type_mapping(self, actor_id=actor_id)
-            except Exception:
-                pass
+        from .compatibility_contract import sync_product_scope
+        sync_product_scope(self, universal_types, actor_id=actor_id)
+        from .compatibility_engine import run_compatibility_automapping
+        run_compatibility_automapping(self, actor_id=actor_id)
         
         # Log changes
         changes = []
@@ -807,7 +699,7 @@ class Product(models.Model):
                     f_name = field.name
                     if f_name in ["created_at", "updated_at"]:
                         continue
-                    old_val = getattr(old_self, f_name)
+                    old_val = getattr(_original, f_name)
                     new_val = getattr(self, f_name)
                     if old_val != new_val:
                         detailed_changes.append({
@@ -891,6 +783,22 @@ class Product(models.Model):
 
 # ─── Product Compatibility Assertion ──────────────────────────────────────────
 
+class ProductUniversalDeviceTypeScope(models.Model):
+    """Canonical Universal declaration; removed scopes are retired, not deleted."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="universal_type_scopes")
+    device_type = models.ForeignKey("devices.DeviceType", on_delete=models.PROTECT, related_name="universal_product_scopes")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.UUIDField(null=True, blank=True)
+    updated_by = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        db_table = "catalog_product_universal_type_scope"
+        unique_together = [("product", "device_type")]
+
+
 class ProductCompatibilityAssertion(models.Model):
     """
     Product Catalog owns compatibility assertions.
@@ -928,6 +836,7 @@ class ProductCompatibilityAssertion(models.Model):
     device_launch_date_at_mapping = models.DateField(null=True, blank=True)
     match_source = models.CharField(max_length=50, default="Auto-Mapped")
     match_reason = models.TextField(blank=True)
+    match_evidence = models.JSONField(default=dict, blank=True, help_text="Independent explicit, feature and Universal source evidence; history is audited.")
     match_status = models.CharField(max_length=50, default="Active")
     exclusion_source = models.CharField(max_length=50, blank=True, null=True)
     exclusion_reason = models.TextField(blank=True, null=True)
@@ -939,6 +848,17 @@ class ProductCompatibilityAssertion(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        if self.compatibility_basis not in ("feature_evidence", "universal_device_type", "review_required", "exclusion_only"):
+            from copy import deepcopy
+            evidence = deepcopy(self.match_evidence or {})
+            evidence["explicit"] = {
+                "active": bool(self.is_compatible or self.is_excluded or self.is_locked),
+                "basis": self.compatibility_basis,
+                "reason": self.match_reason or self.notes,
+            }
+            self.match_evidence = evidence
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"match_evidence"}
         super().save(*args, **kwargs)
         self.update_product_compatibility_status()
 
@@ -952,18 +872,9 @@ class ProductCompatibilityAssertion(models.Model):
             pass
 
     @classmethod
-    def update_product_status(cls, product):
-        from apps.devices.models import Device
-        from django.db.models import Q
-        from django.utils import timezone
-        now_date = timezone.now().date()
-        active_device_ids = Device.objects.filter(
-            device_type__status='active'
-        ).exclude(
-            lifecycle_status='retired'
-        ).filter(
-            Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
-        ).values_list('id', flat=True)
+    def update_product_status(cls, product, *, notify=True):
+        from .compatibility_contract import eligible_devices
+        active_device_ids = eligible_devices().values_list('id', flat=True)
         
         cnt = cls.objects.filter(
             product=product,
@@ -975,11 +886,11 @@ class ProductCompatibilityAssertion(models.Model):
         if product.compatibility_status != new_status:
             product.compatibility_status = new_status
             Product.objects.filter(id=product.id).update(compatibility_status=new_status)
-            try:
+            if notify:
                 from apps.catalog.services import trigger_catalog_recalculation_for_product
                 trigger_catalog_recalculation_for_product(product.id)
-            except Exception:
-                pass
+            return True
+        return False
 
     def update_product_compatibility_status(self):
         self.update_product_status(self.product)

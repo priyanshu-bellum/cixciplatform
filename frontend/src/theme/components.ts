@@ -123,6 +123,11 @@ export const components: Components<Theme> = {
             ? 'rgba(255,255,255,0.03)'
             : 'rgba(0,0,0,0.02)',
       }),
+      stickyHeader: ({ theme }) => ({
+        backgroundColor: theme.palette.background.paper,
+        color: theme.palette.text.primary,
+        zIndex: 2,
+      }),
     },
   },
   MuiTableSortLabel: {

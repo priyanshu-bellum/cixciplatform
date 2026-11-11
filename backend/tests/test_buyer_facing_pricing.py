@@ -89,7 +89,7 @@ class TestBuyerFacingPrices:
         resp = buyer_client.get("/api/v1/pricing/buyer-prices/")
 
         assert resp.status_code == 200
-        assert resp.data["count"] == 1
+        assert len(resp.data["results"]) == 1
         row = resp.data["results"][0]
         assert row["product_reference"] == str(product.id)
         assert row["product_name"] == "Product PRICE-001"
@@ -130,7 +130,7 @@ class TestBuyerFacingPrices:
         resp = buyer_client.get("/api/v1/pricing/buyer-prices/")
 
         assert resp.status_code == 200
-        assert resp.data["count"] == 0
+        assert resp.data["results"] == []
 
     def test_evidence_with_visibility_not_granted_is_hidden(
         self, buyer_client, buyer_user, buyer_company, vendor_company
@@ -143,7 +143,7 @@ class TestBuyerFacingPrices:
         resp = buyer_client.get("/api/v1/pricing/buyer-prices/")
 
         assert resp.status_code == 200
-        assert resp.data["count"] == 0
+        assert resp.data["results"] == []
 
     def test_evidence_marked_redacted_is_hidden(
         self, buyer_client, buyer_user, buyer_company, vendor_company
@@ -156,7 +156,7 @@ class TestBuyerFacingPrices:
         resp = buyer_client.get("/api/v1/pricing/buyer-prices/")
 
         assert resp.status_code == 200
-        assert resp.data["count"] == 0
+        assert resp.data["results"] == []
 
     def test_evidence_for_another_buyer_is_hidden(
         self, buyer_client, buyer_user, buyer_company, vendor_company
@@ -176,7 +176,7 @@ class TestBuyerFacingPrices:
         resp = buyer_client.get("/api/v1/pricing/buyer-prices/")
 
         assert resp.status_code == 200
-        assert resp.data["count"] == 0
+        assert resp.data["results"] == []
 
     def test_vendor_cannot_read_buyer_prices(
         self, vendor_client, vendor_company, buyer_company
@@ -200,7 +200,7 @@ class TestBuyerFacingPrices:
         resp = buyer_client.get("/api/v1/pricing/snapshots/")
 
         assert resp.status_code == 200
-        assert resp.data["count"] == 0
+        assert resp.data["results"] == []
 
     def test_buyer_sees_only_own_pricing_profiles(
         self, buyer_client, buyer_user, buyer_company, vendor_company

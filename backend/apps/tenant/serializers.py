@@ -40,6 +40,31 @@ class CompanySerializer(serializers.ModelSerializer):
 
     allow_personal_email_exception = serializers.BooleanField(default=False, write_only=True, required=False)
 
+    def validate_country_code(self, value):
+        from .country_regions import normalize_country_code
+        from django.core.exceptions import ValidationError
+        try:
+            return normalize_country_code(value, strict=True) or ""
+        except ValidationError as error:
+            raise serializers.ValidationError(error.message_dict["country_code"]) from error
+
+    def validate_approved_regions(self, value):
+        from .models import OperatingRegion
+        from .regional_visibility import effective_regional_fees
+        if not isinstance(value, list) or any(not isinstance(code, str) for code in value) or len(value) != len(set(value)):
+            raise serializers.ValidationError("Use a list of unique canonical region codes.")
+        previous = set(self.instance.approved_regions or []) if self.instance else set()
+        added = set(value) - previous
+        active_codes = set(OperatingRegion.objects.filter(code__in=added, is_active=True).values_list("code", flat=True))
+        if added != active_codes:
+            raise serializers.ValidationError("New coverage must use active canonical Operating Regions.")
+        if added:
+            if not self.instance or self.instance.company_type != "vendor":
+                raise serializers.ValidationError("Set up the Vendor first, then configure its regional fees and activate coverage.")
+            if any(effective_regional_fees([self.instance.id], code).count() != 1 for code in added):
+                raise serializers.ValidationError("Configuration Required: configure an effective regional fee before activating coverage.")
+        return value
+
     def to_internal_value(self, data):
         if hasattr(data, "copy"):
             data = data.copy()
@@ -163,15 +188,36 @@ class CompanySerializer(serializers.ModelSerializer):
 
 class CompanyEntitySerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.name", read_only=True)
+    operating_region_detail = serializers.SerializerMethodField()
+
+    def validate_country_code(self, value):
+        return CompanySerializer().validate_country_code(value)
+
+    def get_operating_region_detail(self, obj):
+        region = obj.operating_region
+        return {"id": str(region.id), "code": region.code, "name": region.name, "is_active": region.is_active} if region else None
+
+    def validate(self, attrs):
+        from .services import check_access
+        actor = self.context["request"].user
+        admin = check_access(actor, "tenant.entity.update").reason == "cixci_admin"
+        if not admin and "company" in attrs and attrs["company"].pk != getattr(getattr(actor, "company", None), "pk", None):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("An Entity must belong to your authorized company.")
+        if self.instance and "company" in attrs and attrs["company"].pk != self.instance.company_id:
+            raise serializers.ValidationError({"company": "Entity ownership cannot be reassigned."})
+        if "operating_region" in self.initial_data:
+            raise serializers.ValidationError({"operating_region": "Operating Region is derived from the entity's country. Update country_code through onboarding/company settings instead of assigning a separate region."})
+        return attrs
 
     class Meta:
         model = CompanyEntity
         fields = [
             "id", "company", "company_name", "name", "status",
-            "allowed_channels_override", "country_code", "region_code",
+            "allowed_channels_override", "country_code", "region_code", "operating_region", "operating_region_detail",
             "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at", "operating_region"]
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -268,6 +314,33 @@ class UserCreateSerializer(serializers.ModelSerializer):
 class CompanyRelationshipSerializer(serializers.ModelSerializer):
     buyer_company_name = serializers.CharField(source="buyer_company.name", read_only=True)
     vendor_company_name = serializers.CharField(source="vendor_company.name", read_only=True)
+
+    def validate(self, attrs):
+        from .services import check_access
+        actor = self.context["request"].user
+        admin = check_access(actor, "tenant.relationship.approve").reason == "cixci_admin"
+        buyer = attrs.get("buyer_company", self.instance.buyer_company if self.instance else None)
+        vendor = attrs.get("vendor_company", self.instance.vendor_company if self.instance else None)
+        if not buyer or buyer.company_type != "buyer" or not vendor or vendor.company_type != "vendor":
+            raise serializers.ValidationError("Select a Buyer company and a Vendor company.")
+        if self.instance and ((buyer.id != self.instance.buyer_company_id) or (vendor.id != self.instance.vendor_company_id)):
+            raise serializers.ValidationError("Relationship ownership is immutable.")
+        if not admin:
+            company = getattr(actor, "company", None)
+            if not company or company.id != buyer.id or self.instance:
+                raise serializers.ValidationError("Only your Buyer company can request its own relationship; CIXCI Admin reviews eligibility.")
+            if attrs.get("status", "pending") != "pending":
+                raise serializers.ValidationError({"status": "A Buyer request must await relationship approval."})
+            attrs["status"] = "pending"
+        for field in ("eligible_product_types", "eligible_regions"):
+            if field in attrs and (not isinstance(attrs[field], list) or any(not isinstance(value, str) for value in attrs[field])):
+                raise serializers.ValidationError({field: "Use a list of controlled values."})
+        if "eligible_regions" in attrs:
+            from .models import OperatingRegion
+            codes = set(attrs["eligible_regions"])
+            if codes != set(OperatingRegion.objects.filter(code__in=codes, is_active=True).values_list("code", flat=True)):
+                raise serializers.ValidationError({"eligible_regions": "Select active canonical Operating Regions."})
+        return attrs
 
     class Meta:
         model = CompanyRelationship

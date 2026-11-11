@@ -10,7 +10,7 @@ from apps.catalog.models import ProductCompatibilityAssertion
 
 @pytest.fixture
 def device_setup(buyer_user):
-    dt, _ = DeviceType.objects.get_or_create(name="Smartphone", code="smartphone", defaults={"status": "active"})
+    dt, _ = DeviceType.objects.get_or_create(name="Phone", code="phone", defaults={"status": "active"})
     if dt.status != "active":
         dt.status = "active"
         dt.save()
@@ -40,6 +40,13 @@ def product_factory(db, device_setup):
             is_compatible=True,
             is_excluded=False
         )
+        from apps.media.models import MediaAsset
+        asset = MediaAsset.objects.create(asset_type="image", status="ready", review_status="approved",
+            has_transparency=True, file_extension="png", mime_type="image/png", owner_module="catalog",
+            owner_record_id=p.id, company_scope_reference=company_id, original_filename=f"{sku}.png",
+            storage_key=f"test/{sku}.png", file_size_bytes=1, content_hash=uuid.uuid4().hex)
+        Product.objects.filter(pk=p.pk).update(primary_image_reference=asset.id)
+        p.refresh_from_db()
         return p
     return _create
 

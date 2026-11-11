@@ -531,7 +531,8 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
-                  fullWidth size="small" label="Country Code *" placeholder="USA" required
+                  fullWidth size="small" label="Country Code *" placeholder="US or USA" required
+                  helperText={companyType === 'buyer' ? 'Sets the operating country for this new Buyer and its default entity.' : undefined}
                   value={country} onChange={e => {
                     setCountry(e.target.value)
                     if (sameAsCompanyAddress) setReturnCountry(e.target.value)

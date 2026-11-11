@@ -40,6 +40,22 @@ def update_product_statuses_by_date():
 
 @shared_task
 def process_buyer_export_job(job_id):
+    """Serialize execution and never rewrite a completed historical export."""
+    from django.db import transaction
+    from .models import BuyerProductExportJob
+    try:
+        with transaction.atomic():
+            job = BuyerProductExportJob.objects.select_for_update().filter(pk=job_id).first()
+            if job is None or job.status in ("completed", "cancelled", "canceled"):
+                return
+            _process_buyer_export_job(job_id)
+    except Exception as error:
+        BuyerProductExportJob.objects.filter(pk=job_id).exclude(status="completed").update(
+            status="failed", failure_details=str(error), completed_at=timezone.now())
+        raise
+
+
+def _process_buyer_export_job(job_id):
     """
     Background Celery task to process and format buyer product exports.
     Saves the output to MEDIA_ROOT and creates a MediaAsset record.
@@ -84,8 +100,42 @@ def process_buyer_export_job(job_id):
             if snapshot:
                 BuyerProductExportSelectionSnapshot.objects.filter(id=snapshot.id).update(product_ids=product_ids)
 
-        # Fetch products
-        products = Product.objects.filter(id__in=product_ids)
+        # Revalidate current scope and existing catalog policies at execution.
+        from django.contrib.auth import get_user_model
+        from django.core.exceptions import ValidationError
+        from .services import ensure_buyer_compatibility_projection
+        from .compatibility_contract import entity_portfolio_device_ids
+        from .models import ProductCompatibilityAssertion
+        actor = get_user_model().objects.select_related("entity__company").filter(pk=job.buyer_reference, is_active=True).first()
+        if (not actor or not actor.entity or actor.entity.company.company_type != "buyer"
+                or actor.entity_id != job.buyer_entity_reference
+                or actor.entity.company_id != job.company_scope_reference):
+            raise ValidationError("The export's buyer entity is no longer authorized.")
+        from apps.tenant.services import check_access
+        if not check_access(actor, "catalog.product.read", company_id=job.company_scope_reference).granted:
+            raise ValidationError("The buyer no longer has authorized catalog access.")
+        projection = ensure_buyer_compatibility_projection(actor, trigger="export_revalidation", force=True)
+        allowed_products = set(projection.compatible_product_ids if projection else [])
+        if snapshot is None or not snapshot.product_ids:
+            product_ids = list(allowed_products)
+        portfolio = entity_portfolio_device_ids(job.company_scope_reference, job.buyer_entity_reference)
+        if job.device_reference:
+            if job.device_reference not in portfolio:
+                raise ValidationError("The selected device is outside the current eligible Buyer Entity portfolio.")
+            portfolio = {job.device_reference}
+        matches = ProductCompatibilityAssertion.objects.filter(
+            product_id__in=product_ids, device_reference__in=portfolio,
+            is_compatible=True, is_excluded=False,
+        )
+        matched_ids = set(str(value) for value in matches.values_list("product_id", flat=True))
+        products = Product.objects.filter(id__in=[value for value in product_ids if str(value) in allowed_products & matched_ids])
+        product_ids = [str(value) for value in products.values_list("id", flat=True)]
+        from apps.devices.models import Device
+        names = {str(device.id): str(device) for device in Device.objects.filter(id__in=portfolio)}
+        device_names = {}
+        for product_id, device_id in matches.values_list("product_id", "device_reference"):
+            if str(device_id) in names:
+                device_names.setdefault(str(product_id), set()).add(names[str(device_id)])
 
         # ── Media readiness gate (Rule §25) ──
         # Buyer exports may include ONLY products whose primary image is a
@@ -132,7 +182,8 @@ def process_buyer_export_job(job_id):
                 "primary_image_url": image_url or "",
                 "product_name": p.name,
                 "sku": p.sku,
-                "upc": p.upc or ""
+                "upc": p.upc or "",
+                "device_compatibility": sorted(device_names.get(str(p.id), set())),
             })
 
         if snapshot:
@@ -190,11 +241,9 @@ def process_buyer_export_job(job_id):
                 "exported_date": timezone.now().isoformat(),
                 "msrp": str(p.msrp) if p.msrp is not None else "",
                 "buyer_wholesale_price": str(p.buyer_wholesale_price) if p.buyer_wholesale_price is not None else "",
-                "vendor_wholesale_price_amount": str(getattr(p, "vendor_wholesale_price_amount", "")) if getattr(p, "vendor_wholesale_price_amount", None) is not None else "",
-                "vendor_wholesale_price_currency": getattr(p, "vendor_wholesale_price_currency", "") or "",
                 "vendor_color": p.color or "",
                 "system_color": p.system_color or "",
-                "device_compatibility": p.compatibility_status or "",
+                "device_compatibility": "; ".join(sorted(device_names.get(str(p.id), set()))),
                 "product_description": p.description or "",
                 "image_urls": image_url,
                 "brand_warranty": p.warranty or "",
@@ -217,7 +266,6 @@ def process_buyer_export_job(job_id):
                 "short_description": p.short_description or "",
                 "promotional_information": p.promo_information or "",
                 "map_price": str(p.map_price) if p.map_price is not None else "",
-                "universal_device_types": ", ".join(p.compatible_device_types or []) if getattr(p, "compatible_device_types", None) else "",
             }
 
         # Format output
@@ -228,8 +276,7 @@ def process_buyer_export_job(job_id):
         export_headers = [
             "vendor", "vendor_name", "product_name", "product_type", "product_category", "sku", "upc",
             "product_status", "selling_status", "launch_date", "release_date", "exported_date", "msrp", "buyer_wholesale_price",
-            "vendor_wholesale_price_amount", "vendor_wholesale_price_currency",
-            "vendor_color", "system_color", "device_compatibility", "universal_device_types",
+            "vendor_color", "system_color", "device_compatibility",
             "product_description", "image_urls", "brand_warranty", "inventory_level", "inventory_threshold",
             "length", "width", "height", "weight",
             "meta_title", "meta_description",

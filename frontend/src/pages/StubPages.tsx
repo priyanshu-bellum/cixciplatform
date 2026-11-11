@@ -1934,7 +1934,7 @@ export function SettingsPage() {
 
               <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
                 <Box sx={{ flex: 1 }}>
-                  <TextField size="small" fullWidth label="Country Code" value={companyCountry} onChange={e => {
+                  <TextField size="small" fullWidth label="Country Code" value={companyCountry} helperText={companyType === 'buyer' ? 'Sets the operating country for this new Buyer and its default entity.' : undefined} onChange={e => {
                     setCompanyCountry(e.target.value)
                     if (companySameAsCompanyAddress) setCompanyReturnCountry(e.target.value)
                   }} />
@@ -2174,7 +2174,7 @@ export function SettingsPage() {
                   <MenuItem value="suspended">Suspended</MenuItem>
                 </Select>
               </FormControl>
-              <TextField label="Country Code" size="small" fullWidth value={entityCountry} onChange={e => setEntityCountry(e.target.value)} />
+              <TextField label="Country Code" size="small" fullWidth value={entityCountry} helperText="This entity's country determines its operating region automatically." onChange={e => setEntityCountry(e.target.value)} />
               <TextField label="Region Code" size="small" fullWidth placeholder="e.g. CA" value={entityRegion} onChange={e => setEntityRegion(e.target.value)} />
             </Box>
             <Box>

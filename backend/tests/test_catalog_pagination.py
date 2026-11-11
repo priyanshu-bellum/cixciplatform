@@ -269,7 +269,7 @@ class TestCatalogProjectionScope:
             vendor_company_reference=uuid.uuid4(),
         )
         dt, _ = DeviceType.objects.get_or_create(
-            name="Smartphone", code="smartphone", defaults={"status": "active"}
+            name="Phone", code="phone", defaults={"status": "active"}
         )
         mfr, _ = Manufacturer.objects.get_or_create(name="TestMfr")
         device, _ = Device.objects.get_or_create(name="TestDevice", device_type=dt, manufacturer=mfr)
@@ -318,10 +318,10 @@ class TestCatalogProjectionScope:
         assert scoped.status_code == 200
         assert {p["sku"] for p in scoped.data} == {"PROJ-001"}
 
-    def test_projection_scope_is_empty_without_a_projection(self, buyer_client, buyer_user):
+    def test_projection_scope_self_heals_without_a_projection(self, buyer_client, buyer_user):
         from apps.catalog.models import BuyerScopedCompatibilityProjection
 
-        self._buyer_visible_product(buyer_user, "PROJ-003")
+        product = self._buyer_visible_product(buyer_user, "PROJ-003")
         # A portfolio change auto-creates a projection — remove it to model a
         # buyer that has no projection yet.
         BuyerScopedCompatibilityProjection.objects.all().delete()
@@ -331,7 +331,7 @@ class TestCatalogProjectionScope:
         )
 
         assert resp.status_code == 200
-        assert resp.data == []
+        assert [row["id"] for row in resp.data] == [str(product.id)]
 
     def test_matching_ids_respects_projection_scope(self, buyer_client, buyer_user):
         p1 = self._buyer_visible_product(buyer_user, "PROJ-004")

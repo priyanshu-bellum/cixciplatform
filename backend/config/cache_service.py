@@ -168,10 +168,15 @@ class DropdownCache:
 class CategoryMappingCache:
     PREFIX = "vcm:"
 
+    def _key(self, vendor_company_id, vendor_category):
+        import hashlib
+        value = hashlib.sha256(vendor_category.strip().casefold().encode("utf-8")).hexdigest()
+        return f"{self.PREFIX}{vendor_company_id}:{value}"
+
     def get(self, vendor_company_id, vendor_category):
         if not vendor_company_id or not vendor_category:
             return None
-        key = f"{self.PREFIX}{vendor_company_id}:{vendor_category.strip().lower()}"
+        key = self._key(vendor_company_id, vendor_category)
         result = _safe_get(key)
         if result is not None:
             return result if result != "__NONE__" else None
@@ -194,10 +199,10 @@ class CategoryMappingCache:
 
     def invalidate(self, vendor_company_id, vendor_category=None):
         if vendor_category:
-            _safe_delete(f"{self.PREFIX}{vendor_company_id}:{vendor_category.strip().lower()}")
+            _safe_delete(self._key(vendor_company_id, vendor_category))
 
     def refresh_from_instance(self, mapping):
-        key = f"{self.PREFIX}{mapping.vendor_company_reference}:{mapping.vendor_category.strip().lower()}"
+        key = self._key(mapping.vendor_company_reference, mapping.vendor_category)
         if mapping.status == "active":
             data = {
                 "id": str(mapping.id),

@@ -25,6 +25,9 @@ import { useSnackbar } from '../../../components/feedback/SnackbarProvider'
 import { useConfirmDialog } from '../../../hooks/useConfirmDialog'
 import ConfirmDialog from '../../../components/feedback/ConfirmDialog'
 import ExcludeDeviceDialog from './ExcludeDeviceDialog'
+import TextField from '@mui/material/TextField'
+import MenuItem from '@mui/material/MenuItem'
+import { useCompatibilityOptions, apiError } from '../../../hooks/useCompatibilityOptions'
 
 interface ManageProductDialogProps {
   open: boolean
@@ -36,6 +39,8 @@ interface ManageProductDialogProps {
   devices: any[]
   activeCompatibilities: any[]
   refetchCompatibilities: () => void
+  compatibilityLoading?: boolean
+  compatibilityError?: boolean
 }
 
 type TabKey = 'details' | 'compatibility' | 'bulk' | 'audit'
@@ -50,6 +55,8 @@ export default function ManageProductDialog({
   devices,
   activeCompatibilities,
   refetchCompatibilities,
+  compatibilityLoading,
+  compatibilityError,
 }: ManageProductDialogProps) {
   const { showSnackbar } = useSnackbar()
   const { dialogProps, confirm } = useConfirmDialog()
@@ -68,6 +75,9 @@ export default function ManageProductDialog({
   // Bulk tab
   const [bulkUpdateType, setBulkUpdateType] = useState<'add' | 'replace' | 'remove'>('add')
   const [bulkSelectedDevices, setBulkSelectedDevices] = useState<string[]>([])
+  const [bulkReason, setBulkReason] = useState('')
+  const [bulkNotes, setBulkNotes] = useState('')
+  const { data: compatibilityOptions } = useCompatibilityOptions()
   const [isRecalculating, setIsRecalculating] = useState(false)
 
   // Audit tab
@@ -249,14 +259,19 @@ export default function ManageProductDialog({
       showSnackbar('Please select at least one device.', 'warning')
       return
     }
-    if (bulkUpdateType !== 'add' && product.status === 'active' && !isCixciAdmin) {
-      showSnackbar('Replacing or removing device compatibility assertions on active products requires CIXCI Admin approval.', 'warning')
+    if (bulkUpdateType === 'replace' && product.status === 'active' && !isCixciAdmin) {
+      showSnackbar('Replacing mappings on an active product requires CIXCI Admin approval.', 'warning')
+      return
+    }
+    if (bulkUpdateType === 'remove' && (!bulkReason || (bulkReason === 'other' && !bulkNotes.trim()))) {
+      showSnackbar('Select an exclusion reason. Other requires descriptive notes.', 'warning')
       return
     }
     try {
       const assertions = bulkSelectedDevices.map(dId => ({
         device_id: dId,
         is_compatible: true,
+        ...(bulkUpdateType === 'remove' ? { exclusion_reason: bulkReason, notes: bulkNotes } : {}),
       }))
       await api.post(`/catalog/products/${product.id}/compatibility/`, {
         compatibility_update_type: bulkUpdateType,
@@ -266,7 +281,7 @@ export default function ManageProductDialog({
       showSnackbar('Bulk compatibility update completed successfully.', 'success')
       setBulkSelectedDevices([])
     } catch (err: any) {
-      showSnackbar('Failed to perform bulk update: ' + (err.response?.data?.error || err.message), 'error')
+      showSnackbar(apiError(err), 'error')
     }
   }
 
@@ -723,7 +738,7 @@ export default function ManageProductDialog({
                       )}
                     </Box>
 
-                    {Array.isArray(product.compatible_device_types) && product.compatible_device_types.length > 0 && (
+                    {product.compatibility_mode === 'universal_device_type' && Array.isArray(product.compatible_device_types) && product.compatible_device_types.length > 0 && (
                       <Box sx={{ mt: 2, pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
                         <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.75 }}>
                           Universal Device Types
@@ -854,16 +869,16 @@ export default function ManageProductDialog({
             {activeTab === 'compatibility' && (
               <Box sx={{ maxHeight: 400, overflowY: 'auto', pr: 0.5 }}>
                 {/* Universal Product Mapping Banner */}
-                {Array.isArray(product.compatible_device_types) && product.compatible_device_types.length > 0 && (
+                {product.compatibility_mode === 'universal_device_type' && Array.isArray(product.compatible_device_types) && product.compatible_device_types.length > 0 && (
                   <Alert severity="info" sx={{ mb: 1, fontSize: 12, py: 0.25 }}>
                     <strong>Universal Product Mapping Active:</strong> This product universally supports all{' '}
                     <strong>{product.compatible_device_types.join(' & ')}</strong>{' '}
-                    devices. All current models and any newly launched models added to CIXCI are mapped automatically.
+                    devices within the configured category and device eligibility rules. Exclusions remain effective.
                   </Alert>
                 )}
 
                 {/* Quick-add device dropdown */}
-                {!isCixciAdmin && !isBuyer && (
+                {!isCixciAdmin && !isBuyer && product.compatibility_mode !== 'universal_device_type' && !compatibilityLoading && !compatibilityError && (
                   <Box sx={{ display: 'flex', gap: 1, mb: 1, bgcolor: 'background.paper', p: 1.25, borderRadius: 2, border: 1, borderColor: 'divider' }}>
                     <Box
                       component="select"
@@ -887,9 +902,11 @@ export default function ManageProductDialog({
                 )}
 
                 {/* Compatibility List */}
+                {compatibilityLoading && <Alert severity="info">Loading current mappings…</Alert>}
+                {compatibilityError && <Alert severity="error" action={<Button onClick={refetchCompatibilities}>Retry</Button>}>Current mappings could not be loaded.</Alert>}
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
                   {(() => {
-                    const compatList = (activeCompatibilities && activeCompatibilities.length > 0)
+                    const compatList = !isBuyer
                       ? activeCompatibilities
                       : (product.device_compatibility || []).map((dc: any) => ({
                           id: dc.device_id || dc.id || Math.random().toString(),
@@ -909,7 +926,7 @@ export default function ManageProductDialog({
 
                     return compatList.map((c: any) => {
                       const dev = devices.find((d: any) => d.id === c.device_reference)
-                      const deviceName = c.name || (dev ? `${dev.manufacturer_name} ${dev.name}` : (c.device_reference ? c.device_reference.slice(0, 8) : 'Device'))
+                      const deviceName = c.device_name || c.name || (dev ? `${dev.manufacturer_name} ${dev.name}` : 'Device record unavailable')
 
                       return (
                         <Box
@@ -932,7 +949,7 @@ export default function ManageProductDialog({
                               {c.is_excluded ? (
                                 <Chip label="Excluded" size="small" color="error" sx={{ fontSize: 10, height: 20 }} />
                               ) : (
-                                <Chip label="Active" size="small" color="success" sx={{ fontSize: 10, height: 20 }} />
+                                <Chip label={c.is_compatible === false ? (c.match_status || 'Not currently compatible') : 'Compatible'} size="small" color={c.is_compatible === false ? 'default' : 'success'} sx={{ fontSize: 10, height: 20 }} />
                               )}
                               {c.exclusion_type && c.is_excluded && (
                                 <Chip label={c.exclusion_type} size="small" variant="outlined" sx={{ fontSize: 10, height: 20 }} />
@@ -1021,7 +1038,7 @@ export default function ManageProductDialog({
                 </Typography>
                 {product.status === 'active' && !isCixciAdmin && (
                   <Alert severity="warning" sx={{ fontSize: 12, py: 0.5 }}>
-                    Replacing or removing compatibility assertions on active products requires CIXCI Admin privileges.
+                    Replacing mappings on active products requires CIXCI Admin approval. Remove records a reasoned exclusion.
                   </Alert>
                 )}
 
@@ -1040,7 +1057,7 @@ export default function ManageProductDialog({
                           size="small"
                           variant={bulkUpdateType === type.id ? 'contained' : 'outlined'}
                           onClick={() => setBulkUpdateType(type.id)}
-                          disabled={product.status === 'active' && !isCixciAdmin && type.id !== 'add'}
+                          disabled={(product.status === 'active' && !isCixciAdmin && type.id === 'replace') || (product.compatibility_mode === 'universal_device_type' && type.id !== 'remove')}
                           sx={{ fontSize: 12, textTransform: 'none' }}
                         >
                           {type.label}
@@ -1049,6 +1066,13 @@ export default function ManageProductDialog({
                     </Box>
                   </Box>
                 </Box>
+
+                {bulkUpdateType === 'remove' && <>
+                  <TextField select size="small" label="Exclusion Reason" value={bulkReason} onChange={event => setBulkReason(event.target.value)}>
+                    {(compatibilityOptions?.exclusion_reasons || []).map((reason: string) => <MenuItem key={reason} value={reason}>{reason.replace(/_/g, ' ')}</MenuItem>)}
+                  </TextField>
+                  <TextField size="small" label="Exclusion Notes" required={bulkReason === 'other'} multiline value={bulkNotes} onChange={event => setBulkNotes(event.target.value)} />
+                </>}
 
                 {/* Device selection */}
                 <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 1.25, bgcolor: 'background.paper' }}>

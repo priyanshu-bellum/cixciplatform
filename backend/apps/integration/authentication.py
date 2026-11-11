@@ -27,52 +27,37 @@ class CompanyAPIKeyAuthentication(BaseAuthentication):
         except CompanyAPIKey.DoesNotExist:
             raise AuthenticationFailed("Invalid or inactive API Key")
 
-        # Update last used timestamp
+        # The credential belongs to the company, never to an individual user.
+        # Request context selects an authorized entity without relinking users.
+        from uuid import UUID
+        from django.db.models import Exists, OuterRef, Q
+        from apps.tenant.models import Company, CompanyUserMembership
         from django.utils import timezone
-        api_key.last_used_at = timezone.now()
-        api_key.save(update_fields=["last_used_at"])
-
-        # Resolve a user for this company: prefer admin with valid entity,
-        # then any member with valid entity, then entity-based lookup.
-        # If the best candidate has no entity, auto-link them.
-        from apps.tenant.models import CompanyUserMembership, CompanyEntity
         company_id = api_key.company_scope_reference
-
-        user = None
-        for qs in [
-            CompanyUserMembership.objects.filter(
-                company_id=company_id, is_company_admin=True, user__is_active=True,
-                user__entity__company_id=company_id,
-            ),
-            CompanyUserMembership.objects.filter(
-                company_id=company_id, user__is_active=True,
-                user__entity__company_id=company_id,
-            ),
-            CompanyUserMembership.objects.filter(
-                company_id=company_id, is_company_admin=True, user__is_active=True,
-            ),
-            CompanyUserMembership.objects.filter(
-                company_id=company_id, user__is_active=True,
-            ),
-        ]:
-            m = qs.select_related("user").first()
-            if m:
-                user = m.user
-                break
-
-        if not user:
-            user = User.objects.filter(entity__company_id=company_id, is_active=True).first()
-
-        if not user:
-            raise AuthenticationFailed("No active user found for the company entity associated with this API key")
-
-        # Auto-fix: if resolved user has no entity, link them to the company's entity
-        if not user.entity_id:
-            entity = CompanyEntity.objects.filter(company_id=company_id, status="active").first()
-            if entity:
-                user.entity_id = entity.id
-                user.save(update_fields=["entity_id"])
-
+        company = Company.objects.filter(pk=company_id, status="active").first()
+        if company is None or company.company_type == "cixci_internal":
+            raise AuthenticationFailed("The API key company is not an active external company.")
+        memberships = CompanyUserMembership.objects.filter(company_id=company_id, user_id=OuterRef("pk"))
+        candidates = User.objects.filter(entity__company_id=company_id, entity__status="active", is_active=True, is_cixci_admin=False).select_related("entity__company").annotate(
+            _key_membership=Exists(memberships.filter(status="active")),
+            _key_has_membership=Exists(memberships),
+            _key_company_admin=Exists(memberships.filter(status="active", is_company_admin=True)),
+        ).filter(Q(_key_membership=True) | Q(_key_has_membership=False))
+        selected_entity = request.headers.get("X-CIXCI-Entity")
+        if selected_entity:
+            try:
+                entity_id = UUID(str(selected_entity))
+            except (ValueError, TypeError):
+                raise AuthenticationFailed("X-CIXCI-Entity must contain a canonical Entity UUID.") from None
+        else:
+            entities = list(candidates.order_by().values_list("entity_id", flat=True).distinct()[:2])
+            if len(entities) != 1:
+                raise AuthenticationFailed("Select an authorized entity using X-CIXCI-Entity for this company API key.")
+            entity_id = entities[0]
+        user = candidates.filter(entity_id=entity_id).order_by("-_key_company_admin", "id").first()
+        if user is None:
+            raise AuthenticationFailed("The selected entity has no active authorized user in the API key company.")
+        CompanyAPIKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())
         return (user, api_key)
 
     def authenticate_header(self, request):

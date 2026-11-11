@@ -1,601 +1,282 @@
-import re
+"""Canonical compatibility reconciliation shared by forward/reverse triggers."""
+from copy import deepcopy
+import json
+import uuid
+
+from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
+
 from apps.devices.models import Device
-from apps.catalog.models import ProductCompatibilityAssertion, Product, ProductStatus
+from .models import DynamicDropdownConfig, Product, ProductCompatibilityAssertion
+from .compatibility_contract import (
+    CURRENT_DEVICE_TYPE_CODES, FIELD_OPERATIONS, canonical_field, category_mode,
+    capacity_in_gb, configured_type_ids, eligible_devices, normalized_rules,
+    product_universal_types,
+)
+from .compatibility_values import NEGATIVE, normalized_value, normalized_wireless, value_catalog
+
+DERIVED_BASES = {"feature_evidence", "universal_device_type"}
+
 
 def parse_storage(storage_str):
-    if not storage_str:
-        return 0
-    s = storage_str.strip().upper()
-    # Extract number and unit (GB, TB, MB)
-    m = re.match(r'^([\d\.]+)\s*(GB|TB|MB)?$', s)
-    if not m:
-        return 0
-    val = float(m.group(1))
-    unit = m.group(2)
-    if unit == 'TB':
-        return val * 1024
-    if unit == 'MB':
-        return val / 1024
-    # Assume GB by default
-    return val
+    value = capacity_in_gb(storage_str)
+    return float(value) if value is not None else 0
 
-def check_compatibility(product, device):
-    """
-    Evaluates whether a product is compatible with a device based on category rules.
-    """
-    from apps.catalog.models import DynamicDropdownConfig
-    category = product.product_category
-    if not category:
-        return False
-        
-    cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=category).first()
-    if not cat_cfg or cat_cfg.status != 'active':
-        return False
-        
-    if not device.device_type or device.device_type.status != 'active':
-        return False
-        
-    # Check matching matrix check
-    eligible_codes = [c.lower() for c in (cat_cfg.eligible_device_types or [])]
-    d_type_code = device.device_type.code.lower() if device.device_type.code else ""
-    if d_type_code not in eligible_codes:
-        return False
 
-    # Specific Hardware Exclusions:
-    # Laptop charging-only devices should not match headphones unless bluetooth is explicitly supported by both.
-    if device.device_type.name.strip().lower() == "laptop" and category.strip().lower() == "headphones":
-        p_bt = getattr(product, "bluetooth_compatibility", "No") or "No"
-        d_bt = getattr(device, "bluetooth_compatibility", "No") or "No"
-        if not (p_bt == "Yes" and d_bt == "Yes"):
+def _field_matches(field, product, device, catalog):
+    rule = normalized_rules(device.device_type.compatibility_rules or {}).get(field, {})
+    if rule.get("mode") == "hidden":
+        return False
+    if rule.get("mode") == "conditional":
+        parent = canonical_field(rule.get("condition_field"))
+        key = "maximum_supported_storage" if parent == "memory_capacity" else parent
+        if str(getattr(device, key or "", "")).casefold() not in {str(value).casefold() for value in rule.get("condition_values", [])}:
             return False
-
-    # Key mappings from backend keys/rule keys to product/accessory fields
-    KEY_TO_PRODUCT_FIELD = {
-        "charging_interface": "compatible_charging_interface",
-        "compatible_charging_interface": "compatible_charging_interface",
-        "storage_expansion_type": "storage_expansion_compatibility",
-        "storage_expansion_compatibility": "storage_expansion_compatibility",
-        "max_supported_storage": "memory_capacity",
-        "maximum_supported_storage": "memory_capacity",
-        "memory_capacity": "memory_capacity",
-        "headphone_jack_type": "headphone_jack_compatibility",
-        "headphone_jack_compatibility": "headphone_jack_compatibility",
-        "bluetooth_supported": "bluetooth_compatibility",
-        "bluetooth_compatibility": "bluetooth_compatibility",
-        "wireless_charging_type": "wireless_charging_compatibility",
-        "wireless_charging_compatibility": "wireless_charging_compatibility",
-        "watch_case_size": "compatible_watch_case_size",
-        "compatible_watch_case_size": "compatible_watch_case_size"
-    }
-
-    # Check matching rules dynamically
-    def check_field_compatibility(field, p_val, device):
-        if not p_val or p_val == "Not Compatible":
+    raw = getattr(product, field, "")
+    device_field = "maximum_supported_storage" if field == "memory_capacity" else field
+    other = getattr(device, device_field, "")
+    if field == "wireless_charging_compatibility":
+        if device.device_type.code == "tablet":
             return False
-            
-        if field in ["bluetooth_compatibility", "bluetooth_supported"]:
-            p_bt = "Yes" if str(p_val).strip().lower() == "yes" else "No"
-            d_bt = "Yes" if str(device.bluetooth_compatibility).strip().lower() == "yes" else "No"
-            return p_bt == "Yes" and d_bt == "Yes"
-            
-        elif field in ["headphone_jack_compatibility", "headphone_jack_type"]:
-            p_val_clean = str(p_val).strip()
-            return device.headphone_jack_compatibility == p_val_clean or device.compatible_charging_interface == p_val_clean
-            
-        elif field in ["compatible_charging_interface", "charging_interface"]:
-            return device.compatible_charging_interface == str(p_val).strip()
-            
-        elif field in ["wireless_charging_compatibility", "wireless_charging_type"]:
-            import re
-            p_wire = [w.strip().lower() for w in re.split(r'[\+,;]', str(p_val)) if w.strip() and w.strip().lower() != 'not compatible']
-            d_wire = [w.strip().lower() for w in re.split(r'[\+,;]', str(device.wireless_charging_compatibility or "")) if w.strip() and w.strip().lower() != 'not compatible']
-            if p_wire and d_wire:
-                return any(w in d_wire for w in p_wire)
+        left = set(normalized_wireless(raw, catalog).split("+")) - {"", NEGATIVE}
+        right = set(normalized_wireless(other, catalog).split("+")) - {"", NEGATIVE}
+        return bool(left & right)
+    left, right = normalized_value(field, raw, catalog), normalized_value(field, other, catalog)
+    if left in ("", NEGATIVE, "No") or right in ("", NEGATIVE, "No"):
+        return False
+    if field == "memory_capacity":
+        required, maximum = capacity_in_gb(left), capacity_in_gb(right)
+        return required is not None and maximum is not None and required <= maximum
+    if field == "bluetooth_compatibility":
+        return left == right == "Yes"
+    # In particular, Headphone Jack never falls back to Charging Interface.
+    return left == right
+
+
+def check_compatibility(product, device, *, config=None, catalog=None, evidence=None):
+    """Feature matching only: entry requirements do not imply comparisons."""
+    config = config or DynamicDropdownConfig.objects.filter(field_name="product_category", value=product.product_category).first()
+    if not config or config.status != "active" or not device.device_type_id:
+        return False
+    kind = device.device_type
+    if kind.code not in CURRENT_DEVICE_TYPE_CODES or kind.status != "active" or not kind.is_active or not kind.auto_mapping_eligible:
+        return False
+    if str(kind.id) not in configured_type_ids(config):
+        return False
+    if category_mode(config.compatibility_mode) not in ("feature_based", "hybrid"):
+        return False
+    if product.compatibility_mode != "direct_device":
+        return False
+    catalog = catalog or value_catalog()
+    try:
+        rules = normalized_rules(config.compatibility_rules or {})
+        fields = list(dict.fromkeys(canonical_field(field) for field in config.accessory_fields or []))
+        # Writes enforce complete data-entry requirements. Matching reads only
+        # assigned comparisons; unrelated informational/retired values cannot
+        # supply evidence or disable another valid connection method.
+        # Memory cannot qualify from capacity alone or an OR of type/capacity.
+        if "memory_capacity" in fields and rules.get("memory_capacity", {}).get("comparison") != "informational" and rules.get("memory_capacity", {}).get("mode") != "hidden" and (
+            "storage_expansion_compatibility" not in fields
+            or config.match_logic not in ("AND", "match_all")
+        ):
             return False
-            
-        elif field in ["storage_expansion_compatibility", "storage_expansion_type"]:
-            return device.storage_expansion_compatibility == str(p_val).strip()
-            
-        elif field in ["memory_capacity", "max_supported_storage", "maximum_supported_storage"]:
-            p_cap = parse_storage(p_val)
-            d_max = parse_storage(device.maximum_supported_storage)
-            if p_cap == 0 or d_max == 0:
+        matches, matched_fields = [], []
+        for field in fields:
+            if field not in FIELD_OPERATIONS:
                 return False
-            return p_cap <= d_max
-            
-        elif field in ["compatible_watch_case_size", "watch_case_size"]:
-            p_size = str(p_val).strip().lower()
-            d_size = str(device.compatible_watch_case_size).strip().lower()
-            if p_size == "not compatible" or d_size == "not compatible":
+            rule = rules.get(field)
+            if not isinstance(rule, dict) or rule.get("mode") == "hidden":
+                continue
+            operation = rule.get("comparison", FIELD_OPERATIONS[field])
+            if operation == "informational":
+                continue
+            if operation != FIELD_OPERATIONS[field]:
                 return False
-            return p_size == d_size
-            
+            if rule.get("mode") == "conditional":
+                parent = canonical_field(rule.get("condition_field"))
+                value = str(getattr(product, parent or "", "") or "").casefold()
+                if value not in {str(item).casefold() for item in rule.get("condition_values", [])}:
+                    continue
+            try:
+                matched = _field_matches(field, product, device, catalog)
+            except ValidationError:
+                matched = False
+            matches.append(matched)
+            if matched:
+                matched_fields.append(field)
+    except (ValidationError, TypeError, ValueError):
         return False
-
-    fields_to_check = cat_cfg.accessory_fields or []
-    if not fields_to_check:
-        return False
-
-    matches = []
-    for f in fields_to_check:
-        prod_field = KEY_TO_PRODUCT_FIELD.get(f, f)
-        p_val = getattr(product, prod_field, None)
-        
-        # Only check active/enabled rules or non-empty/non-hidden fields
-        rule = cat_cfg.compatibility_rules.get(f) or cat_cfg.compatibility_rules.get(prod_field) if cat_cfg.compatibility_rules else None
-        mode = rule.get("mode", "optional") if rule else "optional"
-        if mode == "hidden":
-            continue
-        matches.append(check_field_compatibility(f, p_val, device))
-
     if not matches:
         return False
+    result = all(matches) if config.match_logic in ("AND", "match_all") else any(matches) if config.match_logic in ("OR", "match_any") else False
+    if result and evidence is not None:
+        evidence.update(comparisons=matched_fields, match_logic=config.match_logic)
+    return result
 
-    if cat_cfg.match_logic == "AND":
-        return all(matches)
-    else:
-        return any(matches)
 
-def log_compatibility_change(assertion, previous_status, new_status, actor_id=None, change_source="Auto-Mapping", exclusion_reason=None, exclusion_source=None):
+def log_compatibility_change(assertion, previous_status, new_status, actor_id=None,
+                             change_source="Auto-Mapping", exclusion_reason=None,
+                             exclusion_source=None, previous_evidence=None, device=None):
+    """Append to the existing audit spine; a failed audit must not look successful."""
     from apps.audit.models import AuditRecord
-    from apps.devices.models import Device
-    from django.utils import timezone
-    import json
-    
-    # Retrieve device
-    try:
-        device = Device.objects.get(id=assertion.device_reference)
-        device_name = device.name
-        device_type_name = device.device_type.name if device.device_type else "Unknown"
-        device_status = device.lifecycle_status
-        device_launch_date = str(device.launch_date) if device.launch_date else "None"
-    except Exception:
-        device_name = "Unknown"
-        device_type_name = "Unknown"
-        device_status = "Unknown"
-        device_launch_date = "None"
-
-    # Affected buyers check
-    affected_buyers = "None"
-    if previous_status != new_status:
-        affected_buyers = "All buyers with this device in portfolio"
-
+    device = device or Device.objects.filter(id=assertion.device_reference).select_related("device_type").first()
     payload = {
-        "product_id": str(assertion.product_id),
-        "vendor": str(assertion.product.brand or ""),
-        "sku": assertion.product.sku,
+        "product_id": str(assertion.product_id), "sku": assertion.product.sku,
+        "vendor": str(assertion.product.vendor_company_reference or ""),
         "device_id": str(assertion.device_reference),
-        "device_name": device_name,
-        "device_type": device_type_name,
-        "device_status": device_status,
-        "device_launch_date": device_launch_date,
-        "previous_mapping_status": previous_status,
-        "new_mapping_status": new_status,
-        "match_source": assertion.match_source,
-        "match_reason": assertion.match_reason,
-        "exclusion_source": exclusion_source or assertion.exclusion_source or "None",
-        "exclusion_reason": exclusion_reason or assertion.exclusion_reason or "None",
-        "changed_by": str(actor_id) if actor_id else "System",
-        "change_source": change_source,
-        "date_time": str(timezone.now()),
-        "affected_buyers": affected_buyers
+        "device_name": str(device) if device else "Device record unavailable",
+        "device_type": device.device_type.name if device and device.device_type else None,
+        "device_status": device.lifecycle_status if device else None,
+        "device_launch_date": str(device.launch_date) if device and device.launch_date else None,
+        "previous_mapping_status": previous_status, "new_mapping_status": new_status,
+        "before_evidence": previous_evidence, "after_evidence": assertion.match_evidence,
+        "match_source": assertion.match_source, "match_reason": assertion.match_reason,
+        "exclusion_source": exclusion_source or assertion.exclusion_source,
+        "exclusion_reason": exclusion_reason or assertion.exclusion_reason,
+        "changed_by": str(actor_id) if actor_id else "System", "change_source": change_source,
     }
-
-    company_scope = assertion.product.company_scope_reference
-    if not company_scope:
-        company_scope = "00000000-0000-0000-0000-000000000000"
-
-    try:
-        AuditRecord.objects.create(
-            event_code="catalog.compatibility.changed",
-            event_description=json.dumps(payload),
-            status="success",
-            actor_reference=actor_id,
-            service_trigger_reference=change_source,
-            company_scope_reference=company_scope,
-            source_module="catalog",
-            source_record_type="ProductCompatibilityAssertion",
-            source_record_id=assertion.id,
-        )
-    except Exception as e:
-        print(f"Error logging compatibility change: {e}")
-
-def run_compatibility_automapping(product, actor_id=None, change_source="Auto-Mapping"):
-    """
-    Calculates compatible device mappings for a product based on its category-specific attributes.
-    Preserves existing exclusions and locked assertions.
-    """
-    from apps.catalog.models import DynamicDropdownConfig
-    category = product.product_category
-    if not category:
-        return
-
-    cat_cfg = DynamicDropdownConfig.objects.filter(field_name="product_category", value=category).first()
-    if not cat_cfg or cat_cfg.status != 'active':
-        return
-    # If it is explicit compatibility mode:
-    if cat_cfg.compatibility_mode == "explicit":
-        from django.db.models import Q
-        from django.utils import timezone
-        now_date = timezone.now().date()
-        active_device_ids = Device.objects.filter(
-            device_type__status='active'
-        ).exclude(
-            lifecycle_status='retired'
-        ).filter(
-            Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
-        ).values_list('id', flat=True)
-        
-        cnt = ProductCompatibilityAssertion.objects.filter(
-            product=product,
-            is_compatible=True,
-            is_excluded=False,
-            device_reference__in=active_device_ids
-        ).count()
-        status = "complete" if cnt >= 1 else "incomplete"
-        if product.compatibility_status != status:
-            product.compatibility_status = status
-            Product.objects.filter(id=product.id).update(compatibility_status=status)
-        return
-
-    # Find matching devices - only active device types
-    all_devices = Device.objects.filter(
-        device_type__status='active'
+    AuditRecord.objects.create(
+        event_code="catalog.compatibility.changed", event_description=json.dumps(payload),
+        status="success", actor_reference=actor_id, service_trigger_reference=change_source,
+        company_scope_reference=assertion.product.company_scope_reference or assertion.product.vendor_company_reference or uuid.UUID(int=0),
+        source_module="catalog", source_record_type="ProductCompatibilityAssertion", source_record_id=assertion.id,
     )
 
-    matched_device_ids = set()
-    device_map = {}
-    for dev in all_devices:
-        if check_compatibility(product, dev):
-            matched_device_ids.add(dev.id)
-            device_map[dev.id] = dev
 
-    # Use transactions for atomic updates
-    with transaction.atomic():
-        # Get existing assertions
-        existing_assertions = {
-            a.device_reference: a for a in ProductCompatibilityAssertion.objects.filter(product=product)
+def _existing_evidence(assertion):
+    evidence = deepcopy(assertion.match_evidence or {})
+    basis = assertion.compatibility_basis
+    if not evidence:
+        source = "feature" if basis == "feature_evidence" else "universal" if basis == "universal_device_type" else "explicit"
+        evidence[source] = {
+            "active": bool(assertion.is_compatible or assertion.is_excluded or assertion.is_locked) and basis not in ("review_required", "exclusion_only"),
+            "basis": basis, "reason": assertion.match_reason or assertion.notes,
         }
+    return evidence
 
-        # Assertions to delete: devices that do not match and are not locked/excluded
-        for dev_ref, assertion in list(existing_assertions.items()):
-            if dev_ref not in matched_device_ids:
-                if not assertion.is_locked and not assertion.is_excluded and assertion.compatibility_basis not in ["manual_assertion", "imported"]:
-                    prev_status = assertion.match_status
-                    assertion.match_status = "Archived"
-                    assertion.is_compatible = False
-                    log_compatibility_change(assertion, prev_status, "Archived", actor_id=actor_id, change_source=change_source)
-                    assertion.delete()
-                    existing_assertions.pop(dev_ref)
 
-        # Assertions to create/update: matched devices
-        for dev_id in matched_device_ids:
-            dev = device_map[dev_id]
-            if dev_id in existing_assertions:
-                assertion = existing_assertions[dev_id]
-                # If it's excluded or locked, preserve its state
-                if not assertion.is_excluded and not assertion.is_locked:
-                    if not assertion.is_compatible or assertion.match_status != "Active":
-                        prev_status = assertion.match_status
-                        assertion.is_compatible = True
-                        assertion.match_status = "Active"
-                        assertion.device_status_at_mapping = dev.lifecycle_status
-                        assertion.device_launch_date_at_mapping = dev.launch_date
-                        assertion.match_source = change_source
-                        assertion.match_reason = f"Auto-mapped based on category {product.product_category} matching rules."
-                        assertion.save(update_fields=[
-                            "is_compatible", "match_status", "device_status_at_mapping",
-                            "device_launch_date_at_mapping", "match_source", "match_reason"
-                        ])
-                        log_compatibility_change(assertion, prev_status, "Active", actor_id=actor_id, change_source=change_source)
-            else:
-                # Create new compatibility assertion
-                assertion = ProductCompatibilityAssertion.objects.create(
-                    product=product,
-                    device_reference=dev_id,
-                    is_compatible=True,
-                    compatibility_basis="feature_evidence",
-                    notes="Auto-mapped by Compatibility Engine",
-                    vendor_company_reference=product.vendor_company_reference,
-                    sku=product.sku,
-                    device_status_at_mapping=dev.lifecycle_status,
-                    device_launch_date_at_mapping=dev.launch_date,
-                    match_source=change_source,
-                    match_reason=f"Auto-mapped based on category {product.product_category} matching rules.",
-                    match_status="Active"
-                )
-                log_compatibility_change(assertion, "None", "Active", actor_id=actor_id, change_source=change_source)
-        # Update compatibility status using only active, launched, non-retired devices
-        from django.db.models import Q
-        from django.utils import timezone
-        now_date = timezone.now().date()
-        active_device_ids = Device.objects.filter(
-            device_type__status='active'
-        ).exclude(
-            lifecycle_status='retired'
-        ).filter(
-            Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
-        ).values_list('id', flat=True)
-        
-        cnt = ProductCompatibilityAssertion.objects.filter(
-            product=product,
-            is_compatible=True,
-            is_excluded=False,
-            device_reference__in=active_device_ids
-        ).count()
-        status = "complete" if cnt >= 1 else "incomplete"
-        if product.compatibility_status != status:
-            product.compatibility_status = status
-            Product.objects.filter(id=product.id).update(compatibility_status=status)
+def _permitted_sources(product, config):
+    if not config or config.status != "active":
+        return set()
+    mode = category_mode(config.compatibility_mode)
+    if product.compatibility_mode == "universal_device_type":
+        return {"universal"} if mode == "universal" else set()
+    return {"device_specific": {"explicit"}, "feature_based": {"feature"}, "hybrid": {"explicit", "feature"}}.get(mode, set())
+
+
+@transaction.atomic
+def reconcile_product_compatibility(product, actor_id=None, change_source="Auto-Mapping", *, config=None, catalog=None, device_ids=None, notify=True):
+    # Serialize reconciliation for a supplier product, including concurrent
+    # product/device updates; the existing pair uniqueness remains authoritative.
+    caller_product = product
+    product = Product.objects.select_for_update().get(pk=product.pk)
+    # Read current committed configuration after taking the product lock. A
+    # reverse-remap batch must not replay a stale admin rule over a newer save.
+    config = DynamicDropdownConfig.objects.filter(field_name="product_category", value=product.product_category).first()
+    catalog = value_catalog()
+    allowed = _permitted_sources(product, config)
+    category_types = configured_type_ids(config) if config else set()
+    scope_types = {str(record.id) for record in product_universal_types(product)} if "universal" in allowed else set()
+    rows = ProductCompatibilityAssertion.objects.select_for_update().filter(product=product)
+    if device_ids is not None:
+        rows = rows.filter(device_reference__in=device_ids)
+    existing = {str(row.device_reference): row for row in rows}
+    candidates = Device.objects.select_related("device_type", "manufacturer")
+    if device_ids is not None:
+        candidates = candidates.filter(pk__in=device_ids)
+    elif "feature" in allowed or "universal" in allowed:
+        candidates = candidates.filter(Q(device_type_id__in=category_types) | Q(pk__in=existing))
+    else:
+        candidates = candidates.filter(pk__in=existing)
+    devices = {str(row.id): row for row in candidates}
+    current_ids = {str(value) for value in eligible_devices().filter(pk__in=devices).values_list("id", flat=True)}
+    now = timezone.localdate()
+    changed = 0
+    for reference in sorted(set(devices) | set(existing)):
+        device, assertion = devices.get(reference), existing.get(reference)
+        evidence = _existing_evidence(assertion) if assertion else {}
+        before_evidence = deepcopy(assertion.match_evidence or {}) if assertion else {}
+        future = bool(device and device.launch_date and device.launch_date > now)
+        valid_type = bool(device and device.device_type and device.device_type.is_active and device.device_type.status == "active" and device.device_type.code in CURRENT_DEVICE_TYPE_CODES and str(device.device_type_id) in category_types)
+        candidate = valid_type and (reference in current_ids or (future and device.lifecycle_status in ("inactive", "launching", "announced", "available")))
+        feature_details = {}
+        feature = bool(candidate and "feature" in allowed and check_compatibility(product, device, config=config, catalog=catalog, evidence=feature_details))
+        universal = bool(candidate and "universal" in allowed and str(device.device_type_id) in scope_types and device.device_type.auto_mapping_eligible)
+        for source, active, basis, reason in (
+            ("feature", feature, "feature_evidence", "Matched configured comparisons: " + ", ".join(feature_details.get("comparisons", [])) if feature else "No current configured feature comparison result supports this mapping."),
+            ("universal", universal, "universal_device_type", "Device Type is included in the product's canonical Universal scope." if universal else "Current type scope, category or device eligibility no longer supports this Universal source."),
+        ):
+            if active or source in evidence:
+                evidence[source] = {"active": active, "basis": basis, "reason": reason}
+        supporting = [source for source in ("explicit", "feature", "universal") if source in allowed and evidence.get(source, {}).get("active")]
+        if not assertion and not supporting:
+            continue
+        if assertion is None:
+            assertion = ProductCompatibilityAssertion(
+                product=product, device_reference=reference, is_compatible=False,
+                compatibility_basis=evidence[supporting[0]]["basis"],
+                vendor_company_reference=product.vendor_company_reference, sku=product.sku,
+                created_by=actor_id,
+            )
+        previous = assertion.match_status if assertion.pk and not assertion._state.adding else "None"
+        old_effective = assertion.is_compatible
+        if assertion.is_excluded:
+            effective, status = False, "Excluded"
+        elif assertion.is_locked:
+            effective, status = assertion.is_compatible, assertion.match_status
+        else:
+            effective = bool(supporting and valid_type and reference in current_ids)
+            status = "Active" if effective else "Pending" if supporting and future and valid_type else "Archived"
+        reason = " + ".join(evidence[source].get("reason", source) for source in supporting)
+        if not supporting:
+            reason = "No currently permitted matching source remains; historical evidence retained."
+        needs_save = assertion._state.adding or before_evidence != evidence or old_effective != effective or assertion.match_status != status
+        if not needs_save:
+            continue
+        assertion.is_compatible, assertion.match_status = effective, status
+        assertion.match_evidence, assertion.match_reason = evidence, reason
+        if supporting and not assertion.is_locked:
+            assertion.compatibility_basis = evidence[supporting[0]]["basis"]
+        assertion.match_source = change_source
+        assertion.updated_by = actor_id
+        assertion.device_status_at_mapping = device.lifecycle_status if device else assertion.device_status_at_mapping
+        assertion.device_launch_date_at_mapping = device.launch_date if device else assertion.device_launch_date_at_mapping
+        # Use the base save to update readiness once after the atomic batch.
+        super(ProductCompatibilityAssertion, assertion).save()
+        log_compatibility_change(assertion, previous, status, actor_id, change_source, previous_evidence=before_evidence, device=device)
+        changed += 1
+    readiness_changed = ProductCompatibilityAssertion.update_product_status(product, notify=False)
+    caller_product.compatibility_status = product.compatibility_status
+    if notify and (changed or readiness_changed):
+        from .services import trigger_catalog_recalculation_for_product
+        trigger_catalog_recalculation_for_product(product.id)
+    return changed
+
+
+def run_compatibility_automapping(product, actor_id=None, change_source="Auto-Mapping"):
+    return reconcile_product_compatibility(product, actor_id, change_source)
+
 
 def run_universal_device_type_mapping(product, actor_id=None, change_source="Universal Type Mapping"):
-    """
-    Maps a product to every active, non-retired, launched device whose device_type.code
-    is listed in product.compatible_device_types (e.g. ['phone', 'tablet', 'smartwatch']).
-
-    This is the auto-mapping counterpart for universal products that have no
-    device-specific or feature-based compatibility data.
-    Preserves locked/excluded/manual_assertion assertions.
-    New devices added to the catalog are picked up automatically via run_device_remapping().
-    """
-    device_type_codes = getattr(product, "compatible_device_types", None) or []
-    if not device_type_codes:
-        return
-
-    from django.db.models import Q
-    from django.utils import timezone
-    from apps.catalog.models import ProductCompatibilityAssertion
-
-    now_date = timezone.now().date()
-
-    # Normalise codes to lowercase for comparison
-    codes_lower = [str(c).strip().lower() for c in device_type_codes if c]
-    if not codes_lower:
-        return
-
-    # Find all eligible devices for those types
-    target_devices = list(Device.objects.filter(
-        device_type__code__in=codes_lower,
-        device_type__status="active",
-    ).exclude(
-        lifecycle_status="retired"
-    ).filter(
-        Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
-    ).select_related("device_type"))
-
-    matched_device_ids = {d.id for d in target_devices}
-    device_map = {d.id: d for d in target_devices}
-
-    with transaction.atomic():
-        existing = {
-            a.device_reference: a
-            for a in ProductCompatibilityAssertion.objects.filter(product=product)
-        }
-
-        to_create = []
-        to_update = []
-
-        # Archive/remove stale universal assertions for devices whose type is
-        # no longer in compatible_device_types (e.g. tablet removed).
-        for dev_ref, assertion in list(existing.items()):
-            if dev_ref not in matched_device_ids and assertion.compatibility_basis == "universal_device_type":
-                if not assertion.is_locked and not assertion.is_excluded:
-                    log_compatibility_change(
-                        assertion, assertion.match_status, "Archived",
-                        actor_id=actor_id, change_source=change_source,
-                    )
-                    assertion.delete()
-                    existing.pop(dev_ref)
-
-        for dev_id, dev in device_map.items():
-            assertion = existing.get(dev_id)
-            dev_type_name = dev.device_type.name if dev.device_type else "Device"
-            if assertion:
-                # Preserve locked / excluded / manual assertions
-                if assertion.is_locked or assertion.is_excluded or assertion.compatibility_basis in ["manual_assertion"]:
-                    continue
-                if not assertion.is_compatible or assertion.match_status != "Active":
-                    assertion.is_compatible = True
-                    assertion.match_status = "Active"
-                    assertion.compatibility_basis = "universal_device_type"
-                    assertion.device_status_at_mapping = dev.lifecycle_status
-                    assertion.device_launch_date_at_mapping = dev.launch_date
-                    assertion.match_source = change_source
-                    assertion.match_reason = (
-                        f"Universal device-type mapping: product supports all "
-                        f"{dev_type_name} devices."
-                    )
-                    to_update.append(assertion)
-            else:
-                to_create.append(
-                    ProductCompatibilityAssertion(
-                        product=product,
-                        device_reference=dev_id,
-                        is_compatible=True,
-                        compatibility_basis="universal_device_type",
-                        notes=f"Auto-mapped: universal product for {dev_type_name}.",
-                        vendor_company_reference=product.vendor_company_reference,
-                        sku=product.sku,
-                        device_status_at_mapping=dev.lifecycle_status,
-                        device_launch_date_at_mapping=dev.launch_date,
-                        match_source=change_source,
-                        match_reason=(
-                            f"Universal device-type mapping: product supports all "
-                            f"{dev_type_name} devices."
-                        ),
-                        match_status="Active",
-                    )
-                )
-
-        if to_create:
-            ProductCompatibilityAssertion.objects.bulk_create(to_create, batch_size=500)
-        if to_update:
-            ProductCompatibilityAssertion.objects.bulk_update(
-                to_update,
-                fields=[
-                    "is_compatible", "match_status", "compatibility_basis",
-                    "device_status_at_mapping", "device_launch_date_at_mapping",
-                    "match_source", "match_reason"
-                ],
-                batch_size=500
-            )
-
-        # Update compatibility_status
-        active_cnt = ProductCompatibilityAssertion.objects.filter(
-            product=product,
-            is_compatible=True,
-            is_excluded=False,
-            device_reference__in=list(matched_device_ids),
-        ).count()
-        status = "complete" if active_cnt >= 1 else "incomplete"
-        if product.compatibility_status != status:
-            product.compatibility_status = status
-            Product.objects.filter(id=product.id).update(compatibility_status=status)
+    # Defensive entry-point guard, including callers bypassing serializer clean.
+    if product.compatibility_mode != "universal_device_type":
+        return 0
+    return reconcile_product_compatibility(product, actor_id, change_source)
 
 
 def run_device_remapping(device, actor_id=None, change_source="System Remap"):
-    """
-    Runs reverse compatibility matching when a device is created or updated.
-    Checks all products in auto-mapped categories against this device.
-    Also picks up universal products whose compatible_device_types includes
-    this device's type code.
-    """
-    from apps.catalog.models import DynamicDropdownConfig
-    from django.db.models import Q
-    from django.utils import timezone
-
-    # 1. Feature-based auto-mapping (existing logic)
-    active_configs = DynamicDropdownConfig.objects.filter(field_name="product_category", status="active").exclude(compatibility_mode="explicit")
-    auto_mapped_categories = [cfg.value for cfg in active_configs]
-    products = Product.objects.filter(product_category__in=auto_mapped_categories)
-
-    is_active_device = (device.device_type and device.device_type.status == 'active')
-
-    now_date = timezone.now().date()
-    active_device_ids = list(Device.objects.filter(
-        device_type__status='active'
-    ).exclude(
-        lifecycle_status='retired'
-    ).filter(
-        Q(launch_date__lte=now_date) | Q(launch_date__isnull=True)
-    ).values_list('id', flat=True))
-
-    with transaction.atomic():
-        for product in products:
-            is_compat = is_active_device and check_compatibility(product, device)
-            # Find existing assertion for this product and device
-            assertion = ProductCompatibilityAssertion.objects.filter(product=product, device_reference=device.id).first()
-
-            if is_compat:
-                if not assertion:
-                    # Create assertion
-                    assertion = ProductCompatibilityAssertion.objects.create(
-                        product=product,
-                        device_reference=device.id,
-                        is_compatible=True,
-                        compatibility_basis="feature_evidence",
-                        notes="Auto-mapped by reverse device remapping",
-                        vendor_company_reference=product.vendor_company_reference,
-                        sku=product.sku,
-                        device_status_at_mapping=device.lifecycle_status,
-                        device_launch_date_at_mapping=device.launch_date,
-                        match_source=change_source,
-                        match_reason=f"Auto-mapped based on category {product.product_category} matching rules.",
-                        match_status="Active"
-                    )
-                    log_compatibility_change(assertion, "None", "Active", actor_id=actor_id, change_source=change_source)
-                else:
-                    if not assertion.is_excluded and not assertion.is_locked:
-                        if not assertion.is_compatible or assertion.match_status != "Active":
-                            prev_status = assertion.match_status
-                            assertion.is_compatible = True
-                            assertion.match_status = "Active"
-                            assertion.device_status_at_mapping = device.lifecycle_status
-                            assertion.device_launch_date_at_mapping = device.launch_date
-                            assertion.match_source = change_source
-                            assertion.match_reason = f"Auto-mapped based on category {product.product_category} matching rules."
-                            assertion.save(update_fields=[
-                                "is_compatible", "match_status", "device_status_at_mapping",
-                                "device_launch_date_at_mapping", "match_source", "match_reason"
-                            ])
-                            log_compatibility_change(assertion, prev_status, "Active", actor_id=actor_id, change_source=change_source)
-            else:
-                # Not compatible or device is retired/not active
-                if assertion:
-                    if not assertion.is_locked and not assertion.is_excluded and assertion.compatibility_basis not in ["manual_assertion", "imported"]:
-                        prev_status = assertion.match_status
-                        assertion.match_status = "Archived"
-                        assertion.is_compatible = False
-                        log_compatibility_change(assertion, prev_status, "Archived", actor_id=actor_id, change_source=change_source)
-                        assertion.delete()
-
-            # Recalculate status for product using only active, launched, non-retired devices
-            cnt = ProductCompatibilityAssertion.objects.filter(
-                product=product,
-                is_compatible=True,
-                is_excluded=False,
-                device_reference__in=active_device_ids
-            ).count()
-            status = "complete" if cnt >= 1 else "incomplete"
-            if product.compatibility_status != status:
-                product.compatibility_status = status
-                Product.objects.filter(id=product.id).update(compatibility_status=status)
-
-    # 2. Universal device-type mapping — pick up any product that universally
-    #    supports this device's type (e.g. compatible_device_types = ['phone'])
-    if is_active_device and device.device_type:
-        dev_type_code = (device.device_type.code or "").lower()
-        if dev_type_code:
-            from django.db import connection
-            if connection.vendor == "sqlite":
-                # SQLite does not support JSONField contains lookup — filter in Python
-                universal_products = [
-                    p for p in Product.objects.exclude(compatible_device_types__isnull=True)
-                    if dev_type_code in (p.compatible_device_types or [])
-                ]
-            else:
-                universal_products = Product.objects.filter(
-                    compatible_device_types__contains=dev_type_code
-                )
-            dev_type_name = device.device_type.name or "Device"
-            for product in universal_products:
-                existing = ProductCompatibilityAssertion.objects.filter(
-                    product=product, device_reference=device.id
-                ).first()
-                if existing:
-                    if existing.is_locked or existing.is_excluded or existing.compatibility_basis in ["manual_assertion"]:
-                        continue
-                    if not existing.is_compatible or existing.match_status != "Active":
-                        existing.is_compatible = True
-                        existing.match_status = "Active"
-                        existing.compatibility_basis = "universal_device_type"
-                        existing.device_status_at_mapping = device.lifecycle_status
-                        existing.device_launch_date_at_mapping = device.launch_date
-                        existing.match_source = change_source
-                        existing.match_reason = f"Universal device-type mapping: product supports all {dev_type_name} devices."
-                        existing.save(update_fields=[
-                            "is_compatible", "match_status", "compatibility_basis",
-                            "device_status_at_mapping", "device_launch_date_at_mapping",
-                            "match_source", "match_reason"
-                        ])
-                else:
-                    ProductCompatibilityAssertion.objects.create(
-                        product=product,
-                        device_reference=device.id,
-                        is_compatible=True,
-                        compatibility_basis="universal_device_type",
-                        notes=f"Auto-mapped: universal product for {dev_type_name}.",
-                        vendor_company_reference=product.vendor_company_reference,
-                        sku=product.sku,
-                        device_status_at_mapping=device.lifecycle_status,
-                        device_launch_date_at_mapping=device.launch_date,
-                        match_source=change_source,
-                        match_reason=f"Universal device-type mapping: product supports all {dev_type_name} devices.",
-                        match_status="Active",
-                    )
-                if product.compatibility_status != "complete":
-                    product.compatibility_status = "complete"
-                    Product.objects.filter(id=product.id).update(compatibility_status="complete")
-
-
+    """The same reconciliation removes stale type/status matches as well as adds."""
+    changed = 0
+    # Include inactive/mismatched categories and products with old assertions;
+    # filtering to the new type would leave stale relationships behind.
+    feature_categories = [row.value for row in DynamicDropdownConfig.objects.filter(field_name="product_category")
+                          if category_mode(row.compatibility_mode) in ("feature_based", "hybrid") and str(device.device_type_id) in configured_type_ids(row)]
+    prior_products = ProductCompatibilityAssertion.objects.filter(device_reference=device.id).values_list("product_id", flat=True)
+    affected = Product.objects.filter(Q(product_category__in=feature_categories) |
+        Q(compatibility_mode="universal_device_type", universal_type_scopes__device_type_id=device.device_type_id, universal_type_scopes__is_active=True) |
+        Q(id__in=prior_products)).distinct()
+    for product in affected.order_by("pk").iterator():
+        changed += reconcile_product_compatibility(product, actor_id, change_source, device_ids=[device.id])
+    return changed

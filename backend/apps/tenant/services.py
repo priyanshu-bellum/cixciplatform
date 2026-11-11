@@ -16,6 +16,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -800,6 +801,7 @@ def send_welcome_back_email(email: str, first_name: str = "there", user=None, ex
     )
 
 
+@transaction.atomic
 def handle_vendor_region_change(vendor_company_id, region_code, action, actor_reference=None, reason=""):
     """
     Handle vendor region activation/deactivation.
@@ -813,7 +815,19 @@ def handle_vendor_region_change(vendor_company_id, region_code, action, actor_re
     """
     from apps.tenant.models import Company, RegionChangeEvent, RegionChangeAction
 
-    company = Company.objects.get(id=vendor_company_id)
+    from rest_framework.exceptions import ValidationError
+    from apps.tenant.models import OperatingRegion
+    from apps.tenant.regional_visibility import effective_regional_fees, invalidate_regional_projections
+    company = Company.objects.select_for_update().get(id=vendor_company_id)
+    if company.company_type != "vendor":
+        raise ValidationError({"region_code": "Supported regions belong to a Vendor company."})
+    if not isinstance(region_code, str):
+        raise ValidationError({"region_code": "Select a canonical region."})
+    if action == "activate":
+        if not OperatingRegion.objects.filter(code=region_code, is_active=True).exists():
+            raise ValidationError({"region_code": "Select an active canonical Operating Region."})
+        if effective_regional_fees([company.id], region_code).count() != 1:
+            raise ValidationError({"region_code": "Configuration Required: one effective regional shipping fee with explicit currency is required before activation."})
     regions_before = list(company.approved_regions or [])
 
     if action == "activate":
@@ -830,6 +844,7 @@ def handle_vendor_region_change(vendor_company_id, region_code, action, actor_re
 
     regions_after = list(company.approved_regions)
     company.save()
+    invalidate_regional_projections()
 
     event = RegionChangeEvent.objects.create(
         vendor_company=company,

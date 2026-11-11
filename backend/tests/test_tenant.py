@@ -23,13 +23,13 @@ class TestCompanyEndpoints:
         assert "Buyer Corp" in names
         assert "Vendor Inc" in names
 
-    def test_buyer_user_can_list_companies(self, buyer_client):
+    def test_buyer_cannot_read_admin_company_directory(self, buyer_client):
         resp = buyer_client.get("/api/v1/tenant/companies/")
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
     def test_unauthenticated_cannot_list_companies(self, api_client):
         resp = api_client.get("/api/v1/tenant/companies/")
-        assert resp.status_code == 401
+        assert resp.status_code in (401, 403)
 
     def test_admin_can_create_company(self, admin_client):
         resp = admin_client.post("/api/v1/tenant/companies/", {
@@ -320,7 +320,14 @@ class TestChildOnboardingRequestWorkflow:
 
 @pytest.mark.django_db
 class TestRegionalVendorDiscovery:
-    def test_buyer_vendor_regional_visibility(self, buyer_client, buyer_company, vendor_company):
+    def test_buyer_vendor_regional_visibility(self, buyer_client, buyer_user, buyer_company, vendor_company):
+        from apps.tenant.models import OperatingRegion
+        from apps.pricing.models import VendorRegionalShippingFee
+        region = OperatingRegion.objects.create(code="US", name="United States")
+        buyer_user.entity.country_code = "US"
+        buyer_user.entity.save()
+        CompanyRelationship.objects.create(buyer_company=buyer_company, vendor_company=vendor_company, status="active")
+        VendorRegionalShippingFee.objects.create(vendor_company_reference=vendor_company.id, region_code=region.code, fee_amount="5", currency="USD", status="active")
         # Buyer in Region US
         buyer_company.approved_regions = ["US"]
         buyer_company.save()
@@ -338,7 +345,7 @@ class TestRegionalVendorDiscovery:
             approved_regions=["EU"],
         )
 
-        resp = buyer_client.get("/api/v1/tenant/companies/")
+        resp = buyer_client.get("/api/v1/tenant/operating-regions/vendors/")
         assert resp.status_code == 200
         names = [c["name"] for c in resp.data["results"]]
         assert "Vendor Inc" in names

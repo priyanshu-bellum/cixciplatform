@@ -16,7 +16,7 @@ Architecture rules (spec.md):
   they do NOT create or mutate it directly
 """
 import uuid
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 
@@ -171,6 +171,7 @@ class Device(models.Model):
     def __str__(self):
         return f"{self.manufacturer.name} {self.name}"
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         if self.name:
             import re
@@ -187,6 +188,17 @@ class Device(models.Model):
                 _original = Device.objects.get(pk=self.pk)
             except Device.DoesNotExist:
                 pass
+
+        fields = ("bluetooth_compatibility", "headphone_jack_compatibility", "compatible_charging_interface", "wireless_charging_compatibility", "storage_expansion_compatibility", "maximum_supported_storage", "compatible_watch_case_size")
+        evidence_changed = is_new or (_original and _original.device_type_id != self.device_type_id) or any(_original and getattr(_original, field) != getattr(self, field) for field in fields)
+        if evidence_changed and self.device_type_id and any(getattr(self, field) not in (None, "") for field in fields):
+            from apps.catalog.compatibility_values import validate_compatibility_values
+            values = validate_compatibility_values({}, instance=self, rules=self.device_type.compatibility_rules, device_type=self.device_type)
+            for field, value in values.items():
+                if getattr(self, field) != value:
+                    setattr(self, field, value)
+                    if kwargs.get("update_fields") is not None:
+                        kwargs["update_fields"] = set(kwargs["update_fields"]) | {field}
 
         if self.launch_date:
             from django.utils import timezone
@@ -242,6 +254,9 @@ class Device(models.Model):
                     changes.append(f"name from '{old_name}' to '{self.name}'")
                 if old_launch != self.launch_date:
                     changes.append(f"launch date from '{old_launch}' to '{self.launch_date}'")
+                for field in fields:
+                    if getattr(_original, field) != getattr(self, field):
+                        changes.append(f"{field} from {getattr(_original, field)!r} to {getattr(self, field)!r}")
                 
                 if changes:
                     log_device_audit(
@@ -257,7 +272,7 @@ class Device(models.Model):
 
         trigger_remap = is_new
         if not is_new:
-            if old_status != self.lifecycle_status or old_launch != self.launch_date:
+            if old_status != self.lifecycle_status or old_launch != self.launch_date or old_type != self.device_type:
                 trigger_remap = True
             else:
                 for f in compat_fields:
@@ -266,13 +281,8 @@ class Device(models.Model):
                         break
 
         if trigger_remap:
-            try:
-                from apps.catalog.compatibility_engine import run_device_remapping
-                run_device_remapping(self, actor_id=actor_id, change_source="System Remap" if not is_new else "Device Created")
-            except Exception as e:
-                import logging
-                logger = logging.getLogger("apps.devices")
-                logger.error(f"Failed to run device reverse remapping: {e}")
+            from apps.catalog.compatibility_engine import run_device_remapping
+            run_device_remapping(self, actor_id=actor_id or self.imported_by, change_source="System Remap" if not is_new else "Device Created")
 
 
 # ─── PR-A: Feature Evidence Foundation ────────────────────────────────────────

@@ -28,6 +28,8 @@ class TestDeviceLifecycleTask:
             lifecycle_status="inactive",
         )
 
+        # Model.save already normalizes a past launch. Model the scheduled state explicitly.
+        Device.objects.filter(pk=device.pk).update(lifecycle_status="inactive")
         result = update_device_lifecycle_statuses()
         device.refresh_from_db()
 

@@ -7,6 +7,9 @@ from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Release gate: enable after canonical entity/vendor/fee/relationship setup is reviewed.
+REGIONAL_VISIBILITY_ENFORCE = config("REGIONAL_VISIBILITY_ENFORCE", default=False, cast=bool)
+
 # ─── Security ─────────────────────────────────────────────────────────────────
 SECRET_KEY = config("SECRET_KEY", default="dev-secret-key-change-in-production")
 DEBUG = config("DEBUG", default=True, cast=bool)
@@ -203,6 +206,7 @@ CORS_ALLOW_CREDENTIALS = True
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-api-key",
+    "x-cixci-entity",
 ]
 
 # ─── OpenAPI / Spectacular ────────────────────────────────────────────────────

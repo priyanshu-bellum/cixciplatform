@@ -140,10 +140,10 @@ export function useProductForm() {
     setCompStorageExpansion(p.storage_expansion_compatibility || '')
     setCompMemoryCapacity(p.memory_capacity || '')
     setCompWatchCaseSize(p.compatible_watch_case_size || '')
-    setCompUniversalDeviceTypes(p.compatible_device_types || [])
+    setCompUniversalDeviceTypes(p.compatibility_mode === 'universal_device_type' ? p.universal_device_type_ids?.length ? p.universal_device_type_ids : p.compatible_device_types || [] : [])
 
     const compatList = activeCompatibilities || []
-    setSelectedDeviceIds(compatList.map((c: any) => c.device_reference))
+    setSelectedDeviceIds(compatList.filter((c: any) => c.match_evidence?.explicit?.active || (!Object.keys(c.match_evidence || {}).length && c.is_compatible && !['feature_evidence', 'universal_device_type', 'review_required'].includes(c.compatibility_basis))).map((c: any) => c.device_reference))
   }, [resetForm])
 
   const isAddDirty = useCallback(() => {
@@ -176,13 +176,13 @@ export function useProductForm() {
 
   const isEditDirty = useCallback((editingProduct: any, activeCompatibilities?: any[]) => {
     if (!editingProduct) return false
-    const activeCompatIds = (activeCompatibilities || []).map((c: any) => c.device_reference)
+    const activeCompatIds = (activeCompatibilities || []).filter((c: any) => c.match_evidence?.explicit?.active || (!Object.keys(c.match_evidence || {}).length && c.is_compatible && !['feature_evidence', 'universal_device_type', 'review_required'].includes(c.compatibility_basis))).map((c: any) => c.device_reference)
     const compatibilitiesMatch = (
       Array.isArray(selectedDeviceIds) &&
       selectedDeviceIds.length === activeCompatIds.length &&
       selectedDeviceIds.every((x: string) => activeCompatIds.includes(x))
     )
-    const origUdt = editingProduct.compatible_device_types || []
+    const origUdt = editingProduct.compatibility_mode === 'universal_device_type' ? editingProduct.universal_device_type_ids?.length ? editingProduct.universal_device_type_ids : editingProduct.compatible_device_types || [] : []
     const udtMatch = (
       Array.isArray(compUniversalDeviceTypes) &&
       compUniversalDeviceTypes.length === origUdt.length &&

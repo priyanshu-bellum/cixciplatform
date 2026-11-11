@@ -10,7 +10,7 @@ Architecture rules enforced here:
 """
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 
@@ -170,7 +170,7 @@ class Company(models.Model):
                 company=self,
                 name="HQ Entity",
                 status=EntityStatus.ACTIVE,
-                country_code=self.country_code or 'USA',
+                country_code=self.country_code or '',
                 region_code=self.region_code or '',
             )
         from apps.tenant.services import assign_default_capabilities_for_company
@@ -184,6 +184,22 @@ class Company(models.Model):
 # CompanyEntity (Child Unit / Buyer Entity / Vendor Brand)
 # ──────────────────────────────────────────────────────────────────────────────
 
+class OperatingRegion(models.Model):
+    """Governed commercial region identity; independent of address geography."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.SlugField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "code"]
+
+    def __str__(self):
+        return self.name
+
+
 class CompanyEntity(models.Model):
     """
     A child unit of a Company. Buyers may have multiple entities (stores/regions).
@@ -193,6 +209,11 @@ class CompanyEntity(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="entities")
+    operating_region = models.ForeignKey(
+        OperatingRegion, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="buyer_entities",
+        help_text="Derived from this entity's onboarding country; never from state, delivery address or parent visibility.",
+    )
     name = models.CharField(max_length=255)
     status = models.CharField(max_length=20, choices=EntityStatus.choices, default=EntityStatus.DRAFT)
 
@@ -220,6 +241,31 @@ class CompanyEntity(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.company.name})"
+
+    @transaction.atomic
+    def save(self, *args, **kwargs):
+        if self.company_id and self.company.company_type == CompanyType.BUYER:
+            import json
+            from .country_regions import country_region, normalize_country_code
+            previous = type(self).objects.filter(pk=self.pk).values("operating_region_id", "country_code").first() if not self._state.adding else None
+            normalized = normalize_country_code(self.country_code)
+            self.country_code = normalized or self.country_code
+            self.operating_region = country_region(self.country_code, company_id=self.company_id)
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"country_code", "operating_region"}
+            super().save(*args, **kwargs)
+            before = str(previous["operating_region_id"] or "") if previous else ""
+            after = str(self.operating_region_id or "")
+            if before != after or (previous and previous["country_code"] != self.country_code):
+                from apps.audit.models import AuditRecord
+                AuditRecord.objects.create(event_code="tenant.entity.region_from_country", status="success",
+                    event_description=json.dumps({"before_region": before, "after_region": after, "country_code": self.country_code}),
+                    service_trigger_reference="Entity country saved", company_scope_reference=self.company_id,
+                    source_module="tenant", source_record_type="CompanyEntity", source_record_id=self.id)
+                from .regional_visibility import invalidate_regional_projections
+                invalidate_regional_projections(company_id=self.company_id, entity_id=self.id)
+            return
+        return super().save(*args, **kwargs)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

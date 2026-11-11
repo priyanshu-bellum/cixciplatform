@@ -273,8 +273,11 @@ export function validateCsvRows(
     else { const val = row[descColIdx]?.trim(); if (!val) { errors.push("Product Description is required."); cellErrors[`${rowIdx}-${descColIdx}`] = true } }
 
     // Compatibility
-    if (compatColIdx === -1) { errors.push("Missing 'Device Compatibility' column.") }
-    else { const val = row[compatColIdx]?.trim(); if (!val) { errors.push("Device Compatibility is required."); cellErrors[`${rowIdx}-${compatColIdx}`] = true } }
+    const structuredCompatibility = normalizedHeaders.some(header => ['universaldevicetypes', 'compatiblecharginginterface', 'headphonejackcompatibility', 'bluetoothcompatibility', 'wirelesschargingcompatibility', 'storageexpansioncompatibility', 'memorycapacity', 'compatiblewatchcasesize'].includes(header))
+    if (!structuredCompatibility) {
+      if (compatColIdx === -1) { errors.push("Provide Device Compatibility or structured compatibility columns.") }
+      else { const val = row[compatColIdx]?.trim(); if (!val) { errors.push("Device Compatibility is required for this file format."); cellErrors[`${rowIdx}-${compatColIdx}`] = true } }
+    }
 
     // Status
     if (statusColIdx === -1) { errors.push("Missing 'Product Status' column.") }

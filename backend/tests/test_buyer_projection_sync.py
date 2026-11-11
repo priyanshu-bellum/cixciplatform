@@ -1,4 +1,4 @@
-﻿"""
+"""
 Buyer compatibility projection â€” company portfolio sync.
 
 The My Devices portfolio is company-scoped business data, but the compatibility
@@ -31,7 +31,7 @@ from apps.tenant.models import User
 
 def _make_device(sku="DEV-PROJ-001"):
     dt, _ = DeviceType.objects.get_or_create(
-        name="Smartphone", code="smartphone", defaults={"status": "active"}
+        name="Phone", code="phone", defaults={"status": "active"}
     )
     dt.status = "active"
     dt.save(update_fields=["status"])

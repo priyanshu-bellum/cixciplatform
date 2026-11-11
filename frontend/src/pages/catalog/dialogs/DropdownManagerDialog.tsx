@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -26,6 +26,8 @@ import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import SettingsIcon from '@mui/icons-material/Settings'
 import api from '../../../lib/apiClient'
+import CompatibilityValuesManager from '../../../components/CompatibilityValuesManager'
+import { apiError, normalizedRules, useCompatibilityOptions } from '../../../hooks/useCompatibilityOptions'
 
 interface DropdownManagerDialogProps {
   open: boolean
@@ -44,6 +46,7 @@ const FIELD_TAB_MAP: { value: ManageFieldType; label: string }[] = [
 const COMPATIBILITY_MODES = [
   { value: 'device_specific', label: 'Device Specific' },
   { value: 'universal', label: 'Universal' },
+  { value: 'feature_based', label: 'Feature Based' },
   { value: 'hybrid', label: 'Hybrid' },
 ]
 
@@ -53,19 +56,8 @@ const STATUS_OPTIONS = [
 ]
 
 const MATCH_LOGIC_OPTIONS = [
-  { value: 'match_any', label: 'Match Any' },
-  { value: 'match_all', label: 'Match All' },
-]
-
-const DEVICE_TYPE_OPTIONS = [
-  'smartphone',
-  'tablet',
-  'laptop',
-  'smartwatch',
-  'earbuds',
-  'desktop',
-  'gaming_console',
-  'e_reader',
+  { value: 'OR', label: 'Match Any' },
+  { value: 'AND', label: 'Match All' },
 ]
 
 const ACCESSORY_FIELD_OPTIONS = [
@@ -93,20 +85,30 @@ export default function DropdownManagerDialog({
   const [editingCategoryConfig, setEditingCategoryConfig] = useState<any | null>(null)
   const [categoryConfigMode, setCategoryConfigMode] = useState('device_specific')
   const [categoryConfigStatus, setCategoryConfigStatus] = useState('active')
-  const [categoryConfigMatchLogic, setCategoryConfigMatchLogic] = useState('match_any')
+  const [categoryConfigMatchLogic, setCategoryConfigMatchLogic] = useState('OR')
   const [categoryConfigEligibleTypes, setCategoryConfigEligibleTypes] = useState<string[]>([])
   const [categoryConfigAccessoryFields, setCategoryConfigAccessoryFields] = useState<string[]>([])
   const [categoryConfigRules, setCategoryConfigRules] = useState<any>({})
+  const [rulesDraft, setRulesDraft] = useState('{}')
+  const [rulesError, setRulesError] = useState('')
+  const { data: compatibilityOptions } = useCompatibilityOptions()
+  useEffect(() => {
+    setRulesDraft(previous => {
+      try { if (JSON.stringify(JSON.parse(previous)) === JSON.stringify(categoryConfigRules)) return previous } catch { /* A visual edit replaces an invalid draft. */ }
+      return JSON.stringify(categoryConfigRules, null, 2)
+    })
+    setRulesError('')
+  }, [categoryConfigRules])
 
   // When editingCategoryConfig is set, populate all the config fields
   const handleStartEditConfig = (item: any) => {
     setEditingCategoryConfig(item)
-    setCategoryConfigMode(item.compatibility_mode || 'device_specific')
+    setCategoryConfigMode(item.compatibility_mode === 'explicit' ? 'device_specific' : item.compatibility_mode || 'device_specific')
     setCategoryConfigStatus(item.status || 'active')
-    setCategoryConfigMatchLogic(item.match_logic || 'match_any')
-    setCategoryConfigEligibleTypes(item.eligible_device_types || [])
+    setCategoryConfigMatchLogic(item.match_logic === 'match_all' ? 'AND' : item.match_logic === 'match_any' ? 'OR' : item.match_logic || 'OR')
+    setCategoryConfigEligibleTypes(item.compatibility_rules?._eligible_type_ids || (item.eligible_device_types || []).map((value: string) => compatibilityOptions?.device_types?.find((type: any) => [type.id, type.code, type.name.toLowerCase()].includes(value.toLowerCase() === 'smartphone' ? 'phone' : value.toLowerCase()))?.id).filter(Boolean))
     setCategoryConfigAccessoryFields(item.accessory_fields || [])
-    setCategoryConfigRules(item.compatibility_rules || {})
+    setCategoryConfigRules(normalizedRules(item.compatibility_rules || {}))
     setDropdownError(null)
   }
 
@@ -172,6 +174,7 @@ export default function DropdownManagerDialog({
   const handleSaveCategoryConfig = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingCategoryConfig) return
+    if (rulesError) return
     setDropdownError(null)
     try {
       await api.patch(`/catalog/dropdown-configs/${editingCategoryConfig.id}/`, {
@@ -185,7 +188,7 @@ export default function DropdownManagerDialog({
       setEditingCategoryConfig(null)
       onConfigChanged()
     } catch (err: any) {
-      setDropdownError(err.response?.data?.detail || 'Failed to save configuration.')
+      setDropdownError(apiError(err))
     }
   }
 
@@ -209,7 +212,7 @@ export default function DropdownManagerDialog({
       setCategoryConfigAccessoryFields((prev) => [...prev, fieldValue])
       setCategoryConfigRules((prev: any) => ({
         ...prev,
-        [fieldValue]: { mode: 'optional' },
+        [fieldValue]: { mode: 'optional', comparison: '' },
       }))
     }
   }
@@ -322,19 +325,19 @@ export default function DropdownManagerDialog({
                 Eligible Device Types
               </Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5 }}>
-                {DEVICE_TYPE_OPTIONS.map((type) => (
+                {(compatibilityOptions?.device_types || []).map((type: any) => (
                   <FormControlLabel
-                    key={type}
+                    key={type.id}
                     control={
                       <Checkbox
                         size="small"
-                        checked={categoryConfigEligibleTypes.includes(type)}
-                        onChange={() => toggleEligibleType(type)}
+                        checked={categoryConfigEligibleTypes.includes(type.id)}
+                        onChange={() => toggleEligibleType(type.id)}
                       />
                     }
                     label={
                       <Typography variant="body2">
-                        {type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                        {type.name}
                       </Typography>
                     }
                   />
@@ -377,7 +380,7 @@ export default function DropdownManagerDialog({
                         }
                       />
                       {checked && (
-                        <Box sx={{ ml: 4, mt: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ ml: 4, mt: 0.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
                           <Typography variant="caption" color="text.secondary">
                             Rule Mode:
                           </Typography>
@@ -390,7 +393,21 @@ export default function DropdownManagerDialog({
                             <MenuItem value="required">Required</MenuItem>
                             <MenuItem value="optional">Optional</MenuItem>
                             <MenuItem value="hidden">Hidden</MenuItem>
+                            <MenuItem value="defaulted">Defaulted</MenuItem>
+                            <MenuItem value="conditional">Conditional</MenuItem>
                           </Select>
+                          <Select size="small" displayEmpty value={rule.comparison || ''} onChange={event => setCategoryConfigRules((previous: any) => ({ ...previous, [opt.value]: { ...previous[opt.value], comparison: event.target.value } }))}>
+                            <MenuItem value="">Choose matching role…</MenuItem>
+                            <MenuItem value="informational">Informational only</MenuItem>
+                            <MenuItem value={compatibilityOptions?.field_operations?.[opt.value] || 'equals'}>Use in matching ({compatibilityOptions?.field_operations?.[opt.value] || 'equals'})</MenuItem>
+                          </Select>
+                          {rule.mode === 'defaulted' && <TextField size="small" label="Default value" value={rule.default_value || ''} onChange={event => setCategoryConfigRules((previous: any) => ({ ...previous, [opt.value]: { ...previous[opt.value], default_value: event.target.value } }))} />}
+                          {rule.mode === 'conditional' && <>
+                            <TextField select size="small" label="Condition field" sx={{ minWidth: 180 }} value={rule.condition_field || ''} onChange={event => setCategoryConfigRules((previous: any) => ({ ...previous, [opt.value]: { ...previous[opt.value], condition_field: event.target.value } }))}>
+                              {ACCESSORY_FIELD_OPTIONS.filter(other => other.value !== opt.value && categoryConfigAccessoryFields.includes(other.value)).map(other => <MenuItem key={other.value} value={other.value}>{other.label}</MenuItem>)}
+                            </TextField>
+                            <TextField size="small" label="Condition values (comma separated)" value={(rule.condition_values || []).join(', ')} onChange={event => setCategoryConfigRules((previous: any) => ({ ...previous, [opt.value]: { ...previous[opt.value], condition_values: event.target.value.split(',').map(value => value.trim()) } }))} />
+                          </>}
                         </Box>
                       )}
                     </Box>
@@ -410,18 +427,20 @@ export default function DropdownManagerDialog({
                 minRows={4}
                 maxRows={10}
                 size="small"
-                value={JSON.stringify(categoryConfigRules, null, 2)}
+                value={rulesDraft}
+                error={!!rulesError}
                 onChange={(e) => {
+                  const draft = e.target.value
+                  setRulesDraft(draft)
                   try {
-                    const parsed = JSON.parse(e.target.value)
+                    const parsed = JSON.parse(draft)
+                    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('Rules must be a JSON object.')
                     setCategoryConfigRules(parsed)
-                    setDropdownError(null)
-                  } catch {
-                    // Allow typing without error -- validation on save
-                  }
+                    setRulesError('')
+                  } catch { setRulesError('Enter valid rules JSON before saving.') }
                 }}
                 slotProps={{ htmlInput: { style: { fontFamily: 'monospace', fontSize: 13 } } }}
-                helperText="Edit raw JSON for advanced rule configuration"
+                helperText={rulesError || "Visual controls and JSON use the same saved rules."}
               />
             </Box>
 
@@ -430,7 +449,7 @@ export default function DropdownManagerDialog({
               <Button variant="outlined" onClick={handleCancelEditConfig}>
                 Cancel
               </Button>
-              <Button variant="contained" type="submit">
+              <Button variant="contained" type="submit" disabled={!!rulesError}>
                 Save Configuration
               </Button>
             </Box>
@@ -438,6 +457,7 @@ export default function DropdownManagerDialog({
         ) : (
           /* ---------- Dropdown Values Manager ---------- */
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <CompatibilityValuesManager />
             {/* Field Selector Tabs */}
             <Tabs
               value={tabIndex}

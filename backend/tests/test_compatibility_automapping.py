@@ -56,7 +56,7 @@ def setup_data(db):
         password="password123"
     )
     
-    dt = DeviceType.objects.create(name="Smartphone", code="smartphone", status="active")
+    dt = DeviceType.objects.create(name="Phone", code="phone", status="active")
     from apps.catalog.models import DynamicDropdownConfig
     DynamicDropdownConfig.objects.update_or_create(
         field_name="product_category",
@@ -65,7 +65,7 @@ def setup_data(db):
             "display_name": "Headphones",
             "status": "active",
             "compatibility_mode": "feature_based",
-            "eligible_device_types": ["smartphone"],
+            "eligible_device_types": ["phone"],
             "match_logic": "OR",
             "accessory_fields": ["bluetooth_compatibility", "headphone_jack_compatibility"],
             "compatibility_rules": {
@@ -75,6 +75,9 @@ def setup_data(db):
         }
     )
     mfg = Manufacturer.objects.create(name="Apple")
+    from apps.catalog.models import VendorCategoryMapping
+    VendorCategoryMapping.objects.create(vendor_company_reference=vendor_company.id,
+        company_scope_reference=vendor_company.id, vendor_category="Headphones", cixci_category="Headphones", status="active")
     
     device1 = Device.objects.create(
         name="iPhone 15",
@@ -110,7 +113,7 @@ def test_compatibility_automapping_on_create(setup_data):
         "name": "Wireless Pro Headphones",
         "brand": "BeatMaster",
         "product_type": "accessory",
-        "product_category": "Headphones",
+        "vendor_category": "Headphones",
         "status": "pending_review",
         "selling_status": "for_sale",
         "vendor_wholesale_price_amount": "50.00",
@@ -126,7 +129,7 @@ def test_compatibility_automapping_on_create(setup_data):
     
     url = reverse("product-list")
     response = client.post(url, product_data, format="json")
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_201_CREATED, response.data
     product_id = response.data["id"]
     
     assertions = ProductCompatibilityAssertion.objects.filter(product_id=product_id)
@@ -158,7 +161,7 @@ def test_reverse_device_remapping(setup_data):
     
     assert ProductCompatibilityAssertion.objects.filter(product=product).count() == 2
     
-    dt = DeviceType.objects.get(code="smartphone")
+    dt = DeviceType.objects.get(code="phone")
     mfg = Manufacturer.objects.get(name="Apple")
     
     new_device = Device.objects.create(
@@ -322,7 +325,7 @@ def test_category_specific_validations(setup_data):
             "display_name": "Memory",
             "status": "active",
             "compatibility_mode": "feature_based",
-            "eligible_device_types": ["smartphone"],
+            "eligible_device_types": ["phone"],
             "match_logic": "AND",
             "accessory_fields": ["storage_expansion_compatibility", "memory_capacity"],
             "compatibility_rules": {
@@ -359,9 +362,7 @@ def test_category_specific_validations(setup_data):
     
     p.headphone_jack_compatibility = "Not Compatible"
     p.bluetooth_compatibility = "No"
-    with pytest.raises(ValidationError) as excinfo:
-        p.clean()
-    assert "cannot both be Not Compatible/No" in str(excinfo.value)
+    p.clean()  # Negative declarations are valid entry, without match evidence.
     
     # 2. Memory capacity vs storage expansion
     p.product_category = "Memory"

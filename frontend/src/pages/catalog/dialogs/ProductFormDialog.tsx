@@ -22,6 +22,10 @@ import CheckIcon from '@mui/icons-material/Check'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import JSZip from 'jszip'
 import api from '../../../lib/apiClient'
+import { useQuery } from '@tanstack/react-query'
+import CompatibilityFields from '../../../components/CompatibilityFields'
+import { normalizedRules, useCompatibilityOptions } from '../../../hooks/useCompatibilityOptions'
+import { useSupplierCompanies } from '../../../hooks/useSupplierCompanies'
 import { getImageUrl } from '../../../lib/formatters'
 import { useProductForm, parseWirelessCharging } from '../hooks/useProductForm'
 import { extractUuid } from '../utils'
@@ -203,14 +207,14 @@ export default function ProductFormDialog({
   onClose,
   onSaved,
   mode,
-  product,
+  product: productRow,
   user,
   allowedBrands,
   allowedCategories,
   allowedColors,
   devices,
-  deviceTypes,
-  activeCompatibilities,
+  deviceTypes: _deviceTypes,
+  activeCompatibilities: suppliedCompatibilities,
   dropdownConfigs = [],
 }: ProductFormDialogProps) {
   const form = useProductForm()
@@ -218,29 +222,65 @@ export default function ProductFormDialog({
   const [submitting, setSubmitting] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const editingId = productRow?.id
+  const detailQuery = useQuery({ queryKey: ['catalog-product-edit', editingId], enabled: open && mode === 'edit' && !!editingId,
+    staleTime: 0, queryFn: async () => (await api.get(`/catalog/products/${editingId}/`)).data })
+  const selectionsQuery = useQuery({ queryKey: ['catalog-product-edit-compatibility', editingId], enabled: open && mode === 'edit' && !!editingId,
+    staleTime: 0, queryFn: async () => { const { data } = await api.get(`/catalog/products/${editingId}/compatibility/`); return Array.isArray(data) ? data : data.results || [] } })
+  const product = mode === 'edit' ? detailQuery.data : productRow
+  const activeCompatibilities = mode === 'edit' ? selectionsQuery.data : suppliedCompatibilities
+  const editPending = mode === 'edit' && (detailQuery.isFetching || selectionsQuery.isFetching || !detailQuery.isSuccess || !selectionsQuery.isSuccess)
+  const populatedKey = useRef('')
 
-  const isVendor = user?.role === 'vendor'
   const isAdmin = !!user?.is_cixci_admin
+  const isVendor = !isAdmin && (user?.role === 'vendor' || user?.company_type === 'vendor')
+  const [supplierId, setSupplierId] = useState('')
+  const { data: suppliers = [] } = useSupplierCompanies(open && isAdmin)
+  useEffect(() => { if (open) setSupplierId(product?.vendor_company_reference || '') }, [open, product])
+  const { data: compatibilityOptions } = useCompatibilityOptions()
+  const deviceTypes = compatibilityOptions?.device_types || []
+  const { data: categoryMappings = [] } = useQuery({ queryKey: ['vendor-category-mappings', user?.id], enabled: open && isVendor,
+    queryFn: async () => { const response = await api.get('/catalog/vendor-category-mappings/', { params: { status: 'active' } }); return response.data.results || response.data } })
+  const mappedCategory = isVendor ? categoryMappings.find((mapping: any) => mapping.vendor_category?.trim().toLowerCase() === form.prodVendorCategory.trim().toLowerCase())?.cixci_category || form.prodCategory : form.prodCategoryOverride || form.prodCategory
+  const categoryConfig = dropdownConfigs.find((config: any) => config.field_name === 'product_category' && config.value === mappedCategory)
+  const categoryMethod = categoryConfig?.compatibility_mode === 'explicit' ? 'device_specific' : categoryConfig?.compatibility_mode
+  const isUniversal = categoryMethod === 'universal'
+  const supportsExplicit = ['device_specific', 'hybrid'].includes(categoryMethod)
+  const compatibilityValues: Record<string, string> = { bluetooth_compatibility: form.compBluetooth, headphone_jack_compatibility: form.compHeadphoneJack,
+    compatible_charging_interface: form.compChargingInterface, wireless_charging_compatibility: form.compWirelessCharging.join('+'), storage_expansion_compatibility: form.compStorageExpansion,
+    memory_capacity: form.compMemoryCapacity, compatible_watch_case_size: form.compWatchCaseSize }
+  const setCompatibilityValue = (field: string, value: string) => {
+    const setters: Record<string, (value: string) => void> = { bluetooth_compatibility: form.setCompBluetooth, headphone_jack_compatibility: form.setCompHeadphoneJack,
+      compatible_charging_interface: form.setCompChargingInterface, wireless_charging_compatibility: value => form.setCompWirelessCharging(value.split('+').filter(Boolean)),
+      storage_expansion_compatibility: form.setCompStorageExpansion, memory_capacity: form.setCompMemoryCapacity, compatible_watch_case_size: form.setCompWatchCaseSize }
+    setters[field]?.(value)
+  }
 
   // -------------------------------------------------------------------------
   // Populate form when opening in edit mode
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (open && mode === 'edit' && product) {
+    if (!open) { populatedKey.current = ''; return }
+    const key = `${mode}:${editingId || 'new'}`
+    if (populatedKey.current === key) return
+    if (mode === 'edit' && product && !editPending) {
       form.populateFrom(product, activeCompatibilities)
-    } else if (open && mode === 'add') {
+      populatedKey.current = key
+    } else if (mode === 'add') {
       form.resetForm()
+      populatedKey.current = key
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, mode, product])
+  }, [open, mode, editingId, product, editPending, activeCompatibilities])
 
   // -------------------------------------------------------------------------
   // Dirty check and close handler
   // -------------------------------------------------------------------------
   const isDirty = useCallback(() => {
+    if (isAdmin && supplierId !== (product?.vendor_company_reference || '')) return true
     if (mode === 'add') return form.isAddDirty()
     return form.isEditDirty(product, activeCompatibilities)
-  }, [mode, form, product, activeCompatibilities])
+  }, [mode, form, product, activeCompatibilities, isAdmin, supplierId])
 
   const handleClose = useCallback(async () => {
     if (isDirty()) {
@@ -362,6 +402,7 @@ export default function ProductFormDialog({
   const validate = useCallback((): string | null => {
     if (!form.prodName.trim()) return 'Product Name is required.'
     if (!form.prodSku.trim()) return 'SKU is required.'
+    if (isAdmin && !supplierId) return 'Select the supplier company for this product.'
     if (isVendor) {
       if (!form.prodUpc.trim()) return 'UPC is required.'
       if (!/^\d{12}$/.test(form.prodUpc.trim())) return 'UPC must be exactly 12 digits.'
@@ -377,36 +418,18 @@ export default function ProductFormDialog({
       if (!form.prodHeight.trim()) return 'Height is required.'
       if (!form.prodWeight.trim()) return 'Weight is required.'
       if (!form.prodDescription.trim()) return 'Product Description is required.'
-      if (form.prodType === 'accessory') {
-        if (form.selectedDeviceIds.length === 0 && form.compUniversalDeviceTypes.length === 0) {
-          return 'Device compatibility is required for accessories. Select devices or universal device types.'
-        }
-        // Category-specific compatibility checks (admin only — vendors don't manage these)
-        if (!isVendor) {
-          const cat = form.prodCategory?.toLowerCase().replace(/[\s&]+/g, '_')
-          if (cat === 'headphones') {
-            if (!form.compHeadphoneJack) return 'Headphone Jack compatibility is required for Headphones.'
-            if (!form.compBluetooth) return 'Bluetooth compatibility is required for Headphones.'
-          } else if (cat === 'speakers') {
-            if (!form.compChargingInterface) return 'Charging Interface is required for Speakers.'
-            if (!form.compBluetooth) return 'Bluetooth compatibility is required for Speakers.'
-          } else if (cat === 'chargers_and_cables' || cat === 'chargers' || cat === 'cables') {
-            if (!form.compChargingInterface) return 'Charging Interface is required for Chargers & Cables.'
-          } else if (cat === 'memory' || cat === 'memory_cards') {
-            if (!form.compStorageExpansion) return 'Storage Expansion compatibility is required for Memory.'
-            if (form.compStorageExpansion !== 'Not Compatible' && !form.compMemoryCapacity) {
-              return 'Memory Capacity is required for Memory products.'
-            }
-          } else if (cat === 'wearable_tech' || cat === 'wearables') {
-            if (!form.compChargingInterface) return 'Charging Interface is required for Wearable Tech.'
-          } else if (cat === 'watch_accessories') {
-            if (!form.compWatchCaseSize) return 'Watch Case Size is required for Watch Accessories.'
-          }
-        }
+    }
+    if (form.prodType === 'accessory') {
+      if (!categoryConfig || categoryConfig.status !== 'active') return 'Choose a category with an active approved compatibility configuration.'
+      if (isUniversal && !form.compUniversalDeviceTypes.length) return 'Select at least one approved Universal Device Type.'
+      if (categoryMethod === 'device_specific' && !form.selectedDeviceIds.length) return 'Select the exact compatible device models.'
+      const rules = normalizedRules(categoryConfig.compatibility_rules)
+      for (const [field, rule] of Object.entries(rules) as [string, any][]) {
+        if (rule.mode === 'required' && !compatibilityValues[field]) return `${field.replaceAll('_', ' ')} requires a declared answer.`
       }
     }
     return null
-  }, [form, isVendor])
+  }, [form, isVendor, categoryConfig, categoryMethod, isUniversal, compatibilityValues, isAdmin, supplierId])
 
   // -------------------------------------------------------------------------
   // Submit
@@ -462,7 +485,7 @@ export default function ProductFormDialog({
         primary_image_reference: primaryImageRef,
         status: form.prodStatus || 'active',
         selling_status: 'for_sale',
-        vendor_company_reference: user?.company_reference || user?.company_id || null,
+        vendor_company_reference: isAdmin ? supplierId : user?.company_reference || user?.company_id || null,
         upc: form.prodUpc.trim(),
         launch_date: form.prodLaunchDate || null,
         release_date: form.prodReleaseDate || null,
@@ -485,20 +508,15 @@ export default function ProductFormDialog({
         meta_title: form.prodMetaTitle.trim(),
         meta_description: form.prodMetaDescription.trim(),
         media_references: mediaRefs,
-        compatible_device_types: form.compUniversalDeviceTypes,
+        compatibility_mode: isUniversal ? 'universal_device_type' : 'direct_device',
+        compatible_device_types: isUniversal ? form.compUniversalDeviceTypes : [],
       }
 
-      // Compatibility fields: CIXCI-internal, only admins manage these
-      if (!isVendor) {
-        payload.bluetooth_compatibility = form.compBluetooth || ''
-        payload.headphone_jack_compatibility = form.compHeadphoneJack || ''
-        payload.compatible_charging_interface = form.compChargingInterface || ''
-        payload.wireless_charging_compatibility = wirelessChargingStr
-        payload.storage_expansion_compatibility = form.compStorageExpansion || ''
-        payload.memory_capacity = form.compMemoryCapacity || ''
-        payload.compatible_watch_case_size = form.compWatchCaseSize || ''
+      Object.assign(payload, compatibilityValues, { wireless_charging_compatibility: wirelessChargingStr })
+      const configuredRules = normalizedRules(categoryConfig?.compatibility_rules)
+      for (const [field, rule] of Object.entries(configuredRules) as [string, any][]) {
+        if (!payload[field] && rule.mode === 'defaulted') payload[field] = rule.default_value || rule.default || ''
       }
-
       // Category Governance: Vendors provide vendor_category, Admins can set both + override
       if (isVendor) {
         payload.vendor_category = form.prodVendorCategory.trim()
@@ -511,28 +529,19 @@ export default function ProductFormDialog({
         payload.product_category = form.prodCategory || null
       }
 
-      let savedProduct: any
+      if (supportsExplicit) {
+        const originalIds = (activeCompatibilities || []).filter((row: any) => row.match_evidence?.explicit?.active || (!Object.keys(row.match_evidence || {}).length && row.is_compatible && !['feature_evidence', 'universal_device_type', 'review_required'].includes(row.compatibility_basis))).map((row: any) => row.device_reference)
+        const removed = originalIds.some((id: string) => !form.selectedDeviceIds.includes(id))
+        if (removed && isVendor && (product?.status === 'active' || product?.is_tied_to_activity)) throw new Error('Live-product replacement requires CIXCI Admin approval. Use Device Compatibility to exclude a device with a reason.')
+        payload.device_ids = form.selectedDeviceIds
+        payload.compatibility_update_type = removed || isAdmin ? 'replace' : 'add'
+      }
       if (mode === 'add') {
-        const res = await api.post('/catalog/products/', payload)
-        savedProduct = res.data
+        await api.post('/catalog/products/', payload)
       } else {
         const productId = product?.id
-        const res = await api.patch(`/catalog/products/${productId}/`, payload)
-        savedProduct = res.data
+        await api.patch(`/catalog/products/${productId}/`, payload)
       }
-
-      // Submit device compatibilities if any selected
-      if (form.selectedDeviceIds.length > 0 && savedProduct?.id) {
-        try {
-          await api.post(`/catalog/products/${savedProduct.id}/compatibility/`, {
-            device_ids: form.selectedDeviceIds,
-          })
-        } catch (compatErr: any) {
-          console.error('Failed to save device compatibility:', compatErr)
-          // Non-fatal: product was saved successfully
-        }
-      }
-
       form.resetForm()
       onSaved()
     } catch (err: any) {
@@ -545,7 +554,7 @@ export default function ProductFormDialog({
     } finally {
       setSubmitting(false)
     }
-  }, [form, validate, mode, product, user, handleUploadImage, onSaved])
+  }, [form, validate, mode, product, user, handleUploadImage, onSaved, isUniversal, supportsExplicit, compatibilityValues, categoryConfig, activeCompatibilities, isVendor, isAdmin, supplierId])
 
   // -------------------------------------------------------------------------
   // Device compatibility list (filtered)
@@ -563,155 +572,9 @@ export default function ProductFormDialog({
   // -------------------------------------------------------------------------
   // Category-specific compatibility fields (dynamically driven by rules)
   // -------------------------------------------------------------------------
-  const renderCategorySpecificCompatibility = () => {
-    if (!form.prodCategory) return null
-
-    const catConfig = dropdownConfigs.find(
-      (c: any) => c.field_name === 'product_category' && c.value === form.prodCategory
-    )
-    if (!catConfig) return null
-
-    const rules: Record<string, any> = catConfig.compatibility_rules || {}
-
-    const getMemoryCapacityOptions = () => {
-      if (form.compStorageExpansion === 'microSDXC') return ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
-      if (form.compStorageExpansion === 'microSDHC') return ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB']
-      return ['16GB', '32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '1.5TB', '2TB']
-    }
-
-    const FIELD_DEFS: Array<{
-      key: string
-      label: string
-      type: 'select' | 'checkbox'
-      getValue: () => string
-      onChange: (v: string) => void
-      getOptions: () => string[]
-      isDisabled?: () => boolean
-    }> = [
-      {
-        key: 'bluetooth_compatibility',
-        label: 'Bluetooth',
-        type: 'select',
-        getValue: () => form.compBluetooth,
-        onChange: form.setCompBluetooth,
-        getOptions: () => ['Yes', 'No'],
-      },
-      {
-        key: 'headphone_jack_compatibility',
-        label: 'Headphone Jack',
-        type: 'select',
-        getValue: () => form.compHeadphoneJack,
-        onChange: form.setCompHeadphoneJack,
-        getOptions: () => ['Type-C', 'Lightning', 'Not Compatible'],
-      },
-      {
-        key: 'compatible_charging_interface',
-        label: 'Charging Interface',
-        type: 'select',
-        getValue: () => form.compChargingInterface,
-        onChange: form.setCompChargingInterface,
-        getOptions: () => ['Type-C', 'Lightning', 'Not Compatible'],
-      },
-      {
-        key: 'wireless_charging_compatibility',
-        label: 'Wireless Charging',
-        type: 'checkbox',
-        getValue: () => form.compWirelessCharging.join('+'),
-        onChange: () => {},
-        getOptions: () => ['Qi', 'MagSafe', 'Qi2', 'Not Compatible'],
-      },
-      {
-        key: 'storage_expansion_compatibility',
-        label: 'Storage Expansion',
-        type: 'select',
-        getValue: () => form.compStorageExpansion,
-        onChange: form.setCompStorageExpansion,
-        getOptions: () => ['microSDXC', 'microSDHC', 'Not Compatible'],
-      },
-      {
-        key: 'memory_capacity',
-        label: 'Memory Capacity',
-        type: 'select',
-        getValue: () => form.compMemoryCapacity,
-        onChange: form.setCompMemoryCapacity,
-        getOptions: getMemoryCapacityOptions,
-        isDisabled: () => form.compStorageExpansion === 'Not Compatible' || !form.compStorageExpansion,
-      },
-      {
-        key: 'compatible_watch_case_size',
-        label: 'Watch Case Size',
-        type: 'select',
-        getValue: () => form.compWatchCaseSize,
-        onChange: form.setCompWatchCaseSize,
-        getOptions: () => ['40mm', '41mm', '42mm', '44mm', '45mm', '46mm', '49mm', 'Not Compatible'],
-      },
-    ]
-
-    const visibleFields = FIELD_DEFS.filter(fd => {
-      const rule = rules[fd.key]
-      const mode = rule?.mode || 'hidden'
-      return mode !== 'hidden'
-    })
-
-    if (visibleFields.length === 0) return null
-
-    const catDisplayName = catConfig.display_name || catConfig.value || form.prodCategory
-
-    return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Typography sx={sectionTitleSx}>Category Compatibility ({catDisplayName})</Typography>
-        <Box sx={gridTwoCol}>
-          {visibleFields.map(fd => {
-            const rule = rules[fd.key]
-            const isRequired = rule?.mode === 'required'
-
-            if (fd.type === 'checkbox') {
-              return (
-                <Box key={fd.key} sx={{ gridColumn: '1 / -1' }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', mb: 0.5, display: 'block' }}>
-                    {fd.label}{isRequired ? ' *' : ''}
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    {fd.getOptions().map(opt => (
-                      <FormControlLabel
-                        key={opt}
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={form.compWirelessCharging.includes(opt)}
-                            onChange={() => form.handleWirelessChargingChange(opt)}
-                          />
-                        }
-                        label={opt}
-                        sx={{ '& .MuiFormControlLabel-label': { fontSize: 14 } }}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              )
-            }
-
-            const options = fd.getOptions()
-            const label = `${fd.label}${isRequired ? ' *' : ''}`
-            return (
-              <FormControl key={fd.key} size="small" fullWidth disabled={fd.isDisabled?.()}>
-                <InputLabel>{label}</InputLabel>
-                <Select
-                  value={fd.getValue()}
-                  onChange={e => fd.onChange(e.target.value as string)}
-                  label={label}
-                >
-                  <MenuItem value=""><em>Select...</em></MenuItem>
-                  {options.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-                </Select>
-              </FormControl>
-            )
-          })}
-        </Box>
-      </Box>
-    )
-  }
-
+  const renderCategorySpecificCompatibility = () => categoryConfig ? <CompatibilityFields
+    values={compatibilityValues} onChange={setCompatibilityValue} rules={categoryConfig.compatibility_rules || {}}
+    assignedFields={categoryConfig.accessory_fields || []} /> : null
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -751,6 +614,9 @@ export default function ProductFormDialog({
         </DialogTitle>
 
         <DialogContent sx={{ pt: 2, pb: 1, px: 3 }}>
+          {editPending && <Alert severity={detailQuery.isError || selectionsQuery.isError ? 'error' : 'info'} sx={{ mb: 2 }}>
+            {detailQuery.isError || selectionsQuery.isError ? 'Product details or mappings could not be loaded. Close and reopen to retry before saving.' : 'Loading the complete product and current mappings…'}
+          </Alert>}
           {form.formError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => form.setFormError(null)}>
               {form.formError}
@@ -758,6 +624,9 @@ export default function ProductFormDialog({
           )}
 
           {/* ---- Basic Info ---- */}
+          {isAdmin && <TextField select size="small" fullWidth label="Supplier Company" value={supplierId} disabled={mode === 'edit'} onChange={event => setSupplierId(event.target.value)} sx={{ mt: 2 }}>
+            {suppliers.map((supplier: any) => <MenuItem key={supplier.id} value={supplier.id}>{supplier.name}</MenuItem>)}
+          </TextField>}
           <Typography sx={sectionTitleSx}>Basic Information</Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Box sx={gridTwoCol}>
@@ -1323,37 +1192,38 @@ export default function ProductFormDialog({
               <Typography sx={sectionTitleSx}>Device Compatibility</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {/* Universal Device Types */}
-                <Box>
+                {isUniversal && <Box>
                   <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
                     Universal Device Types
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                     {deviceTypes.map((dt: any) => {
-                      const dtName = typeof dt === 'string' ? dt : dt.name || dt.value || ''
+                      const dtCode = typeof dt === 'string' ? dt : dt.id
+                      const dtLabel = typeof dt === 'string' ? dt : dt.name || dt.code || ''
                       return (
                         <FormControlLabel
-                          key={dtName}
+                          key={dtCode}
                           control={
                             <Checkbox
                               size="small"
-                              checked={form.compUniversalDeviceTypes.includes(dtName)}
+                              checked={form.compUniversalDeviceTypes.includes(dtCode) || form.compUniversalDeviceTypes.includes(dt.code)}
                               onChange={() => {
                                 form.setCompUniversalDeviceTypes(prev =>
-                                  prev.includes(dtName) ? prev.filter(x => x !== dtName) : [...prev, dtName]
+                                  prev.includes(dtCode) ? prev.filter(x => x !== dtCode) : [...prev, dtCode]
                                 )
                               }}
                             />
                           }
-                          label={dtName}
+                          label={dtLabel}
                           sx={{ '& .MuiFormControlLabel-label': { fontSize: 14 } }}
                         />
                       )
                     })}
                   </Box>
-                </Box>
+                </Box>}
 
                 {/* Specific Device Selection */}
-                <Box>
+                {supportsExplicit && <Box>
                   <Box sx={{ position: 'relative' }}>
                     <TextField
                       size="small"
@@ -1429,11 +1299,11 @@ export default function ProductFormDialog({
                       })}
                     </Box>
                   )}
-                </Box>
+                </Box>}
               </Box>
 
               {/* ---- Category-Specific Compatibility (admin only — CIXCI internal auto-mapping) ---- */}
-              {!isVendor && renderCategorySpecificCompatibility()}
+              {renderCategorySpecificCompatibility()}
             </>
           )}
         </DialogContent>
@@ -1445,7 +1315,7 @@ export default function ProductFormDialog({
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={submitting || uploadingImage}
+            disabled={submitting || uploadingImage || editPending}
           >
             {submitting
               ? (mode === 'add' ? 'Creating...' : 'Saving...')
