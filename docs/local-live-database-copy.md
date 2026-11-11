@@ -12,6 +12,9 @@ the normal or production Compose files. It reads `backend/.env` and
 `.local-copy/postgres.env`. Both contain newly generated local credentials;
 do not replace either with production env files. Keep their DB passwords equal.
 These files and `.local-copy/` are ignored by Git.
+Backend/frontend Docker build contexts exclude env files and generated local
+dependencies/cache files. Backend env is supplied when the container runs;
+the frontend API URL is supplied as a build argument.
 
 The generated backend env uses `config.settings`, a local secret key, local
 PostgreSQL credentials, debug mode, and blank email/cloud credentials.
