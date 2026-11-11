@@ -1,5 +1,21 @@
 # Compatibility remediation verification and rollout
 
+## Single-product parity and dropdown follow-up — 2026-11-12
+
+The full suite now passes **355 tests on SQLite** and **355 on PostgreSQL**,
+including eight new manual/CSV category-boundary and Universal deduplication
+cases. TypeScript/Vite production build passes. Browser verification passes
+**33/33 checks**, with zero uncaught UI exceptions and zero failed local HTTP
+requests. It covers model selection beyond 50, actual structured form payloads,
+visible saved manufacturer names and direct access to Device Type compatibility
+rules. Local Telco API still returns exactly CP00448–CP00451, and all four PNG
+images return HTTP 200. Source counts remain 1,034 Products and 124 Devices.
+
+Product Manage Dropdown retains its original Category/System Color management
+layout; the duplicate shared values editor is removed from that dialog. Shared
+compatibility values remain under Device Manage Dropdown. See
+[the parity and dropdown report](single-product-compatibility-parity.md).
+
 ## Latest onboarding and Universal correction — 2026-11-12
 
 The earlier manual per-Buyer region UI is superseded. Company onboarding country
@@ -26,8 +42,8 @@ Earlier run counts and setup decisions below are retained as historical evidence
 the current flow is documented in [the admin guide](region-setup-admin-guide.md)
 and [the execution plan](onboarding-and-vendor-integration-plan.md).
 
-This is a local implementation report. No production deployment, live data
-repair, commit or feature push has been performed in this continuation.
+This is a local implementation report. Phase 1 was committed and pushed as
+`53b655e`. No production deployment or live data repair has been performed.
 
 ## Completed implementation
 

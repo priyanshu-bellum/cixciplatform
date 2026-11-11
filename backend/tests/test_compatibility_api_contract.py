@@ -76,6 +76,54 @@ def test_atomic_api_rejects_unknown_device_without_creating_product(admin_client
     assert not Product.objects.filter(sku="ATOMIC-INVALID").exists()
 
 
+@pytest.mark.parametrize("code", ["phone", "tablet", "smartwatch"])
+@pytest.mark.parametrize("entry", ["json", "csv"])
+def test_manual_and_bulk_reject_models_outside_category_atomically(code, entry, admin_client, vendor_company):
+    kinds = {value: DeviceType.objects.create(code=value, name=value.title(), status="active") for value in ("phone", "tablet", "smartwatch")}
+    wrong_code = {"phone": "tablet", "tablet": "smartwatch", "smartwatch": "phone"}[code]
+    device = Device.objects.create(name="Wrong category model", manufacturer=Manufacturer.objects.create(name="Entry Guard Maker"), device_type=kinds[wrong_code])
+    config = DynamicDropdownConfig.objects.create(field_name="product_category", value="Entry Guard", status="active", compatibility_mode="device_specific", eligible_device_types=[str(kinds[code].id)])
+    sku = "ENTRY-GUARD"
+    if entry == "json":
+        response = admin_client.post("/api/v1/catalog/products/", {"name": "Guarded entry", "sku": sku, "product_type": "accessory", "status": "pending_review", "product_category": config.value,
+            "vendor_company_reference": str(vendor_company.id), "launch_date": str(timezone.localdate()), "device_ids": [str(device.id)]}, format="json")
+        assert response.status_code == 400, response.data
+    else:
+        VendorCategoryMapping.objects.create(vendor_company_reference=vendor_company.id, company_scope_reference=vendor_company.id, vendor_category=config.value, cixci_category=config.value, status="active")
+        stream = io.StringIO()
+        writer = csv.writer(stream)
+        writer.writerow(["SKU", "Brand", "Product Category", "UPC", "Launch Date", "Vendor Wholesale Price", "MSRP", "Product Name", "Product Description", "Product Status", "Device Compatibility", "Inventory Level"])
+        writer.writerow([sku, "Entry Guard Brand", config.value, "123456789012", str(timezone.localdate()), "10", "20", "Guarded entry", "Explicit declaration", "Pending Review", str(device.id), "100"])
+        upload = io.BytesIO(stream.getvalue().encode()); upload.name = "category-guard.csv"
+        response = admin_client.post("/api/v1/catalog/products/bulk_upload/", {"file": upload, "vendor_company_reference": str(vendor_company.id)}, format="multipart")
+        assert response.status_code == 207 and response.data["rows_failed"] == 1, response.data
+    assert "outside the category" in str(response.data).lower()
+    assert not Product.objects.filter(sku=sku).exists()
+
+
+@pytest.mark.parametrize("entry", ["json", "csv"])
+def test_manual_and_bulk_universal_ids_deduplicate_without_explicit_models(entry, admin_client, vendor_company):
+    kinds = [DeviceType.objects.create(code=value, name=value.title(), status="active") for value in ("phone", "tablet", "smartwatch")]
+    config = DynamicDropdownConfig.objects.create(field_name="product_category", value="Entry Universal", status="active", compatibility_mode="universal", eligible_device_types=[str(kind.id) for kind in kinds])
+    if entry == "json":
+        response = admin_client.post("/api/v1/catalog/products/", {"name": "Structured Universal", "sku": "ENTRY-UNIVERSAL", "product_type": "accessory", "status": "pending_review", "product_category": config.value,
+            "vendor_company_reference": str(vendor_company.id), "launch_date": str(timezone.localdate()), "compatibility_mode": "universal_device_type", "compatible_device_types": [str(kind.id) for kind in kinds] + [str(kinds[0].id)]}, format="json")
+        assert response.status_code == 201, response.data
+    else:
+        VendorCategoryMapping.objects.create(vendor_company_reference=vendor_company.id, company_scope_reference=vendor_company.id, vendor_category=config.value, cixci_category=config.value, status="active")
+        stream = io.StringIO()
+        writer = csv.writer(stream)
+        writer.writerow(["SKU", "Brand", "Product Category", "UPC", "Launch Date", "Vendor Wholesale Price", "MSRP", "Product Name", "Product Description", "Product Status", "Device Compatibility", "Inventory Level"])
+        writer.writerow(["ENTRY-UNIVERSAL", "Universal Brand", config.value, "123456789012", str(timezone.localdate()), "10", "20", "Structured Universal", "Explicit declaration", "Pending Review", "Universal, Phone, Tablet, Smartwatch, Phone", "100"])
+        upload = io.BytesIO(stream.getvalue().encode()); upload.name = "universal-entry.csv"
+        response = admin_client.post("/api/v1/catalog/products/bulk_upload/", {"file": upload, "vendor_company_reference": str(vendor_company.id)}, format="multipart")
+        assert response.status_code == 200 and response.data["rows_failed"] == 0, response.data
+    product = Product.objects.get(sku="ENTRY-UNIVERSAL")
+    assert product.compatibility_mode == "universal_device_type"
+    assert set(product.universal_type_scopes.filter(is_active=True).values_list("device_type_id", flat=True)) == {kind.id for kind in kinds}
+    assert product.universal_type_scopes.filter(is_active=True).count() == 3
+
+
 @pytest.mark.parametrize("entity_fixture", ["buyer_entity", "vendor_entity"])
 def test_admin_import_owner_is_selected_supplier_not_actor_company(entity_fixture, request, admin_user, admin_client):
     from apps.tenant.models import Company

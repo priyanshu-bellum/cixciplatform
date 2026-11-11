@@ -1,5 +1,17 @@
 # Compatibility feature working-tree file inventory
 
+Follow-up to commit `53b655e`: single-product parity and the requested dropdown
+management restoration modify `frontend/src/pages/DevicesPage.tsx`,
+`frontend/src/pages/catalog/dialogs/ProductFormDialog.tsx`,
+`frontend/src/pages/catalog/dialogs/DropdownManagerDialog.tsx`,
+`backend/tests/test_compatibility_api_contract.py` and
+`scripts/verify-compatibility-ui.mjs`. New supporting files are
+`frontend/src/pages/catalog/compatibilityEntry.ts`,
+`scripts/verify-product-entry-ui.mjs`, `scripts/verify-device-dropdown-ui.mjs`
+and `docs/single-product-compatibility-parity.md`. This inventory and the
+verification checklist are also updated. The historical 89-file inventory below
+describes the already pushed Phase 1 work.
+
 Includes continued Claude changes and the subsequent repairs. Supplied source
 documents under `bugs/` and `docs/` are preserved separately and are not claimed as authored
 feature changes. Private environment files, database dumps and test artifacts

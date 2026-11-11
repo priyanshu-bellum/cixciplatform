@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
+import { verifyProductEntry } from './verify-product-entry-ui.mjs'
+import { verifyDeviceDropdown } from './verify-device-dropdown-ui.mjs'
 
 if (!process.env.CIXCI_QA_EMAIL || !process.env.CIXCI_QA_PASSWORD || !process.env.CIXCI_QA_CHROME) {
   throw new Error('Set CIXCI_QA_EMAIL, CIXCI_QA_PASSWORD and CIXCI_QA_CHROME at runtime. Requires Node 22+.')
@@ -115,6 +117,10 @@ try {
   const types = await evaluate(`(() => { const dialog = [...document.querySelectorAll('[role=dialog]')].find(dialog => dialog.innerText.includes('Add New Product')); return ['Phone','Tablet','Smartwatch'].map(name => ({ name, visible: [...dialog.querySelectorAll('label')].some(label => label.textContent.trim() === name && label.querySelector('input[type=checkbox]')) })); })()`)
   report.checks.push({ name: 'Single-product Speakers modal exposes all three controlled Universal types', pass: types.every(type => type.visible) })
   await screenshot('admin-product-form.png')
+  await verifyProductEntry({ call, on, evaluate, waitFor, clickText, chooseSelect, fillField, report, tokens })
+  events.delete('Fetch.requestPaused')
+  await verifyDeviceDropdown({ call, on, evaluate, waitFor, clickText, fillField, report, screenshot })
+  events.delete('Fetch.requestPaused')
   await call('Page.navigate', { url: 'http://localhost:5173/devices' }); await pause(700)
   await waitFor('document.querySelectorAll("tbody tr.MuiTableRow-hover").length > 0 && !document.querySelector("tbody .MuiSkeleton-root")')
   await evaluate('document.querySelector("tbody tr.MuiTableRow-hover").click()')
@@ -244,9 +250,10 @@ try {
     await screenshot(admin ? 'admin-bulk-upload.png' : 'vendor-bulk-upload.png')
   }
   await inspectBulk(true)
-  await call('Page.navigate', { url: 'http://localhost:5173/catalog' }); await pause(700)
-  await waitFor('[...document.querySelectorAll("button")].some(button => button.textContent.trim() === "Manage Dropdowns")')
-  await clickText('Manage Dropdowns')
+  await call('Page.navigate', { url: 'http://localhost:5173/devices' }); await pause(700)
+  await waitFor('[...document.querySelectorAll("button")].some(button => button.textContent.trim() === "Manage Dropdown Values")')
+  await clickText('Manage Dropdown Values')
+  await clickText('Compatibility Values', '[role=tab]')
   await waitFor('document.body.innerText.includes("Shared Device and Accessory Compatibility Values")')
   report.checks.push({ name: 'Shared controlled-value and wireless-policy UI renders', pass: true })
   await screenshot('shared-compatibility-values.png')

@@ -31,6 +31,7 @@ import { useProductForm, parseWirelessCharging } from '../hooks/useProductForm'
 import { extractUuid } from '../utils'
 import { useConfirmDialog } from '../../../hooks/useConfirmDialog'
 import ConfirmDialog from '../../../components/feedback/ConfirmDialog'
+import { categoryDeviceTypes, declaredTypeIds, deviceDisplayName } from '../compatibilityEntry'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -246,6 +247,12 @@ export default function ProductFormDialog({
   const categoryMethod = categoryConfig?.compatibility_mode === 'explicit' ? 'device_specific' : categoryConfig?.compatibility_mode
   const isUniversal = categoryMethod === 'universal'
   const supportsExplicit = ['device_specific', 'hybrid'].includes(categoryMethod)
+  const eligibleTypes = useMemo(() => categoryDeviceTypes(deviceTypes, categoryConfig), [deviceTypes, categoryConfig])
+  const eligibleTypeIds = useMemo(() => new Set(eligibleTypes.map(type => type.id)), [eligibleTypes])
+  const declaredUniversalIds = declaredTypeIds(form.compUniversalDeviceTypes, deviceTypes)
+  const deviceById = useMemo(() => new Map(devices.map(device => [device.id, device])), [devices])
+  const [deviceLimit, setDeviceLimit] = useState(50)
+  useEffect(() => { setDeviceLimit(50) }, [form.deviceSearch, mappedCategory, open])
   const compatibilityValues: Record<string, string> = { bluetooth_compatibility: form.compBluetooth, headphone_jack_compatibility: form.compHeadphoneJack,
     compatible_charging_interface: form.compChargingInterface, wireless_charging_compatibility: form.compWirelessCharging.join('+'), storage_expansion_compatibility: form.compStorageExpansion,
     memory_capacity: form.compMemoryCapacity, compatible_watch_case_size: form.compWatchCaseSize }
@@ -423,13 +430,17 @@ export default function ProductFormDialog({
       if (!categoryConfig || categoryConfig.status !== 'active') return 'Choose a category with an active approved compatibility configuration.'
       if (isUniversal && !form.compUniversalDeviceTypes.length) return 'Select at least one approved Universal Device Type.'
       if (categoryMethod === 'device_specific' && !form.selectedDeviceIds.length) return 'Select the exact compatible device models.'
+      if (supportsExplicit && form.selectedDeviceIds.some(id => {
+        const device = deviceById.get(id)
+        return device && !eligibleTypeIds.has(device.device_type)
+      })) return 'A selected model is outside this category’s approved types. Review the selected models before saving.'
       const rules = normalizedRules(categoryConfig.compatibility_rules)
       for (const [field, rule] of Object.entries(rules) as [string, any][]) {
         if (rule.mode === 'required' && !compatibilityValues[field]) return `${field.replaceAll('_', ' ')} requires a declared answer.`
       }
     }
     return null
-  }, [form, isVendor, categoryConfig, categoryMethod, isUniversal, compatibilityValues, isAdmin, supplierId])
+  }, [form, isVendor, categoryConfig, categoryMethod, isUniversal, compatibilityValues, isAdmin, supplierId, declaredUniversalIds, eligibleTypeIds, supportsExplicit, deviceById])
 
   // -------------------------------------------------------------------------
   // Submit
@@ -509,7 +520,7 @@ export default function ProductFormDialog({
         meta_description: form.prodMetaDescription.trim(),
         media_references: mediaRefs,
         compatibility_mode: isUniversal ? 'universal_device_type' : 'direct_device',
-        compatible_device_types: isUniversal ? form.compUniversalDeviceTypes : [],
+        compatible_device_types: isUniversal ? declaredUniversalIds : [],
       }
 
       Object.assign(payload, compatibilityValues, { wireless_charging_compatibility: wirelessChargingStr })
@@ -554,20 +565,17 @@ export default function ProductFormDialog({
     } finally {
       setSubmitting(false)
     }
-  }, [form, validate, mode, product, user, handleUploadImage, onSaved, isUniversal, supportsExplicit, compatibilityValues, categoryConfig, activeCompatibilities, isVendor, isAdmin, supplierId])
+  }, [form, validate, mode, product, user, handleUploadImage, onSaved, isUniversal, supportsExplicit, compatibilityValues, categoryConfig, activeCompatibilities, isVendor, isAdmin, supplierId, declaredUniversalIds])
 
   // -------------------------------------------------------------------------
   // Device compatibility list (filtered)
   // -------------------------------------------------------------------------
   const filteredDevices = useMemo(() => {
-    if (!form.deviceSearch.trim()) return devices
-    const q = form.deviceSearch.toLowerCase()
+    const q = form.deviceSearch.trim().toLowerCase()
     return devices.filter((d: any) =>
-      (d.name || '').toLowerCase().includes(q) ||
-      (d.model || '').toLowerCase().includes(q) ||
-      (d.brand || '').toLowerCase().includes(q)
+      eligibleTypeIds.has(d.device_type) && deviceDisplayName(d).toLowerCase().includes(q)
     )
-  }, [devices, form.deviceSearch])
+  }, [devices, form.deviceSearch, eligibleTypeIds])
 
   // -------------------------------------------------------------------------
   // Category-specific compatibility fields (dynamically driven by rules)
@@ -1191,6 +1199,13 @@ export default function ProductFormDialog({
             <>
               <Typography sx={sectionTitleSx}>Device Compatibility</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {categoryConfig?.status === 'active' && <Alert severity="info">
+                  {isUniversal ? 'Universal: select the approved device types. Eligible current and future models of those types are mapped automatically; exclusions remain in effect.'
+                    : categoryMethod === 'device_specific' ? 'Device Specific: select exact compatible models, equivalent to the Device Compatibility column in bulk upload.'
+                    : categoryMethod === 'hybrid' ? 'Hybrid: exact model selections and configured feature matches are combined. Exclusions remain in effect.'
+                    : categoryMethod === 'feature_based' ? 'Feature Based: compatibility is calculated from the category’s configured capability fields below.'
+                    : 'Compatibility configuration requires review.'}
+                </Alert>}
                 {/* Universal Device Types */}
                 {isUniversal && <Box>
                   <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
@@ -1206,11 +1221,12 @@ export default function ProductFormDialog({
                           control={
                             <Checkbox
                               size="small"
-                              checked={form.compUniversalDeviceTypes.includes(dtCode) || form.compUniversalDeviceTypes.includes(dt.code)}
+                              checked={declaredUniversalIds.includes(dtCode)}
                               onChange={() => {
-                                form.setCompUniversalDeviceTypes(prev =>
-                                  prev.includes(dtCode) ? prev.filter(x => x !== dtCode) : [...prev, dtCode]
-                                )
+                                form.setCompUniversalDeviceTypes(prev => {
+                                  const ids = declaredTypeIds(prev, deviceTypes)
+                                  return ids.includes(dtCode) ? ids.filter(id => id !== dtCode) : [...ids, dtCode]
+                                })
                               }}
                             />
                           }
@@ -1220,6 +1236,10 @@ export default function ProductFormDialog({
                       )
                     })}
                   </Box>
+                  {declaredUniversalIds.filter(id => !deviceTypes.some((type: any) => type.id === id)).map(id => <Chip key={id}
+                    label={`Review unavailable saved type: ${id}`}
+                    color="warning" size="small" sx={{ mt: 1, mr: 1 }}
+                    onDelete={() => form.setCompUniversalDeviceTypes(prev => declaredTypeIds(prev, deviceTypes).filter(value => value !== id))} />)}
                 </Box>}
 
                 {/* Specific Device Selection */}
@@ -1233,6 +1253,7 @@ export default function ProductFormDialog({
                       onChange={e => { form.setDeviceSearch(e.target.value); form.setShowDeviceDropdown(true) }}
                       onFocus={() => form.setShowDeviceDropdown(true)}
                       placeholder="Search devices..."
+                      helperText="Search by manufacturer, device name or model number. Only this category’s approved device types are listed."
                     />
                     {form.showDeviceDropdown && filteredDevices.length > 0 && (
                       <Box
@@ -1251,7 +1272,7 @@ export default function ProductFormDialog({
                           boxShadow: 3,
                         }}
                       >
-                        {filteredDevices.slice(0, 50).map((device: any) => {
+                        {filteredDevices.slice(0, deviceLimit).map((device: any) => {
                           const isSelected = form.selectedDeviceIds.includes(device.id)
                           return (
                             <Box
@@ -1270,21 +1291,28 @@ export default function ProductFormDialog({
                               }}
                             >
                               {isSelected && <CheckIcon sx={{ fontSize: 16, color: 'primary.main' }} />}
-                              <span>{device.brand} {device.name} {device.model ? `(${device.model})` : ''}</span>
+                              <span>{deviceDisplayName(device)}</span>
                             </Box>
                           )
                         })}
+                        {filteredDevices.length > deviceLimit && <Button fullWidth size="small"
+                          onClick={() => setDeviceLimit(limit => limit + 50)}>
+                          Show more devices ({filteredDevices.length - deviceLimit} remaining)
+                        </Button>}
                       </Box>
                     )}
+                    {form.showDeviceDropdown && !filteredDevices.length && <Typography variant="caption" color="text.secondary">
+                      No matching models in this category’s approved device types.
+                    </Typography>}
                   </Box>
 
                   {/* Selected devices display */}
                   {form.selectedDeviceIds.length > 0 && (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
                       {form.selectedDeviceIds.map(id => {
-                        const device = devices.find((d: any) => d.id === id)
+                        const device = deviceById.get(id)
                         const displayName = device
-                          ? `${device.brand || ''} ${device.name || ''} ${device.model ? `(${device.model})` : ''}`.trim()
+                          ? deviceDisplayName(device)
                           : id
                         return (
                           <Chip
@@ -1302,7 +1330,7 @@ export default function ProductFormDialog({
                 </Box>}
               </Box>
 
-              {/* ---- Category-Specific Compatibility (admin only — CIXCI internal auto-mapping) ---- */}
+              {/* Category controls are shared by manual entry, CSV and API. */}
               {renderCategorySpecificCompatibility()}
             </>
           )}

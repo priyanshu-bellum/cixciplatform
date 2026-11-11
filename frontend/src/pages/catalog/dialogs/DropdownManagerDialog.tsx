@@ -26,7 +26,6 @@ import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import SettingsIcon from '@mui/icons-material/Settings'
 import api from '../../../lib/apiClient'
-import CompatibilityValuesManager from '../../../components/CompatibilityValuesManager'
 import { apiError, normalizedRules, useCompatibilityOptions } from '../../../hooks/useCompatibilityOptions'
 
 interface DropdownManagerDialogProps {
@@ -457,7 +456,6 @@ export default function DropdownManagerDialog({
         ) : (
           /* ---------- Dropdown Values Manager ---------- */
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <CompatibilityValuesManager />
             {/* Field Selector Tabs */}
             <Tabs
               value={tabIndex}

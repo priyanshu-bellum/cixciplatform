@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import CompatibilityFields from '../components/CompatibilityFields'
 import CompatibilityValuesManager from '../components/CompatibilityValuesManager'
 import { normalizedRules, COMPATIBILITY_LABELS } from '../hooks/useCompatibilityOptions'
@@ -141,9 +141,19 @@ export default function DevicesPage() {
 
   // Modals state
   const [showDropdownModal, setShowDropdownModal] = useState(false)
+  const [dropdownSection, setDropdownSection] = useState('taxonomy')
   const [manageField, setManageField] = useState<'manufacturer' | 'device_type'>('manufacturer')
+  const [addingDropdownValue, setAddingDropdownValue] = useState(false)
   const [newDropdownValue, setNewDropdownValue] = useState('')
   const [dropdownError, setDropdownError] = useState<string | null>(null)
+  const dropdownListRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (showDropdownModal) {
+      setDropdownSection('taxonomy')
+      setManageField('manufacturer')
+      setDropdownError(null)
+    }
+  }, [showDropdownModal])
 
   // Device Type Configuration States
   const [editingTypeConfig, setEditingTypeConfig] = useState<any | null>(null)
@@ -337,12 +347,12 @@ export default function DevicesPage() {
 
   const { data: manufacturersData, refetch: refetchManufacturers } = useQuery({
     queryKey: ['manufacturers'],
-    queryFn: () => api.get('/devices/manufacturers/', { params: { limit: 100 } }).then(r => r.data),
+    queryFn: () => api.get('/devices/manufacturers/', { params: { paginate: 'false' } }).then(r => r.data),
   })
 
   const { data: typesData, refetch: refetchTypes } = useQuery({
     queryKey: ['device-types'],
-    queryFn: () => api.get('/devices/types/', { params: { limit: 100 } }).then(r => r.data),
+    queryFn: () => api.get('/devices/types/', { params: { paginate: 'false' } }).then(r => r.data),
   })
 
   const devicesRaw = data?.results ?? (Array.isArray(data) ? data : [])
@@ -458,23 +468,27 @@ export default function DevicesPage() {
 
   const handleAddDropdownValue = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newDropdownValue.trim()) return
+    if (!newDropdownValue.trim() || addingDropdownValue) return
     setDropdownError(null)
+    setAddingDropdownValue(true)
     try {
       if (manageField === 'manufacturer') {
         await api.post('/devices/manufacturers/', {
           name: newDropdownValue.trim(),
         })
-        refetchManufacturers()
+        await refetchManufacturers()
       } else {
         await api.post('/devices/types/', {
           name: newDropdownValue.trim(),
         })
-        refetchTypes()
+        await refetchTypes()
       }
       setNewDropdownValue('')
+      dropdownListRef.current?.scrollTo({ top: 0 })
     } catch (err: any) {
       setDropdownError(parseApiError(err, 'Failed to add value.'))
+    } finally {
+      setAddingDropdownValue(false)
     }
   }
 
@@ -1481,8 +1495,8 @@ export default function DevicesPage() {
       {/* Dropdown Manager Dialog */}
       <Dialog
         open={showDropdownModal}
-        onClose={() => { setShowDropdownModal(false); setEditingTypeConfig(null); }}
-        maxWidth="sm"
+        onClose={() => { setShowDropdownModal(false); setEditingTypeConfig(null); setDropdownSection('taxonomy'); }}
+        maxWidth="md"
         fullWidth
         slotProps={{ paper: { sx: { maxHeight: '90vh' } } }}
       >
@@ -1490,7 +1504,16 @@ export default function DevicesPage() {
           {editingTypeConfig ? 'Configure Device Type Rules' : 'Manage Dropdown Values'}
         </DialogTitle>
         <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {isCixciAdmin && !editingTypeConfig && <CompatibilityValuesManager />}
+          {!editingTypeConfig && <Tabs value={dropdownSection} onChange={(_, value) => {
+            setDropdownSection(value)
+            setManageField(value === 'types' ? 'device_type' : 'manufacturer')
+            setNewDropdownValue('')
+            setDropdownError(null)
+          }} variant="scrollable" scrollButtons="auto" sx={{ flexShrink: 0 }}>
+            <Tab value="taxonomy" label="Device Manufacturers" />
+            <Tab value="types" label="Device Types & Compatibility Rules" />
+            {isCixciAdmin && <Tab value="compatibility" label="Compatibility Values" />}
+          </Tabs>}
           {dropdownError && (
             <Alert severity="error" icon={<ErrorOutlineIcon />}>
               {dropdownError}
@@ -1635,38 +1658,29 @@ export default function DevicesPage() {
                 </Button>
               </Box>
             </form>
+          ) : dropdownSection === 'compatibility' && isCixciAdmin ? (
+            <CompatibilityValuesManager />
           ) : (
             <>
-              <FormControl size="small" fullWidth>
-                <InputLabel>Select Taxonomy Dropdown</InputLabel>
-                <Select
-                  value={manageField}
-                  onChange={e => {
-                    setManageField(e.target.value as any)
-                    setNewDropdownValue('')
-                    setDropdownError(null)
-                  }}
-                  label="Select Taxonomy Dropdown"
-                >
-                  <MenuItem value="manufacturer">Device Manufacturer</MenuItem>
-                  <MenuItem value="device_type">Device Type</MenuItem>
-                </Select>
-              </FormControl>
+              <Typography variant="body2" color="text.secondary">
+                {manageField === 'manufacturer' ? 'Manage manufacturer names used by the Device Catalog.' : 'Manage device types and configure each type’s compatibility entry rules.'}
+              </Typography>
 
               <Box component="form" onSubmit={handleAddDropdownValue} sx={{ display: 'flex', gap: 1, mb: 0.5 }}>
                 <TextField
                   size="small"
+                  label={manageField === 'manufacturer' ? 'Manufacturer Name' : 'Device Type Name'}
                   placeholder={`Add new ${manageField === 'manufacturer' ? 'manufacturer' : 'device type'}...`}
                   value={newDropdownValue}
                   onChange={e => setNewDropdownValue(e.target.value)}
                   sx={{ flex: 1 }}
                 />
-                <Button type="submit" variant="contained">
-                  Add Value
+                <Button type="submit" variant="contained" disabled={addingDropdownValue || !newDropdownValue.trim()}>
+                  {addingDropdownValue ? 'Adding...' : 'Add Value'}
                 </Button>
               </Box>
 
-              <Paper variant="outlined" sx={{ flex: 1, overflow: 'auto', maxHeight: '35vh' }}>
+              <Paper ref={dropdownListRef} variant="outlined" aria-label={manageField === 'manufacturer' ? 'Configured Manufacturers' : 'Configured Device Types'} sx={{ flexShrink: 0, overflow: 'auto', maxHeight: '45vh', minHeight: 100 }}>
                 {(manageField === 'manufacturer' ? manufacturers : deviceTypes).length === 0 ? (
                   <Box sx={{ p: 3, textAlign: 'center' }}>
                     <Typography variant="body2" color="text.secondary">No values configured.</Typography>
@@ -1686,21 +1700,17 @@ export default function DevicesPage() {
                           borderColor: 'divider',
                         }}
                       >
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 555 }}>
+                        <Box sx={{ minWidth: 0, flex: 1, mr: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 555, overflowWrap: 'anywhere' }}>
                             {item.name}
                           </Typography>
                           {!item.is_active && (
                             <Typography variant="caption" color="text.disabled">Inactive</Typography>
                           )}
                         </Box>
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                           {manageField === 'device_type' && (
-                            <Tooltip title="Configure rules">
-                              <IconButton size="small" color="primary" onClick={() => setEditingTypeConfig(item)}>
-                                <SettingsIcon sx={{ fontSize: 16 }} />
-                              </IconButton>
-                            </Tooltip>
+                            <Button size="small" startIcon={<SettingsIcon />} onClick={() => setEditingTypeConfig(item)}>Configure Rules</Button>
                           )}
                           <Button
                             size="small"
