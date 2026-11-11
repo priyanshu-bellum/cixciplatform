@@ -77,6 +77,9 @@ try {
   captureFailure = async () => { report.page = await evaluate('({ url: location.pathname, body: document.body.innerText.slice(0, 6000) })'); await screenshot('ui-failure.png') }
   on('Runtime.exceptionThrown', event => report.consoleErrors.push(event.exceptionDetails.exception?.description || event.exceptionDetails.text))
   on('Network.responseReceived', event => { if (event.response.status >= 400 && event.response.url.includes('localhost')) report.failedRequests.push({ url: event.response.url, status: event.response.status }) })
+  let inspectRegionRequests = false
+  const regionMainRequests = []
+  on('Network.requestWillBeSent', event => { if (inspectRegionRequests) regionMainRequests.push(new URL(event.request.url).pathname) })
   await call('Page.enable'); await call('Runtime.enable'); await call('Network.enable')
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
   const login = await fetch('http://localhost:8000/api/v1/auth/login/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: process.env.CIXCI_QA_EMAIL, password: process.env.CIXCI_QA_PASSWORD }) })
@@ -100,12 +103,38 @@ try {
   await screenshot('compatible-products-real-data.png')
   report.checks.push({ name: 'All four details/history tabs render', pass: true })
   // Inspect the actual governed setup UI without creating business configuration.
+  inspectRegionRequests = true
   await call('Page.navigate', { url: 'http://localhost:5173/regions' }); await pause(700)
+  await waitFor('[...document.querySelectorAll("button")].some(button => button.textContent.trim() === "Country Setup & Diagnostics")')
+  await waitFor('[...document.querySelectorAll("button")].some(button => button.textContent.trim() === "Update Regions")')
+  inspectRegionRequests = false
+  report.checks.push({ name: 'Regional main page does not fetch the country registry or all Buyer Entities before diagnostics are opened', pass: !regionMainRequests.some(path => path.includes('/operating-regions/') || path.endsWith('/tenant/entities/')) })
+  report.checks.push({ name: 'Regional page keeps Vendor coverage visible without expanded country administration', pass: await evaluate('!document.body.innerText.includes("Buyer country resolution") && !document.body.innerText.includes("Vendor operating countries") && [...document.querySelectorAll("button")].some(button => button.textContent.trim() === "Update Regions")') })
+  await screenshot('regional-main-page.png')
+  await clickText('Country Setup & Diagnostics')
+  await clickText('Buyer Country Checks', '[role=tab]')
   await waitFor('document.body.innerText.includes("Buyer regions are resolved automatically") && document.body.innerText.includes("Buyer country resolution")')
   report.checks.push({ name: 'Country-derived onboarding and Vendor coverage setup render', pass: true })
   await waitFor('document.body.innerText.includes("Resolved automatically")')
   report.checks.push({ name: 'Real Buyer countries resolve without per-Buyer assignment controls', pass: await evaluate('![...document.querySelectorAll("[role=combobox]")].some(control => control.closest(".MuiFormControl-root")?.innerText.includes("Operating Region"))') })
   await screenshot('regional-setup-desktop.png')
+  await evaluate(`[...document.querySelectorAll('.MuiDialog-paper button')].find(button => button.textContent.trim() === 'Close').click()`)
+  await waitFor('!document.querySelector(".MuiDialog-paper")')
+  await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
+  await pause(300)
+  const regionTabs = await evaluate(`(() => { const rect = document.querySelector('[role=tablist]').getBoundingClientRect(); return { x: Math.min(innerWidth - 25, rect.left + 100), y: rect.top + rect.height / 2 }; })()`)
+  await call('Input.dispatchMouseEvent', { type: 'mouseWheel', x: regionTabs.x, y: regionTabs.y, deltaX: 1500, deltaY: 0 })
+  await pause(300)
+  report.regionMobile = await evaluate(`(() => { const tab = [...document.querySelectorAll('[role=tab]')].find(tab => tab.textContent === 'Region Events'); const rect = tab.getBoundingClientRect(); return { pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth, eventsLeft: rect.left, eventsRight: rect.right }; })()`)
+  const regionMobilePass = report.regionMobile.pageWidth <= report.regionMobile.viewportWidth + 1 && report.regionMobile.eventsLeft >= 0 && report.regionMobile.eventsRight <= report.regionMobile.viewportWidth
+  report.checks.push({ name: 'Mobile regional page fits the viewport and all tabs are reachable by horizontal scrolling', pass: regionMobilePass })
+  await screenshot('regional-main-mobile.png')
+  if (!regionMobilePass) throw new Error('Regional mobile layout or tab navigation is not usable.')
+  await clickText('Country Setup & Diagnostics')
+  await waitFor('document.body.innerText.includes("Vendor operating countries")')
+  report.checks.push({ name: 'Country setup dialog fits the mobile viewport', pass: await evaluate(`(() => { const rect = document.querySelector('.MuiDialog-paper').getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth + 1; })()`) })
+  await screenshot('regional-country-setup-mobile.png')
+  await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
   await call('Page.navigate', { url: 'http://localhost:5173/catalog' }); await pause(700)
   await waitFor('[...document.querySelectorAll("button")].some(button => button.textContent.trim() === "Add Product")')
   await clickText('Add Product')
@@ -261,6 +290,8 @@ try {
   // Actual API persistence/authorization is verified in isolated Django tests.
   regionSetupPreview = true
   await call('Page.navigate', { url: 'http://localhost:5173/regions' }); await pause(700)
+  await waitFor('[...document.querySelectorAll("button")].some(button => button.textContent.trim() === "Country Setup & Diagnostics")')
+  await clickText('Country Setup & Diagnostics')
   await waitFor('document.body.innerText.includes("No Buyer-by-Buyer region setup is required")')
   report.checks.push({ name: 'Empty country catalog explains automatic Buyer onboarding', pass: true })
   await fillField('Operating country', 'not-a-country')

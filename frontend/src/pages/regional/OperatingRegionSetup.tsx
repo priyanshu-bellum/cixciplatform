@@ -13,7 +13,10 @@ type Save = (operation: () => Promise<unknown>, message: string) => Promise<bool
 async function allRows<T>(url: string) {
   const rows: T[] = []
   let next: string | null = url
+  const visited = new Set<string>()
   while (next) {
+    if (visited.has(next)) throw new Error('Pagination repeated a page; retry the request.')
+    visited.add(next)
     const { data }: { data: any } = await api.get(next)
     rows.push(...(Array.isArray(data) ? data : data.results || []))
     next = Array.isArray(data) ? null : data.next
@@ -36,16 +39,16 @@ function RegionItem({ region, saving, save }: { region: Region; saving: boolean;
   </Stack>
 }
 
-export default function OperatingRegionSetup() {
+export default function OperatingRegionSetup({ view = 'countries' }: { view?: 'countries' | 'buyers' }) {
   const client = useQueryClient()
   const { showSnackbar } = useSnackbar()
   const regions = useQuery({ queryKey: ['operating-regions'], queryFn: () => allRows<Region>('/tenant/operating-regions/') })
-  const entities = useQuery({ queryKey: ['regional-buyer-entities'], queryFn: async () => {
+  const entities = useQuery({ queryKey: ['regional-buyer-entities'], enabled: view === 'buyers', queryFn: async () => {
     const [companies, units] = await Promise.all([allRows<{ id: string }>('/tenant/companies/?company_type=buyer'), allRows<Entity>('/tenant/entities/')])
     const buyers = new Set(companies.map(company => company.id))
     return units.filter(entity => buyers.has(entity.company))
   } })
-  const countries = useQuery({ queryKey: ['operating-countries'], queryFn: () => allRows<Country>('/tenant/operating-regions/countries/') })
+  const countries = useQuery({ queryKey: ['operating-countries'], enabled: view === 'countries', queryFn: () => allRows<Country>('/tenant/operating-regions/countries/') })
   const [country, setCountry] = useState<Country | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -73,10 +76,11 @@ export default function OperatingRegionSetup() {
       {error || 'Region configuration could not be loaded.'}
     </Alert>}
     {notice && <Alert severity="success" sx={{ mb: 1 }}>{notice}</Alert>}
+    {view === 'countries' && <>
     <Typography variant="subtitle1" sx={{ mt: 2 }}>Vendor operating countries</Typography>
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ my: 2, alignItems: { md: 'flex-start' } }}>
       <Autocomplete options={countries.data || []} value={country} onChange={(_, value) => setCountry(value)} loading={countries.isLoading}
-        disabled={saving || countries.isError} sx={{ minWidth: 300, flex: 1, maxWidth: 540 }}
+        disabled={saving || countries.isError} sx={{ minWidth: 0, width: { xs: '100%', md: 360 }, flex: 1, maxWidth: 540 }}
         getOptionLabel={value => `${value.name} (${value.code} / ${value.alpha3})`} isOptionEqualToValue={(a, b) => a.code === b.code}
         renderInput={params => <TextField {...params} label="Operating country" helperText="Buyer onboarding registers its country automatically. Add another country here when preparing Vendor coverage." />} />
       <Button variant="outlined" disabled={saving || !country || (regions.data || []).some(region => region.code.toUpperCase() === country.code)}
@@ -88,6 +92,8 @@ export default function OperatingRegionSetup() {
     {!regions.isLoading && !regions.isError && !regions.data?.length && <Alert severity="info" sx={{ mb: 2 }}>
       Countries appear automatically when Buyers are onboarded. No Buyer-by-Buyer region setup is required.
     </Alert>}
+    </>}
+    {view === 'buyers' && <>
     <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>Buyer country resolution</Typography>
     {entities.isLoading && <Typography role="status">Loading Buyer Entities…</Typography>}
     {!entities.isLoading && !entities.isError && !entities.data?.length && <Typography>No Buyer Entities found.</Typography>}
@@ -100,6 +106,7 @@ export default function OperatingRegionSetup() {
         <Chip size="small" label={selected ? (selected.is_active ? 'Resolved automatically' : 'Region retired') : 'Country setup required'} />
       </Stack>
     })}
-    <Alert severity="info">Configure each Vendor's regional shipping fee, then activate its supported country using Update Regions below. Vendor coverage must match the Buyer's operating country. Approved relationships and normal product eligibility still apply.</Alert>
+    </>}
+    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Use Shipping Fees and Update Regions on the regional page to configure Vendor coverage. Approved relationships and normal product eligibility still apply.</Typography>
   </Box>
 }

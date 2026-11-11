@@ -8,6 +8,10 @@ import Chip from '@mui/material/Chip'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import PublicIcon from '@mui/icons-material/Public'
@@ -238,6 +242,8 @@ export default function RegionalPage() {
   const [regionUpdateCompany, setRegionUpdateCompany] = useState<{ id: string; name: string } | null>(null)
   const [reviewConfigOpen, setReviewConfigOpen] = useState(false)
   const [reviewConfigDc, setReviewConfigDc] = useState<{ id: string; name: string } | null>(null)
+  const [regionSetupOpen, setRegionSetupOpen] = useState(false)
+  const [regionSetupView, setRegionSetupView] = useState<'countries' | 'buyers'>('countries')
 
   // ── Queries ──
   const { data: companiesData, isLoading: companiesLoading, error: companiesError } = useQuery({
@@ -364,6 +370,8 @@ export default function RegionalPage() {
 
   // ── Tab header actions ──
   const renderActions = () => {
+    if (isAdmin && tab === 'company-regions') return <Button variant="outlined"
+      onClick={() => { setRegionSetupView('countries'); setRegionSetupOpen(true) }}>Country Setup & Diagnostics</Button>
     if (tab === 'shipping-fees' && (isVendor || isAdmin)) {
       return (
         <Button
@@ -412,6 +420,9 @@ export default function RegionalPage() {
         <Tabs
           value={tab}
           onChange={handleTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
         >
           {visibleTabs.map((t) => (
@@ -420,7 +431,15 @@ export default function RegionalPage() {
         </Tabs>
       )}
 
-      {isAdmin && tab === 'company-regions' && <OperatingRegionSetup />}
+      {isAdmin && <Dialog open={regionSetupOpen} onClose={() => setRegionSetupOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Operating Country Administration</DialogTitle>
+        <Tabs value={regionSetupView} onChange={(_, value) => setRegionSetupView(value)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ px: 2 }}>
+          <Tab value="countries" label="Operating Countries" />
+          <Tab value="buyers" label="Buyer Country Checks" />
+        </Tabs>
+        <DialogContent dividers><OperatingRegionSetup view={regionSetupView} /></DialogContent>
+        <DialogActions><Button onClick={() => setRegionSetupOpen(false)}>Close</Button></DialogActions>
+      </Dialog>}
 
       {isBuyer && (
         <Alert severity="info" sx={{ mb: 2 }}>

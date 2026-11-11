@@ -19,9 +19,11 @@ coverage, fees or a Buyer/Vendor relationship.
    that country and resolves the region automatically. When adding an independent
    Entity, enter its own country in Entity settings. There is no separate Buyer
    region dropdown to configure.
-2. Region page shows **Buyer country resolution** read-only. To prepare Vendor
-   coverage before a Buyer exists in a country, select that controlled operating
-   country and click **Register Country**. This does not assign any Buyer.
+2. The regional page opens with the existing Vendor coverage table and
+   Shipping Fees / Distribution Centers / Region Events tabs. Admins can open
+   **Country Setup & Diagnostics** when needed. **Buyer Country Checks** shows
+   read-only resolution; **Operating Countries** prepares a controlled country
+   identity through **Register Country**. This does not assign any Buyer.
 3. Configure the Vendor's regional fee with its explicitly approved currency,
    then use **Update Regions** to activate coverage. The active Buyer/Vendor
    relationship and normal product eligibility remain separate requirements.
@@ -41,6 +43,15 @@ level. The fix applies to sticky tables in both themes while regular table
 heading styling stays intact.
 
 ## Validation
+
+The current regional layout correction is documented in
+[the regional UI review](region-ui-review-and-verification.md). Country setup
+and Buyer diagnostics no longer occupy the main page. No regional business rule,
+source record, financial policy or schema changes accompany that UI correction.
+The user approved pushing this verified regional UI correction after review.
+Further feature changes are tested and pushed only on a separate instruction.
+
+Historical Phase 1 verification:
 
 - Frontend TypeScript/Vite Docker build passed.
 - Full updated Phase 1 backend suite: 347 passed on SQLite and the same 347 on

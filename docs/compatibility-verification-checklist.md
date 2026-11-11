@@ -1,5 +1,21 @@
 # Compatibility remediation verification and rollout
 
+## Reviewed regional UI correction — 2026-11-12
+
+The Region page now starts with the original Vendor table and coverage/fee/DC/
+event tabs. Country administration and read-only Buyer diagnostics are on demand.
+The mobile tab defect was reproduced first (Region Events outside 390px), then
+fixed with scrollable navigation. Final browser verification: **37/37 passed**,
+zero uncaught UI exceptions and zero failed local HTTP requests. Regional API
+contract: **22/22 SQLite and 22/22 PostgreSQL**. Production frontend build and
+local Telco's exact four products/all four PNG responses pass.
+
+No visibility, financial, source-data or schema change accompanies this task.
+The user explicitly approved pushing this verified regional UI task after review.
+Subsequent Vendor/commission changes require their own tests and push instruction.
+See [the regional UI report](region-ui-review-and-verification.md). Other queued
+tasks remain in [the sequential plan](vendor-integration-implementation-plan.md).
+
 ## Single-product parity and dropdown follow-up — 2026-11-12
 
 The full suite now passes **355 tests on SQLite** and **355 on PostgreSQL**,
