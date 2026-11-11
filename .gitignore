@@ -221,3 +221,6 @@ __marimo__/
 
 # Backend media exports
 backend/media/
+
+# Private local database copies, dump files, and local PostgreSQL credentials
+/.local-copy/

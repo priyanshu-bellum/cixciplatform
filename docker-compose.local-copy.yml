@@ -1,0 +1,73 @@
+name: cixci-local-copy
+
+services:
+  db:
+    image: postgres:18-alpine
+    env_file:
+      - ./.local-copy/postgres.env
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      # PostgreSQL 18 images keep version-specific data below this directory.
+      - local_copy_postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cixci_local -d cixci_livecopy"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    command: python manage.py runserver 0.0.0.0:8000
+    env_file:
+      - ./backend/.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: cixci_livecopy
+      DB_USER: cixci_local
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_TASK_ALWAYS_EAGER: "False"
+      USE_S3: "False"
+      USE_GCS: "False"
+      RESEND_API_KEY: ""
+      SENDGRID_API_KEY: ""
+      FRONTEND_URL: http://localhost:5173
+      MEDIA_USE_SHORT_URLS: "True"
+      MEDIA_BASE_URL: http://localhost:8000
+      MEDIA_URL: https://cixci-accessory-images.s3.us-west-2.amazonaws.com/
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000/api/v1
+    ports:
+      # The existing frontend Dockerfile serves a built app using nginx on 80.
+      - "127.0.0.1:5173:80"
+
+# No Celery worker or beat: restored scheduled jobs are not executed here.
+volumes:
+  local_copy_postgres:

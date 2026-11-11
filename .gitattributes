@@ -1,0 +1,2 @@
+# Keep the live-server export script executable by Linux Bash after checkout.
+scripts/export-live-db.sh text eol=lf
