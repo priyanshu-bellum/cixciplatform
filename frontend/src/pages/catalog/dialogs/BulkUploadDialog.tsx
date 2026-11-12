@@ -22,6 +22,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import DownloadIcon from '@mui/icons-material/Download'
 import { parseCSV, validateCsvRows, formatExcelDate } from '../utils'
 import api from '../../../lib/apiClient'
+import { previewCsvFile } from '../../../lib/csvPreview'
 import TextField from '@mui/material/TextField'
 import { useSupplierCompanies } from '../../../hooks/useSupplierCompanies'
 
@@ -313,7 +314,7 @@ export default function BulkUploadDialog({
 
     try {
       const formData = new FormData()
-      formData.append('file', csvFile)
+      formData.append('file', previewCsvFile(csvFile.name, csvHeaders, csvPreviewRows))
       formData.append('update_mode', updateMode)
       if (isAdmin) {
         if (!supplierId) throw new Error('Select the supplier company before importing.')
@@ -324,10 +325,23 @@ export default function BulkUploadDialog({
         headers: { 'Content-Type': 'multipart/form-data' },
       })
 
-      const count = res.data?.imported_count ?? res.data?.count ?? csvPreviewRows.length
+      const data = res.data || {}
+      const count = Array.isArray(data.products) ? data.products.length
+        : Number(data.imported_count ?? data.count ?? (Number(data.rows_passed || 0) + Number(data.rows_staged || 0)))
+      const failed = Number(data.rows_failed || 0)
       setImportedCount(count)
-      setUploadSuccess(`Successfully processed ${count} row(s).`)
-      onUploaded()
+      if (count > 0) {
+        const staged = Number(data.rows_staged || 0)
+        setUploadSuccess(`${count} product(s) imported.${staged ? ` ${staged} require review before activation.` : ''}`)
+        onUploaded()
+      }
+      if (failed > 0 || data.errors?.length) {
+        const details = (data.errors || []).slice(0, 10).map((error: any) =>
+          `Row ${error.row_number || '?'}${error.column_name ? ` (${error.column_name})` : ''}: ${error.validation_error || error.message || 'Validation failed.'}`)
+        setUploadError([`${failed} row(s) failed.`, ...details].join('\n'))
+      } else if (!count) {
+        setUploadError('No products were imported. Review the selected file and update mode.')
+      }
 
       // Prompt to continue to image upload
       if (count > 0) {
@@ -349,7 +363,7 @@ export default function BulkUploadDialog({
     } finally {
       setUploading(false)
     }
-  }, [csvFile, updateMode, csvPreviewRows.length, onUploaded, isAdmin, supplierId])
+  }, [csvFile, csvHeaders, csvPreviewRows, updateMode, onUploaded, isAdmin, supplierId])
 
   // ---------------------------------------------------------------------------
   // Step 2 -- ZIP upload
@@ -370,6 +384,7 @@ export default function BulkUploadDialog({
     try {
       const formData = new FormData()
       formData.append('file', zipFile)
+      if (isAdmin && supplierId) formData.append('company_scope_reference', supplierId)
 
       await api.post('/media/assets/upload_zip/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -388,7 +403,7 @@ export default function BulkUploadDialog({
     } finally {
       setZipUploading(false)
     }
-  }, [zipFile, onUploaded])
+  }, [zipFile, onUploaded, isAdmin, supplierId])
 
   // ---------------------------------------------------------------------------
   // Drag-and-drop handlers for ZIP

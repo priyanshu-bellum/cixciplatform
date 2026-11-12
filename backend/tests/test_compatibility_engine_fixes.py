@@ -144,7 +144,8 @@ def _make_product(vendor_company, skip_clean=False, **overrides):
     )
     defaults.update(overrides)
     if defaults.get("compatibility_mode") == "universal_device_type" and not skip_clean:
-        # Universal scope must use a Universal category (approved precedence).
+        # This fixture exercises the legacy Universal category default. Explicit
+        # product scopes under other methods have separate regression coverage.
         for code in defaults.get("compatible_device_types", []):
             DeviceType.objects.get_or_create(code=code, defaults={"name": code.title(), "status": "active"})
         DynamicDropdownConfig.objects.get_or_create(field_name="product_category", value="Universal Test",

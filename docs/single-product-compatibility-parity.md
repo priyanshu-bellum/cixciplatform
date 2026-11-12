@@ -17,8 +17,13 @@ No new matching method or supplier-specific exception is introduced.
 | Feature Based | Category-assigned capability controls | Corresponding compatibility columns | Configured capability fields |
 | Hybrid | Exact model selector plus configured capability controls | Exact models and capability columns | `device_ids` plus capability fields; effective results use OR |
 
-Product category configuration drives the form. Product/category methods must
-agree. Universal declarations contain approved type IDs; the declared scope and
+Product category configuration supplies the default compatibility controls.
+The latest user clarification supersedes the earlier category/method equality
+requirement: an explicit Product Universal declaration is valid under an existing
+business category. The modal's Product Compatibility selector, CSV parser and
+structured API use the same declaration. Product Category is preserved; no
+Universal Accessories category is created or auto-selected.
+Universal declarations contain approved type IDs; the declared scope and
 current category/device eligibility remain separate. Eligibility changes must
 not silently expand or rewrite a saved Universal declaration. Exclusions and
 completed export history retain their existing rules.

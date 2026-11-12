@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
 import api from '../lib/apiClient'
@@ -432,6 +432,8 @@ export function SettingsPage() {
   // Company Details/Governance Modal State
   const [selectedCompany, setSelectedCompany] = useState<any | null>(null)
   const [showCompanyDetailsModal, setShowCompanyDetailsModal] = useState(false)
+  const [savingCompany, setSavingCompany] = useState(false)
+  const companySavePending = useRef(false)
   const [editCompanyName, setEditCompanyName] = useState('')
   const [editCompanyDisplayName, setEditCompanyDisplayName] = useState('')
   const [editCompanyStatus, setEditCompanyStatus] = useState('')
@@ -825,12 +827,15 @@ export function SettingsPage() {
 
   const handleUpdateCompany = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (companySavePending.current) return
     setErrorMsg(null)
     if (!selectedCompany) return
     if (!editCompanyStatus) {
       setErrorMsg('Please select a company status.')
       return
     }
+    companySavePending.current = true
+    setSavingCompany(true)
     try {
       let existingLogoAssetId: string | null = null
       try {
@@ -905,6 +910,9 @@ export function SettingsPage() {
     } catch (err: any) {
       setErrorMsg(getErrorMessage(err))
       showSnackbar('Failed to save profile changes.', 'error')
+    } finally {
+      companySavePending.current = false
+      setSavingCompany(false)
     }
   }
 
@@ -2784,7 +2792,7 @@ export function SettingsPage() {
 
                     <Box sx={{ mt: 2, display: 'flex', gap: 1.5, justifyContent: 'flex-end', alignItems: 'center' }}>
                       {isEditFormDirty() && <Typography variant="caption" sx={{ color: 'var(--amber)' }}>Unsaved changes</Typography>}
-                      <Button type="submit" variant="contained">Save Profile Changes</Button>
+                      <Button type="submit" variant="contained" disabled={savingCompany}>{savingCompany ? 'Saving Profile…' : 'Save Profile Changes'}</Button>
                     </Box>
                   </form>
                 </div>

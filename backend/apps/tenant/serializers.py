@@ -1,5 +1,6 @@
 """Tenant app serializers."""
 from rest_framework import serializers
+from django.db import IntegrityError, transaction
 from .models import Company, CompanyEntity, User, CompanyRelationship, Capability
 
 
@@ -71,7 +72,7 @@ class CompanySerializer(serializers.ModelSerializer):
         elif isinstance(data, dict):
             data = dict(data)
         if isinstance(data, dict):
-            if data.get("buyer_pricing_mode") in ("default", "", None):
+            if "buyer_pricing_mode" in data and data.get("buyer_pricing_mode") in ("default", "", None):
                 data["buyer_pricing_mode"] = "standard"
             if "company_type" in data and isinstance(data["company_type"], str):
                 data["company_type"] = data["company_type"].lower()
@@ -179,11 +180,21 @@ class CompanySerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop("allow_personal_email_exception", None)
-        return super().create(validated_data)
+        return self._save_company(super().create, validated_data)
 
     def update(self, instance, validated_data):
         validated_data.pop("allow_personal_email_exception", None)
-        return super().update(instance, validated_data)
+        return self._save_company(super().update, instance, validated_data)
+
+    def _save_company(self, operation, *args):
+        try:
+            with transaction.atomic():
+                return operation(*args)
+        except IntegrityError as error:
+            constraint = getattr(getattr(error.__cause__, "diag", None), "constraint_name", None)
+            if constraint == "tenant_company_slug_key" or "UNIQUE constraint failed: tenant_company.slug" in str(error):
+                raise serializers.ValidationError({"slug": "This company slug is already in use. Choose another slug or display name and retry."}) from error
+            raise
 
 
 class CompanyEntitySerializer(serializers.ModelSerializer):

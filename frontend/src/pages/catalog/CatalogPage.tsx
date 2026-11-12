@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Alert from '@mui/material/Alert'
 import Tabs from '@mui/material/Tabs'
@@ -25,6 +25,12 @@ import BulkUploadDialog from './dialogs/BulkUploadDialog'
 import DropdownManagerDialog from './dialogs/DropdownManagerDialog'
 
 export default function CatalogPage() {
+  const queryClient = useQueryClient()
+  const refreshCatalog = () => {
+    void queryClient.invalidateQueries({ queryKey: ['products'] })
+    void queryClient.invalidateQueries({ queryKey: ['my-projection'] })
+    void queryClient.invalidateQueries({ queryKey: ['compatibility'] })
+  }
   const { user } = useAuthStore()
   const { dialogProps, confirm } = useConfirmDialog()
 
@@ -240,7 +246,7 @@ export default function CatalogPage() {
       <ProductFormDialog
         open={showAddDialog}
         onClose={() => setShowAddDialog(false)}
-        onSaved={() => { setShowAddDialog(false) }}
+        onSaved={() => { setShowAddDialog(false); refreshCatalog() }}
         mode="add"
         user={user}
         allowedBrands={allowedBrands}
@@ -254,7 +260,7 @@ export default function CatalogPage() {
       <ProductFormDialog
         open={showEditDialog}
         onClose={() => { setShowEditDialog(false); setEditingProduct(null) }}
-        onSaved={() => { setShowEditDialog(false); setEditingProduct(null) }}
+        onSaved={() => { setShowEditDialog(false); setEditingProduct(null); refreshCatalog() }}
         mode="edit"
         product={editingProduct}
         user={user}
@@ -272,7 +278,7 @@ export default function CatalogPage() {
         onClose={() => { setShowManageDialog(false); setSelectedManageProduct(null) }}
         product={selectedManageProduct}
         user={user}
-        onProductUpdated={() => {}}
+        onProductUpdated={refreshCatalog}
         onEditProduct={handleEditProduct}
         devices={devices}
         activeCompatibilities={activeCompatibilities || []}
@@ -284,7 +290,7 @@ export default function CatalogPage() {
       <BulkUploadDialog
         open={showBulkDialog}
         onClose={() => { setShowBulkDialog(false); setBulkImagesOnly(false) }}
-        onUploaded={() => { setShowBulkDialog(false); setBulkImagesOnly(false) }}
+        onUploaded={refreshCatalog}
         user={user}
         allowedCategories={allowedCategories}
         allowedColors={allowedColors}

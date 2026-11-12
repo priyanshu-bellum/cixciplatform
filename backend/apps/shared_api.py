@@ -985,8 +985,18 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
         # Resolve company scope
         company_id = None
+        is_admin = self._is_admin()
+        selected_supplier = request.data.get("company_scope_reference") or request.data.get("vendor_company_reference")
         user_company_type = self._user_company_type()
-        if request.user.entity:
+        if is_admin and selected_supplier:
+            from apps.tenant.models import Company
+            try:
+                company_id = uuid.UUID(str(selected_supplier))
+            except (ValueError, TypeError, AttributeError):
+                return Response({"error": "Select a valid supplier company for this ZIP upload."}, status=400)
+            if not Company.objects.filter(pk=company_id, company_type="vendor").exists():
+                return Response({"error": "The selected ZIP supplier must be an existing Vendor company."}, status=400)
+        elif request.user.entity:
             company_id = request.user.entity.company_id
         else:
             from apps.tenant.models import Company
@@ -1042,11 +1052,13 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         ).only(
             "id", "sku", "vendor_company_reference", "primary_image_reference", "status"
         )
-        if not is_admin and user_company_type == "vendor":
+        if (not is_admin and user_company_type == "vendor") or (is_admin and selected_supplier):
             product_qs = product_qs.filter(vendor_company_reference=company_id)
 
         sku_map = {}
         vendor_map = {}
+        ambiguous_skus = set()
+        ambiguous_vendor_keys = set()
         from apps.tenant.models import Company
         vendor_names = {
             str(c.id): c.name for c in Company.objects.filter(
@@ -1055,9 +1067,21 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         }
         for p in product_qs:
             if p.sku:
-                sku_map.setdefault(p.sku.strip().upper(), p)
+                sku = p.sku.strip().upper()
+                if sku in sku_map:
+                    ambiguous_skus.add(sku)
+                else:
+                    sku_map[sku] = p
                 vname = (vendor_names.get(str(p.vendor_company_reference)) or "").upper()
-                vendor_map[(vname, p.sku.strip().upper())] = p
+                key = (vname, sku)
+                if key in vendor_map:
+                    ambiguous_vendor_keys.add(key)
+                else:
+                    vendor_map[key] = p
+        for sku in ambiguous_skus:
+            sku_map.pop(sku, None)
+        for key in ambiguous_vendor_keys:
+            vendor_map.pop(key, None)
 
         upload_dir = settings.MEDIA_ROOT
         os.makedirs(upload_dir, exist_ok=True)
@@ -1126,8 +1150,9 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             matched_count += 1
             asset_id = uuid.uuid4()
+            asset_company_id = product.vendor_company_reference
             ext = os.path.splitext(fname)[1].lower() or ".png"
-            storage_key = f"{company_id}/product_image/{asset_id}/{fname}"
+            storage_key = f"{asset_company_id}/product_image/{asset_id}/{fname}"
             full_path = os.path.join(upload_dir, storage_key)
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
@@ -1152,7 +1177,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 status="ready",
                 owner_module="catalog",
                 owner_record_id=product.id,
-                company_scope_reference=company_id,
+                company_scope_reference=asset_company_id,
                 original_filename=fname,
                 file_extension=ext,
                 mime_type="image/png",
@@ -1203,7 +1228,7 @@ class MediaAssetViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 event_code="media.asset.created_from_zip",
                 description=f"Created asset from ZIP, linked to {product.sku}",
                 asset_id=asset.id,
-                company_id=company_id,
+                company_id=asset_company_id,
                 actor_id=request.user.id,
             )
 

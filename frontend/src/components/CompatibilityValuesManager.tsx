@@ -19,29 +19,37 @@ export default function CompatibilityValuesManager() {
   const [busy, setBusy] = useState(false)
   const [editingLabel, setEditingLabel] = useState<{ id: string; label: string } | null>(null)
   const [matrix, setMatrix] = useState<Record<string, 'allowed' | 'prohibited' | ''>>({})
+  const [combinationValues, setCombinationValues] = useState<string[]>([])
+  const [combinationRule, setCombinationRule] = useState<'allowed' | 'prohibited'>('allowed')
+  const [notice, setNotice] = useState('')
   const refresh = async () => { await refetch(); await queryClient.invalidateQueries({ queryKey: ['compatibility-options'] }) }
   const save = async (operation: () => Promise<any>) => {
     setError(''); setBusy(true)
-    try { await operation(); await refresh() } catch (error) { setError(apiError(error)) } finally { setBusy(false) }
+    try { await operation(); await refresh(); return true } catch (error) { setError(apiError(error)); return false } finally { setBusy(false) }
   }
   const wireless: string[] = (data?.fields?.wireless_charging_compatibility || []).map((option: any) => option.value).filter((value: string) => value !== 'Not Compatible')
-  const combinations = wireless.flatMap((value, index) => wireless.slice(index + 1).map(other => [value, other]))
-  if (wireless.length > 2) combinations.push([...wireless])
   const policy = data?.wireless_policy || {}
-  const state = (combination: string[]) => {
-    const key = [...combination].sort().join('+')
-    if (key in matrix) return matrix[key]
-    if ((policy.prohibited_combinations || []).some((row: string[]) => row.every(value => combination.includes(value)))) return 'prohibited'
-    if ((policy.allowed_combinations || []).some((row: string[]) => row.length === combination.length && row.every(value => combination.includes(value)))) return 'allowed'
-    return ''
+  const keyFor = (values: string[]) => JSON.stringify([...new Set(values)].sort())
+  const savedRows = new Map<string, 'allowed' | 'prohibited' | ''>()
+  for (const row of policy.allowed_combinations || []) savedRows.set(keyFor(row), 'allowed')
+  for (const row of policy.prohibited_combinations || []) savedRows.set(keyFor(row), 'prohibited')
+  const rows = new Map([...savedRows, ...Object.entries(matrix)])
+  const rulesFor = (source: Map<string, 'allowed' | 'prohibited' | ''>) => ({
+    allowed_combinations: [...source].filter(([, rule]) => rule === 'allowed').map(([key]) => JSON.parse(key) as string[]).sort((a, b) => keyFor(a).localeCompare(keyFor(b))),
+    prohibited_combinations: [...source].filter(([, rule]) => rule === 'prohibited').map(([key]) => JSON.parse(key) as string[]).sort((a, b) => keyFor(a).localeCompare(keyFor(b))),
+  })
+  const draftRules = rulesFor(rows)
+  const matrixDirty = JSON.stringify(draftRules) !== JSON.stringify(rulesFor(savedRows))
+  const setRule = (key: string, rule: 'allowed' | 'prohibited' | '') => {
+    setMatrix(previous => ({ ...previous, [key]: rule })); setNotice(''); setError('')
   }
   return <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
     <Typography variant="subtitle1">Shared Device and Accessory Compatibility Values</Typography>
     <Typography variant="body2" color="text.secondary">The same approved values apply to device, product, CSV and API entry. Retire values to preserve existing history.</Typography>
     {error && <Alert severity="error">{error}</Alert>}
-    <Select size="small" value={field} onChange={event => { setField(event.target.value); setValue(''); setError('') }}>
+    <TextField select label="Managed compatibility field" size="small" value={field} onChange={event => { setField(event.target.value); setValue(''); setError(''); setEditingLabel(null) }}>
       {Object.entries(COMPATIBILITY_LABELS).filter(([key]) => key !== 'bluetooth_compatibility').map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}
-    </Select>
+    </TextField>
     <Box sx={{ maxHeight: 230, overflow: 'auto' }}>
       {records.filter((record: any) => record.field_name === field).map((record: any) => <Box key={record.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
         {editingLabel?.id === record.id ? <>
@@ -62,20 +70,40 @@ export default function CompatibilityValuesManager() {
         field === 'storage_expansion_compatibility' ? { capacity_options: capacities.split(',').map(value => value.trim()).filter(Boolean) } : field === 'memory_capacity' ? { storage_expansion: parent } : {} })
       setValue(''); setCapacities('')
     })}>Add approved value</Button>
-    <Typography variant="subtitle1">Wireless Charging Combination Matrix</Typography>
-    {!policy.configured && <Alert severity="info">Existing restrictions apply until an admin saves this matrix.</Alert>}
-    {combinations.map(combination => <Box key={combination.join('+')} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Typography sx={{ flex: 1 }}>{combination.join(' + ')}</Typography>
-      <Select size="small" displayEmpty value={state(combination)} onChange={event => setMatrix(previous => ({ ...previous, [[...combination].sort().join('+')]: event.target.value }))}>
-        <MenuItem value="">No explicit combination</MenuItem><MenuItem value="allowed">Allowed</MenuItem><MenuItem value="prohibited">Prohibited</MenuItem>
-      </Select>
-    </Box>)}
-    <Button disabled={busy} variant="outlined" onClick={() => save(() => {
-      const payload = { field_name: 'wireless_combination_policy', value: 'global', display_name: 'Wireless Combination Policy', status: 'active', compatibility_rules: {
-        allowed_combinations: combinations.filter(row => state(row) === 'allowed'), prohibited_combinations: combinations.filter(row => state(row) === 'prohibited'),
-      } }
-      return policy.id ? api.patch(`/catalog/dropdown-configs/${policy.id}/`, payload) : api.post('/catalog/dropdown-configs/', payload)
-    })}>Save wireless matrix</Button>
+    {field === 'wireless_charging_compatibility' && <>
+      <Typography variant="subtitle1">Wireless Charging Combination Matrix</Typography>
+      {!policy.configured && <Alert severity="info">Existing restrictions apply until an admin saves this matrix.</Alert>}
+      {notice && <Alert severity="success">{notice}</Alert>}
+      <Typography variant="body2" color="text.secondary">
+        {draftRules.allowed_combinations.length ? 'Unlisted multi-value combinations are rejected while an allowed list is configured.' : 'Without an allowed list, unlisted combinations are accepted unless they contain a prohibited combination.'}
+        {' '}A prohibited combination also blocks any selection containing it. Not Compatible must always be selected alone.
+      </Typography>
+      {[...rows].map(([key, rule]) => <Box key={key} sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <Typography sx={{ flex: 1 }}>{(JSON.parse(key) as string[]).join(' + ')}</Typography>
+        <Select size="small" displayEmpty value={rule} disabled={busy} inputProps={{ 'aria-label': `Rule for ${(JSON.parse(key) as string[]).join(' + ')}` }} onChange={event => setRule(key, event.target.value as 'allowed' | 'prohibited' | '')}>
+          <MenuItem value="">Remove explicit rule</MenuItem><MenuItem value="allowed">Allowed</MenuItem><MenuItem value="prohibited">Prohibited</MenuItem>
+        </Select>
+      </Box>)}
+      <TextField select size="small" label="Combination values" value={combinationValues}
+        slotProps={{ select: { multiple: true, renderValue: selected => (selected as string[]).join(' + ') } }}
+        onChange={event => setCombinationValues(typeof event.target.value === 'string' ? event.target.value.split(',') : event.target.value)} disabled={busy}>
+        {wireless.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+      </TextField>
+      <TextField select size="small" label="Combination rule" value={combinationRule} disabled={busy}
+        onChange={event => setCombinationRule(event.target.value as 'allowed' | 'prohibited')}>
+        <MenuItem value="allowed">Allowed</MenuItem><MenuItem value="prohibited">Prohibited</MenuItem>
+      </TextField>
+      <Button disabled={busy || combinationValues.length < 2} onClick={() => {
+        const key = keyFor(combinationValues)
+        if (rows.get(key)) { setError('This combination already exists. Edit its rule in the matrix.'); return }
+        setRule(key, combinationRule); setCombinationValues([])
+      }}>Add combination</Button>
+      <Button disabled={busy || !data || (policy.configured && !matrixDirty)} variant="outlined" onClick={async () => {
+        const payload = { field_name: 'wireless_combination_policy', value: 'global', display_name: 'Wireless Combination Policy', status: 'active', compatibility_rules: draftRules }
+        const success = await save(() => policy.id ? api.patch(`/catalog/dropdown-configs/${policy.id}/`, payload) : api.post('/catalog/dropdown-configs/', payload))
+        if (success) { setMatrix({}); setNotice('Wireless matrix saved.') }
+      }}>Save wireless matrix</Button>
+    </>}
     <Typography variant="caption">Not Compatible is always exclusive. Tablets never supply wireless charging evidence. Bluetooth remains Yes / No.</Typography>
   </Box>
 }

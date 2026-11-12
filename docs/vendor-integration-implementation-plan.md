@@ -34,6 +34,13 @@ diagnostic and coverage actions through browser checks.
 
 ## Supplier connection and catalog ingestion
 
+The user specifically requires the existing Settings → Company Profile →
+Integration Mode entry point. Persisted `external_id.integration_mode` remains
+the selector; API configuration/sync controls attach to that Vendor profile.
+Do not create a competing mode selector or an unrelated onboarding console.
+Manual mode retains its current CSV/email flow; switching out of API mode stops
+future catalog polls without deleting source/history.
+
 Latest user-confirmed sync cadence: initial import persists Vendor products in
 PostgreSQL; the catalog/UI/Buyer API reads CIXCI's database. Provide weekly
 automatic full resynchronization plus an audited manual Sync Now action. Show

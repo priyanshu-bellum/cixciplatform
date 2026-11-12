@@ -242,11 +242,12 @@ export default function ProductFormDialog({
   const deviceTypes = compatibilityOptions?.device_types || []
   const { data: categoryMappings = [] } = useQuery({ queryKey: ['vendor-category-mappings', user?.id], enabled: open && isVendor,
     queryFn: async () => { const response = await api.get('/catalog/vendor-category-mappings/', { params: { status: 'active' } }); return response.data.results || response.data } })
-  const mappedCategory = isVendor ? categoryMappings.find((mapping: any) => mapping.vendor_category?.trim().toLowerCase() === form.prodVendorCategory.trim().toLowerCase())?.cixci_category || form.prodCategory : form.prodCategoryOverride || form.prodCategory
+  const mappedCategory = form.prodCategoryOverride || form.prodCategory || (isVendor ? categoryMappings.find((mapping: any) => mapping.vendor_category?.trim().toLowerCase() === form.prodVendorCategory.trim().toLowerCase())?.cixci_category : '')
   const categoryConfig = dropdownConfigs.find((config: any) => config.field_name === 'product_category' && config.value === mappedCategory)
   const categoryMethod = categoryConfig?.compatibility_mode === 'explicit' ? 'device_specific' : categoryConfig?.compatibility_mode
-  const isUniversal = categoryMethod === 'universal'
-  const supportsExplicit = ['device_specific', 'hybrid'].includes(categoryMethod)
+  const [compatibilityChoice, setCompatibilityChoice] = useState('category')
+  const isUniversal = compatibilityChoice === 'universal' || categoryMethod === 'universal'
+  const supportsExplicit = !isUniversal && ['device_specific', 'hybrid'].includes(categoryMethod)
   const eligibleTypes = useMemo(() => categoryDeviceTypes(deviceTypes, categoryConfig), [deviceTypes, categoryConfig])
   const eligibleTypeIds = useMemo(() => new Set(eligibleTypes.map(type => type.id)), [eligibleTypes])
   const declaredUniversalIds = declaredTypeIds(form.compUniversalDeviceTypes, deviceTypes)
@@ -272,9 +273,11 @@ export default function ProductFormDialog({
     if (populatedKey.current === key) return
     if (mode === 'edit' && product && !editPending) {
       form.populateFrom(product, activeCompatibilities)
+      setCompatibilityChoice(product.compatibility_mode === 'universal_device_type' ? 'universal' : 'category')
       populatedKey.current = key
     } else if (mode === 'add') {
       form.resetForm()
+      setCompatibilityChoice('category')
       populatedKey.current = key
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,9 +288,11 @@ export default function ProductFormDialog({
   // -------------------------------------------------------------------------
   const isDirty = useCallback(() => {
     if (isAdmin && supplierId !== (product?.vendor_company_reference || '')) return true
+    if (mode === 'add' && compatibilityChoice === 'universal') return true
+    if (mode === 'edit' && (isUniversal ? 'universal_device_type' : 'direct_device') !== product?.compatibility_mode) return true
     if (mode === 'add') return form.isAddDirty()
     return form.isEditDirty(product, activeCompatibilities)
-  }, [mode, form, product, activeCompatibilities, isAdmin, supplierId])
+  }, [mode, form, product, activeCompatibilities, isAdmin, supplierId, isUniversal, compatibilityChoice])
 
   const handleClose = useCallback(async () => {
     if (isDirty()) {
@@ -413,7 +418,6 @@ export default function ProductFormDialog({
     if (isVendor) {
       if (!form.prodUpc.trim()) return 'UPC is required.'
       if (!/^\d{12}$/.test(form.prodUpc.trim())) return 'UPC must be exactly 12 digits.'
-      if (form.prodType !== 'branded_merchandise' && !form.prodVendorCategory.trim()) return 'Vendor Category is required.'
       if (!form.prodLaunchDate) return 'Launch Date is required.'
       if (!form.prodColor.trim()) return 'Color is required.'
       if (!form.prodSystemColor.trim()) return 'System Color is required.'
@@ -429,7 +433,7 @@ export default function ProductFormDialog({
     if (form.prodType === 'accessory') {
       if (!categoryConfig || categoryConfig.status !== 'active') return 'Choose a category with an active approved compatibility configuration.'
       if (isUniversal && !form.compUniversalDeviceTypes.length) return 'Select at least one approved Universal Device Type.'
-      if (categoryMethod === 'device_specific' && !form.selectedDeviceIds.length) return 'Select the exact compatible device models.'
+      if (!isUniversal && categoryMethod === 'device_specific' && !form.selectedDeviceIds.length) return 'Select the exact compatible device models.'
       if (supportsExplicit && form.selectedDeviceIds.some(id => {
         const device = deviceById.get(id)
         return device && !eligibleTypeIds.has(device.device_type)
@@ -528,9 +532,10 @@ export default function ProductFormDialog({
       for (const [field, rule] of Object.entries(configuredRules) as [string, any][]) {
         if (!payload[field] && rule.mode === 'defaulted') payload[field] = rule.default_value || rule.default || ''
       }
-      // Category Governance: Vendors provide vendor_category, Admins can set both + override
+      // Vendors select approved categories; only Admins can set overrides.
       if (isVendor) {
         payload.vendor_category = form.prodVendorCategory.trim()
+        payload.product_category = mappedCategory || null
       } else if (isAdmin) {
         payload.product_category = form.prodCategory || null
         payload.vendor_category = form.prodVendorCategory.trim() || null
@@ -565,7 +570,7 @@ export default function ProductFormDialog({
     } finally {
       setSubmitting(false)
     }
-  }, [form, validate, mode, product, user, handleUploadImage, onSaved, isUniversal, supportsExplicit, compatibilityValues, categoryConfig, activeCompatibilities, isVendor, isAdmin, supplierId, declaredUniversalIds])
+  }, [form, validate, mode, product, user, handleUploadImage, onSaved, isUniversal, supportsExplicit, compatibilityValues, categoryConfig, activeCompatibilities, isVendor, isAdmin, supplierId, declaredUniversalIds, mappedCategory])
 
   // -------------------------------------------------------------------------
   // Device compatibility list (filtered)
@@ -686,31 +691,13 @@ export default function ProductFormDialog({
             </Box>
 
             <Box sx={gridTwoCol}>
-              {isVendor ? (
-                <Box>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    label={`Vendor Category ${form.prodType !== 'branded_merchandise' ? '*' : ''}`}
-                    value={form.prodVendorCategory}
-                    onChange={e => form.setProdVendorCategory(e.target.value)}
-                    placeholder="Enter your category name"
-                  />
-                  {form.prodCategory && (
-                    <Typography sx={{ fontSize: 11, color: 'text.secondary', mt: 0.5 }}>
-                      Mapped to CIXCI category: <strong>{form.prodCategory}</strong>
-                    </Typography>
-                  )}
-                </Box>
-              ) : (
                 <FormControl size="small" fullWidth>
                   <InputLabel>Product Category</InputLabel>
-                  <Select value={form.prodCategory} onChange={e => form.setProdCategory(e.target.value as string)} label="Product Category">
+                  <Select value={form.prodCategoryOverride || form.prodCategory} disabled={isVendor && !!form.prodCategoryOverride} onChange={e => form.setProdCategory(e.target.value as string)} label="Product Category">
                     <MenuItem value=""><em>Select category...</em></MenuItem>
                     {allowedCategories.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
                   </Select>
                 </FormControl>
-              )}
               <TextField
                 size="small"
                 fullWidth
@@ -721,6 +708,9 @@ export default function ProductFormDialog({
                 slotProps={{ htmlInput: { maxLength: 12 } }}
               />
             </Box>
+
+            {isVendor && <TextField size="small" fullWidth label="Vendor Category (optional)" value={form.prodVendorCategory}
+              onChange={e => form.setProdVendorCategory(e.target.value)} helperText={form.prodCategoryOverride ? 'CIXCI Admin category override remains authoritative.' : 'Your own grouping is optional; select the approved Product Category above.'} />}
 
             {/* Admin: Show vendor category + category override + validation status */}
             {isAdmin && (
@@ -1199,6 +1189,13 @@ export default function ProductFormDialog({
             <>
               <Typography sx={sectionTitleSx}>Device Compatibility</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField select label="Product Compatibility" size="small" fullWidth
+                  value={isUniversal ? 'universal' : 'category'}
+                  onChange={event => setCompatibilityChoice(event.target.value)}
+                  helperText="Universal declares this product’s approved device types. Product Category stays unchanged.">
+                  {categoryMethod !== 'universal' && <MenuItem value="category">Use category compatibility rules</MenuItem>}
+                  <MenuItem value="universal">Universal Device Types</MenuItem>
+                </TextField>
                 {categoryConfig?.status === 'active' && <Alert severity="info">
                   {isUniversal ? 'Universal: select the approved device types. Eligible current and future models of those types are mapped automatically; exclusions remain in effect.'
                     : categoryMethod === 'device_specific' ? 'Device Specific: select exact compatible models, equivalent to the Device Compatibility column in bulk upload.'

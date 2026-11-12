@@ -205,8 +205,10 @@ def validate_product_scope(product, original=None):
     config = DynamicDropdownConfig.objects.filter(field_name="product_category", value=product.product_category).first()
     if config:
         universal_category = category_mode(config.compatibility_mode) == "universal"
-        if universal_category != (product.compatibility_mode == "universal_device_type"):
-            raise ValidationError({"compatibility_mode": "The product method must agree with its category: Universal needs a declared type scope; other category methods use Direct Device storage."})
+        if universal_category and product.compatibility_mode != "universal_device_type":
+            raise ValidationError({"compatibility_mode": "This category defaults to Universal compatibility and requires a declared type scope."})
+        # An explicit Product-level Universal declaration is independent of the
+        # business category. Category eligibility still limits derived matches.
     if product.compatibility_mode == "direct_device":
         if values:
             raise ValidationError({"compatible_device_types": "Direct Device mode cannot contain a Universal type scope."})

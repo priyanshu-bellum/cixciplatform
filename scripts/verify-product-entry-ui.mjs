@@ -90,7 +90,19 @@ export async function verifyProductEntry({ call, on, evaluate, waitFor, clickTex
     await open('hybrid')
     report.checks.push({ name: 'Hybrid form exposes exact-model selector and configured Bluetooth input together', pass: await evaluate(`!!document.querySelector('input[placeholder="Search devices..."]') && [...document.querySelectorAll('.MuiFormControl-root')].some(control => control.innerText.includes('Bluetooth'))`) })
     await open('feature_based')
-    report.checks.push({ name: 'Feature Based form exposes configured capability input without exact/Universal selectors', pass: await evaluate(`!document.querySelector('input[placeholder="Search devices..."]') && !document.body.innerText.includes('Universal Device Types') && [...document.querySelectorAll('.MuiFormControl-root')].some(control => control.innerText.includes('Bluetooth'))`) })
+    report.checks.push({ name: 'Feature Based defaults expose configured capability input without exact models or type checkboxes', pass: await evaluate(`!document.querySelector('input[placeholder="Search devices..."]') && ![...document.querySelectorAll('label')].some(label => label.textContent.trim() === 'Phone' && label.querySelector('input[type=checkbox]')) && [...document.querySelectorAll('.MuiFormControl-root')].some(control => control.innerText.includes('Bluetooth'))`) })
+    for (const method of ['device_specific', 'feature_based', 'hybrid']) {
+      await open(method)
+      await chooseSelect('Product Compatibility', 'universal')
+      await waitFor('!document.querySelector("[role=listbox]")')
+      await evaluate('[...document.querySelectorAll("label")].find(label => label.textContent.trim() === "Phone" && label.querySelector("input[type=checkbox]")).querySelector("input").click()')
+      await prepareSave()
+      const index = submitted.length
+      await clickText('Create Product')
+      await waitFor('![...document.querySelectorAll("[role=dialog]")].some(dialog => dialog.innerText.includes("Add New Product"))')
+      const payload = submitted[index]
+      report.checks.push({ name: `Explicit Product Universal preserves ${method} business category in the real form payload`, pass: payload?.product_category === `Browser ${method}` && payload.compatibility_mode === 'universal_device_type' && payload.compatible_device_types?.length === 1 && payload.compatible_device_types[0] === phone.id && !('device_ids' in payload) })
+    }
   } catch (error) {
     report.productEntryDiagnostics = await evaluate(`(() => { const dialog = document.querySelector('.MuiDialog-paper'); return { text: dialog?.innerText.slice(-5000), search: document.querySelector('input[placeholder="Search devices..."]')?.value }; })()`)
     throw error

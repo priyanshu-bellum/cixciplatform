@@ -140,10 +140,13 @@ Do not rerun the applied cleanup or infer a universal declaration from a name.
 - APPROVED by the user: Not Compatible and Bluetooth No are valid declared
   answers even for Required fields. Required controls data entry; those values
   never supply positive matching evidence.
-- APPROVED by the user: reject a Device Specific category / Universal product
-  mismatch; product/category methods must be consistent. Category Universal
-  requires an explicit product Universal scope. The existing direct product
-  storage mode also represents category Feature Based and Hybrid processing.
+- SUPERSEDED by latest user clarification: the earlier category/product method
+  equality rule does not apply to an explicit Product Universal declaration.
+  Universal is Product compatibility, not its business category. Preserve the
+  existing category and its type eligibility; do not create/auto-select a new
+  Universal Accessories category. Category Universal defaults still require a
+  declared product scope. Direct storage still represents ordinary category
+  Device Specific, Feature Based and Hybrid processing.
 - APPROVED by the user: catalog/API compatibility uses the combined authorized
   current portfolio within the SAME Buyer Entity. Stored triad/creator evidence
   stays intact; derived catalog results must not include another entity/company.

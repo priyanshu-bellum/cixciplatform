@@ -52,8 +52,15 @@ def test_invalid_or_mixed_type_scope_rejected(contract_data, values):
         resolve_device_types(values)
 
 
-def test_direct_and_universal_category_methods_cannot_conflict(contract_data):
+def test_explicit_product_universal_does_not_reclassify_business_category(contract_data):
     product = Product(product_category="Exact Contract", compatibility_mode="universal_device_type", compatible_device_types=["phone"])
+    assert validate_product_scope(product) == [contract_data[0]["phone"]]
+    assert product.product_category == "Exact Contract"
+    product.compatibility_mode = "direct_device"
+    with pytest.raises(ValidationError, match="Direct Device"):
+        validate_product_scope(product)
+    product.product_category = "Universal Contract"
+    product.compatible_device_types = []
     with pytest.raises(ValidationError, match="category"):
         validate_product_scope(product)
 

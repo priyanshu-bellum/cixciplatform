@@ -3,6 +3,9 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { verifyProductEntry } from './verify-product-entry-ui.mjs'
 import { verifyDeviceDropdown } from './verify-device-dropdown-ui.mjs'
+import { verifyVendorClient } from './verify-vendor-client-ui.mjs'
+import { verifyWirelessMatrix } from './verify-wireless-matrix-ui.mjs'
+import { verifyCompanyProfile } from './verify-company-profile-ui.mjs'
 
 if (!process.env.CIXCI_QA_EMAIL || !process.env.CIXCI_QA_PASSWORD || !process.env.CIXCI_QA_CHROME) {
   throw new Error('Set CIXCI_QA_EMAIL, CIXCI_QA_PASSWORD and CIXCI_QA_CHROME at runtime. Requires Node 22+.')
@@ -85,9 +88,24 @@ try {
   const login = await fetch('http://localhost:8000/api/v1/auth/login/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: process.env.CIXCI_QA_EMAIL, password: process.env.CIXCI_QA_PASSWORD }) })
   if (!login.ok) throw new Error(`Local admin login returned ${login.status}`)
   const tokens = await login.json()
-  await call('Page.navigate', { url: 'http://localhost:5173/login' }); await pause(700)
-  await waitFor('document.readyState === "complete"')
+  // Chromium can abort the first navigation while its startup blank tab commits.
+  // Retry only that startup condition; never hide a page/request failure.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const navigation = await call('Page.navigate', { url: 'http://localhost:5173/login' })
+    if (!navigation.errorText) break
+    if (navigation.errorText !== 'net::ERR_ABORTED' || attempt === 2) throw new Error(`Local UI navigation failed: ${navigation.errorText}`)
+    await pause(500)
+  }
+  await pause(700)
+  await waitFor('location.origin === "http://localhost:5173" && document.readyState === "complete"')
   await evaluate(`localStorage.setItem('access', ${JSON.stringify(tokens.access)}); localStorage.setItem('refresh', ${JSON.stringify(tokens.refresh)}); true`)
+  if (process.env.CIXCI_QA_SUITE === 'company-profile') {
+    await verifyCompanyProfile({ call, on, evaluate, waitFor, clickText, fillField, report, screenshot })
+  } else if (process.env.CIXCI_QA_SUITE === 'wireless-matrix') {
+    await verifyWirelessMatrix({ call, on, evaluate, waitFor, clickText, chooseSelect, report, tokens, screenshot })
+  } else if (['vendor-client', 'vendor-bulk'].includes(process.env.CIXCI_QA_SUITE)) {
+    await verifyVendorClient({ call, on, evaluate, waitFor, clickText, chooseSelect, report, tokens, root, screenshot, bulkOnly: process.env.CIXCI_QA_SUITE === 'vendor-bulk' })
+  } else {
   await call('Page.navigate', { url: 'http://localhost:5173/devices' }); await pause(700)
   await waitFor('document.querySelectorAll("tbody tr.MuiTableRow-hover").length > 0 && !document.querySelector("tbody .MuiSkeleton-root")')
   report.checks.push({ name: 'Local admin authentication and real device catalog', pass: true })
@@ -315,6 +333,7 @@ try {
     // in isolated Django databases, not by changing copied production accounts.
     vendorRolePreview = true
     await inspectBulk(false)
+  }
   }
   report.checks.push({ name: 'No uncaught UI exceptions', pass: report.consoleErrors.length === 0 })
   await writeFile(path.join(root, 'ui-check-report.json'), JSON.stringify(report, null, 2))

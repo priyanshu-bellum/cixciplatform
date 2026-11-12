@@ -621,40 +621,30 @@ class ProductDetailSerializer(ProductSerializerBase):
         if is_vendor:
             vendor_category_input = attrs.get('vendor_category')
             product_category_direct = attrs.get('product_category')
+            if 'product_category_override' in attrs:
+                raise serializers.ValidationError({'product_category_override': 'Only CIXCI Admins can set a category override.'})
+            override = self.instance.product_category_override if self.instance else None
+            if override and product_category_direct and product_category_direct != override:
+                raise serializers.ValidationError({'product_category': 'This product has a saved CIXCI Admin category override.'})
 
-            # Vendors must NOT set product_category directly
-            if product_category_direct and not self.instance:
-                raise serializers.ValidationError({
-                    "product_category": "Vendors cannot set CIXCI Category directly. Please provide vendor_category instead."
-                })
-
-            # Store raw vendor category (exact input, for audit/provenance)
-            if vendor_category_input:
+            # Manual Vendors select a governed CIXCI category. Their external
+            # grouping is optional metadata; legacy API mappings remain supported.
+            if vendor_category_input is not None:
                 attrs['vendor_category_raw'] = vendor_category_input
                 attrs['vendor_category'] = vendor_category_input.strip()
-
-            vendor_category = attrs.get('vendor_category')
-            if vendor_category:
-                vendor_company_ref = user.company.id
-
-                # Resolution priority: 1) product_category_override, 2) mapping, 3) none
-                override = attrs.get('product_category_override') or (
-                    self.instance.product_category_override if self.instance else None
-                )
-                if override:
-                    attrs['product_category'] = override
-                    attrs['category_validation_status'] = CategoryValidationStatus.OVERRIDE_APPLIED
-                else:
-                    cixci_cat, needs_mapping = self._resolve_vendor_category_mapping(
-                        vendor_category, vendor_company_ref
-                    )
-                    if needs_mapping:
-                        attrs['product_category'] = None
-                        attrs['category_validation_status'] = CategoryValidationStatus.MAPPING_REQUIRED
-                        # DO NOT change product status — category validation is separate
-                    else:
-                        attrs['product_category'] = cixci_cat
-                        attrs['category_validation_status'] = CategoryValidationStatus.RESOLVED
+            if override:
+                attrs['product_category'] = override
+                attrs['category_validation_status'] = CategoryValidationStatus.OVERRIDE_APPLIED
+            elif product_category_direct:
+                approved = DynamicDropdownConfig.objects.filter(field_name='product_category', value__iexact=product_category_direct, status='active').first()
+                if not approved:
+                    raise serializers.ValidationError({'product_category': 'Select an active approved CIXCI Product Category.'})
+                attrs['product_category'] = approved.value
+                attrs['category_validation_status'] = CategoryValidationStatus.RESOLVED
+            elif vendor_category_input:
+                cixci_cat, needs_mapping = self._resolve_vendor_category_mapping(vendor_category_input.strip(), user.company.id)
+                attrs['product_category'] = cixci_cat
+                attrs['category_validation_status'] = CategoryValidationStatus.MAPPING_REQUIRED if needs_mapping else CategoryValidationStatus.RESOLVED
 
         elif is_admin:
             # Admin can set product_category_override
@@ -2204,8 +2194,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             # System resolves it to canonical CIXCI category (product_category)
             from apps.catalog.models import VendorCategoryMapping, VendorCategoryMappingStatus, CategoryValidationStatus
             category_raw = str(row.get("productcategory") or row.get("category") or "").strip()
-            vendor_category_raw_val = category_raw  # Exact input for audit
-            vendor_category = category_raw.strip() if category_raw else ""  # Trimmed for matching
+            vendor_category_raw_val = str(row.get("vendorcategory") or "")
+            vendor_category = vendor_category_raw_val.strip()
             product_category = None  # Canonical CIXCI category
             category_validation = CategoryValidationStatus.PENDING
 
@@ -2218,43 +2208,39 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "recommended_correction": "Specify a valid vendor category."
                 })
             else:
-                # Try to resolve via VendorCategoryMapping first
-                vendor_ref = getattr(getattr(request.user, 'company', None), 'id', None)
+                # Product Category is the canonical choice. An optional Vendor
+                # Category cannot silently redirect it through a mapping.
+                canonical = DynamicDropdownConfig.objects.filter(field_name="product_category", value__iexact=category_raw, status="active").first()
+                vendor_ref = vendor_company_id
 
                 mapping = None
                 if vendor_ref:
                     mapping = VendorCategoryMapping.objects.filter(
                         vendor_company_reference=vendor_ref,
-                        vendor_category__iexact=vendor_category,
+                        vendor_category__iexact=category_raw,
                         status=VendorCategoryMappingStatus.ACTIVE
                     ).first()
 
-                if mapping:
+                if canonical:
+                    product_category = canonical.value
+                    category_validation = CategoryValidationStatus.RESOLVED
+                elif mapping:
                     # Mapping found - use canonical CIXCI category
                     product_category = mapping.cixci_category
+                    if not vendor_category:
+                        vendor_category = category_raw
+                        vendor_category_raw_val = category_raw
                     category_validation = CategoryValidationStatus.RESOLVED
                 else:
-                    # No mapping - check if it's a direct CIXCI category match (legacy support)
-                    cat_exists = DynamicDropdownConfig.objects.filter(
-                        field_name="product_category",
-                        value__iexact=vendor_category
-                    ).first()
-
-                    if cat_exists:
-                        product_category = cat_exists.value
-                        category_validation = CategoryValidationStatus.RESOLVED
-                    else:
-                        # Unknown category - needs mapping (separate from product status)
-                        product_category = None
-                        category_validation = CategoryValidationStatus.MAPPING_REQUIRED
-
-                        row_errors.append({
-                            "row_number": row_num,
-                            "column_name": "Product Category",
-                            "submitted_value": category_raw,
-                            "validation_error": f"Vendor category '{category_raw}' has no mapping to CIXCI category. Category Mapping Required.",
-                            "recommended_correction": "Contact CIXCI Admin to create category mapping."
-                        })
+                    product_category = None
+                    category_validation = CategoryValidationStatus.MAPPING_REQUIRED
+                    row_errors.append({
+                        "row_number": row_num,
+                        "column_name": "Product Category",
+                        "submitted_value": category_raw,
+                        "validation_error": f"Category '{category_raw}' is not an active CIXCI category or approved supplier mapping.",
+                        "recommended_correction": "Select an approved CIXCI Product Category or ask CIXCI Admin to configure the supplier mapping."
+                    })
 
             # --- UPC ---
             upc_val = str(row.get("upc") or "").strip()

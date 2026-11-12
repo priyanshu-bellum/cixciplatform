@@ -111,7 +111,16 @@ class CompanyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         instance = self.get_object()
         old_status = instance.status
         previous_regions = list(instance.approved_regions or [])
+        previous_values = {field: getattr(instance, field) for field in serializer.validated_data if hasattr(instance, field)}
         updated_instance = serializer.save()
+        changed_fields = sorted(field for field, value in previous_values.items() if getattr(updated_instance, field) != value)
+        if changed_fields:
+            import json
+            from apps.tenant.services import log_tenant_audit
+            log_tenant_audit(event_code="tenant.company.profile_updated",
+                description=json.dumps({"changed_fields": changed_fields}),
+                company_id=updated_instance.id, actor_id=self.request.user.id,
+                source_record_type="Company", source_record_id=updated_instance.id)
         if previous_regions != (updated_instance.approved_regions or []):
             import json
             from apps.audit.models import AuditRecord

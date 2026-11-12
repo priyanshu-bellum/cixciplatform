@@ -1,5 +1,13 @@
 # Compatibility feature working-tree file inventory
 
+Current client follow-up is inventoried in
+[vendor-client-regressions-plan.md](vendor-client-regressions-plan.md), with
+release checks in [client-fixes-release-checklist.md](client-fixes-release-checklist.md).
+It covers general Product Universal declarations, edited bulk uploads/images,
+Vendor canonical categories, custom wireless matrix and Profile Save guards.
+Vendor API drafts and supplied future source documents are excluded from this
+client patch. The inventories below describe earlier, already pushed phases.
+
 Follow-up to commit `53b655e`: single-product parity and the requested dropdown
 management restoration modify `frontend/src/pages/DevicesPage.tsx`,
 `frontend/src/pages/catalog/dialogs/ProductFormDialog.tsx`,

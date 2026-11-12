@@ -14,7 +14,7 @@ class Command(BaseCommand):
         mismatches = []
         for product in Product.objects.only("id", "sku", "product_category", "compatibility_mode", "compatible_device_types").iterator():
             config = configs.get(product.product_category)
-            if config and (category_mode(config.compatibility_mode) == "universal") != (product.compatibility_mode == "universal_device_type"):
+            if config and category_mode(config.compatibility_mode) == "universal" and product.compatibility_mode != "universal_device_type":
                 mismatches.append({"sku": product.sku, "category": product.product_category, "product_mode": product.compatibility_mode, "category_mode": config.compatibility_mode})
         report = {
             "read_only": True,

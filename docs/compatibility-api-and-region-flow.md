@@ -50,8 +50,10 @@ tokens are not written into audit payloads.
 | Feature Based | Existing direct storage mode + explicit capabilities | Configured positive comparisons |
 | Hybrid | Direct storage mode + explicit models / capabilities | Union of explicit and feature evidence, deduplicated by canonical model ID |
 
-Category and Product methods must agree. A direct model selection cannot carry a
-Universal type declaration. New types never expand existing Universal scopes.
+Category configuration supplies default methods; an explicit Product Universal
+declaration may coexist with any active business category. The category label
+and its eligible device types are preserved. A Direct Device product cannot
+carry a Universal type scope. New types never expand existing Universal scopes.
 Required/Optional/Hidden/Defaulted/Conditional govern entry; matching roles and
 operations are separate. `Not Compatible` and Bluetooth `No` are valid declared
 answers but never positive evidence. Speaker charging data is informational

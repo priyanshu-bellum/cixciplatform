@@ -81,8 +81,6 @@ def parse_compatibility_row(row, config):
     types = resolve_device_types(type_values) if type_values else []
     if types and devices:
         raise ValidationError("Universal type scope cannot be mixed with individual device models.")
-    if types and mode != "universal":
-        raise ValidationError("Universal product scope requires a Universal category.")
     if devices and mode not in ("device_specific", "hybrid"):
         raise ValidationError("Individual models require a Device Specific or Hybrid category.")
     return values, [str(record.id) for record in types], list(dict.fromkeys(devices))

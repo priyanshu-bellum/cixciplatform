@@ -162,7 +162,7 @@ def _permitted_sources(product, config):
         return set()
     mode = category_mode(config.compatibility_mode)
     if product.compatibility_mode == "universal_device_type":
-        return {"universal"} if mode == "universal" else set()
+        return {"universal"}
     return {"device_specific": {"explicit"}, "feature_based": {"feature"}, "hybrid": {"explicit", "feature"}}.get(mode, set())
 
 
