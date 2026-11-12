@@ -63,16 +63,17 @@ screenshots are under `.local-copy/compatibility-analysis/client-final-*` and
 
 ## Boundaries and rollout
 
-No schema/data migration or new dependency is required for this patch. Push does
+The original `e59133b` patch required no schema/data migration or new dependency. Push does
 not deploy the live containers; the live frontend must be rebuilt when deploying.
 Keep backend and frontend from the same release. Existing regional rollout flags
 and approved commercial configuration remain unchanged.
 
-The exact originally reported live Profile 500 traceback was not supplied and
-cannot be identified from the copied data. Five saved local Vendor profiles
-return existing 400 activation-readiness messages for missing required websites.
-The confirmed uniqueness-race 500 is fixed and invalid profile cases are tested;
-unrelated server/infrastructure failures are not swallowed or claimed impossible.
+Follow-up: the supplied exact cellhelmet PATCH reproduced another Profile 500:
+the validator referenced `user_memberships` instead of the actual `memberships`
+relation. That failure is now fixed and tested. The follow-up also repairs
+wireless Save recalculation and includes approved speaker data migration 0033.
+See [production follow-up and verified results](production-compatibility-hotfix.md)
+for the current 447-case-per-database and 62-check UI verification and rollout.
 
 Resume Vendor onboarding/sync from its preserved worktree after this push,
 incorporating these client fixes. Follow the supplied supplier requirements and

@@ -76,3 +76,20 @@ def test_invalid_profile_values_are_400_and_do_not_partially_update(admin_client
     assert response.status_code == 400
     vendor_company.refresh_from_db()
     assert vendor_company.name == previous_name
+
+
+@pytest.mark.parametrize('membership_status,user_active,expected', [('active', True, 200), ('suspended', True, 400), ('active', False, 400)])
+def test_active_profile_uses_real_membership_relation_when_no_entity_user_exists(admin_client, vendor_company, cap_factory, membership_status, user_active, expected):
+    from apps.tenant.models import User, CompanyUserMembership
+    member = User.objects.create_user(email='membership-admin@cixci.test', entity=None, is_active=user_active)
+    CompanyUserMembership.objects.create(company=vendor_company, user=member, status=membership_status, is_company_admin=True)
+    vendor_company.capabilities.add(cap_factory('catalog.product.read'))
+    admin_client.raise_request_exception = False
+    response = admin_client.patch(f'/api/v1/tenant/companies/{vendor_company.id}/', {
+        'name':vendor_company.name, 'display_name':'Membership Vendor', 'status':'active',
+        'website':'https://vendor.example', 'primary_contact_name':'Vendor Contact',
+        'primary_contact_email':'contact@vendor.example', 'address_line1':'100 Example Street',
+        'business_email_domain':'@vendor.example', 'is_parent':True, 'parent_company':None,
+        'allowed_channels':['cixci_e_commerce'], 'country_code':'US', 'region_code':'PA',
+    }, format='json')
+    assert response.status_code == expected, getattr(response, 'data', {})

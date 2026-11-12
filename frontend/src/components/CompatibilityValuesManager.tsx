@@ -24,7 +24,7 @@ export default function CompatibilityValuesManager() {
   const [notice, setNotice] = useState('')
   const refresh = async () => { await refetch(); await queryClient.invalidateQueries({ queryKey: ['compatibility-options'] }) }
   const save = async (operation: () => Promise<any>) => {
-    setError(''); setBusy(true)
+    setError(''); setNotice(''); setBusy(true)
     try { await operation(); await refresh(); return true } catch (error) { setError(apiError(error)); return false } finally { setBusy(false) }
   }
   const wireless: string[] = (data?.fields?.wireless_charging_compatibility || []).map((option: any) => option.value).filter((value: string) => value !== 'Not Compatible')
@@ -47,6 +47,8 @@ export default function CompatibilityValuesManager() {
     <Typography variant="subtitle1">Shared Device and Accessory Compatibility Values</Typography>
     <Typography variant="body2" color="text.secondary">The same approved values apply to device, product, CSV and API entry. Retire values to preserve existing history.</Typography>
     {error && <Alert severity="error">{error}</Alert>}
+    {busy && <Alert severity="info" role="status">Saving configuration and recalculating affected compatibility…</Alert>}
+    {notice && <Alert severity="success">{notice}</Alert>}
     <TextField select label="Managed compatibility field" size="small" value={field} onChange={event => { setField(event.target.value); setValue(''); setError(''); setEditingLabel(null) }}>
       {Object.entries(COMPATIBILITY_LABELS).filter(([key]) => key !== 'bluetooth_compatibility').map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}
     </TextField>
@@ -68,12 +70,11 @@ export default function CompatibilityValuesManager() {
     <Button variant="outlined" disabled={busy || !value.trim()} onClick={() => save(async () => {
       await api.post('/catalog/dropdown-configs/', { field_name: field, value, display_name: value, status: 'active', compatibility_rules:
         field === 'storage_expansion_compatibility' ? { capacity_options: capacities.split(',').map(value => value.trim()).filter(Boolean) } : field === 'memory_capacity' ? { storage_expansion: parent } : {} })
-      setValue(''); setCapacities('')
+      setValue(''); setCapacities(''); setNotice('Approved value saved.')
     })}>Add approved value</Button>
     {field === 'wireless_charging_compatibility' && <>
       <Typography variant="subtitle1">Wireless Charging Combination Matrix</Typography>
       {!policy.configured && <Alert severity="info">Existing restrictions apply until an admin saves this matrix.</Alert>}
-      {notice && <Alert severity="success">{notice}</Alert>}
       <Typography variant="body2" color="text.secondary">
         {draftRules.allowed_combinations.length ? 'Unlisted multi-value combinations are rejected while an allowed list is configured.' : 'Without an allowed list, unlisted combinations are accepted unless they contain a prohibited combination.'}
         {' '}A prohibited combination also blocks any selection containing it. Not Compatible must always be selected alone.

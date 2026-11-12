@@ -102,7 +102,7 @@ try {
   if (process.env.CIXCI_QA_SUITE === 'company-profile') {
     await verifyCompanyProfile({ call, on, evaluate, waitFor, clickText, fillField, report, screenshot })
   } else if (process.env.CIXCI_QA_SUITE === 'wireless-matrix') {
-    await verifyWirelessMatrix({ call, on, evaluate, waitFor, clickText, chooseSelect, report, tokens, screenshot })
+    await verifyWirelessMatrix({ call, on, evaluate, waitFor, clickText, fillField, chooseSelect, report, tokens, screenshot })
   } else if (['vendor-client', 'vendor-bulk'].includes(process.env.CIXCI_QA_SUITE)) {
     await verifyVendorClient({ call, on, evaluate, waitFor, clickText, chooseSelect, report, tokens, root, screenshot, bulkOnly: process.env.CIXCI_QA_SUITE === 'vendor-bulk' })
   } else {

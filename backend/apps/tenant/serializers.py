@@ -166,7 +166,7 @@ class CompanySerializer(serializers.ModelSerializer):
             if self.instance:
                 active_user_exists = (
                     User.objects.filter(entity__company=self.instance, is_active=True).exists()
-                    or self.instance.user_memberships.filter(user__is_active=True, status="active").exists()
+                    or self.instance.memberships.filter(user__is_active=True, status="active").exists()
                 )
                 if not active_user_exists:
                     raise serializers.ValidationError(

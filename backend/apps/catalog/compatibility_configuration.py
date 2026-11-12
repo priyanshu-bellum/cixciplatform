@@ -64,8 +64,8 @@ def save_configuration(serializer, actor):
         if previous and all(previous[field] == getattr(instance, field) for field in ("status", "compatibility_mode", "eligible_device_types", "match_logic", "accessory_fields", "compatibility_rules")):
             return instance
         products = Product.objects.filter(product_category=instance.value)
-    elif previous and instance.field_name in MANAGED_FIELDS + (WIRELESS_POLICY_FIELD,):
-        if previous["status"] == instance.status and previous["compatibility_rules"] == instance.compatibility_rules:
+    elif instance.field_name == WIRELESS_POLICY_FIELD or (previous and instance.field_name in MANAGED_FIELDS):
+        if previous and previous["status"] == instance.status and previous["compatibility_rules"] == instance.compatibility_rules:
             return instance
         field = "wireless_charging_compatibility" if instance.field_name == WIRELESS_POLICY_FIELD else instance.field_name
         categories = []
@@ -77,8 +77,13 @@ def save_configuration(serializer, actor):
     else:
         return instance
     from .compatibility_engine import reconcile_product_compatibility
+    affected = False
     for product in products.order_by("pk").iterator():
-        reconcile_product_compatibility(product, actor_id=actor.id, change_source="Admin Configuration")
+        reconcile_product_compatibility(product, actor_id=actor.id, change_source="Admin Configuration", notify=False)
+        affected = True
+    if affected:
+        from .services import invalidate_buyer_projection_cache
+        invalidate_buyer_projection_cache('admin_configuration')
     return instance
 
 

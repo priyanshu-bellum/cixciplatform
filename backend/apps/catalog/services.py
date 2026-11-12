@@ -502,6 +502,13 @@ def reconcile_product_activation(product, actor_id=None, source="media_upload"):
     return result
 
 
+def invalidate_buyer_projection_cache(reason):
+    """One batch invalidation; each authorized Buyer scope refreshes on demand."""
+    from .models import BuyerScopedCompatibilityProjection
+    return BuyerScopedCompatibilityProjection.objects.exclude(status='review_required').update(
+        status='review_required', review_required_reason=reason)
+
+
 def trigger_catalog_recalculation_for_product(product_id):
     """Trigger buyer catalog visibility recalculation for all existing projections."""
     from apps.catalog.models import BuyerScopedCompatibilityProjection

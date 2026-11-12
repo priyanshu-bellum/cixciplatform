@@ -30,9 +30,11 @@ class CatalogConfig(AppConfig):
     verbose_name = "Product Catalog"
 
     def ready(self):
-        from django.db.models.signals import post_save, post_delete
+        from django.db.models.signals import post_save, post_delete, post_migrate
         from apps.catalog.models import DynamicDropdownConfig, VendorCategoryMapping
         post_save.connect(_refresh_dropdown_cache, sender=DynamicDropdownConfig)
         post_delete.connect(_invalidate_dropdown_cache, sender=DynamicDropdownConfig)
         post_save.connect(_refresh_mapping_cache, sender=VendorCategoryMapping)
         post_delete.connect(_invalidate_mapping_cache, sender=VendorCategoryMapping)
+        from .compatibility_rebuild import rebuild_after_migrate
+        post_migrate.connect(rebuild_after_migrate, sender=self, dispatch_uid='catalog.declared_scope_post_migrate_rebuild')
