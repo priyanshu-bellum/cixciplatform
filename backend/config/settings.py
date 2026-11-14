@@ -160,6 +160,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.fulfillment.tasks.poll_carrier_tracking",
         "schedule": 1800.0,
     },
+    "dispatch_due_shipment_polls_every_5_mins": {
+        "task": "integration.vendor_commerce.dispatch_polls",
+        "schedule": 300.0,
+        "options": {"queue": "vendor_commerce"},
+    },
 }
 
 # ─── REST Framework ───────────────────────────────────────────────────────────
