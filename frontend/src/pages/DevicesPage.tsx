@@ -192,6 +192,25 @@ export default function DevicesPage() {
   const [compProdCategory, setCompProdCategory] = useState('')
   const [compProdStatus, setCompProdStatus] = useState('')
 
+  // Product detail preview dialog (opened from Compatible Products tab)
+  const [previewProduct, setPreviewProduct] = useState<any>(null)
+  const [previewProductDetail, setPreviewProductDetail] = useState<any>(null)
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false)
+
+  const handleViewProduct = async (product: any) => {
+    setPreviewProduct(product)
+    setPreviewProductDetail(null)
+    setIsLoadingPreview(true)
+    try {
+      const resp = await api.get(`/catalog/products/${product.id}/`)
+      setPreviewProductDetail(resp.data)
+    } catch {
+      setPreviewProductDetail(product)
+    } finally {
+      setIsLoadingPreview(false)
+    }
+  }
+
   // Remove confirmation state
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
   const [confirmRemoveName, setConfirmRemoveName] = useState('')
@@ -291,6 +310,7 @@ export default function DevicesPage() {
   }, [compProducts, compProdSearch, compProdVendor, compProdCategory, compProdStatus])
 
   // Import state
+  const importFileRef = useRef<HTMLInputElement>(null)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState('Create New Only')
   const [importErrors, setImportErrors] = useState<any[]>([])
@@ -300,6 +320,7 @@ export default function DevicesPage() {
 
   const resetImportState = () => {
     setImportFile(null)
+    if (importFileRef.current) importFileRef.current.value = ''
     setImportErrors([])
     setImportErrorGeneral('')
     setImportSuccess('')
@@ -1434,12 +1455,21 @@ export default function DevicesPage() {
               <Box>
                 <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Select CSV File *</Typography>
                 <input
+                  ref={importFileRef}
                   type="file"
                   accept=".csv"
-                  key={importFile ? 'has-file' : 'no-file'}
-                  style={{ fontSize: 13 }}
+                  hidden
                   onChange={e => setImportFile(e.target.files?.[0] || null)}
                 />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  fullWidth
+                  onClick={() => importFileRef.current?.click()}
+                  sx={{ justifyContent: 'flex-start', textTransform: 'none', color: importFile ? 'text.primary' : 'text.secondary', fontWeight: 400 }}
+                >
+                  {importFile ? importFile.name : 'Choose CSV file...'}
+                </Button>
               </Box>
             </Box>
 
@@ -2205,9 +2235,7 @@ export default function DevicesPage() {
                               <Button
                                 size="small"
                                 sx={{ fontSize: '0.6875rem', py: 0.25, px: 1, minHeight: 0 }}
-                                onClick={() => {
-                                  navigate(`/catalog?tab=all-products&all_search=${encodeURIComponent(p.sku || p.name)}`)
-                                }}
+                                onClick={() => handleViewProduct(p)}
                               >
                                 View Product
                               </Button>
@@ -2277,6 +2305,101 @@ export default function DevicesPage() {
             </DialogActions>
           </>
         )}
+      </Dialog>
+
+      {/* Product Detail Preview Dialog */}
+      <Dialog
+        open={!!previewProduct}
+        onClose={() => { setPreviewProduct(null); setPreviewProductDetail(null) }}
+        maxWidth="md"
+        fullWidth
+        slotProps={{ paper: { sx: { maxHeight: '85dvh' } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Product Detail
+          <IconButton size="small" onClick={() => { setPreviewProduct(null); setPreviewProductDetail(null) }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {isLoadingPreview ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+              <CircularProgress size={32} />
+            </Box>
+          ) : previewProductDetail ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', gap: 2.5, flexWrap: 'wrap' }}>
+                {previewProductDetail.primary_image_url && (
+                  <Box
+                    component="img"
+                    src={previewProductDetail.primary_image_url}
+                    alt={previewProductDetail.name}
+                    sx={{ width: 120, height: 120, objectFit: 'contain', borderRadius: 1, border: 1, borderColor: 'divider', bgcolor: '#fff', flexShrink: 0 }}
+                  />
+                )}
+                <Box sx={{ flex: 1, minWidth: 200 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>{previewProductDetail.name}</Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                    <StatusChip status={previewProductDetail.status || 'unknown'} />
+                    {previewProductDetail.selling_status && (
+                      <Chip size="small" label={previewProductDetail.selling_status.replace(/_/g, ' ')} variant="outlined" />
+                    )}
+                  </Box>
+                  {previewProductDetail.description && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{previewProductDetail.description}</Typography>
+                  )}
+                </Box>
+              </Box>
+
+              <Divider />
+
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                {[
+                  { label: 'SKU', value: previewProductDetail.sku },
+                  { label: 'UPC', value: previewProductDetail.upc },
+                  { label: 'Brand', value: previewProductDetail.brand },
+                  { label: 'Category', value: previewProductDetail.product_category },
+                  { label: 'Vendor', value: previewProductDetail.vendor_name },
+                  { label: 'Color', value: previewProductDetail.system_color || previewProductDetail.color },
+                  { label: 'MSRP', value: previewProductDetail.msrp ? `$${previewProductDetail.msrp}` : null },
+                  { label: 'Wholesale', value: previewProductDetail.wholesale_price ? `$${previewProductDetail.wholesale_price}` : null },
+                  { label: 'MAP Price', value: previewProductDetail.map_price ? `$${previewProductDetail.map_price}` : null },
+                  { label: 'Compatibility', value: previewProductDetail.compatibility_status },
+                  { label: 'Launch Date', value: previewProductDetail.launch_date },
+                  { label: 'Release Date', value: previewProductDetail.release_date },
+                ].filter(f => f.value).map(f => (
+                  <Box key={f.label}>
+                    <Typography variant="caption" color="text.secondary">{f.label}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>{f.value}</Typography>
+                  </Box>
+                ))}
+              </Box>
+
+              {previewProductDetail.compatible_devices && previewProductDetail.compatible_devices.length > 0 && (
+                <>
+                  <Divider />
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Compatible Devices</Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      {previewProductDetail.compatible_devices.map((d: any, i: number) => (
+                        <Chip key={i} label={d.device_name || d.name || d} size="small" variant="outlined" />
+                      ))}
+                    </Box>
+                  </Box>
+                </>
+              )}
+            </Box>
+          ) : (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary">Product details not available.</Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setPreviewProduct(null); setPreviewProductDetail(null) }}>
+            Close
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Shared ConfirmDialog for delete actions */}

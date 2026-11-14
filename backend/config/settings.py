@@ -9,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Release gate: enable after canonical entity/vendor/fee/relationship setup is reviewed.
 REGIONAL_VISIBILITY_ENFORCE = config("REGIONAL_VISIBILITY_ENFORCE", default=False, cast=bool)
+VENDOR_CATALOG_ENCRYPTION_KEYS = [value.strip() for value in config("VENDOR_CATALOG_ENCRYPTION_KEYS", default="").split(",") if value.strip()]
 
 # ─── Security ─────────────────────────────────────────────────────────────────
 SECRET_KEY = config("SECRET_KEY", default="dev-secret-key-change-in-production")
@@ -131,9 +132,17 @@ CELERY_TIMEZONE = "UTC"
 CELERY_TASK_ALWAYS_EAGER = config("CELERY_TASK_ALWAYS_EAGER", default=True, cast=bool)
 
 CELERY_BEAT_SCHEDULE = {
+    "dispatch_vendor_catalog_syncs": {
+        "task": "integration.vendor_catalog.dispatch", "schedule": 60.0,
+        "options": {"queue": "vendor_catalog"},
+    },
     "evaluate_vendor_slas_every_15_mins": {
         "task": "apps.fulfillment.tasks.evaluate_vendor_slas",
         "schedule": 900.0,
+    },
+    "dispatch_buyer_signals_every_5_mins": {
+        "task": "apps.fulfillment.tasks.dispatch_buyer_signals",
+        "schedule": 300.0,
     },
     "run_manual_vendor_exports_every_15_mins": {
         "task": "apps.routing.tasks.run_manual_vendor_exports",
@@ -146,6 +155,10 @@ CELERY_BEAT_SCHEDULE = {
     "update_product_statuses_by_date_hourly": {
         "task": "apps.catalog.tasks.update_product_statuses_by_date",
         "schedule": 3600.0,
+    },
+    "poll_carrier_tracking_every_30_mins": {
+        "task": "apps.fulfillment.tasks.poll_carrier_tracking",
+        "schedule": 1800.0,
     },
 }
 

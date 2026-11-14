@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
 import api from '../lib/apiClient'
+import VendorCatalogEntry from '../components/VendorCatalogEntry'
 import AddressAutocomplete from '../components/AddressAutocomplete'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -2672,7 +2673,8 @@ export function SettingsPage() {
                             </button>
                           ))}
                         </div>
-                        {editIntegrationMode === 'manual' && (
+                          <VendorCatalogEntry company={selectedCompany} currentMode={editIntegrationMode} />
+                          {editIntegrationMode === 'manual' && (
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                             <Stack direction="row" spacing={2}>
                               <Box sx={{ flex: 1 }}>

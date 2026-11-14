@@ -65,7 +65,9 @@ class TestCheckAccessUserActive:
 
 
 class TestCheckAccessEntityActive:
-    def test_inactive_entity_denied(self):
+    @patch("apps.tenant.models.CompanyUserMembership")
+    def test_inactive_entity_denied(self, mock_membership):
+        mock_membership.objects.filter.return_value.filter.return_value.exists.return_value = False
         from apps.tenant.services import check_access
         user = _make_user(entity_active=False, has_capability=True)
         result = check_access(user, "catalog.product.import")
@@ -74,14 +76,18 @@ class TestCheckAccessEntityActive:
 
 
 class TestCheckAccessCompanyScope:
-    def test_wrong_company_denied(self):
+    @patch("apps.tenant.models.CompanyUserMembership")
+    def test_wrong_company_denied(self, mock_membership):
+        mock_membership.objects.filter.return_value.filter.return_value.exists.return_value = False
         from apps.tenant.services import check_access
         user = _make_user(has_capability=True)
         result = check_access(user, "catalog.product.import", company_id=uuid4())
         assert result.granted is False
         assert result.reason == "company_scope_mismatch"
 
-    def test_correct_company_with_capability_granted(self):
+    @patch("apps.tenant.models.CompanyUserMembership")
+    def test_correct_company_with_capability_granted(self, mock_membership):
+        mock_membership.objects.filter.return_value.filter.return_value.exists.return_value = False
         from apps.tenant.services import check_access
         user = _make_user(has_capability=True)
         result = check_access(user, "catalog.product.import",
@@ -89,15 +95,20 @@ class TestCheckAccessCompanyScope:
         assert result.granted is True
 
 
+
 class TestCheckAccessCapability:
-    def test_missing_capability_denied(self):
+    @patch("apps.tenant.models.CompanyUserMembership")
+    def test_missing_capability_denied(self, mock_membership):
+        mock_membership.objects.filter.return_value.filter.return_value.exists.return_value = False
         from apps.tenant.services import check_access
         user = _make_user(has_capability=False)
         result = check_access(user, "catalog.product.import")
         assert result.granted is False
         assert result.reason == "capability_missing"
 
-    def test_has_capability_granted(self):
+    @patch("apps.tenant.models.CompanyUserMembership")
+    def test_has_capability_granted(self, mock_membership):
+        mock_membership.objects.filter.return_value.filter.return_value.exists.return_value = False
         from apps.tenant.services import check_access
         user = _make_user(has_capability=True)
         result = check_access(user, "catalog.product.import")

@@ -129,6 +129,8 @@ def _process_buyer_export_job(job_id):
         )
         matched_ids = set(str(value) for value in matches.values_list("product_id", flat=True))
         products = Product.objects.filter(id__in=[value for value in product_ids if str(value) in allowed_products & matched_ids])
+        from .source_visibility import eligible_vendor_sources
+        products = eligible_vendor_sources(products)
         product_ids = [str(value) for value in products.values_list("id", flat=True)]
         from apps.devices.models import Device
         names = {str(device.id): str(device) for device in Device.objects.filter(id__in=portfolio)}
@@ -160,6 +162,12 @@ def _process_buyer_export_job(job_id):
         from apps.media.models import MediaAsset
         from django.conf import settings
         products_snapshot = []
+        from .offer_services import freeze_export_selection, mapping_reference
+        from apps.tenant.models import CompanyEntity
+        export_company = Company.objects.get(pk=job.company_scope_reference)
+        export_entity = CompanyEntity.objects.get(pk=job.buyer_entity_reference, company=export_company)
+        export_mappings = {p.pk: freeze_export_selection(product=p, company=export_company, entity=export_entity,
+            storefront=job.storefront, job=job, actor=actor) for p in products}
         for p in products:
             vendor = Company.objects.filter(id=p.vendor_company_reference).first()
             vendor_name = vendor.name if vendor else "Unknown Vendor"
@@ -177,6 +185,7 @@ def _process_buyer_export_job(job_id):
                 image_url = p.media_references[0]
 
             products_snapshot.append({
+                **mapping_reference(export_mappings[p.pk]),
                 "product_id": str(p.id),
                 "vendor_name": vendor_name,
                 "primary_image_url": image_url or "",
@@ -226,6 +235,7 @@ def _process_buyer_export_job(job_id):
                 vendor_address_emitted.add(vendor_id)
 
             return {
+                **mapping_reference(export_mappings[p.pk]),
                 # Required fields
                 "vendor": vendor_name,
                 "vendor_name": vendor_name,
@@ -240,7 +250,7 @@ def _process_buyer_export_job(job_id):
                 "release_date": str(p.release_date) if p.release_date else "",
                 "exported_date": timezone.now().isoformat(),
                 "msrp": str(p.msrp) if p.msrp is not None else "",
-                "buyer_wholesale_price": str(p.buyer_wholesale_price) if p.buyer_wholesale_price is not None else "",
+                "buyer_wholesale_price": str(export_prices[p.pk]) if p.pk in export_prices else (str(p.buyer_wholesale_price) if p.buyer_wholesale_price is not None else ""),
                 "vendor_color": p.color or "",
                 "system_color": p.system_color or "",
                 "device_compatibility": "; ".join(sorted(device_names.get(str(p.id), set()))),
@@ -273,7 +283,11 @@ def _process_buyer_export_job(job_id):
         filename = f"export_{job.id}.json" if job.format == "API" else f"export_{job.id}.{job.format}"
         mime_type = "application/json" if job.format == "API" else "text/csv"
 
+        from apps.pricing.models import EffectivePriceSnapshot
+        price_by_id = dict(EffectivePriceSnapshot.objects.filter(pk__in=[mapping.pricing_snapshot_reference for mapping in export_mappings.values() if mapping.pricing_snapshot_reference]).values_list('pk', 'buyer_facing_price'))
+        export_prices = {pid: price_by_id[mapping.pricing_snapshot_reference] for pid, mapping in export_mappings.items() if mapping.pricing_snapshot_reference in price_by_id}
         export_headers = [
+            "export_mapping_id", "supplier_id", "mapping_version", "mapping_status", "integration_scope_id",
             "vendor", "vendor_name", "product_name", "product_type", "product_category", "sku", "upc",
             "product_status", "selling_status", "launch_date", "release_date", "exported_date", "msrp", "buyer_wholesale_price",
             "vendor_color", "system_color", "device_compatibility",

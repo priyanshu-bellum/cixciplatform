@@ -1160,22 +1160,10 @@ paths:
     get:
       operationId: v1_catalog_dropdown_configs_list
       parameters:
-      - name: cursor
-        required: false
-        in: query
-        description: The pagination cursor value.
-        schema:
-          type: string
       - in: query
         name: field_name
         schema:
           type: string
-      - name: page_size
-        required: false
-        in: query
-        description: Number of results to return per page.
-        schema:
-          type: integer
       tags:
       - v1
       security:
@@ -1187,7 +1175,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedDynamicDropdownConfigList'
+                type: array
+                items:
+                  $ref: '#/components/schemas/DynamicDropdownConfig'
           description: ''
     post:
       operationId: v1_catalog_dropdown_configs_create
@@ -1328,6 +1318,22 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/catalog/dropdown-configs/compatibility-options/:
+    get:
+      operationId: v1_catalog_dropdown_configs_compatibility_options_retrieve
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DynamicDropdownConfig'
+          description: ''
   /api/v1/catalog/export-jobs/{id}/:
     get:
       operationId: v1_catalog_export_jobs_retrieve
@@ -1361,6 +1367,23 @@ paths:
         schema:
           type: string
         required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerExportJob'
+          description: ''
+  /api/v1/catalog/export-jobs/added_products/:
+    get:
+      operationId: v1_catalog_export_jobs_added_products_retrieve
+      description: Return product IDs already added by this buyer for a specific device.
       tags:
       - v1
       security:
@@ -1579,6 +1602,10 @@ paths:
           * `not_for_sale` - Not For Sale
           * `for_sale` - For Sale
           * `stop_selling` - Stop Selling
+      - in: query
+        name: sku
+        schema:
+          type: string
       - in: query
         name: status
         schema:
@@ -1813,7 +1840,7 @@ paths:
   /api/v1/catalog/products/{id}/compatibility/:
     get:
       operationId: v1_catalog_products_compatibility_retrieve
-      description: List or update device compatibility assertions for this product.
+      description: Read canonical current mappings or apply audited, scoped commands.
       parameters:
       - in: path
         name: id
@@ -1837,7 +1864,7 @@ paths:
           description: ''
     post:
       operationId: v1_catalog_products_compatibility_create
-      description: List or update device compatibility assertions for this product.
+      description: Read canonical current mappings or apply audited, scoped commands.
       parameters:
       - in: path
         name: id
@@ -3928,6 +3955,71 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeviceType'
           description: ''
+  /api/v1/fulfillment/buyer-shipments/:
+    get:
+      operationId: v1_fulfillment_buyer_shipments_list
+      description: |-
+        Buyer shipment tracking — dedicated B2B endpoint for querying shipment status.
+        Supports filtering by status, date range, and ordering.
+        Rate-limited per buyer company.
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBuyerShipmentList'
+          description: ''
+  /api/v1/fulfillment/buyer-shipments/{id}/:
+    get:
+      operationId: v1_fulfillment_buyer_shipments_retrieve
+      description: |-
+        Buyer shipment tracking — dedicated B2B endpoint for querying shipment status.
+        Supports filtering by status, date range, and ordering.
+        Rate-limited per buyer company.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerShipment'
+          description: ''
   /api/v1/fulfillment/buyer-signals/:
     get:
       operationId: v1_fulfillment_buyer_signals_list
@@ -5405,6 +5497,352 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/integration/buyer-export-mappings/:
+    get:
+      operationId: v1_integration_buyer_export_mappings_list
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedExportMappingList'
+          description: ''
+  /api/v1/integration/buyer-export-mappings/{id}/:
+    get:
+      operationId: v1_integration_buyer_export_mappings_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportMapping'
+          description: ''
+  /api/v1/integration/buyer-export-mappings/{id}/bind_listing/:
+    post:
+      operationId: v1_integration_buyer_export_mappings_bind_listing_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportMapping'
+          description: ''
+  /api/v1/integration/buyer-storefronts/:
+    get:
+      operationId: v1_integration_buyer_storefronts_list
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBuyerStorefrontList'
+          description: ''
+    post:
+      operationId: v1_integration_buyer_storefronts_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuyerStorefrontRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BuyerStorefrontRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BuyerStorefrontRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerStorefront'
+          description: ''
+  /api/v1/integration/buyer-storefronts/{id}/:
+    get:
+      operationId: v1_integration_buyer_storefronts_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerStorefront'
+          description: ''
+    patch:
+      operationId: v1_integration_buyer_storefronts_partial_update
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBuyerStorefrontRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBuyerStorefrontRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBuyerStorefrontRequest'
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerStorefront'
+          description: ''
+  /api/v1/integration/catalog-brands/:
+    get:
+      operationId: v1_integration_catalog_brands_list
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBrandList'
+          description: ''
+    post:
+      operationId: v1_integration_catalog_brands_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrandRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BrandRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BrandRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+          description: ''
+  /api/v1/integration/catalog-brands/{id}/:
+    get:
+      operationId: v1_integration_catalog_brands_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+          description: ''
+    patch:
+      operationId: v1_integration_catalog_brands_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBrandRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBrandRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBrandRequest'
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+          description: ''
   /api/v1/integration/connections/:
     get:
       operationId: v1_integration_connections_list
@@ -5712,6 +6150,1023 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InboundWebhookReceipt'
+          description: ''
+  /api/v1/integration/operations/dispatches/:
+    get:
+      operationId: v1_integration_operations_dispatches_list
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDispatchList'
+          description: ''
+  /api/v1/integration/operations/dispatches/{id}/:
+    get:
+      operationId: v1_integration_operations_dispatches_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this supplier order dispatch.
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispatch'
+          description: ''
+  /api/v1/integration/operations/dispatches/{id}/retry/:
+    post:
+      operationId: v1_integration_operations_dispatches_retry_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this supplier order dispatch.
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispatch'
+          description: ''
+  /api/v1/integration/operations/poll-runs/:
+    get:
+      operationId: v1_integration_operations_poll_runs_list
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPollRunList'
+          description: ''
+  /api/v1/integration/operations/poll-runs/{id}/:
+    get:
+      operationId: v1_integration_operations_poll_runs_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this vendor commerce poll run.
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollRun'
+          description: ''
+  /api/v1/integration/operations/poll-runs/trigger/:
+    post:
+      operationId: v1_integration_operations_poll_runs_trigger_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollRun'
+          description: ''
+  /api/v1/integration/operations/webhook-receipts/:
+    get:
+      operationId: v1_integration_operations_webhook_receipts_list
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedWebhookReceiptList'
+          description: ''
+  /api/v1/integration/operations/webhook-receipts/{id}/:
+    get:
+      operationId: v1_integration_operations_webhook_receipts_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this vendor webhook receipt.
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookReceipt'
+          description: ''
+  /api/v1/integration/vendor-brand-relationships/:
+    get:
+      operationId: v1_integration_vendor_brand_relationships_list
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRelationshipList'
+          description: ''
+    post:
+      operationId: v1_integration_vendor_brand_relationships_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationshipRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RelationshipRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RelationshipRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relationship'
+          description: ''
+  /api/v1/integration/vendor-brand-relationships/{id}/:
+    get:
+      operationId: v1_integration_vendor_brand_relationships_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relationship'
+          description: ''
+    patch:
+      operationId: v1_integration_vendor_brand_relationships_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRelationshipRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRelationshipRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRelationshipRequest'
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relationship'
+          description: ''
+  /api/v1/integration/vendor-catalog-connections/:
+    get:
+      operationId: v1_integration_vendor_catalog_connections_list
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedConnectionList'
+          description: ''
+    post:
+      operationId: v1_integration_vendor_catalog_connections_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+  /api/v1/integration/vendor-catalog-connections/{id}/:
+    get:
+      operationId: v1_integration_vendor_catalog_connections_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+    patch:
+      operationId: v1_integration_vendor_catalog_connections_partial_update
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedConnectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedConnectionRequest'
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+  /api/v1/integration/vendor-catalog-connections/{id}/cancel/:
+    post:
+      operationId: v1_integration_vendor_catalog_connections_cancel_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+  /api/v1/integration/vendor-catalog-connections/{id}/items/:
+    get:
+      operationId: v1_integration_vendor_catalog_connections_items_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+  /api/v1/integration/vendor-catalog-connections/{id}/recheck/:
+    post:
+      operationId: v1_integration_vendor_catalog_connections_recheck_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+  /api/v1/integration/vendor-catalog-connections/{id}/runs/:
+    get:
+      operationId: v1_integration_vendor_catalog_connections_runs_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+  /api/v1/integration/vendor-catalog-connections/{id}/sync/:
+    post:
+      operationId: v1_integration_vendor_catalog_connections_sync_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+  /api/v1/integration/vendor-catalog-connections/{id}/test_connection/:
+    post:
+      operationId: v1_integration_vendor_catalog_connections_test_connection_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+  /api/v1/integration/vendor-catalog-connections/template/:
+    get:
+      operationId: v1_integration_vendor_catalog_connections_template_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+  /api/v1/integration/vendor-commerce-profiles/:
+    get:
+      operationId: v1_integration_vendor_commerce_profiles_list
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCommerceProfileList'
+          description: ''
+    post:
+      operationId: v1_integration_vendor_commerce_profiles_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
+          description: ''
+  /api/v1/integration/vendor-commerce-profiles/{id}/:
+    get:
+      operationId: v1_integration_vendor_commerce_profiles_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
+          description: ''
+    patch:
+      operationId: v1_integration_vendor_commerce_profiles_partial_update
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCommerceProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCommerceProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCommerceProfileRequest'
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
+          description: ''
+  /api/v1/integration/vendor-commerce-profiles/{id}/dispatches/:
+    get:
+      operationId: v1_integration_vendor_commerce_profiles_dispatches_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
+          description: ''
+  /api/v1/integration/vendor-commerce-profiles/{id}/poll_now/:
+    post:
+      operationId: v1_integration_vendor_commerce_profiles_poll_now_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
+          description: ''
+  /api/v1/integration/vendor-commerce-profiles/{id}/polls/:
+    get:
+      operationId: v1_integration_vendor_commerce_profiles_polls_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
+          description: ''
+  /api/v1/integration/vendor-commerce-profiles/{id}/webhooks/:
+    get:
+      operationId: v1_integration_vendor_commerce_profiles_webhooks_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
+          description: ''
+  /api/v1/integration/vendor-commerce-profiles/template/:
+    get:
+      operationId: v1_integration_vendor_commerce_profiles_template_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
           description: ''
   /api/v1/integration/webhooks/:
     get:
@@ -8096,6 +9551,24 @@ paths:
       responses:
         '200':
           description: No response body
+  /api/v1/media/buyer-product-images/filter-options/:
+    get:
+      operationId: v1_media_buyer_product_images_filter_options_retrieve
+      description: |-
+        Buyer-facing, product-centric image library (read-only).
+
+        Buyers see only products in their authorized assortment (active, compatible
+        with their device portfolio, region-filtered). Each row is a product with
+        its approved image count. Individual and bulk (ZIP) downloads are supported.
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/v1/media/upload-sessions/:
     get:
       operationId: v1_media_upload_sessions_list
@@ -8164,6 +9637,123 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UploadSession'
+          description: ''
+  /api/v1/notifications/delivery-attempts/:
+    get:
+      operationId: v1_notifications_delivery_attempts_list
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: query
+        name: channel
+        schema:
+          type: string
+          enum:
+          - email
+          - in_app
+          - push
+          - sms
+          - webhook
+        description: |-
+          * `email` - Email
+          * `in_app` - In-App
+          * `sms` - SMS (placeholder)
+          * `webhook` - Webhook / External (placeholder)
+          * `push` - Push Notification (placeholder)
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: provider_name
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - bounced
+          - cancelled
+          - delayed
+          - delivered
+          - expired
+          - failed
+          - queued
+          - requested
+          - retry_exhausted
+          - retry_scheduled
+          - review_required
+          - sent
+          - superseded
+          - suppressed
+        description: |-
+          * `requested` - Requested
+          * `queued` - Queued
+          * `sent` - Sent
+          * `delivered` - Delivered
+          * `failed` - Failed
+          * `bounced` - Bounced
+          * `suppressed` - Suppressed
+          * `delayed` - Delayed
+          * `expired` - Expired
+          * `cancelled` - Cancelled
+          * `superseded` - Superseded
+          * `retry_scheduled` - Retry Scheduled
+          * `retry_exhausted` - Retry Exhausted
+          * `review_required` - Review Required
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDeliveryAttemptList'
+          description: ''
+  /api/v1/notifications/delivery-attempts/{id}/:
+    get:
+      operationId: v1_notifications_delivery_attempts_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this delivery attempt.
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryAttempt'
           description: ''
   /api/v1/notifications/in-app/:
     get:
@@ -13454,6 +15044,199 @@ paths:
               schema:
                 $ref: '#/components/schemas/CompanyUserMembership'
           description: ''
+  /api/v1/tenant/operating-regions/:
+    get:
+      operationId: v1_tenant_operating_regions_list
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OperatingRegion'
+          description: ''
+    post:
+      operationId: v1_tenant_operating_regions_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatingRegionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OperatingRegionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OperatingRegionRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatingRegion'
+          description: ''
+  /api/v1/tenant/operating-regions/{id}/:
+    get:
+      operationId: v1_tenant_operating_regions_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this operating region.
+        required: true
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatingRegion'
+          description: ''
+    patch:
+      operationId: v1_tenant_operating_regions_partial_update
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this operating region.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedOperatingRegionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedOperatingRegionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedOperatingRegionRequest'
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatingRegion'
+          description: ''
+  /api/v1/tenant/operating-regions/context/:
+    get:
+      operationId: v1_tenant_operating_regions_context_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatingRegion'
+          description: ''
+  /api/v1/tenant/operating-regions/countries/:
+    get:
+      operationId: v1_tenant_operating_regions_countries_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatingRegion'
+          description: ''
+  /api/v1/tenant/operating-regions/vendors/:
+    get:
+      operationId: v1_tenant_operating_regions_vendors_retrieve
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      tags:
+      - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatingRegion'
+          description: ''
   /api/v1/tenant/region-events/:
     get:
       operationId: v1_tenant_region_events_list
@@ -14536,6 +16319,18 @@ components:
       - event_code
       - id
       - status
+    AuthTypeEnum:
+      enum:
+      - bearer
+      - api_key
+      - basic
+      - none
+      type: string
+      description: |-
+        * `bearer` - bearer
+        * `api_key` - api_key
+        * `basic` - basic
+        * `none` - none
     BindabilityStatusEnum:
       enum:
       - order_bindable
@@ -14559,6 +16354,41 @@ components:
     BlankEnum:
       enum:
       - ''
+    Brand:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        canonical_key:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - canonical_key
+      - created_at
+      - id
+      - name
+    BrandRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        is_active:
+          type: boolean
+      required:
+      - name
     BuyerCompatibilityProjection:
       type: object
       properties:
@@ -14690,6 +16520,10 @@ components:
         products_snapshot:
           type: string
           readOnly: true
+        storefront:
+          type: string
+          format: uuid
+          nullable: true
       required:
       - buyer_company_name
       - download_url
@@ -14744,6 +16578,10 @@ components:
           maxLength: 100
         failure_details:
           type: string
+          nullable: true
+        storefront:
+          type: string
+          format: uuid
           nullable: true
     BuyerExportJobStatusEnum:
       enum:
@@ -14922,6 +16760,153 @@ components:
         * `standard` - Standard Buyer Commission
         * `no_commission` - No Buyer Commission
         * `custom` - Custom Buyer Commission
+    BuyerShipment:
+      type: object
+      description: Optimized read-only serializer for buyer shipment tracking.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        order_id:
+          type: string
+          readOnly: true
+        routed_suborder_reference:
+          type: string
+          format: uuid
+        buyer_order_number:
+          type: string
+          readOnly: true
+        vendor_name:
+          type: string
+          readOnly: true
+        vendor_company_reference:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: received | processing | shipped | delivered | exception | closed
+            | tracking_missing | tracking_invalid | review_required | delivery_exception
+          maxLength: 50
+        order_status:
+          type: string
+          readOnly: true
+        tracking_source:
+          description: |-
+            How tracking data was obtained: manual_csv, vendor_api, or easypost (future)
+
+            * `manual_csv` - Manual CSV Upload
+            * `vendor_api` - Vendor API (Webhook/Polling)
+            * `easypost` - EasyPost Carrier Tracking
+          oneOf:
+          - $ref: '#/components/schemas/TrackingSourceEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+        tracking_source_label:
+          type: string
+          readOnly: true
+        shipping_carrier:
+          type: string
+          nullable: true
+          maxLength: 255
+        tracking_number:
+          type: string
+          nullable: true
+          maxLength: 255
+        vendor_order_number:
+          type: string
+          nullable: true
+          maxLength: 255
+        shipped_date:
+          type: string
+          format: date
+          nullable: true
+        delivered_date:
+          type: string
+          format: date
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - buyer_order_number
+      - id
+      - order_id
+      - order_status
+      - routed_suborder_reference
+      - tracking_source_label
+      - updated_at
+      - vendor_company_reference
+      - vendor_name
+    BuyerStorefront:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        company:
+          type: string
+          format: uuid
+        entity:
+          type: string
+          format: uuid
+        external_connection:
+          type: string
+          format: uuid
+          nullable: true
+        code:
+          type: string
+          maxLength: 100
+          pattern: ^[-a-zA-Z0-9_]+$
+        label:
+          type: string
+          maxLength: 200
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - code
+      - company
+      - created_at
+      - entity
+      - id
+      - label
+    BuyerStorefrontRequest:
+      type: object
+      properties:
+        company:
+          type: string
+          format: uuid
+        entity:
+          type: string
+          format: uuid
+        external_connection:
+          type: string
+          format: uuid
+          nullable: true
+        code:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: ^[-a-zA-Z0-9_]+$
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        is_active:
+          type: boolean
+      required:
+      - code
+      - company
+      - entity
+      - label
     BuyerUpdateSignal:
       type: object
       properties:
@@ -15241,6 +17226,110 @@ components:
         * `DASHBOARD_ONLY` - Dashboard Only
         * `API_ONLY` - API Only
         * `OPERATIONAL_FILE_DELIVERY` - Operational File Delivery
+    CommerceProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        connection:
+          type: string
+          format: uuid
+        vendor_company:
+          type: string
+          format: uuid
+        adapter:
+          type: string
+          maxLength: 30
+        mode:
+          type: string
+          maxLength: 20
+        order_enabled:
+          type: boolean
+        webhook_enabled:
+          type: boolean
+        polling_enabled:
+          type: boolean
+        config: {}
+        config_version:
+          type: string
+          format: uuid
+          readOnly: true
+        receiver_id:
+          type: string
+          format: uuid
+          readOnly: true
+        has_webhook_secret:
+          type: string
+          readOnly: true
+        webhook_url:
+          type: string
+          readOnly: true
+        next_poll_at:
+          type: string
+          format: date-time
+          nullable: true
+        connection_label:
+          type: string
+          readOnly: true
+        vendor_name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - config_version
+      - connection
+      - connection_label
+      - created_at
+      - has_webhook_secret
+      - id
+      - receiver_id
+      - updated_at
+      - vendor_company
+      - vendor_name
+      - webhook_url
+    CommerceProfileRequest:
+      type: object
+      properties:
+        connection:
+          type: string
+          format: uuid
+        vendor_company:
+          type: string
+          format: uuid
+        adapter:
+          type: string
+          minLength: 1
+          maxLength: 30
+        mode:
+          type: string
+          minLength: 1
+          maxLength: 20
+        order_enabled:
+          type: boolean
+        webhook_enabled:
+          type: boolean
+        polling_enabled:
+          type: boolean
+        config: {}
+        webhook_secret:
+          type: string
+          writeOnly: true
+        next_poll_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - connection
+      - vendor_company
     Company:
       type: object
       properties:
@@ -15432,6 +17521,16 @@ components:
         region_code:
           type: string
           maxLength: 50
+        operating_region:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          description: Derived from this entity's onboarding country; never from state,
+            delivery address or parent visibility.
+        operating_region_detail:
+          type: string
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -15446,6 +17545,8 @@ components:
       - created_at
       - id
       - name
+      - operating_region
+      - operating_region_detail
       - updated_at
     CompanyEntityRequest:
       type: object
@@ -15773,6 +17874,121 @@ components:
       description: |-
         * `direct_device` - Direct Device
         * `universal_device_type` - Universal Device Type
+    CompatibilityUpdateTypeEnum:
+      enum:
+      - add
+      - replace
+      type: string
+      description: |-
+        * `add` - add
+        * `replace` - replace
+    Connection:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vendor_company:
+          type: string
+          format: uuid
+        label:
+          type: string
+          maxLength: 200
+        endpoint_url:
+          type: string
+          format: uri
+          maxLength: 1000
+        auth_type:
+          $ref: '#/components/schemas/AuthTypeEnum'
+        auth_header:
+          type: string
+          maxLength: 64
+        has_credentials:
+          type: string
+          readOnly: true
+        config: {}
+        config_version:
+          type: string
+          format: uuid
+          readOnly: true
+        schedule_enabled:
+          type: boolean
+        is_retired:
+          type: boolean
+        last_synced_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        next_sync_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_error_code:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_run:
+          type: string
+          readOnly: true
+        saved_integration_mode:
+          type: string
+          readOnly: true
+      required:
+      - config_version
+      - created_at
+      - endpoint_url
+      - has_credentials
+      - id
+      - label
+      - last_error_code
+      - last_run
+      - last_synced_at
+      - next_sync_at
+      - saved_integration_mode
+      - updated_at
+      - vendor_company
+    ConnectionRequest:
+      type: object
+      properties:
+        vendor_company:
+          type: string
+          format: uuid
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        endpoint_url:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 1000
+        auth_type:
+          $ref: '#/components/schemas/AuthTypeEnum'
+        auth_header:
+          type: string
+          minLength: 1
+          maxLength: 64
+        credential:
+          writeOnly: true
+        config: {}
+        schedule_enabled:
+          type: boolean
+        is_retired:
+          type: boolean
+      required:
+      - endpoint_url
+      - label
+      - vendor_company
     ConnectorTypeEnum:
       enum:
       - quickbooks
@@ -15910,6 +18126,84 @@ components:
         * `resolved` - Resolved
         * `dismissed` - Dismissed
         * `unresolved` - Unresolved
+    DeliveryAttempt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        notification_request:
+          type: string
+          format: uuid
+        recipient_id:
+          type: string
+          format: uuid
+        channel:
+          $ref: '#/components/schemas/Channel368Enum'
+        status:
+          $ref: '#/components/schemas/DeliveryAttemptStatusEnum'
+        provider_name:
+          type: string
+          maxLength: 100
+        attempt_number:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        failed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - channel
+      - created_at
+      - id
+      - notification_request
+      - recipient_id
+    DeliveryAttemptStatusEnum:
+      enum:
+      - requested
+      - queued
+      - sent
+      - delivered
+      - failed
+      - bounced
+      - suppressed
+      - delayed
+      - expired
+      - cancelled
+      - superseded
+      - retry_scheduled
+      - retry_exhausted
+      - review_required
+      type: string
+      description: |-
+        * `requested` - Requested
+        * `queued` - Queued
+        * `sent` - Sent
+        * `delivered` - Delivered
+        * `failed` - Failed
+        * `bounced` - Bounced
+        * `suppressed` - Suppressed
+        * `delayed` - Delayed
+        * `expired` - Expired
+        * `cancelled` - Cancelled
+        * `superseded` - Superseded
+        * `retry_scheduled` - Retry Scheduled
+        * `retry_exhausted` - Retry Exhausted
+        * `review_required` - Review Required
     DeliveryModeEnum:
       enum:
       - IMMEDIATE
@@ -16242,6 +18536,73 @@ components:
         compatibility_rules: {}
       required:
       - name
+    Dispatch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        po_number:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        mode:
+          type: string
+          readOnly: true
+        vendor_name:
+          type: string
+          readOnly: true
+        suborder_id:
+          type: string
+          format: uuid
+          readOnly: true
+        order_id:
+          type: string
+          format: uuid
+          readOnly: true
+        external_order_id:
+          type: string
+          readOnly: true
+        provider_status:
+          type: string
+          readOnly: true
+        attempt_count:
+          type: integer
+          readOnly: true
+        last_error_code:
+          type: string
+          readOnly: true
+        provider_updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - attempt_count
+      - created_at
+      - external_order_id
+      - id
+      - last_error_code
+      - mode
+      - order_id
+      - po_number
+      - provider_status
+      - provider_updated_at
+      - status
+      - suborder_id
+      - updated_at
+      - vendor_name
     DistributionCenter:
       type: object
       properties:
@@ -16382,10 +18743,14 @@ components:
           maxLength: 50
         accessory_fields: {}
         compatibility_rules: {}
+        linked_product_count:
+          type: string
+          readOnly: true
       required:
       - created_at
       - field_name
       - id
+      - linked_product_count
       - value
     DynamicDropdownConfigRequest:
       type: object
@@ -16484,6 +18849,89 @@ components:
       - product_reference
       - vendor_side_commission_amount
       - vendor_wholesale_price
+    ExportMapping:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        supplier_reference:
+          type: string
+          format: uuid
+          readOnly: true
+        listing_reference:
+          type: string
+          readOnly: true
+        external_listing_id:
+          type: string
+          readOnly: true
+        external_variant_id:
+          type: string
+          readOnly: true
+        version:
+          type: integer
+          readOnly: true
+          default: 1
+        status:
+          type: string
+          readOnly: true
+          default: active
+        pricing_snapshot_reference:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        exported_at:
+          type: string
+          format: date-time
+          readOnly: true
+        superseded_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        migration_evidence:
+          readOnly: true
+        company:
+          type: string
+          format: uuid
+          readOnly: true
+        entity:
+          type: string
+          format: uuid
+          readOnly: true
+        storefront:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        product:
+          type: string
+          format: uuid
+          readOnly: true
+        export_job:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+      required:
+      - company
+      - entity
+      - export_job
+      - exported_at
+      - external_listing_id
+      - external_variant_id
+      - id
+      - listing_reference
+      - migration_evidence
+      - pricing_snapshot_reference
+      - product
+      - status
+      - storefront
+      - superseded_at
+      - supplier_reference
+      - version
     ExternalActionOutcome:
       type: object
       properties:
@@ -16938,6 +19386,16 @@ components:
           description: received | processing | shipped | delivered | exception | closed
             | tracking_missing | tracking_invalid | review_required | delivery_exception
           maxLength: 50
+        tracking_source:
+          description: |-
+            How tracking data was obtained: manual_csv, vendor_api, or easypost (future)
+
+            * `manual_csv` - Manual CSV Upload
+            * `vendor_api` - Vendor API (Webhook/Polling)
+            * `easypost` - EasyPost Carrier Tracking
+          oneOf:
+          - $ref: '#/components/schemas/TrackingSourceEnum'
+          - $ref: '#/components/schemas/BlankEnum'
         delivery_evidence_reference:
           type: string
           format: uuid
@@ -17017,6 +19475,16 @@ components:
           description: received | processing | shipped | delivered | exception | closed
             | tracking_missing | tracking_invalid | review_required | delivery_exception
           maxLength: 50
+        tracking_source:
+          description: |-
+            How tracking data was obtained: manual_csv, vendor_api, or easypost (future)
+
+            * `manual_csv` - Manual CSV Upload
+            * `vendor_api` - Vendor API (Webhook/Polling)
+            * `easypost` - EasyPost Carrier Tracking
+          oneOf:
+          - $ref: '#/components/schemas/TrackingSourceEnum'
+          - $ref: '#/components/schemas/BlankEnum'
         delivery_evidence_reference:
           type: string
           format: uuid
@@ -18314,6 +20782,43 @@ components:
     NullEnum:
       enum:
       - null
+    OperatingRegion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        code:
+          type: string
+          maxLength: 50
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          maxLength: 100
+        is_active:
+          type: boolean
+      required:
+      - code
+      - id
+      - name
+    OperatingRegionRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        is_active:
+          type: boolean
+      required:
+      - code
+      - name
     Order:
       type: object
       properties:
@@ -18426,6 +20931,9 @@ components:
         shipping_info:
           type: string
           readOnly: true
+        suborder_shipments:
+          type: string
+          readOnly: true
       required:
       - address1
       - address2
@@ -18455,6 +20963,7 @@ components:
       - shipping_tracking_number
       - sku
       - state
+      - suborder_shipments
       - upc
       - vendor_color
       - vendor_id
@@ -18465,6 +20974,21 @@ components:
       properties:
         pricing_snapshot_references:
           description: product_id → EffectivePriceSnapshot ID mapping
+        buyer_entity_id:
+          type: string
+          format: uuid
+        integration_scope_id:
+          type: string
+          format: uuid
+        export_mapping_id:
+          type: string
+          format: uuid
+        external_listing_id:
+          type: string
+          maxLength: 500
+        external_variant_id:
+          type: string
+          maxLength: 500
         vendor_id:
           type: string
         first_name:
@@ -18517,6 +21041,23 @@ components:
       properties:
         pricing_snapshot_references:
           description: product_id → EffectivePriceSnapshot ID mapping
+        buyer_entity_id:
+          type: string
+          format: uuid
+        integration_scope_id:
+          type: string
+          format: uuid
+        export_mapping_id:
+          type: string
+          format: uuid
+        external_listing_id:
+          type: string
+          minLength: 1
+          maxLength: 500
+        external_variant_id:
+          type: string
+          minLength: 1
+          maxLength: 500
         vendor_id:
           type: string
         first_name:
@@ -18688,6 +21229,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AuditRecord'
+    PaginatedBrandList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Brand'
     PaginatedBuyerFacingPriceList:
       type: object
       required:
@@ -18707,6 +21267,44 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BuyerFacingPrice'
+    PaginatedBuyerShipmentList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuyerShipment'
+    PaginatedBuyerStorefrontList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuyerStorefront'
     PaginatedBuyerUpdateSignalList:
       type: object
       required:
@@ -18745,6 +21343,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChildOnboardingRequest'
+    PaginatedCommerceProfileList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommerceProfile'
     PaginatedCompanyAPIKeyList:
       type: object
       required:
@@ -18840,6 +21457,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CompanyUserMembership'
+    PaginatedConnectionList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Connection'
     PaginatedDataFreshnessMarkerList:
       type: object
       required:
@@ -18878,6 +21514,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DataQualityException'
+    PaginatedDeliveryAttemptList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryAttempt'
     PaginatedDeviceListList:
       type: object
       required:
@@ -18916,6 +21571,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DeviceType'
+    PaginatedDispatchList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Dispatch'
     PaginatedDistributionCenterList:
       type: object
       required:
@@ -18935,25 +21609,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DistributionCenter'
-    PaginatedDynamicDropdownConfigList:
-      type: object
-      required:
-      - results
-      properties:
-        next:
-          type: string
-          nullable: true
-          format: uri
-          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
-        previous:
-          type: string
-          nullable: true
-          format: uri
-          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/DynamicDropdownConfig'
     PaginatedEffectivePriceSnapshotList:
       type: object
       required:
@@ -18973,6 +21628,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EffectivePriceSnapshot'
+    PaginatedExportMappingList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportMapping'
     PaginatedExternalActionRequestList:
       type: object
       required:
@@ -19334,6 +22008,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Order'
+    PaginatedPollRunList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PollRun'
     PaginatedPricingProfileList:
       type: object
       required:
@@ -19433,6 +22126,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RegionChangeEvent'
+    PaginatedRelationshipList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Relationship'
     PaginatedReportingMetricList:
       type: object
       required:
@@ -19775,6 +22487,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WebhookDelivery'
+    PaginatedWebhookReceiptList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookReceipt'
     PatchedActivitySummaryConfigRequest:
       type: object
       properties:
@@ -19791,6 +22522,39 @@ components:
         skip_holidays:
           type: boolean
         explicit_recipient_ids: {}
+    PatchedBrandRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        is_active:
+          type: boolean
+    PatchedBuyerStorefrontRequest:
+      type: object
+      properties:
+        company:
+          type: string
+          format: uuid
+        entity:
+          type: string
+          format: uuid
+        external_connection:
+          type: string
+          format: uuid
+          nullable: true
+        code:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: ^[-a-zA-Z0-9_]+$
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        is_active:
+          type: boolean
     PatchedChildOnboardingRequestRequest:
       type: object
       properties:
@@ -19828,6 +22592,37 @@ components:
           description: Requested/assigned buyer-side commission rate in percent
         rejection_reason:
           type: string
+    PatchedCommerceProfileRequest:
+      type: object
+      properties:
+        connection:
+          type: string
+          format: uuid
+        vendor_company:
+          type: string
+          format: uuid
+        adapter:
+          type: string
+          minLength: 1
+          maxLength: 30
+        mode:
+          type: string
+          minLength: 1
+          maxLength: 20
+        order_enabled:
+          type: boolean
+        webhook_enabled:
+          type: boolean
+        polling_enabled:
+          type: boolean
+        config: {}
+        webhook_secret:
+          type: string
+          writeOnly: true
+        next_poll_at:
+          type: string
+          format: date-time
+          nullable: true
     PatchedCompanyAPIKeyRequest:
       type: object
       properties:
@@ -19981,6 +22776,34 @@ components:
           minLength: 1
           maxLength: 100
         is_company_admin:
+          type: boolean
+    PatchedConnectionRequest:
+      type: object
+      properties:
+        vendor_company:
+          type: string
+          format: uuid
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        endpoint_url:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 1000
+        auth_type:
+          $ref: '#/components/schemas/AuthTypeEnum'
+        auth_header:
+          type: string
+          minLength: 1
+          maxLength: 64
+        credential:
+          writeOnly: true
+        config: {}
+        schedule_enabled:
+          type: boolean
+        is_retired:
           type: boolean
     PatchedDataQualityExceptionRequest:
       type: object
@@ -20229,6 +23052,16 @@ components:
           description: received | processing | shipped | delivered | exception | closed
             | tracking_missing | tracking_invalid | review_required | delivery_exception
           maxLength: 50
+        tracking_source:
+          description: |-
+            How tracking data was obtained: manual_csv, vendor_api, or easypost (future)
+
+            * `manual_csv` - Manual CSV Upload
+            * `vendor_api` - Vendor API (Webhook/Polling)
+            * `easypost` - EasyPost Carrier Tracking
+          oneOf:
+          - $ref: '#/components/schemas/TrackingSourceEnum'
+          - $ref: '#/components/schemas/BlankEnum'
         delivery_evidence_reference:
           type: string
           format: uuid
@@ -20525,6 +23358,20 @@ components:
         effective_from:
           type: string
           format: date-time
+    PatchedOperatingRegionRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        is_active:
+          type: boolean
     PatchedOrderRequest:
       type: object
       properties:
@@ -20655,6 +23502,10 @@ components:
         brand:
           type: string
           maxLength: 200
+        brand_reference:
+          type: string
+          format: uuid
+          nullable: true
         description:
           type: string
         short_description:
@@ -20767,6 +23618,16 @@ components:
 
             * `direct_device` - Direct Device
             * `universal_device_type` - Universal Device Type
+        device_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          writeOnly: true
+        compatibility_update_type:
+          allOf:
+          - $ref: '#/components/schemas/CompatibilityUpdateTypeEnum'
+          writeOnly: true
         compatible_device_types:
           description: Device-type codes this product universally supports (e.g. ['phone',
             'tablet']). Auto-mapped to every current and future device of those types.
@@ -20808,7 +23669,6 @@ components:
         vendor_company_reference:
           type: string
           format: uuid
-          description: Tenant Company vendor ID
         deactivation_reason:
           type: string
           nullable: true
@@ -20874,6 +23734,19 @@ components:
           type: string
           format: date-time
           nullable: true
+    PatchedRelationshipRequest:
+      type: object
+      properties:
+        vendor_company:
+          type: string
+          format: uuid
+        brand:
+          type: string
+          format: uuid
+        relationship_type:
+          $ref: '#/components/schemas/RelationshipTypeEnum'
+        is_active:
+          type: boolean
     PatchedReportingMetricRequest:
       type: object
       properties:
@@ -21184,11 +24057,6 @@ components:
           type: string
           format: uuid
           nullable: true
-        created_by:
-          type: string
-          format: uuid
-          nullable: true
-          description: Actor reference
     PatchedWebhookDeliveryRequest:
       type: object
       properties:
@@ -21230,6 +24098,66 @@ components:
         connection:
           type: string
           format: uuid
+    PollRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vendor_name:
+          type: string
+          readOnly: true
+        kind:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        rows_seen:
+          type: integer
+          readOnly: true
+        processed_count:
+          type: integer
+          readOnly: true
+        review_count:
+          type: integer
+          readOnly: true
+        page_index:
+          type: integer
+          readOnly: true
+        attempt_count:
+          type: integer
+          readOnly: true
+        error_code:
+          type: string
+          readOnly: true
+        watermark:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        completed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - attempt_count
+      - completed_at
+      - created_at
+      - error_code
+      - id
+      - kind
+      - page_index
+      - processed_count
+      - review_count
+      - rows_seen
+      - status
+      - vendor_name
+      - watermark
     PreferenceOutcomeEnum:
       enum:
       - send
@@ -21424,6 +24352,10 @@ components:
         brand:
           type: string
           maxLength: 200
+        brand_reference:
+          type: string
+          format: uuid
+          nullable: true
         description:
           type: string
         short_description:
@@ -21544,6 +24476,15 @@ components:
 
             * `direct_device` - Direct Device
             * `universal_device_type` - Universal Device Type
+        universal_device_type_ids:
+          type: string
+          readOnly: true
+        device_compatibility:
+          type: string
+          readOnly: true
+        compatibility_summary:
+          type: string
+          readOnly: true
         compatible_device_types:
           description: Device-type codes this product universally supports (e.g. ['phone',
             'tablet']). Auto-mapped to every current and future device of those types.
@@ -21585,7 +24526,6 @@ components:
         vendor_company_reference:
           type: string
           format: uuid
-          description: Tenant Company vendor ID
         company_scope_reference:
           type: string
           format: uuid
@@ -21611,7 +24551,9 @@ components:
       required:
       - buyer_wholesale_price
       - company_scope_reference
+      - compatibility_summary
       - created_at
+      - device_compatibility
       - exported_date
       - id
       - is_tied_to_activity
@@ -21620,8 +24562,8 @@ components:
       - primary_image_url
       - product_type
       - sku
+      - universal_device_type_ids
       - updated_at
-      - vendor_company_reference
     ProductDetailRequest:
       type: object
       properties:
@@ -21682,6 +24624,10 @@ components:
         brand:
           type: string
           maxLength: 200
+        brand_reference:
+          type: string
+          format: uuid
+          nullable: true
         description:
           type: string
         short_description:
@@ -21794,6 +24740,16 @@ components:
 
             * `direct_device` - Direct Device
             * `universal_device_type` - Universal Device Type
+        device_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          writeOnly: true
+        compatibility_update_type:
+          allOf:
+          - $ref: '#/components/schemas/CompatibilityUpdateTypeEnum'
+          writeOnly: true
         compatible_device_types:
           description: Device-type codes this product universally supports (e.g. ['phone',
             'tablet']). Auto-mapped to every current and future device of those types.
@@ -21835,7 +24791,6 @@ components:
         vendor_company_reference:
           type: string
           format: uuid
-          description: Tenant Company vendor ID
         deactivation_reason:
           type: string
           nullable: true
@@ -21844,7 +24799,6 @@ components:
       - name
       - product_type
       - sku
-      - vendor_company_reference
     ProductList:
       type: object
       properties:
@@ -21865,6 +24819,10 @@ components:
         brand:
           type: string
           maxLength: 200
+        brand_reference:
+          type: string
+          format: uuid
+          nullable: true
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
@@ -22043,6 +25001,9 @@ components:
         compatible_device_types:
           description: Device-type codes this product universally supports (e.g. ['phone',
             'tablet']). Auto-mapped to every current and future device of those types.
+        universal_device_type_ids:
+          type: string
+          readOnly: true
       required:
       - buyer_wholesale_price
       - device_compatibility
@@ -22053,6 +25014,7 @@ components:
       - primary_image_url
       - product_type
       - sku
+      - universal_device_type_ids
       - vendor_company_reference
       - vendor_map_pricing_enforced
       - vendor_name
@@ -22080,6 +25042,10 @@ components:
         brand:
           type: string
           maxLength: 200
+        brand_reference:
+          type: string
+          format: uuid
+          nullable: true
         product_type:
           $ref: '#/components/schemas/ProductTypeEnum'
         product_category:
@@ -22525,6 +25491,73 @@ components:
       - vendor_company
       - vendor_company_name
       - visibility_recalculation_triggered
+    Relationship:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vendor_company:
+          type: string
+          format: uuid
+        brand:
+          type: string
+          format: uuid
+        brand_name:
+          type: string
+          readOnly: true
+        relationship_type:
+          $ref: '#/components/schemas/RelationshipTypeEnum'
+        is_active:
+          type: boolean
+        approved_at:
+          type: string
+          format: date-time
+          readOnly: true
+        approved_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - approved_at
+      - approved_by
+      - brand
+      - brand_name
+      - id
+      - relationship_type
+      - updated_at
+      - vendor_company
+    RelationshipRequest:
+      type: object
+      properties:
+        vendor_company:
+          type: string
+          format: uuid
+        brand:
+          type: string
+          format: uuid
+        relationship_type:
+          $ref: '#/components/schemas/RelationshipTypeEnum'
+        is_active:
+          type: boolean
+      required:
+      - brand
+      - relationship_type
+      - vendor_company
+    RelationshipTypeEnum:
+      enum:
+      - owned
+      - authorized_distributor
+      type: string
+      description: |-
+        * `owned` - Owned
+        * `authorized_distributor` - Authorized Distributor
     ReportingMetric:
       type: object
       properties:
@@ -23202,6 +26235,16 @@ components:
           minLength: 1
       required:
       - refresh
+    TrackingSourceEnum:
+      enum:
+      - manual_csv
+      - vendor_api
+      - easypost
+      type: string
+      description: |-
+        * `manual_csv` - Manual CSV Upload
+        * `vendor_api` - Vendor API (Webhook/Polling)
+        * `easypost` - EasyPost Carrier Tracking
     TriggerTypeEnum:
       enum:
       - USER
@@ -24400,6 +27443,7 @@ components:
         created_by:
           type: string
           format: uuid
+          readOnly: true
           nullable: true
           description: Actor reference
         created_at:
@@ -24412,11 +27456,11 @@ components:
           readOnly: true
       required:
       - created_at
+      - created_by
       - fee_amount
       - id
       - region_code
       - updated_at
-      - vendor_company_reference
     VendorRegionalShippingFeeRequest:
       type: object
       properties:
@@ -24450,15 +27494,9 @@ components:
           type: string
           format: uuid
           nullable: true
-        created_by:
-          type: string
-          format: uuid
-          nullable: true
-          description: Actor reference
       required:
       - fee_amount
       - region_code
-      - vendor_company_reference
     VendorReturnImportLog:
       type: object
       properties:
@@ -24683,6 +27721,50 @@ components:
         * `failed` - Failed
         * `retrying` - Retrying
         * `superseded` - Superseded
+    WebhookReceipt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vendor_name:
+          type: string
+          readOnly: true
+        provider_event_id:
+          type: string
+          readOnly: true
+        event_type:
+          type: string
+          readOnly: true
+        is_test:
+          type: boolean
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        error_code:
+          type: string
+          readOnly: true
+        received_at:
+          type: string
+          format: date-time
+          readOnly: true
+        processed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - error_code
+      - event_type
+      - id
+      - is_test
+      - processed_at
+      - provider_event_id
+      - received_at
+      - status
+      - vendor_name
   securitySchemes:
     ApiKeyAuth:
       type: apiKey

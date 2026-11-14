@@ -8,6 +8,14 @@ requests through the CheckAccessMixin.
 import pytest
 from rest_framework.test import APIClient
 
+
+@pytest.fixture(autouse=True)
+def _ensure_test_overrides(settings):
+    """Ensure test-specific settings are applied even when the Docker container
+    env forces config.settings instead of config.test_settings."""
+    settings.MEDIA_READINESS_ENFORCE_BUYER = False
+    settings.MEDIA_VALIDATE_IMPORT_URLS = False
+
 from apps.tenant.models import (
     Company, CompanyEntity, User, Capability, CompanyType,
     CompanyStatus, EntityStatus,
@@ -34,6 +42,18 @@ def vendor_company(db):
         status=CompanyStatus.ACTIVE,
         slug="vendor-inc",
     )
+
+
+@pytest.fixture
+def approve_supplier_brand(db):
+    """Explicit positive-test prerequisite; never auto-approve unknown brands."""
+    def approve(company, name):
+        from apps.catalog.models import Brand, VendorBrandRelationship
+        brand, _ = Brand.objects.get_or_create(canonical_key=name.casefold(), defaults={'name': name})
+        VendorBrandRelationship.objects.get_or_create(vendor_company=company, brand=brand,
+            defaults={'relationship_type': 'authorized_distributor'})
+        return brand
+    return approve
 
 
 @pytest.fixture

@@ -19,6 +19,7 @@ import ConfirmDialog from '../../components/feedback/ConfirmDialog'
 import AllProductsTab from './AllProductsTab'
 import CompatibilityTab from './CompatibilityTab'
 import ExportJobsTab from './ExportJobsTab'
+import VendorImportReviewTab from './VendorImportReviewTab'
 import ProductFormDialog from './dialogs/ProductFormDialog'
 import ManageProductDialog from './dialogs/ManageProductDialog'
 import BulkUploadDialog from './dialogs/BulkUploadDialog'
@@ -43,6 +44,7 @@ export default function CatalogPage() {
   const initialTab = (() => {
     const t = searchParams.get('tab')
     if (t === 'my-compatibility' || t === 'projection') return 'projection'
+    if (t === 'api-imports' && isCixciAdmin) return 'api-imports'
     return 'products'
   })()
   const [tab, setTab] = useState<string>(initialTab)
@@ -154,7 +156,7 @@ export default function CatalogPage() {
   }
 
   const headerActions = (
-    <Box sx={{ display: 'flex', gap: 1 }}>
+    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', maxWidth: { xs: 'calc(100vw - 48px)', md: 'none' } }}>
       {(isCixciAdmin || isVendor) && (
         <>
           <Button
@@ -209,9 +211,12 @@ export default function CatalogPage() {
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
         <Tab label="All Products" value="products" />
+        {isCixciAdmin && <Tab label="API Import Review" value="api-imports" />}
         {isBuyer && <Tab label="My Compatibility" value="projection" />}
         {isBuyer && <Tab label="Added Products" value="export_jobs" />}
       </Tabs>
+
+      {tab === 'api-imports' && isCixciAdmin && <VendorImportReviewTab initialConnection={searchParams.get('connection') || ''} onEditProduct={handleEditProduct}/>}
 
       {tab === 'products' && (
         <AllProductsTab

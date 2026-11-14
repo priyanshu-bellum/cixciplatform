@@ -55,6 +55,9 @@ def setup_data(db):
         email="admin@test.com",
         password="password123"
     )
+    from apps.catalog.models import Brand, VendorBrandRelationship
+    brand = Brand.objects.create(name='BeatMaster')
+    VendorBrandRelationship.objects.create(vendor_company=vendor_company, brand=brand, relationship_type='owned', approved_by=admin_user)
     
     dt = DeviceType.objects.create(name="Phone", code="phone", status="active")
     from apps.catalog.models import DynamicDropdownConfig
@@ -131,6 +134,7 @@ def test_compatibility_automapping_on_create(setup_data):
     response = client.post(url, product_data, format="json")
     assert response.status_code == status.HTTP_201_CREATED, response.data
     product_id = response.data["id"]
+    assert Product.objects.get(pk=product_id).brand == 'BeatMaster'
     
     assertions = ProductCompatibilityAssertion.objects.filter(product_id=product_id)
     assert assertions.count() == 2

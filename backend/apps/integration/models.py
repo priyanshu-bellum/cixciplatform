@@ -195,3 +195,101 @@ class CompanyAPIKey(models.Model):
     def __str__(self):
         return f"{self.label} ({self.token[:12]}...)"
 
+
+class VendorCatalogConnection(models.Model):
+    """Vendor-owned catalog transport, selected by the saved Company API mode."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company = models.ForeignKey("tenant.Company", on_delete=models.PROTECT, related_name="catalog_connections")
+    label = models.CharField(max_length=200)
+    endpoint_url = models.URLField(max_length=1000)
+    auth_type = models.CharField(max_length=20, choices=[(v, v) for v in ("bearer", "api_key", "basic", "none")], default="bearer")
+    auth_header = models.CharField(max_length=64, default="X-API-Key")
+    encrypted_credentials = models.TextField(blank=True, editable=False)
+    from .catalog_config import default_catalog_config
+    config = models.JSONField(default=default_catalog_config)
+    config_version = models.UUIDField(default=uuid.uuid4, editable=False)
+    schedule_enabled = models.BooleanField(default=False)
+    is_retired = models.BooleanField(default=False)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    next_sync_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_watermark = models.CharField(max_length=100, blank=True)
+    last_error_code = models.CharField(max_length=80, blank=True)
+    created_by = models.ForeignKey("tenant.User", null=True, on_delete=models.PROTECT, related_name="created_catalog_connections")
+    updated_by = models.ForeignKey("tenant.User", null=True, on_delete=models.PROTECT, related_name="updated_catalog_connections")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "integration_vendor_catalog_connection"
+        indexes = [models.Index(fields=["schedule_enabled", "is_retired", "next_sync_at"])]
+
+
+class VendorCatalogSyncRun(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    connection = models.ForeignKey(VendorCatalogConnection, on_delete=models.PROTECT, related_name="sync_runs")
+    requested_by = models.ForeignKey("tenant.User", null=True, on_delete=models.PROTECT)
+    trigger = models.CharField(max_length=20, default="manual")
+    status = models.CharField(max_length=20, default="queued", db_index=True)
+    config_version = models.UUIDField()
+    page_cursor = models.JSONField(null=True, blank=True)
+    page_index = models.PositiveIntegerField(default=0)
+    cursor_hashes = models.JSONField(default=list)
+    rows_seen = models.PositiveIntegerField(default=0)
+    created_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    unchanged_count = models.PositiveIntegerField(default=0)
+    review_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    error_code = models.CharField(max_length=80, blank=True)
+    attempt_count = models.PositiveIntegerField(default=0)
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    lease_token = models.UUIDField(null=True, blank=True)
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "integration_vendor_catalog_sync_run"
+        ordering = ["-created_at"]
+        constraints = [models.UniqueConstraint(fields=["connection"], condition=models.Q(status__in=["queued", "running", "retrying"]), name="catalog_one_active_run")]
+
+
+class VendorCatalogItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    connection = models.ForeignKey(VendorCatalogConnection, on_delete=models.PROTECT, related_name="source_items")
+    external_id = models.CharField(max_length=200)
+    product = models.OneToOneField("catalog.Product", null=True, blank=True, on_delete=models.PROTECT, related_name="vendor_catalog_source")
+    payload = models.JSONField(default=dict)
+    source_hash = models.CharField(max_length=64)
+    applied_config_version = models.UUIDField(null=True, blank=True, editable=False)
+    is_listed = models.BooleanField(default=True)
+    review_required = models.BooleanField(default=False, db_index=True)
+    review_errors = models.JSONField(default=list)
+    last_seen_run = models.ForeignKey(VendorCatalogSyncRun, null=True, on_delete=models.PROTECT)
+    first_seen_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "integration_vendor_catalog_item"
+        constraints = [models.UniqueConstraint(fields=["connection", "external_id"], name="catalog_connection_remote_id")]
+        indexes = [models.Index(fields=["connection", "is_listed", "review_required"])]
+
+
+class VendorCatalogBudget(models.Model):
+    vendor_company = models.ForeignKey("tenant.Company", on_delete=models.PROTECT)
+    origin = models.CharField(max_length=255)
+    day = models.DateField()
+    rows = models.PositiveIntegerField(default=0)
+    requests = models.PositiveIntegerField(default=0)
+    window_started_at = models.DateTimeField(default=timezone.now)
+    window_requests = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "integration_vendor_catalog_budget"
+        constraints = [models.UniqueConstraint(fields=["vendor_company", "origin", "day"], name="catalog_vendor_daily_budget")]
+
+
+from .storefront_models import BuyerStorefront  # noqa: E402,F401
+from .commerce_models import VendorCommerceProfile, SupplierOrderDispatch, VendorWebhookReceipt, VendorCommercePollRun  # noqa: E402,F401
+

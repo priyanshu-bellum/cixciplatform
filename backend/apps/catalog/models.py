@@ -83,6 +83,42 @@ class ExportJobStatus(models.TextChoices):
 
 # ─── Product ──────────────────────────────────────────────────────────────────
 
+class Brand(models.Model):
+    """Reusable brand identity; it does not create or imply a supplier account."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    canonical_key = models.CharField(max_length=200, unique=True, editable=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "catalog_brand"
+
+    def save(self, *args, **kwargs):
+        self.name = " ".join(self.name.split())
+        if not self.name:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({"name": "Brand name is required."})
+        if not self.canonical_key:
+            self.canonical_key = self.name.casefold()
+        super().save(*args, **kwargs)
+
+
+class VendorBrandRelationship(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company = models.ForeignKey("tenant.Company", on_delete=models.PROTECT, related_name="brand_relationships")
+    brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name="vendor_relationships")
+    relationship_type = models.CharField(max_length=30, choices=[("owned", "Owned"), ("authorized_distributor", "Authorized Distributor")])
+    is_active = models.BooleanField(default=True)
+    approved_by = models.ForeignKey("tenant.User", null=True, on_delete=models.PROTECT)
+    approved_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "catalog_vendor_brand_relationship"
+        constraints = [models.UniqueConstraint(fields=["vendor_company", "brand"], name="catalog_one_vendor_brand_relation")]
+
+
 class Product(models.Model):
     """
     Canonical product record. Owned by Product Catalog.
@@ -124,6 +160,7 @@ class Product(models.Model):
     name = models.CharField(max_length=300)
     sku = models.CharField(max_length=200, db_index=True)
     brand = models.CharField(max_length=200, blank=True)
+    brand_reference = models.ForeignKey(Brand, null=True, blank=True, on_delete=models.PROTECT, related_name="offers")
     description = models.TextField(blank=True)
 
     # Lifecycle
@@ -202,6 +239,7 @@ class Product(models.Model):
 
     class Meta:
         db_table = "catalog_product"
+        constraints = [models.UniqueConstraint(fields=["vendor_company_reference", "sku"], name="catalog_vendor_offer_sku")]
         indexes = [
             models.Index(fields=["product_type", "status", "selling_status"]),
             models.Index(fields=["vendor_company_reference", "status"]),
@@ -662,7 +700,7 @@ class Product(models.Model):
         from .compatibility_contract import sync_product_scope
         sync_product_scope(self, universal_types, actor_id=actor_id)
         from .compatibility_engine import run_compatibility_automapping
-        run_compatibility_automapping(self, actor_id=actor_id)
+        run_compatibility_automapping(self, actor_id=actor_id, change_source=getattr(self, '_update_source', 'Auto-Mapping'))
         
         # Log changes
         changes = []
@@ -786,7 +824,7 @@ class Product(models.Model):
 class ProductUniversalDeviceTypeScope(models.Model):
     """Canonical Universal declaration; removed scopes are retired, not deleted."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="universal_type_scopes")
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="universal_type_scopes")
     device_type = models.ForeignKey("devices.DeviceType", on_delete=models.PROTECT, related_name="universal_product_scopes")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(default=timezone.now)
@@ -976,6 +1014,7 @@ class BuyerProductExportJob(models.Model):
     buyer_reference = models.UUIDField(db_index=True)
     company_scope_reference = models.UUIDField(db_index=True)
     buyer_entity_reference = models.UUIDField(db_index=True)
+    storefront = models.ForeignKey('integration.BuyerStorefront', null=True, blank=True, on_delete=models.PROTECT)
 
     status = models.CharField(max_length=30, choices=ExportJobStatus.choices, default=ExportJobStatus.PENDING)
     # Device Catalog snapshot reference (read-only)
@@ -1161,4 +1200,7 @@ class VendorCategoryMapping(models.Model):
 
     def __str__(self):
         return f"VendorCategoryMapping({self.vendor_category} → {self.cixci_category})"
+
+
+from .offer_models import BuyerExportMapping  # noqa: E402,F401
 

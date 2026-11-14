@@ -39,7 +39,7 @@ export default function AppLayout() {
   const { mode, toggleMode } = useThemeMode()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const title = TITLES[pathname] ?? TITLES[`/${pathname.split('/')[1]}`] ?? 'CIXCI'
+  const title = pathname.startsWith('/settings/vendor-integrations') ? 'Vendor Integrations' : TITLES[pathname] ?? TITLES[`/${pathname.split('/')[1]}`] ?? 'CIXCI'
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>

@@ -18,7 +18,8 @@ pytestmark = pytest.mark.django_db
 @pytest.mark.parametrize("method", ["device_specific", "universal", "feature_based", "hybrid"])
 @pytest.mark.parametrize("authentication", ["jwt", "company_key"])
 @pytest.mark.parametrize("entry", ["json", "csv"])
-def test_vendor_entry_matrix(code, method, authentication, entry, vendor_user, vendor_company):
+def test_vendor_entry_matrix(code, method, authentication, entry, vendor_user, vendor_company, approve_supplier_brand):
+    approve_supplier_brand(vendor_company, 'Test Brand')
     kind = DeviceType.objects.create(name=code.title(), code=code, status="active")
     manufacturer = Manufacturer.objects.create(name="API Matrix Maker")
     devices = [Device.objects.create(name=f"{code} Model {index}", manufacturer=manufacturer, device_type=kind, bluetooth_compatibility="Yes") for index in (1, 2)]

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
@@ -32,11 +32,13 @@ import ConfirmEmailPage from './pages/ConfirmEmailPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import NotFoundPage from './pages/NotFoundPage'
 
+const VendorCatalogPage = lazy(() => import('./pages/VendorCatalogPage'))
+
 function extractErrorMessage(error: unknown): string {
   const err = error as any
   const data = err?.response?.data
-  if (data?.detail) return data.detail
-  if (data?.error) return data.error
+  if (data?.detail) return typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
+  if (data?.error && typeof data.error === 'string') return data.error
   if (typeof data === 'string') return data
   if (err?.message) return err.message
   return 'An unexpected error occurred'
@@ -125,6 +127,8 @@ function AppWithQuery() {
             <Route path="regions" element={<RegionalPage />} />
             <Route path="users" element={<CompanyUsersPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="settings/vendor-integrations" element={<RequireRole allow={user => user.is_cixci_admin}><Suspense fallback={<CircularProgress size={24}/>}><VendorCatalogPage /></Suspense></RequireRole>} />
+            <Route path="settings/vendor-integrations/:vendorId" element={<RequireRole allow={user => user.is_cixci_admin}><Suspense fallback={<CircularProgress size={24}/>}><VendorCatalogPage /></Suspense></RequireRole>} />
           </Route>
           <Route path="/telco-cellular" element={<TelcoCellularPage />} />
           <Route path="*" element={<NotFoundPage />} />

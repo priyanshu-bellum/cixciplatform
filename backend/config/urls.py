@@ -29,6 +29,7 @@ from apps.shared_api import (
 )
 
 from apps.audit.urls import urlpatterns as audit_urls
+from apps.integration.urls import urlpatterns as vendor_catalog_urls
 
 api_v1 = [
     # ── Phase 1: Foundation ───────────────────────────────────
@@ -50,7 +51,7 @@ api_v1 = [
 
     # ── Phase 4: Finance ──────────────────────────────────────
     path("invoicing/",      include(invoicing_urls)),
-    path("integration/",    include(integration_urlpatterns)),
+    path("integration/",    include(vendor_catalog_urls + integration_urlpatterns)),
 
     # ── Phase 5: Intelligence ─────────────────────────────────
     path("analytics/",      include(analytics_urlpatterns)),
@@ -574,6 +575,14 @@ class BuyerSchemaView(APIView):
                 "tag": "5. Shipping (Order Tracking & Delivery)",
             },
             "/api/v1/fulfillment/handoffs/{id}/": {
+                "methods": {"get"},
+                "tag": "5. Shipping (Order Tracking & Delivery)",
+            },
+            "/api/v1/fulfillment/buyer-shipments/": {
+                "methods": {"get"},
+                "tag": "5. Shipping (Order Tracking & Delivery)",
+            },
+            "/api/v1/fulfillment/buyer-shipments/{id}/": {
                 "methods": {"get"},
                 "tag": "5. Shipping (Order Tracking & Delivery)",
             },

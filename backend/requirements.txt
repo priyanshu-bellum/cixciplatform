@@ -12,7 +12,7 @@ django-filter==24.2
 psycopg2-binary==2.9.9
 
 # Cache / Task Queue
-redis==5.0.8
+redis==6.4.0
 celery==5.4.0
 django-celery-beat==2.6.0
 django-celery-results==2.5.1
@@ -28,6 +28,7 @@ resend==2.47.0
 
 # Utils
 python-decouple==3.8
+cryptography==50.0.2
 Pillow==10.4.0
 python-dateutil==2.9.0
 openpyxl==3.1.5

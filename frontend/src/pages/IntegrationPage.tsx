@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -15,6 +15,9 @@ import Alert from '@mui/material/Alert'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import CircularProgress from '@mui/material/CircularProgress'
+import Switch from '@mui/material/Switch'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Paper from '@mui/material/Paper'
 import PowerOutlinedIcon from '@mui/icons-material/PowerOutlined'
 import WebhookIcon from '@mui/icons-material/Webhook'
 import CallReceivedIcon from '@mui/icons-material/CallReceived'
@@ -23,6 +26,8 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import CloseIcon from '@mui/icons-material/Close'
+import StorefrontIcon from '@mui/icons-material/Storefront'
+import SyncIcon from '@mui/icons-material/Sync'
 import MenuItem from '@mui/material/MenuItem'
 import api from '../lib/apiClient'
 import PageHeader from '../components/layout/PageHeader'
@@ -33,6 +38,7 @@ import { useSnackbar } from '../components/feedback/SnackbarProvider'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import ConfirmDialog from '../components/feedback/ConfirmDialog'
 import { useAuthStore } from '../stores/authStore'
+import { Link } from 'react-router-dom'
 
 /* ── connector type chip colour mapping ── */
 const CONNECTOR_COLOR: Record<string, 'success' | 'info' | 'secondary' | 'default'> = {
@@ -45,7 +51,17 @@ const CONNECTOR_COLOR: Record<string, 'success' | 'info' | 'secondary' | 'defaul
   csv: 'default',
 }
 
-type TabValue = 'connections' | 'webhooks' | 'inbound' | 'api-keys'
+type TabValue = 'connections' | 'webhooks' | 'inbound' | 'api-keys' | 'commerce'
+
+const ADAPTER_LABELS: Record<string, string> = {
+  generic_json: 'Generic REST/JSON',
+  balaji: 'Balaji Wireless',
+}
+const MODE_LABELS: Record<string, string> = {
+  preview: 'Preview (Dry-run)',
+  test: 'Test (Sandbox)',
+  live: 'Live (Production)',
+}
 
 export default function IntegrationPage() {
   const [tab, setTab] = useState<TabValue>('connections')
@@ -53,6 +69,8 @@ export default function IntegrationPage() {
   const { confirm, dialogProps } = useConfirmDialog()
   const { user } = useAuthStore()
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
+
+  const queryClient = useQueryClient()
 
   // API Key creation / modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -62,6 +80,22 @@ export default function IntegrationPage() {
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null)
   const [isCreatingKey, setIsCreatingKey] = useState(false)
   const [modalError, setModalError] = useState('')
+
+  // Commerce profile modal state
+  const [commerceModalOpen, setCommerceModalOpen] = useState(false)
+  const [editingProfile, setEditingProfile] = useState<any>(null)
+  const [commerceForm, setCommerceForm] = useState({
+    connection: '',
+    vendor_company: '',
+    adapter: 'generic_json',
+    mode: 'preview',
+    order_enabled: false,
+    webhook_enabled: false,
+    polling_enabled: false,
+    webhook_secret: '',
+  })
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [commerceError, setCommerceError] = useState('')
 
   /* ── queries ── */
   const { data: connData, isLoading: cLoading } = useQuery({
@@ -87,10 +121,16 @@ export default function IntegrationPage() {
     enabled: tab === 'api-keys',
   })
 
+  const { data: commerceData, isLoading: cpLoading } = useQuery({
+    queryKey: ['integration-commerce-profiles'],
+    queryFn: () => api.get('/integration/vendor-commerce-profiles/').then(r => r.data),
+    enabled: tab === 'commerce',
+  })
+
   const { data: companiesData } = useQuery({
     queryKey: ['integration-companies'],
     queryFn: () => api.get('/tenant/companies/', { params: { paginate: 'false' } }).then(r => r.data),
-    enabled: tab === 'api-keys' && isCixciAdmin,
+    enabled: (tab === 'api-keys' || tab === 'commerce') && isCixciAdmin,
   })
   const companies = Array.isArray(companiesData) ? companiesData : companiesData?.results ?? []
 
@@ -98,6 +138,9 @@ export default function IntegrationPage() {
   const webhooks = whData?.results ?? (Array.isArray(whData) ? whData : [])
   const inbound = inbData?.results ?? (Array.isArray(inbData) ? inbData : [])
   const apiKeys = keysData?.results ?? (Array.isArray(keysData) ? keysData : [])
+  const commerceProfiles = commerceData?.results ?? (Array.isArray(commerceData) ? commerceData : [])
+  const vendorConnections = connections.filter((c: any) => c.connector_type === 'rest_api')
+  const vendorCompanies = companies.filter((c: any) => c.company_type === 'vendor')
 
   /* ── handlers ── */
   const handleGenerateKey = async (e: React.FormEvent) => {
@@ -152,6 +195,69 @@ export default function IntegrationPage() {
     setGeneratedKey(null)
     setModalError('')
     setIsModalOpen(true)
+  }
+
+  /* ── commerce profile handlers ── */
+  const openCommerceCreate = () => {
+    setEditingProfile(null)
+    setCommerceForm({
+      connection: '', vendor_company: '', adapter: 'generic_json', mode: 'preview',
+      order_enabled: false, webhook_enabled: false, polling_enabled: false, webhook_secret: '',
+    })
+    setCommerceError('')
+    setCommerceModalOpen(true)
+  }
+
+  const openCommerceEdit = (profile: any) => {
+    setEditingProfile(profile)
+    setCommerceForm({
+      connection: profile.connection || '',
+      vendor_company: profile.vendor_company || '',
+      adapter: profile.adapter || 'generic_json',
+      mode: profile.mode || 'preview',
+      order_enabled: !!profile.order_enabled,
+      webhook_enabled: !!profile.webhook_enabled,
+      polling_enabled: !!profile.polling_enabled,
+      webhook_secret: '',
+    })
+    setCommerceError('')
+    setCommerceModalOpen(true)
+  }
+
+  const handleSaveCommerceProfile = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSavingProfile(true)
+    setCommerceError('')
+    try {
+      const payload: any = { ...commerceForm }
+      if (!payload.webhook_secret) delete payload.webhook_secret
+      if (editingProfile) {
+        delete payload.connection
+        delete payload.vendor_company
+        await api.patch(`/integration/vendor-commerce-profiles/${editingProfile.id}/`, payload)
+        showSnackbar('Commerce profile updated', 'success')
+      } else {
+        await api.post('/integration/vendor-commerce-profiles/', payload)
+        showSnackbar('Commerce profile created', 'success')
+      }
+      queryClient.invalidateQueries({ queryKey: ['integration-commerce-profiles'] })
+      setCommerceModalOpen(false)
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.non_field_errors?.[0]
+        || JSON.stringify(err?.response?.data) || 'Failed to save commerce profile.'
+      setCommerceError(detail)
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  const handleTriggerPoll = async (profileId: string) => {
+    try {
+      await api.post(`/integration/vendor-commerce-profiles/${profileId}/poll_now/`)
+      showSnackbar('Shipment poll triggered', 'success')
+    } catch (err: any) {
+      showSnackbar(err?.response?.data?.polling_enabled?.[0] || 'Failed to trigger poll', 'error')
+    }
   }
 
   /* ── column definitions ── */
@@ -375,14 +481,94 @@ export default function IntegrationPage() {
     return cols
   }, [copiedKeyId, isCixciAdmin])
 
+  const commerceColumns: Column<any>[] = useMemo(() => [
+    {
+      id: 'vendor_name',
+      label: 'Vendor',
+      render: (row) => (
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{row.vendor_name || '—'}</Typography>
+          <Typography variant="caption" color="text.disabled">{row.connection_label}</Typography>
+        </Box>
+      ),
+    },
+    {
+      id: 'adapter',
+      label: 'Adapter',
+      render: (row) => (
+        <Chip label={ADAPTER_LABELS[row.adapter] || row.adapter} size="small" variant="outlined" />
+      ),
+    },
+    {
+      id: 'mode',
+      label: 'Mode',
+      render: (row) => (
+        <Chip
+          label={MODE_LABELS[row.mode] || row.mode}
+          size="small"
+          color={row.mode === 'live' ? 'success' : row.mode === 'test' ? 'warning' : 'default'}
+          variant="filled"
+        />
+      ),
+    },
+    {
+      id: 'capabilities',
+      label: 'Capabilities',
+      render: (row) => (
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+          {row.order_enabled && <Chip label="Orders" size="small" color="info" variant="outlined" />}
+          {row.webhook_enabled && <Chip label="Webhook" size="small" color="secondary" variant="outlined" />}
+          {row.polling_enabled && <Chip label="Polling" size="small" color="default" variant="outlined" />}
+          {!row.order_enabled && !row.webhook_enabled && !row.polling_enabled && (
+            <Typography variant="caption" color="text.disabled">None enabled</Typography>
+          )}
+        </Box>
+      ),
+    },
+    {
+      id: 'webhook_url',
+      label: 'Webhook URL',
+      render: (row) => row.webhook_url ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography sx={{ fontFamily: 'monospace', fontSize: 11 }}>{row.webhook_url}</Typography>
+          <IconButton size="small" onClick={() => handleCopy(row.webhook_url, `wh-${row.id}`)}>
+            {copiedKeyId === `wh-${row.id}` ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon sx={{ fontSize: 14 }} />}
+          </IconButton>
+        </Box>
+      ) : '—',
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      align: 'right' as const,
+      width: 140,
+      render: (row) => (
+        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+          {row.polling_enabled && (
+            <Tooltip title="Trigger Poll Now">
+              <IconButton size="small" color="primary" onClick={() => handleTriggerPoll(row.id)}>
+                <SyncIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Button size="small" variant="outlined" onClick={() => openCommerceEdit(row)} sx={{ fontSize: 11, textTransform: 'none' }}>
+            Edit
+          </Button>
+        </Box>
+      ),
+    },
+  ], [copiedKeyId])
+
   /* ── render ── */
   return (
     <Box>
       <PageHeader
         title="Integration"
         subtitle="External connections, webhooks, and B2B API access keys."
-        actions={
-          tab === 'api-keys' && isCixciAdmin ? (
+        actions={isCixciAdmin ? <>
+            <Button component={Link} to="/settings/vendor-integrations" variant="outlined">Vendor Catalog APIs</Button>
+          {tab === 'api-keys' ? (
             <Button
               variant="contained"
               startIcon={<VpnKeyOutlinedIcon />}
@@ -390,7 +576,7 @@ export default function IntegrationPage() {
             >
               Generate B2B API Key
             </Button>
-          ) : undefined
+          ) : null}</> : undefined
         }
       />
 
@@ -400,6 +586,7 @@ export default function IntegrationPage() {
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
         <Tab label="Connections" value="connections" />
+        {isCixciAdmin && <Tab label="Commerce Profiles" value="commerce" />}
         <Tab label="Outbound Webhooks" value="webhooks" />
         <Tab label="Inbound Receipts" value="inbound" />
         <Tab label="B2B API Keys" value="api-keys" />
@@ -415,6 +602,25 @@ export default function IntegrationPage() {
           emptyMessage="No external connections"
           emptyIcon={<PowerOutlinedIcon sx={{ fontSize: 48 }} />}
         />
+      )}
+
+      {/* ── Commerce Profiles Tab ── */}
+      {tab === 'commerce' && isCixciAdmin && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
+            <Button variant="contained" startIcon={<StorefrontIcon />} onClick={openCommerceCreate} sx={{ textTransform: 'none' }}>
+              Add Commerce Profile
+            </Button>
+          </Box>
+          <DataTable
+            columns={commerceColumns}
+            rows={commerceProfiles}
+            loading={cpLoading}
+            rowKey={(row) => row.id}
+            emptyMessage="No vendor commerce profiles configured"
+            emptyIcon={<StorefrontIcon sx={{ fontSize: 48 }} />}
+          />
+        </Box>
       )}
 
       {/* ── Outbound Webhooks Tab ── */}
@@ -562,6 +768,100 @@ export default function IntegrationPage() {
               I have copied the key
             </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Commerce Profile Dialog ── */}
+      <Dialog open={commerceModalOpen} onClose={() => setCommerceModalOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {editingProfile ? 'Edit Commerce Profile' : 'Add Commerce Profile'}
+          <IconButton size="small" onClick={() => setCommerceModalOpen(false)} edge="end"><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {commerceError && <Alert severity="error" sx={{ mb: 2 }}>{commerceError}</Alert>}
+          <Box component="form" id="commerce-form" onSubmit={handleSaveCommerceProfile} sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            {!editingProfile && (
+              <>
+                <TextField
+                  select label="Vendor Company" value={commerceForm.vendor_company} required fullWidth size="small"
+                  onChange={(e) => setCommerceForm(f => ({ ...f, vendor_company: e.target.value }))}
+                  helperText="The vendor company this profile connects to."
+                >
+                  {vendorCompanies.map((co: any) => (
+                    <MenuItem key={co.id} value={co.id}>{co.name}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select label="Connection" value={commerceForm.connection} required fullWidth size="small"
+                  onChange={(e) => setCommerceForm(f => ({ ...f, connection: e.target.value }))}
+                  helperText="The vendor catalog API connection to use."
+                >
+                  {vendorConnections.map((c: any) => (
+                    <MenuItem key={c.id} value={c.id}>{c.label}</MenuItem>
+                  ))}
+                </TextField>
+              </>
+            )}
+            <TextField
+              select label="Adapter" value={commerceForm.adapter} required fullWidth size="small"
+              onChange={(e) => setCommerceForm(f => ({ ...f, adapter: e.target.value }))}
+              helperText="API adapter determines field mappings and authentication."
+            >
+              <MenuItem value="generic_json">Generic REST/JSON</MenuItem>
+              <MenuItem value="balaji">Balaji Wireless</MenuItem>
+            </TextField>
+            <TextField
+              select label="Execution Mode" value={commerceForm.mode} required fullWidth size="small"
+              onChange={(e) => setCommerceForm(f => ({ ...f, mode: e.target.value }))}
+            >
+              <MenuItem value="preview">Preview (Dry-run only)</MenuItem>
+              <MenuItem value="test">Test (Sandbox orders)</MenuItem>
+              <MenuItem value="live">Live (Production orders)</MenuItem>
+            </TextField>
+
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Capabilities</Typography>
+              <FormControlLabel
+                control={<Switch checked={commerceForm.order_enabled} onChange={(e) => setCommerceForm(f => ({ ...f, order_enabled: e.target.checked }))} size="small" />}
+                label={<Typography variant="body2">Order Dispatch</Typography>}
+              />
+              <FormControlLabel
+                control={<Switch checked={commerceForm.webhook_enabled} onChange={(e) => setCommerceForm(f => ({ ...f, webhook_enabled: e.target.checked }))} size="small" />}
+                label={<Typography variant="body2">Inbound Webhooks</Typography>}
+              />
+              <FormControlLabel
+                control={<Switch checked={commerceForm.polling_enabled} onChange={(e) => setCommerceForm(f => ({ ...f, polling_enabled: e.target.checked }))} size="small" />}
+                label={<Typography variant="body2">Shipment Polling</Typography>}
+              />
+            </Paper>
+
+            {commerceForm.webhook_enabled && (
+              <TextField
+                label="Webhook Signing Secret" type="password" fullWidth size="small"
+                value={commerceForm.webhook_secret}
+                onChange={(e) => setCommerceForm(f => ({ ...f, webhook_secret: e.target.value }))}
+                helperText={editingProfile?.has_webhook_secret
+                  ? 'Leave blank to keep existing secret. Enter a new value to replace it.'
+                  : 'Required when webhooks are enabled.'}
+              />
+            )}
+
+            {editingProfile?.webhook_url && (
+              <Alert severity="info" icon={<WebhookIcon />}>
+                Webhook endpoint: <code>{editingProfile.webhook_url}</code>
+              </Alert>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button variant="text" onClick={() => setCommerceModalOpen(false)}>Cancel</Button>
+          <Button
+            type="submit" form="commerce-form" variant="contained"
+            disabled={isSavingProfile}
+            startIcon={isSavingProfile ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {isSavingProfile ? 'Saving...' : (editingProfile ? 'Update' : 'Create')}
+          </Button>
         </DialogActions>
       </Dialog>
 

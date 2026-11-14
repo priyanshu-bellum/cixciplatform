@@ -43,8 +43,8 @@ class TestDeviceModuleBugFixes:
 
         self.apple_mfr = Manufacturer.objects.create(name="Apple", is_active=True)
         self.samsung_mfr = Manufacturer.objects.create(name="Samsung", is_active=True)
-        self.phone_type = DeviceType.objects.create(name="Phone", code="PHONE", status="active", is_active=True)
-        self.watch_type = DeviceType.objects.create(name="Watch", code="WATCH", status="active", is_active=True)
+        self.phone_type = DeviceType.objects.create(name="Phone", code="phone", status="active", is_active=True)
+        self.watch_type = DeviceType.objects.create(name="Smartwatch", code="smartwatch", status="active", is_active=True)
 
         self.existing_phone = Device.objects.create(
             name="iPhone 16",

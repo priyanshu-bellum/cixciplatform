@@ -277,8 +277,9 @@ def sync_product_scope(product, types, actor_id=None):
     import json
     AuditRecord.objects.create(
         event_code="catalog.compatibility.universal_scope_changed",
-        event_description=json.dumps({"before_type_ids": sorted(before), "after_type_ids": sorted(after), "sku": product.sku}),
-        status="success", actor_reference=actor_id, service_trigger_reference="Product compatibility save",
+        event_description=json.dumps({"before_type_ids": sorted(before), "after_type_ids": sorted(after), "sku": product.sku,
+            'source_run_reference': str(getattr(product, '_source_run_reference', '') or '')}),
+        status="success", actor_reference=actor_id, service_trigger_reference=getattr(product, '_update_source', 'Product compatibility save'),
         company_scope_reference=product.company_scope_reference or product.vendor_company_reference or uuid.UUID(int=0),
         source_module="catalog", source_record_type="Product", source_record_id=product.id,
     )

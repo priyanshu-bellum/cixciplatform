@@ -147,8 +147,10 @@ class TestBuyerShippingImport:
         }
 
     def generate_csv(self, setup_data, qty=5, sku="ACC-SKU-999", upc="987654321098", buyer_name="Test Buyer Corp", carrier="FedEx", tracking="TRK-987654"):
+        from datetime import timedelta
+        shipped = (timezone.now() - timedelta(days=2)).strftime("%Y-%m-%d")
         csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
-        csv_row = f"{buyer_name},John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},{sku},{upc},{qty},VND-CONF-123,{carrier},{tracking},2026-07-28,\n"
+        csv_row = f"{buyer_name},John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},{sku},{upc},{qty},VND-CONF-123,{carrier},{tracking},{shipped},\n"
         csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
         csv_file.name = "shipping_import.csv"
         return csv_file
@@ -180,7 +182,9 @@ class TestBuyerShippingImport:
         assert setup_data["handoff"].vendor_order_number == "VND-CONF-123"
         assert setup_data["handoff"].shipping_carrier == "FedEx"
         assert setup_data["handoff"].tracking_number == "TRK-987654"
-        assert str(setup_data["handoff"].shipped_date) == "2026-07-28"
+        from datetime import timedelta
+        expected_shipped = (timezone.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        assert str(setup_data["handoff"].shipped_date) == expected_shipped
 
         # Check that audit log was created
         log = VendorShippingImportLog.objects.first()
@@ -274,8 +278,10 @@ class TestBuyerShippingImport:
 
         # CSV Content with two lines for the same suborder ID
         csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
-        csv_row1 = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,2026-07-28,\n"
-        csv_row2 = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},ACC-SKU-888,987654321088,3,VND-CONF-123,FedEx,TRK-987654,2026-07-28,\n"
+        from datetime import timedelta
+        shipped = (timezone.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        csv_row1 = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,{shipped},\n"
+        csv_row2 = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},ACC-SKU-888,987654321088,3,VND-CONF-123,FedEx,TRK-987654,{shipped},\n"
         
         csv_file = io.BytesIO((csv_header + csv_row1 + csv_row2).encode("utf-8"))
         csv_file.name = "shipping_import.csv"
@@ -290,7 +296,9 @@ class TestBuyerShippingImport:
 
         # CSV Content with UPC in scientific notation (e.g. 9.87654E+11 for 987654321098)
         csv_header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
-        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},ACC-SKU-999,9.87654E+11,5,VND-CONF-123,FedEx,TRK-987654,2026-07-28,\n"
+        from datetime import timedelta
+        shipped = (timezone.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        csv_row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{setup_data['suborder'].id},ACC-SKU-999,9.87654E+11,5,VND-CONF-123,FedEx,TRK-987654,{shipped},\n"
         
         csv_file = io.BytesIO((csv_header + csv_row).encode("utf-8"))
         csv_file.name = "shipping_import.csv"

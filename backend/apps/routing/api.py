@@ -21,6 +21,52 @@ from .models import (
 )
 import re
 
+def _backfill_order_id(instance):
+    """Assign a sequential order_id to pre-migration orders. Uses DB aggregate
+    instead of loading all order_ids into Python."""
+    from django.db.models import Max
+    from django.db.models.functions import Cast, Substr, Length
+    from django.db.models import IntegerField
+    from apps.tenant.models import Company
+
+    co_slug = "cixci"
+    slug_cache = instance._meta.default_manager.model.__dict__.get('_slug_cache')
+    if slug_cache is None:
+        slug_cache = {}
+        instance._meta.default_manager.model._slug_cache = slug_cache
+
+    if instance.buyer_reference:
+        if instance.buyer_reference in slug_cache:
+            co_slug = slug_cache[instance.buyer_reference]
+        else:
+            co = Company.objects.filter(id=instance.buyer_reference).values_list('slug', 'name').first()
+            if co:
+                from django.utils.text import slugify
+                co_slug = co[0] or slugify(co[1] or "cixci")
+            slug_cache[instance.buyer_reference] = co_slug
+
+    numeric_ids = Order.objects.exclude(order_id__isnull=True).exclude(order_id="").filter(
+        order_id__regex=r'^\d+'
+    ).annotate(
+        num_prefix=Cast(
+            Substr('order_id', 1, Length('order_id')),
+            output_field=IntegerField()
+        )
+    )
+    max_result = numeric_ids.aggregate(max_num=Max('num_prefix'))
+    max_num = max_result['max_num'] or 999
+    next_num = max_num + 1
+    new_order_id = f"{next_num}-{co_slug}"
+    try:
+        updated = Order.objects.filter(pk=instance.pk, order_id__in=[None, ""]).update(order_id=new_order_id)
+        if not updated:
+            instance.refresh_from_db(fields=["order_id"])
+            return instance.order_id or new_order_id
+    except Exception:
+        pass
+    return new_order_id
+
+
 def upc_matches(db_upc, csv_upc):
     db_upc = (db_upc or "").strip()
     csv_upc = (csv_upc or "").strip()
@@ -88,6 +134,7 @@ class OrderSerializer(serializers.ModelSerializer):
     shipped_date = serializers.SerializerMethodField()
     delivered_date = serializers.SerializerMethodField()
     shipping_info = serializers.SerializerMethodField()
+    suborder_shipments = serializers.SerializerMethodField()
 
     order_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
@@ -105,6 +152,7 @@ class OrderSerializer(serializers.ModelSerializer):
             # Shipping Information Data Specification fields
             "vendor_order", "shipping_carrier", "shipping_tracking_number",
             "shipped_date", "delivered_date", "shipping_info",
+            "suborder_shipments",
         ]
         read_only_fields = ["id", "created_at", "placed_at"]
 
@@ -113,51 +161,18 @@ class OrderSerializer(serializers.ModelSerializer):
         if not ret.get("order_id") and getattr(instance, "order_id", None):
             ret["order_id"] = instance.order_id
         elif not ret.get("order_id"):
-            # order_id is null (pre-migration record) — assign a real unique sequential ID
-            # and persist it so subsequent reads are consistent
-            import re
-            from apps.tenant.models import Company
-            co_slug = "cixci"
-            if instance.buyer_reference:
-                co = Company.objects.filter(id=instance.buyer_reference).first()
-                if co and co.slug:
-                    co_slug = co.slug
-                elif co and co.name:
-                    from django.utils.text import slugify
-                    co_slug = slugify(co.name)
-            existing_ids = Order.objects.exclude(order_id__isnull=True).exclude(order_id="").values_list("order_id", flat=True)
-            max_num = 999
-            for oid in existing_ids:
-                m = re.match(r"^(\d+)", str(oid))
-                if m:
-                    try:
-                        val = int(m.group(1))
-                        if val > max_num:
-                            max_num = val
-                    except ValueError:
-                        pass
-            next_num = max_num + 1
-            new_order_id = f"{next_num}-{co_slug}"
-            try:
-                instance.order_id = new_order_id
-                instance.save(update_fields=["order_id"])
-            except Exception:
-                pass
-            ret["order_id"] = new_order_id
+            ret["order_id"] = _backfill_order_id(instance)
 
         subs = list(instance.routed_suborders.all())
         if subs:
             all_delivered = all(s.status == "delivered" for s in subs)
             if all_delivered and instance.status != "delivered":
-                instance.status = "delivered"
-                instance.save(update_fields=["status"])
+                Order.objects.filter(pk=instance.pk).update(status="delivered")
                 ret["status"] = "delivered"
             elif all(s.status in ["shipped", "delivered"] for s in subs) and instance.status not in ["shipped", "delivered"]:
-                instance.status = "shipped"
-                instance.save(update_fields=["status"])
+                Order.objects.filter(pk=instance.pk).update(status="shipped")
                 ret["status"] = "shipped"
 
-        # Vendors must not see customer email
         request = self.context.get("request")
         if request and hasattr(request, "user") and request.user:
             user = request.user
@@ -171,14 +186,20 @@ class OrderSerializer(serializers.ModelSerializer):
         return ret
 
     def _get_primary_suborder(self, obj):
+        cache_key = f'_sub_{obj.pk}'
+        cached = self.context.get(cache_key)
+        if cached is not None:
+            return cached if cached != '__none__' else None
         request = self.context.get("request")
-        suborders = obj.routed_suborders.all()
+        suborders = list(obj.routed_suborders.all())
         if request and request.user and not getattr(request.user, "is_cixci_admin", False):
             entity = getattr(request.user, "entity", None)
             company = entity.company if entity else None
             if company and getattr(company, "company_type", None) == "vendor":
-                suborders = suborders.filter(vendor_company_reference=company.id)
-        return suborders.first()
+                suborders = [s for s in suborders if s.vendor_company_reference == company.id]
+        result = suborders[0] if suborders else None
+        self.context[cache_key] = result if result else '__none__'
+        return result
 
     def _get_customer_shipping(self, obj):
         sub = self._get_primary_suborder(obj)
@@ -187,6 +208,12 @@ class OrderSerializer(serializers.ModelSerializer):
         return {}
 
     def _get_order_lines(self, obj):
+        if obj.mapping_contract_version:
+            rows = obj.accepted_lines.select_related('suborder').all()
+            user = getattr(self.context.get('request'), 'user', None)
+            if user and not user.is_cixci_admin and user.company and user.company.company_type == 'vendor':
+                rows = rows.filter(supplier_reference=user.company.pk)
+            return [{**line.source_snapshot, 'accepted_line_id':str(line.pk)} for line in rows]
         sub = self._get_primary_suborder(obj)
         # If routing snapshot has order_lines, enrich them with vendor name and pricing
         if sub and isinstance(sub.routing_snapshot, dict) and sub.routing_snapshot.get("order_lines"):
@@ -204,7 +231,7 @@ class OrderSerializer(serializers.ModelSerializer):
                     line["vendor_name"] = vendor_cache[vid]
                 # Resolve price/total from product if missing
                 if line.get("unit_price_snapshot") is None or line.get("line_total") is None:
-                    prod = Product.objects.filter(sku=line.get("sku")).first()
+                    prod = Product.objects.filter(pk=line.get('product_reference')).first() if line.get('product_reference') else None
                     if prod:
                         effective_price = prod.buyer_wholesale_price
                         if effective_price is None:
@@ -358,13 +385,38 @@ class OrderSerializer(serializers.ModelSerializer):
         return self._get_order_lines(obj)
 
     def _get_handoff(self, obj):
+        cache_key = f'_handoff_{obj.pk}'
+        cached = self.context.get(cache_key)
+        if cached is not None:
+            return cached if cached != '__none__' else None
         try:
             from apps.fulfillment.models import FulfillmentHandoff
             sub = self._get_primary_suborder(obj)
-            if sub:
-                return FulfillmentHandoff.objects.filter(routed_suborder_reference=sub.id).first()
+            if not sub:
+                self.context[cache_key] = '__none__'
+                return None
+            cache = self.context.get('_handoff_cache')
+            if cache is not None:
+                result = cache.get(sub.id)
+                self.context[cache_key] = result if result else '__none__'
+                return result
+            if self.context.get('_handoff_cache_enabled') and cache is None:
+                sub_ids = []
+                for order in self.instance if hasattr(self.instance, '__iter__') else []:
+                    for s in order.routed_suborders.all():
+                        sub_ids.append(s.id)
+                handoffs = {h.routed_suborder_reference: h for h in
+                            FulfillmentHandoff.objects.filter(routed_suborder_reference__in=sub_ids)}
+                self.context['_handoff_cache'] = handoffs
+                result = handoffs.get(sub.id)
+                self.context[cache_key] = result if result else '__none__'
+                return result
+            result = FulfillmentHandoff.objects.filter(routed_suborder_reference=sub.id).first()
+            self.context[cache_key] = result if result else '__none__'
+            return result
         except Exception:
             pass
+        self.context[cache_key] = '__none__'
         return None
 
     def get_vendor_order(self, obj):
@@ -406,10 +458,62 @@ class OrderSerializer(serializers.ModelSerializer):
             "order_status": str(obj.status).capitalize(),
             "shipped_date": self.get_shipped_date(obj),
             "delivered_date": self.get_delivered_date(obj),
+            "tracking_source": self._get_handoff(obj).tracking_source if self._get_handoff(obj) else "",
         }
+
+    def get_suborder_shipments(self, obj):
+        """Per-suborder shipping breakdown for multi-vendor orders."""
+        from apps.fulfillment.models import FulfillmentHandoff
+        from apps.tenant.models import Company
+        subs = list(obj.routed_suborders.all())
+        sub_ids = [s.id for s in subs]
+        cache = self.context.get('_handoff_cache')
+        if cache is not None:
+            handoffs = {sid: cache.get(sid) for sid in sub_ids}
+        else:
+            handoffs = {h.routed_suborder_reference: h for h in
+                        FulfillmentHandoff.objects.filter(routed_suborder_reference__in=sub_ids)}
+
+        vendor_ids = list(set(s.vendor_company_reference for s in subs))
+        vendor_cache = self.context.get('_vendor_name_cache')
+        if vendor_cache is None:
+            vendor_cache = {}
+            self.context['_vendor_name_cache'] = vendor_cache
+        missing_ids = [vid for vid in vendor_ids if vid not in vendor_cache]
+        if missing_ids:
+            vendor_cache.update(Company.objects.filter(id__in=missing_ids).values_list('id', 'name'))
+        vendors = vendor_cache
+
+        status_map = {
+            "received": "Processing", "processing": "Processing",
+            "shipped": "Shipped", "delivered": "Delivered",
+            "exception": "Exception",
+        }
+        result = []
+        for sub in subs:
+            h = handoffs.get(sub.id)
+            result.append({
+                "suborder_id": str(sub.id),
+                "vendor_company_reference": str(sub.vendor_company_reference),
+                "vendor_name": vendors.get(sub.vendor_company_reference, ""),
+                "suborder_status": sub.status,
+                "shipping_carrier": h.shipping_carrier if h else None,
+                "tracking_number": h.tracking_number if h else None,
+                "vendor_order_number": h.vendor_order_number if h else None,
+                "shipped_date": str(h.shipped_date) if h and h.shipped_date else None,
+                "delivered_date": str(h.delivered_date) if h and h.delivered_date else None,
+                "fulfillment_status": status_map.get(h.status, h.status.capitalize()) if h else "Pending",
+                "tracking_source": h.tracking_source if h else "",
+            })
+        return result
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):
+    buyer_entity_id = serializers.UUIDField(required=False)
+    integration_scope_id = serializers.UUIDField(required=False)
+    export_mapping_id = serializers.UUIDField(required=False)
+    external_listing_id = serializers.CharField(required=False, max_length=500)
+    external_variant_id = serializers.CharField(required=False, max_length=500)
     # 17 Required Fields from Order Data Specification for Buyers
     vendor_id = serializers.CharField(required=False, allow_blank=True)
     first_name = serializers.CharField(required=False, allow_blank=True)
@@ -435,6 +539,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "pricing_snapshot_references",
+            "buyer_entity_id", "integration_scope_id", "export_mapping_id", "external_listing_id", "external_variant_id",
             "vendor_id", "first_name", "last_name", "email",
             "address1", "address2", "city", "state", "zip_code",
             "sku", "product_name", "vendor_color", "quantity", "upc",
@@ -443,6 +548,15 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         req_data = self.context.get("request").data if self.context.get("request") and hasattr(self.context.get("request"), "data") and isinstance(self.context.get("request").data, dict) else {}
+
+        lines = attrs.get('order_lines')
+        if lines is not None:
+            if not 1 <= len(lines) <= 500:
+                raise serializers.ValidationError({'order_lines':'Supply between 1 and 500 lines.'})
+            for index,line in enumerate(lines):
+                for name in ('sku','upc','vendor_id','supplier_id','product_id','export_mapping_id','mapping_id','external_listing_id','external_variant_id'):
+                    if line.get(name) is not None and (not isinstance(line[name],str) or len(line[name])>500):
+                        raise serializers.ValidationError({f'order_lines[{index}].{name}':'Supply a bounded string reference.'})
 
         # 1. Customer shipping fields validation
         first_name = (attrs.get("first_name") or req_data.get("first_name") or req_data.get("customer_first_name") or "").strip()
@@ -482,7 +596,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 for idx, line in enumerate(order_lines):
                     l_sku = (line.get("sku") or "").strip()
                     l_upc = (line.get("upc") or "").strip()
-                    if not l_sku and not l_upc:
+                    if not l_sku and not l_upc and not any(line.get(field) for field in ('export_mapping_id','mapping_id','external_listing_id','external_variant_id')):
                         errors[f"order_lines[{idx}]"] = ["Each line item must provide either a sku or upc."]
                     try:
                         qty = int(line.get("quantity", 1))
@@ -493,7 +607,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         else:
             sku = (attrs.get("sku") or req_data.get("sku") or "").strip()
             upc = (attrs.get("upc") or req_data.get("upc") or "").strip()
-            if not sku and not upc:
+            if not sku and not upc and not any(attrs.get(field) for field in ('export_mapping_id','external_listing_id','external_variant_id')):
                 errors["sku"] = ["Product SKU or UPC is required."]
             quantity = attrs.get("quantity") or req_data.get("quantity", 1)
             try:
@@ -508,225 +622,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        from apps.tenant.models import Company
-        from apps.catalog.models import Product
-        from apps.procurement.models import PurchaseOrder, PurchaseOrderLine
-
-        request = self.context.get("request")
-        user = request.user if request else None
-
-        # Resolve buyer company and entity
-        buyer_id_str = validated_data.pop("buyer_id", None)
-        buyer_company = None
-        if buyer_id_str:
-            buyer_company = Company.objects.filter(id=buyer_id_str).first()
-        if not buyer_company and user and getattr(user, "entity", None):
-            buyer_company = getattr(user.entity, "company", None)
-
-        company_scope_ref = buyer_company.id if buyer_company else (user.entity.company_id if user and getattr(user, "entity", None) else uuid.uuid4())
-        buyer_entity = buyer_company.entities.first() if buyer_company and hasattr(buyer_company, "entities") and buyer_company.entities.exists() else None
-        buyer_entity_ref = buyer_entity.id if buyer_entity else (user.entity_id if user and getattr(user, "entity_id", None) else company_scope_ref)
-        buyer_ref = user.id if user and not getattr(user, "is_anonymous", True) else company_scope_ref
-
-        # Extract shipping info
-        first_name = validated_data.pop("first_name", "")
-        last_name = validated_data.pop("last_name", "")
-        email = validated_data.pop("email", "")
-        address1 = validated_data.pop("address1", "")
-        address2 = validated_data.pop("address2", "") or ""
-        city = validated_data.pop("city", "")
-        state = validated_data.pop("state", "")
-        zip_code = validated_data.pop("zip_code", "")
-
-        # Fallback to alternate keys if provided in raw request data
-        req_data = request.data if request and hasattr(request, "data") and isinstance(request.data, dict) else {}
-        first_name = first_name or req_data.get("customer_first_name") or ""
-        last_name = last_name or req_data.get("customer_last_name") or ""
-        email = email or req_data.get("customer_email") or ""
-        address1 = address1 or req_data.get("shipping_address_line1") or req_data.get("address_1") or ""
-        address2 = address2 or req_data.get("shipping_address_line2") or req_data.get("address_2") or ""
-        city = city or req_data.get("shipping_city") or ""
-        state = state or req_data.get("shipping_state") or ""
-        zip_code = zip_code or req_data.get("shipping_postal_code") or req_data.get("zip") or ""
-
-        customer_shipping = {
-            "first_name": first_name,
-            "last_name": last_name,
-            "customer_first_name": first_name,
-            "customer_last_name": last_name,
-            "email": email,
-            "customer_email": email,
-            "address1": address1,
-            "address_1": address1,
-            "address2": address2,
-            "address_2": address2,
-            "city": city,
-            "state": state,
-            "zip_code": zip_code,
-            "zip": zip_code,
-            "country": "US",
-        }
-
-        # Order metadata
-        buyer_order_number = validated_data.pop("buyer_order_number", "") or req_data.get("buyer_order_number", "")
-        order_date_time = validated_data.pop("order_date_time", None) or timezone.now()
-        pricing_snapshot_references = validated_data.pop("pricing_snapshot_references", {})
-
-        # Extract lines
-        order_lines = validated_data.pop("order_lines", None)
-        if not order_lines:
-            sku = validated_data.pop("sku", "") or req_data.get("sku", "")
-            upc = validated_data.pop("upc", "") or req_data.get("upc", "")
-            product_name = validated_data.pop("product_name", "") or req_data.get("product_name", "")
-            vendor_color = validated_data.pop("vendor_color", "") or req_data.get("vendor_color", "")
-            vendor_id = validated_data.pop("vendor_id", "") or req_data.get("vendor_id", "")
-            quantity = validated_data.pop("quantity", 1) or req_data.get("quantity", 1)
-            order_lines = [{
-                "vendor_id": vendor_id,
-                "sku": sku,
-                "product_name": product_name,
-                "vendor_color": vendor_color,
-                "quantity": quantity,
-                "upc": upc,
-            }]
-
-        order = Order.objects.create(
-            company_scope_reference=company_scope_ref,
-            buyer_reference=buyer_ref,
-            buyer_entity_reference=buyer_entity_ref,
-            status="placed",
-            pricing_snapshot_references=pricing_snapshot_references,
-            placed_at=order_date_time,
-        )
-
-        # Group lines by vendor
-        vendor_grouped = {}
-        for line in order_lines:
-            sku = line.get("sku", "").strip() if line.get("sku") else ""
-            upc = line.get("upc", "").strip() if line.get("upc") else ""
-            prod = None
-            if sku:
-                prod = Product.objects.filter(sku=sku).first()
-            if not prod and upc:
-                prod = Product.objects.filter(upc=upc).first()
-            if prod:
-                line_vendor_id = line.get("vendor_id") or str(prod.vendor_company_reference)
-                if not line.get("product_name"):
-                    line["product_name"] = prod.name
-                if not line.get("vendor_color"):
-                    line["vendor_color"] = prod.color or ""
-                if not line.get("upc"):
-                    line["upc"] = prod.upc or ""
-                if not line.get("sku"):
-                    line["sku"] = prod.sku
-                line["product_reference"] = str(prod.id)
-            else:
-                line_vendor_id = line.get("vendor_id") or str(company_scope_ref)
-                line["product_reference"] = None
-            line["vendor_id"] = str(line_vendor_id)
-            vendor_grouped.setdefault(line_vendor_id, []).append(line)
-
-        # ── Region overlap validation ────────────────────────────────────
-        # Hard server-side check: every vendor in the order must share at
-        # least one approved region with the buyer.  Without this, a
-        # crafted API call could bypass the queryset-level visibility
-        # filters and place an order with an out-of-region vendor.
-        if buyer_company:
-            buyer_regions = set(buyer_company.approved_regions or [])
-            if buyer_regions:                         # skip check for buyers with no regions configured
-                region_errors = []
-                vendor_cache = {}                     # avoid duplicate DB hits
-                for v_id in vendor_grouped:
-                    try:
-                        v_uuid_check = uuid.UUID(str(v_id))
-                    except Exception:
-                        continue                      # non-UUID vendor id, skip (will be caught later)
-                    if v_uuid_check not in vendor_cache:
-                        vendor_cache[v_uuid_check] = Company.objects.filter(id=v_uuid_check).first()
-                    vendor_co = vendor_cache[v_uuid_check]
-                    if not vendor_co:
-                        continue                      # unknown vendor, routing will handle
-                    vendor_regions = set(vendor_co.approved_regions or [])
-                    if not buyer_regions & vendor_regions:
-                        region_errors.append(
-                            f"Vendor '{vendor_co.name}' is not approved for any of your regions "
-                            f"({', '.join(sorted(buyer_regions))}). "
-                            f"Vendor regions: {', '.join(sorted(vendor_regions)) or 'none'}."
-                        )
-                if region_errors:
-                    order.delete()                    # clean up the just-created order
-                    raise serializers.ValidationError({"region": region_errors})
-
-        # Create RoutedSuborder per vendor
-        for v_id, lines in vendor_grouped.items():
-            snap = {
-                "buyer_order_number": buyer_order_number,
-                "buyer_id": str(buyer_company.id if buyer_company else company_scope_ref),
-                "order_date_time": order_date_time.isoformat() if hasattr(order_date_time, "isoformat") else str(order_date_time),
-                "customer_shipping": customer_shipping,
-                "order_lines": lines,
-                "po_number": buyer_order_number or f"PO-{order.id}",
-            }
-            try:
-                v_uuid = uuid.UUID(str(v_id))
-            except Exception:
-                v_uuid = uuid.uuid4()
-
-            suborder = RoutedSuborder.objects.create(
-                order=order,
-                vendor_company_reference=v_uuid,
-                status="placed",
-                routing_snapshot=snap,
-            )
-
-            # Also create PurchaseOrder & lines for procurement cross-module compatibility
-            try:
-                po = PurchaseOrder.objects.create(
-                    id=order.id,
-                    company_scope_reference=company_scope_ref,
-                    buyer_reference=buyer_ref,
-                    vendor_company_reference=v_uuid,
-                    status="approved",
-                    po_number=buyer_order_number or f"PO-{order.id}",
-                    approved_at=order_date_time,
-                )
-                for l in lines:
-                    if l.get("product_reference"):
-                        # Use existing snapshot price if present, else product's buyer wholesale price
-                        unit_price = None
-                        if l.get("unit_price_snapshot") is not None:
-                            try:
-                                unit_price = decimal.Decimal(str(l["unit_price_snapshot"]))
-                            except Exception:
-                                unit_price = None
-                        if unit_price is None:
-                            line_prod = Product.objects.filter(id=uuid.UUID(l["product_reference"])).first()
-                            if line_prod:
-                                unit_price = line_prod.buyer_wholesale_price
-                                if unit_price is None:
-                                    unit_price = line_prod.vendor_wholesale_price_amount
-                        if unit_price is None:
-                            unit_price = decimal.Decimal("0.00")
-                        qty_val = int(l.get("quantity", 1))
-                        msrp_val = None
-                        line_prod = Product.objects.filter(id=uuid.UUID(l["product_reference"])).first()
-                        if line_prod and line_prod.msrp:
-                            try:
-                                msrp_val = decimal.Decimal(str(line_prod.msrp))
-                            except Exception:
-                                msrp_val = None
-                        PurchaseOrderLine.objects.create(
-                            purchase_order=po,
-                            product_reference=uuid.UUID(l["product_reference"]),
-                            quantity=qty_val,
-                            unit_price_snapshot=unit_price,
-                            msrp_snapshot=msrp_val,
-                            line_total=(msrp_val * qty_val) if msrp_val else (unit_price * qty_val),
-                        )
-            except Exception:
-                pass
-
-        return order
+        from .acceptance import accept_order
+        return accept_order(self.context['request'], validated_data)
 
     def to_representation(self, instance):
         return OrderSerializer(instance, context=self.context).data
@@ -886,14 +783,12 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Order.objects.all()
+        qs = Order.objects.prefetch_related('routed_suborders')
         is_admin = getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
         if is_admin:
             return qs
-        # Non-admin callers MUST be tenant-scoped. Fail closed: a user with no
-        # entity/company must never receive the global order list.
         company = getattr(user, "entity", None) and user.entity.company
         if not company:
             from rest_framework.exceptions import PermissionDenied
@@ -902,14 +797,17 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
             return qs.filter(
                 routed_suborders__vendor_company_reference=company.id
             ).distinct()
-        # Buyer: only orders belonging to this buyer company. `buyer_reference`
-        # is written as a Company id by procurement; historical rows may carry
-        # the creating user's id, so match either, always scoped to the company.
-        return qs.filter(
-            Q(buyer_reference=company.id)
-            | Q(buyer_reference=user.id)
-            | Q(company_scope_reference=company.id)
-        ).distinct()
+        return qs.filter(company_scope_reference=company.id, buyer_entity_reference=user.entity_id).distinct()
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        return response
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if self.action == 'list':
+            ctx['_handoff_cache_enabled'] = True
+        return ctx
 
     def get_serializer_class(self):
         return OrderCreateSerializer if self.action == "create" else OrderSerializer

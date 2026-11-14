@@ -135,6 +135,9 @@ class ProductSerializerBase(serializers.ModelSerializer):
                     self.context["_buyer_compatible_devices"] = {str(value) for value in (buyer_portfolio_device_ids(user) or set())}
                 allowed_devices = self.context["_buyer_compatible_devices"]
                 ret["device_compatibility"] = [row for row in ret["device_compatibility"] if str(row.get("device_id")) in allowed_devices]
+            if is_buyer:
+                from .offer_services import mapping_reference
+                ret['export_mappings'] = [mapping_reference(mapping) for mapping in getattr(instance, '_buyer_export_mappings', [])]
 
             # Rule (§5/§6): a vendor admin must see "Vendor Wholesale Price"; a
             # buyer must never see it. Only strip for non-admin, non-vendor users.
@@ -206,6 +209,9 @@ class ProductSerializerBase(serializers.ModelSerializer):
         update_type = validated_data.pop("compatibility_update_type", "add")
         actor_id = request.user.id if request and request.user and request.user.is_authenticated else None
         instance = self.Meta.model(**validated_data)
+        if self.context.get('update_source'):
+            instance._update_source = self.context['update_source']
+            instance._source_run_reference = self.context.get('source_run_reference')
         instance.save(actor_id=actor_id)
         self._save_explicit_devices(instance, device_ids, update_type, request)
         self._link_media_assets(instance)
@@ -219,6 +225,9 @@ class ProductSerializerBase(serializers.ModelSerializer):
         actor_id = request.user.id if request and request.user and request.user.is_authenticated else None
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        if self.context.get('update_source'):
+            instance._update_source = self.context['update_source']
+            instance._source_run_reference = self.context.get('source_run_reference')
         instance.save(actor_id=actor_id)
         self._save_explicit_devices(instance, device_ids, update_type, request)
         self._link_media_assets(instance)
@@ -233,7 +242,8 @@ class ProductSerializerBase(serializers.ModelSerializer):
         from .compatibility_commands import update_explicit_selections
         try:
             update_explicit_selections(instance, device_ids, request.user, update_type=update_type,
-                change_source="Vendor API" if not getattr(request.user, "is_cixci_admin", False) else "CIXCI Admin")
+                basis='imported' if self.context.get('update_source') == 'Vendor API Sync' else 'manual_assertion',
+                change_source=self.context.get('update_source') or ("Vendor API" if not getattr(request.user, "is_cixci_admin", False) else "CIXCI Admin"))
             instance.refresh_from_db(fields=["compatibility_status"])
         except DjangoValidationError as error:
             raise serializers.ValidationError(error.message_dict if hasattr(error, "message_dict") else error.messages) from error
@@ -254,7 +264,7 @@ class ProductListSerializer(ProductSerializerBase):
     class Meta:
         model = Product
         fields = [
-            "id", "name", "sku", "upc", "brand", "product_type",
+            "id", "name", "sku", "upc", "brand", "brand_reference", "product_type",
             "product_category", "vendor_category",  # Category Governance
             "vendor_category_raw", "product_category_override",
             "category_validation_status",
@@ -483,6 +493,7 @@ class ProductDetailSerializer(ProductSerializerBase):
             "product_category_override_at",
             "category_validation_status",
             "brand",
+            "brand_reference",
             "description",
             "short_description",
 
@@ -548,6 +559,7 @@ class ProductDetailSerializer(ProductSerializerBase):
             "exported_date",
         ]
         read_only_fields = ["id", "created_at", "updated_at", "company_scope_reference"]
+        validators = []  # Supplier ownership is resolved before scoped checks.
 
     def validate_upc(self, value):
         if not value:
@@ -556,12 +568,6 @@ class ProductDetailSerializer(ProductSerializerBase):
         if len(val_str) != 12 or not val_str.isdigit():
             raise serializers.ValidationError("UPC must follow valid UPC-A format (12 numeric characters).")
         
-        # Check uniqueness per product, excluding self
-        qs = Product.objects.filter(upc=val_str)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError("UPC must be unique per product.")
         return val_str
 
     def validate_status(self, value):
@@ -614,6 +620,35 @@ class ProductDetailSerializer(ProductSerializerBase):
             vendor_id = attrs.get("vendor_company_reference")
             if not vendor_id or not Company.objects.filter(pk=vendor_id, company_type="vendor").exists():
                 raise serializers.ValidationError({"vendor_company_reference": "Select an existing supplier company; vendor requests use their authenticated company."})
+
+        owner_id = attrs.get('vendor_company_reference') or (self.instance.vendor_company_reference if self.instance else None)
+        if self.instance and 'vendor_company_reference' in attrs and owner_id != self.instance.vendor_company_reference:
+            raise serializers.ValidationError({'vendor_company_reference': 'An existing supplier offer cannot change Vendor ownership.'})
+        for field in ('sku', 'upc'):
+            if field in attrs and attrs[field]:
+                duplicates = Product.objects.filter(vendor_company_reference=owner_id, **{field: attrs[field]})
+                if self.instance:
+                    duplicates = duplicates.exclude(pk=self.instance.pk)
+                if duplicates.exists():
+                    message = 'UPC must be unique per product within this supplier.' if field == 'upc' else 'SKU is already used by this supplier.'
+                    raise serializers.ValidationError({field: message})
+        if attrs.get('brand') and not attrs.get('brand_reference'):
+            from .models import VendorBrandRelationship
+            key = ' '.join(attrs['brand'].split()).casefold()
+            link = VendorBrandRelationship.objects.filter(vendor_company_id=owner_id, is_active=True, brand__is_active=True, brand__canonical_key=key).select_related('brand').first()
+            if link:
+                attrs['brand_reference'] = link.brand
+            elif is_vendor and attrs['brand'] != user.company.name and (not self.instance or attrs['brand'] != self.instance.brand):
+                raise serializers.ValidationError({'brand': 'Ask CIXCI Admin to approve this supplier’s Owned or Authorized Distributor Brand relationship.'})
+        if attrs.get('brand_reference'):
+            from .models import VendorBrandRelationship
+            brand = attrs['brand_reference']
+            if not VendorBrandRelationship.objects.filter(vendor_company_id=owner_id, brand=brand, is_active=True, brand__is_active=True).exists():
+                raise serializers.ValidationError({'brand_reference': 'An active approved Brand relationship is required for this supplier.'})
+            raw_brand = attrs.get('brand')
+            if raw_brand and ' '.join(raw_brand.split()).casefold() not in (brand.canonical_key, ' '.join(brand.name.split()).casefold()):
+                raise serializers.ValidationError({'brand': 'Brand display value must identify the selected canonical Brand.'})
+            attrs.setdefault('brand', brand.name)
 
         # ── Category Governance ──────────────────────────────────────────
         from apps.catalog.models import CategoryValidationStatus
@@ -838,7 +873,7 @@ class BuyerExportJobSerializer(serializers.ModelSerializer):
             "portfolio_snapshot_reference", "product_count",
             "output_file_reference", "download_url", "created_at", "completed_at",
             "trigger_type", "triggered_by_id", "triggered_by_name", "triggered_by_role", "failure_details",
-            "buyer_company_name", "products_snapshot"
+            "buyer_company_name", "products_snapshot", "storefront"
         ]
 
     def get_download_url(self, obj):
@@ -1418,6 +1453,17 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
         if company.company_type == "buyer":
             from apps.integration.models import CompanyAPIKey
+            from apps.integration.storefront_api import request_storefront
+            from .models import BuyerExportMapping
+            from django.db.models import Prefetch
+            storefront = request_storefront(self.request)
+            selections = BuyerExportMapping.objects.filter(company_id=company.id, entity_id=user.entity_id,
+                status__in=['active', 'review_required']).order_by('-exported_at')
+            if storefront:
+                selections = selections.filter(storefront=storefront)
+                if isinstance(self.request.auth, CompanyAPIKey):
+                    qs = qs.filter(pk__in=selections.values_list('product_id', flat=True))
+            qs = qs.prefetch_related(Prefetch('export_mappings', queryset=selections, to_attr='_buyer_export_mappings'))
             from .compatibility_contract import buyer_portfolio_device_ids
             portfolio_ids = buyer_portfolio_device_ids(user) or set()
             if not portfolio_ids:
@@ -1446,6 +1492,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 qs = qs.filter(id__in=exported_ids)
 
         from apps.tenant.regional_visibility import filter_buyer_regional_products
+        from .source_visibility import eligible_vendor_sources
+        qs = eligible_vendor_sources(qs)
         qs = filter_buyer_regional_products(qs, company.id, user.entity_id)
 
         # MAP Pricing buyer visibility exclusions
@@ -1530,7 +1578,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         vendor_id = serializer.validated_data["vendor_company_reference"]
         vendor = Company.objects.get(pk=vendor_id, company_type="vendor")
         kwargs = {"company_scope_reference": vendor.id}
-        if not getattr(user, "is_cixci_admin", False) or not serializer.validated_data.get("brand"):
+        if not serializer.validated_data.get("brand"):
             kwargs["brand"] = vendor.name
         product = serializer.save(**kwargs)
 
@@ -1539,7 +1587,6 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         user = self.request.user
         if user and user.entity and user.entity.company:
             if user.entity.company.company_type == "vendor" and not getattr(user, "is_cixci_admin", False):
-                kwargs["brand"] = user.entity.company.name
                 kwargs["vendor_company_reference"] = user.entity.company.id
         product = serializer.save(**kwargs)
 
@@ -2006,7 +2053,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         from django.db import transaction
         sid = transaction.savepoint()
 
-        
+        from .models import VendorBrandRelationship
+        supplier_brands = {link.brand.canonical_key: link.brand
+                           for link in VendorBrandRelationship.objects.filter(
+                               vendor_company_id=vendor_company_id, is_active=True,
+                               brand__is_active=True).select_related('brand')}
         for idx, row in enumerate(rows):
             row_errors = []
             should_stage = False
@@ -2076,6 +2127,13 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 
             # --- Brand ---
             brand = str(row.get("brand") or "").strip()
+            brand_reference = supplier_brands.get(' '.join(brand.split()).casefold())
+            if (brand and not brand_reference and not request.user.is_cixci_admin
+                    and brand != vendor.name and (not product or brand != product.brand)):
+                row_errors.append({
+                    'row_number': row_num, 'column_name': 'Brand', 'submitted_value': brand,
+                    'validation_error': 'An active approved Owned or Authorized Distributor Brand relationship is required for this supplier.',
+                    'recommended_correction': 'Ask CIXCI Admin to configure the supplier Brand relationship.'})
             if not brand:
                 row_errors.append({
                     "row_number": row_num,
@@ -2272,8 +2330,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 })
             else:
                 seen_upcs.add(upc_val)
-                # Check global uniqueness in database
-                qs = Product.objects.filter(upc=upc_val)
+                # The same UPC may identify offers from different suppliers.
+                qs = Product.objects.filter(upc=upc_val, vendor_company_reference=vendor_company_id)
                 if product:
                     qs = qs.exclude(id=product.id)
                 if qs.exists():
@@ -2807,6 +2865,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 
                 product.name = cleaned_name
                 product.brand = brand
+                # The approved supplier relationship, not the display label or
+                # another supplier's matching SKU, supplies canonical identity.
+                product.brand_reference = brand_reference
                 product.product_type = product_type
                 # Category Governance
                 product.product_category = product_category  # Canonical CIXCI category
@@ -3282,7 +3343,10 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
             except (ValueError, TypeError):
                 device_ref = None
 
+        from apps.integration.storefront_api import request_storefront
+        storefront = request_storefront(request, required=True)
         job = BuyerProductExportJob.objects.create(
+            storefront=storefront,
             buyer_reference=request.user.id,
             company_scope_reference=request.user.entity.company_id,
             buyer_entity_reference=request.user.entity_id,

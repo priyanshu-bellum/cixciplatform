@@ -7,11 +7,23 @@ Implements:
 - Workflow 14: notification intent on projection change
 """
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from uuid import UUID
 from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+_defer_projection_refresh = ContextVar('catalog_defer_projection_refresh', default=False)
+
+
+@contextmanager
+def defer_buyer_projection_refresh():
+    token = _defer_projection_refresh.set(True)
+    try:
+        yield
+    finally:
+        _defer_projection_refresh.reset(token)
 
 
 def recalculate_buyer_compatibility_projection(
@@ -121,6 +133,9 @@ def recalculate_buyer_compatibility_projection(
         ).filter(
             Q(release_date__isnull=True) | Q(release_date__lte=today_est)
         )
+
+        from .source_visibility import eligible_vendor_sources
+        product_qs = eligible_vendor_sources(product_qs)
 
         if company:
             from apps.tenant.regional_visibility import filter_buyer_regional_products
@@ -511,6 +526,8 @@ def invalidate_buyer_projection_cache(reason):
 
 def trigger_catalog_recalculation_for_product(product_id):
     """Trigger buyer catalog visibility recalculation for all existing projections."""
+    if _defer_projection_refresh.get():
+        return
     from apps.catalog.models import BuyerScopedCompatibilityProjection
     projections = BuyerScopedCompatibilityProjection.objects.all()
     for proj in projections:

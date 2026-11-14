@@ -7,7 +7,8 @@ from django.utils import timezone
 
 from .models import (
     SLAEvaluationRecord, SLAOutcome, ExceptionStatus,
-    LateFulfillmentImportException, MissingFulfillmentImportException
+    LateFulfillmentImportException, MissingFulfillmentImportException,
+    BuyerUpdateReadySignal, BuyerSignalStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -114,4 +115,99 @@ def evaluate_vendor_slas():
                 pass
 
     logger.info("Completed SLA evaluations. Evaluated %d records.", evaluated_count)
+
+
+@shared_task(name="apps.fulfillment.tasks.dispatch_buyer_signals", ignore_result=True)
+def dispatch_buyer_signals():
+    """
+    Process eligible BuyerUpdateReadySignals — notify buyers when all vendors
+    have confirmed shipment/delivery for an order.
+    Batch-loads orders and handoffs to avoid N+1 per signal.
+    """
+    from apps.fulfillment.models import FulfillmentHandoff
+    from apps.routing.models import Order, RoutedSuborder
+
+    eligible = list(BuyerUpdateReadySignal.objects.filter(
+        status=BuyerSignalStatus.ELIGIBLE, all_vendors_confirmed=True
+    )[:100])
+
+    if not eligible:
+        return
+
+    order_ids = [s.order_reference for s in eligible]
+    orders = {o.pk: o for o in Order.objects.filter(pk__in=order_ids)}
+
+    sub_ids_by_order = {}
+    for sub in RoutedSuborder.objects.filter(order_id__in=order_ids).only('id', 'order_id'):
+        sub_ids_by_order.setdefault(sub.order_id, []).append(sub.id)
+
+    all_sub_ids = [sid for sids in sub_ids_by_order.values() for sid in sids]
+    handoffs_by_order = {}
+    for h in FulfillmentHandoff.objects.filter(routed_suborder_reference__in=all_sub_ids):
+        for oid, sids in sub_ids_by_order.items():
+            if h.routed_suborder_reference in sids:
+                handoffs_by_order.setdefault(oid, []).append(h)
+                break
+
+    dispatched = 0
+    for signal in eligible:
+        try:
+            order = orders.get(signal.order_reference)
+            if not order:
+                BuyerUpdateReadySignal.objects.filter(pk=signal.pk).update(
+                    status=BuyerSignalStatus.FAILED)
+                continue
+
+            handoffs = handoffs_by_order.get(order.pk, [])
+            payload = {
+                "order_id": str(order.order_id or order.pk),
+                "buyer_reference": str(signal.buyer_reference),
+                "update_kind": signal.update_kind,
+                "vendor_count": signal.expected_vendor_count,
+                "shipments": [{
+                    "vendor_company_reference": str(h.vendor_company_reference),
+                    "status": h.status,
+                    "shipping_carrier": h.shipping_carrier or "",
+                    "tracking_number": h.tracking_number or "",
+                    "shipped_date": str(h.shipped_date) if h.shipped_date else None,
+                    "delivered_date": str(h.delivered_date) if h.delivered_date else None,
+                } for h in handoffs],
+            }
+
+            try:
+                from apps.notification.services import create_notification_request
+                create_notification_request(
+                    event_type=f"buyer.order.{signal.update_kind}_complete",
+                    source_module="fulfillment",
+                    company_scope_reference=signal.buyer_reference,
+                    recipient_ids=[],
+                    safe_payload_summary=payload,
+                    source_record_id=signal.pk,
+                )
+            except Exception:
+                logger.warning("Notification service unavailable for signal %s", signal.pk)
+
+            BuyerUpdateReadySignal.objects.filter(pk=signal.pk).update(
+                status=BuyerSignalStatus.DISPATCHED,
+                dispatched_at=timezone.now(),
+            )
+            dispatched += 1
+        except Exception:
+            logger.exception("Failed to dispatch buyer signal %s", signal.pk)
+            BuyerUpdateReadySignal.objects.filter(pk=signal.pk).update(
+                status=BuyerSignalStatus.FAILED)
+
+    logger.info("Dispatched %d buyer update signals.", dispatched)
+
+
+@shared_task(name="apps.fulfillment.tasks.poll_carrier_tracking", ignore_result=True)
+def poll_carrier_tracking():
+    """
+    Poll carrier APIs for shipments that have tracking info but aren't delivered yet.
+    No-op until CARRIER_TRACKER_BACKEND is configured (e.g. 'easypost').
+    """
+    from .carrier_tracking import poll_manual_shipments
+    result = poll_manual_shipments()
+    if result.get('status') != 'skipped':
+        logger.info("Carrier tracking poll: %s", result)
 

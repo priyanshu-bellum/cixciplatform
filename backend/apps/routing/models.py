@@ -72,6 +72,11 @@ class Order(models.Model):
     # Shipping fee snapshots (vendor_id → ShippingFeeSnapshot ID mapping)
     shipping_fee_snapshot_references = models.JSONField(default=dict,
         help_text="vendor_id → ShippingFeeSnapshot ID mapping")
+    storefront = models.ForeignKey('integration.BuyerStorefront', null=True, blank=True, on_delete=models.PROTECT)
+    buyer_order_number_reference = models.CharField(max_length=200, blank=True)
+    acceptance_key = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    acceptance_hash = models.CharField(max_length=64, blank=True)
+    mapping_contract_version = models.PositiveSmallIntegerField(default=0)
 
     order_id = models.CharField(
         max_length=100, blank=True, null=True, unique=True, db_index=True,
@@ -83,6 +88,13 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        if not self._state.adding and self.mapping_contract_version:
+            original = type(self).objects.get(pk=self.pk)
+            protected = ['company_scope_reference','buyer_reference','buyer_entity_reference','storefront_id',
+                'buyer_order_number_reference','acceptance_key','acceptance_hash','mapping_contract_version',
+                'pricing_snapshot_references','placed_at']
+            if any(getattr(original,name) != getattr(self,name) for name in protected):
+                raise ValidationError('Accepted Buyer scope, order identity and Pricing evidence are immutable.')
         if not self.order_id:
             from apps.tenant.models import Company
             from django.db.models import Max
@@ -90,7 +102,7 @@ class Order(models.Model):
             from django.db.models import IntegerField, Value
             slug = "cixci"
             if self.buyer_reference:
-                co = Company.objects.filter(id=self.buyer_reference).first()
+                co = Company.objects.filter(id=self.company_scope_reference).first() or Company.objects.filter(id=self.buyer_reference).first()
                 if co and co.slug:
                     slug = co.slug
                 elif co and co.name:
@@ -140,6 +152,15 @@ class RoutedSuborder(models.Model):
 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self,*args,**kwargs):
+        if not self._state.adding and self.order.mapping_contract_version:
+            original=type(self).objects.get(pk=self.pk)
+            protected=('buyer_order_number','buyer_id','order_date_time','customer_shipping','order_lines','po_number')
+            if original.order_id!=self.order_id or original.vendor_company_reference!=self.vendor_company_reference or any(
+                    original.routing_snapshot.get(key)!=self.routing_snapshot.get(key) for key in protected):
+                raise ValidationError('Accepted supplier, shipping and line evidence are immutable.')
+        return super().save(*args,**kwargs)
 
     class Meta:
         db_table = "routing_routed_suborder"
@@ -633,3 +654,5 @@ class VendorOrderReexportAttempt(models.Model):
             if original.user_agent != self.user_agent:
                 raise ValueError("user_agent is immutable")
             super().save(*args, **kwargs)
+
+from .accepted_models import AcceptedOrderLine  # noqa: E402,F401

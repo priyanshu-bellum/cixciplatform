@@ -65,6 +65,12 @@ class DeliveryDateValidationOutcome(models.TextChoices):
 
 # ─── Baseline: Fulfillment Handoff ────────────────────────────────────────────
 
+class TrackingSource(models.TextChoices):
+    MANUAL_CSV = "manual_csv", "Manual CSV Upload"
+    VENDOR_API = "vendor_api", "Vendor API (Webhook/Polling)"
+    EASYPOST = "easypost", "EasyPost Carrier Tracking"
+
+
 class FulfillmentHandoff(models.Model):
     """
     Fulfillment operational record created when Order Routing hands off a suborder.
@@ -75,6 +81,12 @@ class FulfillmentHandoff(models.Model):
     company_scope_reference = models.UUIDField(db_index=True)
     status = models.CharField(max_length=50, default="received",
         help_text="received | processing | shipped | delivered | exception | closed | tracking_missing | tracking_invalid | review_required | delivery_exception")
+    tracking_source = models.CharField(
+        max_length=20, choices=TrackingSource.choices, blank=True, default="",
+        help_text="How tracking data was obtained: manual_csv, vendor_api, or easypost (future)")
+    easypost_tracker_id = models.CharField(
+        max_length=100, blank=True, default="",
+        help_text="EasyPost tracker ID — populated when EasyPost takes over tracking for this shipment")
     delivery_evidence_reference = models.UUIDField(
         null=True, blank=True,
         help_text="VendorExportDeliveryEvidence ID (read-only reference from Order Routing)"
@@ -89,7 +101,12 @@ class FulfillmentHandoff(models.Model):
 
     class Meta:
         db_table = "fulfillment_handoff"
-        indexes = [models.Index(fields=["vendor_company_reference", "status"])]
+        indexes = [
+            models.Index(fields=["vendor_company_reference", "status"]),
+            models.Index(fields=["company_scope_reference", "status"]),
+            models.Index(fields=["company_scope_reference", "shipped_date"]),
+            models.Index(fields=["updated_at"]),
+        ]
 
 
 class VendorShippingImportLog(models.Model):

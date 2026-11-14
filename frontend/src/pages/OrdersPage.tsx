@@ -1327,79 +1327,143 @@ export default function OrdersPage() {
                     : '\u2014'}
                 </Typography>
               </Box>
+              {orderDetail?.shipping_info?.tracking_source && (
+                <Box>
+                  <Typography sx={detailLabelSx}>Tracking Source</Typography>
+                  <Typography sx={{ ...detailValueSx, fontSize: 12, color: 'text.secondary' }}>
+                    {orderDetail.shipping_info.tracking_source === 'manual_csv' ? 'CSV Import'
+                      : orderDetail.shipping_info.tracking_source === 'vendor_api' ? 'Vendor API'
+                      : orderDetail.shipping_info.tracking_source === 'easypost' ? 'EasyPost'
+                      : orderDetail.shipping_info.tracking_source}
+                  </Typography>
+                </Box>
+              )}
             </Box>
           </Box>
 
-          {/* Suborders Section */}
+          {/* Suborders & Per-Vendor Shipping Section */}
           <Box sx={{ mb: 0 }}>
             <Typography sx={sectionTitleSx}>
-              <LocalShippingIcon sx={{ fontSize: 14 }} /> Vendor Suborders
+              <LocalShippingIcon sx={{ fontSize: 14 }} /> Vendor Shipments
             </Typography>
             {isLoadingSubs ? (
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Vendor Reference</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell align="right">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {Array.from({ length: 2 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell><Skeleton width="60%" /></TableCell>
-                        <TableCell><Skeleton variant="rounded" width={64} height={24} /></TableCell>
-                        <TableCell align="right"><Skeleton width={80} sx={{ ml: 'auto' }} /></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : !suborders || suborders.length === 0 ? (
-              <Typography variant="body2" color="text.disabled" sx={{ py: 2.5 }}>
-                No vendor suborders routed.
-              </Typography>
-            ) : (
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Vendor Reference</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell align="right">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {suborders.map((sub: any) => (
-                      <TableRow key={sub.id}>
-                        <TableCell sx={{ ...monoSx, fontSize: 11, color: 'text.secondary' }}>
-                          {sub.vendor_company_reference}
-                        </TableCell>
-                        <TableCell>
-                          <StatusChip status={sub.status} />
-                        </TableCell>
-                        <TableCell align="right">
-                          {sub.status === 'placed' && (
-                            <Button
-                              variant="contained"
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleManualExport(sub.id)
-                              }}
-                              sx={{ fontSize: 12, textTransform: 'none' }}
-                            >
-                              Manual Export
-                            </Button>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <Paper key={i} variant="outlined" sx={{ p: 1.5, borderRadius: 1 }}>
+                    <Skeleton width="40%" height={20} />
+                    <Skeleton width="70%" height={16} sx={{ mt: 0.5 }} />
+                    <Skeleton width="55%" height={16} sx={{ mt: 0.5 }} />
+                  </Paper>
+                ))}
+              </Box>
+            ) : (() => {
+              const shipments = orderDetail?.suborder_shipments || []
+              const suborderMap: Record<string, any> = {}
+              ;(suborders || []).forEach((s: any) => { suborderMap[String(s.id)] = s })
+              if (shipments.length === 0 && (!suborders || suborders.length === 0)) {
+                return (
+                  <Typography variant="body2" color="text.disabled" sx={{ py: 2.5 }}>
+                    No vendor suborders routed.
+                  </Typography>
+                )
+              }
+              const items = shipments.length > 0
+                ? shipments
+                : (suborders || []).map((s: any) => ({
+                    suborder_id: s.id,
+                    vendor_company_reference: s.vendor_company_reference,
+                    vendor_name: '',
+                    suborder_status: s.status,
+                    fulfillment_status: '',
+                    shipping_carrier: null,
+                    tracking_number: null,
+                    shipped_date: null,
+                    delivered_date: null,
+                    tracking_source: '',
+                  }))
+              const trackingSourceLabel = (src: string) => {
+                if (src === 'manual_csv') return 'CSV Import'
+                if (src === 'vendor_api') return 'Vendor API'
+                if (src === 'easypost') return 'EasyPost'
+                return ''
+              }
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {items.map((item: any) => {
+                    const sub = suborderMap[item.suborder_id]
+                    return (
+                      <Paper key={item.suborder_id} variant="outlined" sx={{ borderRadius: 1, overflow: 'hidden' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 1, bgcolor: 'action.hover' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography sx={{ fontSize: 12, fontWeight: 600 }}>
+                              {item.vendor_name || 'Vendor'}
+                            </Typography>
+                            <Typography sx={{ ...monoSx, fontSize: 10, color: 'text.disabled' }}>
+                              {item.vendor_company_reference}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <StatusChip status={item.fulfillment_status || item.suborder_status || 'pending'} />
+                            {sub?.status === 'placed' && (
+                              <Button
+                                variant="contained"
+                                size="small"
+                                onClick={(e) => { e.stopPropagation(); handleManualExport(sub.id) }}
+                                sx={{ fontSize: 11, textTransform: 'none', py: 0.25, px: 1 }}
+                              >
+                                Export
+                              </Button>
+                            )}
+                          </Box>
+                        </Box>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 1, px: 1.5, py: 1 }}>
+                          <Box>
+                            <Typography sx={detailLabelSx}>Carrier</Typography>
+                            <Typography sx={{ ...detailValueSx, fontWeight: 550, color: 'primary.main' }}>
+                              {item.shipping_carrier || '—'}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography sx={detailLabelSx}>Tracking #</Typography>
+                            <Typography sx={{ ...detailValueSx, ...monoSx, fontSize: 11 }}>
+                              {item.tracking_number || '—'}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography sx={detailLabelSx}>Shipped</Typography>
+                            <Typography sx={detailValueSx}>
+                              {item.shipped_date ? formatDate(item.shipped_date) : '—'}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography sx={detailLabelSx}>Delivered</Typography>
+                            <Typography sx={detailValueSx}>
+                              {item.delivered_date ? formatDate(item.delivered_date) : '—'}
+                            </Typography>
+                          </Box>
+                          {item.tracking_source && (
+                            <Box>
+                              <Typography sx={detailLabelSx}>Source</Typography>
+                              <Typography sx={{ ...detailValueSx, fontSize: 11, color: 'text.secondary' }}>
+                                {trackingSourceLabel(item.tracking_source)}
+                              </Typography>
+                            </Box>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
+                          {item.vendor_order_number && (
+                            <Box>
+                              <Typography sx={detailLabelSx}>Vendor Order</Typography>
+                              <Typography sx={{ ...detailValueSx, ...monoSx, fontSize: 11 }}>
+                                {item.vendor_order_number}
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      </Paper>
+                    )
+                  })}
+                </Box>
+              )
+            })()}
           </Box>
         </Box>
       </Drawer>

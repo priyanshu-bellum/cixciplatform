@@ -62,7 +62,8 @@ class FulfillmentHandoffSerializer(serializers.ModelSerializer):
         model = FulfillmentHandoff
         fields = [
             "id", "routed_suborder_reference", "vendor_company_reference",
-            "company_scope_reference", "status", "delivery_evidence_reference",
+            "company_scope_reference", "status", "tracking_source",
+            "delivery_evidence_reference",
             # Required Shipping Info Data Specification fields
             "buyer_order_number", "buyer_id", "vendor_order", "shipping_carrier",
             "shipping_tracking_number", "order_status", "shipped_date", "delivered_date",
@@ -487,13 +488,48 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             if not company:
                 return Response({"detail": "User has no company scope."}, status=403)
 
+        # Pre-scan CSV to collect suborder UUIDs, then batch-load all related data
+        import uuid as _uuid
+        all_rows = list(reader)
+        sub_uuids = set()
+        for row in all_rows:
+            if not row or not any(cell(row, idx).strip() for idx in range(len(row)) if cell(row, idx)):
+                continue
+            sv = cell(row, idx_suborder)
+            if sv:
+                try:
+                    sub_uuids.add(_uuid.UUID(sv))
+                except ValueError:
+                    pass
+
+        from apps.routing.models import RoutedSuborder
+        from apps.procurement.models import PurchaseOrderLine
+        from apps.catalog.models import Product
+        from apps.tenant.models import Company as _Company
+
+        _sub_cache = {s.id: s for s in RoutedSuborder.objects.select_related('order').filter(id__in=sub_uuids)} if sub_uuids else {}
+        _order_ids = set(s.order_id for s in _sub_cache.values())
+        _po_lines_by_order = {}
+        if _order_ids:
+            for pl in PurchaseOrderLine.objects.filter(purchase_order_id__in=_order_ids).select_related():
+                _po_lines_by_order.setdefault(pl.purchase_order_id, []).append(pl)
+        _product_ids = set()
+        for lines in _po_lines_by_order.values():
+            for pl in lines:
+                _product_ids.add(pl.product_reference)
+        _product_cache = {p.id: p for p in Product.objects.filter(id__in=_product_ids)} if _product_ids else {}
+        _scope_ids = set(s.order.company_scope_reference for s in _sub_cache.values())
+        _company_cache = {c.id: c for c in _Company.objects.filter(id__in=_scope_ids)} if _scope_ids else {}
+        _handoff_cache = {h.routed_suborder_reference: h for h in
+                          FulfillmentHandoff.objects.filter(routed_suborder_reference__in=sub_uuids)} if sub_uuids else {}
+
         rows_analysis = []
         ops_to_execute = []
         applied = skipped = rejected = 0
         has_rejections = False
         seen_suborders = {}
 
-        for row_idx, row in enumerate(reader, 1):
+        for row_idx, row in enumerate(all_rows, 1):
             if not row or not any(cell(row, idx).strip() for idx in range(len(row)) if cell(row, idx)):
                 continue
 
@@ -519,10 +555,8 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             sub = None
             if row_status == "applied":
                 try:
-                    import uuid as _uuid
                     suborder_uuid = _uuid.UUID(suborder_val)
-                    from apps.routing.models import RoutedSuborder
-                    sub = RoutedSuborder.objects.filter(id=suborder_uuid).first()
+                    sub = _sub_cache.get(suborder_uuid)
                     if sub is None:
                         row_errors.append(f"No suborder found for Suborder {suborder_val}")
                         row_status = "rejected"
@@ -559,19 +593,13 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     row_qty = None
                 
                 if row_status == "applied":
-                    from apps.procurement.models import PurchaseOrderLine
-                    from apps.catalog.models import Product
-                    
-                    po_lines = PurchaseOrderLine.objects.filter(purchase_order_id=sub.order_id)
+                    po_lines = _po_lines_by_order.get(sub.order_id, [])
                     matched_line = None
                     for line in po_lines:
-                        try:
-                            prod = Product.objects.get(id=line.product_reference)
-                            if prod.sku.strip() == sku_val.strip() and upc_matches(prod.upc or "", upc_val):
-                                matched_line = line
-                                break
-                        except Product.DoesNotExist:
-                            continue
+                        prod = _product_cache.get(line.product_reference)
+                        if prod and prod.sku.strip() == sku_val.strip() and upc_matches(prod.upc or "", upc_val):
+                            matched_line = line
+                            break
                             
                     if not matched_line:
                         row_errors.append(f"SKU/UPC mismatch: No line matching SKU '{sku_val}' and UPC '{upc_val}' in order {sub.order_id}")
@@ -583,8 +611,7 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             # Validate Locked Fields
             if row_status == "applied" and sub:
                 buyer_val = cell(row, idx_buyer)
-                from apps.tenant.models import Company
-                buyer_company = Company.objects.filter(id=sub.order.company_scope_reference).first()
+                buyer_company = _company_cache.get(sub.order.company_scope_reference)
                 db_buyer_name = buyer_company.name if buyer_company else ""
                 if buyer_val and buyer_val.strip().lower() != db_buyer_name.strip().lower():
                     row_errors.append(f"mismatch: Buyer '{buyer_val}' does not match original '{db_buyer_name}'")
@@ -631,9 +658,7 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             handoff = None
             if row_status == "applied" and sub:
-                handoff = FulfillmentHandoff.objects.filter(
-                    routed_suborder_reference=sub.id
-                ).first()
+                handoff = _handoff_cache.get(sub.id)
                 if handoff and handoff.status in ("delivered", "closed"):
                     row_status = "skipped"
                     row_errors.append(f"Handoff is already in terminal status '{handoff.status}'")
@@ -795,11 +820,14 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         routed_suborder_reference=sub.id,
                         vendor_company_reference=sub.vendor_company_reference,
                         company_scope_reference=sub.order.company_scope_reference,
-                        status="received"
+                        status="received",
+                        tracking_source="manual_csv",
                     )
                 for k, v in op["updates"].items():
                     setattr(h, k, v)
                 h.status = op["new_status"]
+                if not h.tracking_source:
+                    h.tracking_source = "manual_csv"
                 h.save()
 
                 # Also update RoutedSuborder status
@@ -1709,10 +1737,155 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         })
 
 
+class BuyerShipmentSerializer(serializers.ModelSerializer):
+    """Optimized read-only serializer for buyer shipment tracking."""
+    order_id = serializers.SerializerMethodField()
+    buyer_order_number = serializers.SerializerMethodField()
+    vendor_name = serializers.SerializerMethodField()
+    order_status = serializers.SerializerMethodField()
+    tracking_source_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FulfillmentHandoff
+        fields = [
+            "id", "order_id", "routed_suborder_reference",
+            "buyer_order_number", "vendor_name", "vendor_company_reference",
+            "status", "order_status", "tracking_source", "tracking_source_label",
+            "shipping_carrier", "tracking_number", "vendor_order_number",
+            "shipped_date", "delivered_date", "easypost_tracker_id",
+            "created_at", "updated_at",
+        ]
+
+    def get_order_id(self, obj):
+        cache = self.context.get('_suborder_cache', {})
+        sub = cache.get(obj.routed_suborder_reference)
+        if sub:
+            order = getattr(sub, '_prefetched_order', None) or sub.order
+            return str(order.order_id or order.pk)
+        try:
+            from apps.routing.models import RoutedSuborder
+            sub = RoutedSuborder.objects.select_related('order').filter(id=obj.routed_suborder_reference).first()
+            if sub:
+                return str(sub.order.order_id or sub.order.pk)
+        except Exception:
+            pass
+        return ""
+
+    def get_buyer_order_number(self, obj):
+        cache = self.context.get('_suborder_cache', {})
+        sub = cache.get(obj.routed_suborder_reference)
+        if sub and isinstance(sub.routing_snapshot, dict):
+            return sub.routing_snapshot.get("buyer_order_number", "")
+        try:
+            from apps.routing.models import RoutedSuborder
+            sub = RoutedSuborder.objects.filter(id=obj.routed_suborder_reference).first()
+            if sub and isinstance(sub.routing_snapshot, dict):
+                return sub.routing_snapshot.get("buyer_order_number", "")
+        except Exception:
+            pass
+        return ""
+
+    def get_vendor_name(self, obj):
+        cache = self.context.get('_vendor_cache', {})
+        name = cache.get(obj.vendor_company_reference)
+        if name:
+            return name
+        try:
+            from apps.tenant.models import Company
+            co = Company.objects.filter(id=obj.vendor_company_reference).values_list('name', flat=True).first()
+            return co or ""
+        except Exception:
+            return ""
+
+    def get_order_status(self, obj):
+        status_map = {
+            "received": "Processing", "processing": "Processing",
+            "shipped": "Shipped", "delivered": "Delivered",
+            "exception": "Exception", "closed": "Closed",
+            "tracking_missing": "Processing", "tracking_invalid": "Processing",
+            "review_required": "Processing", "delivery_exception": "Exception",
+        }
+        return status_map.get(str(obj.status).lower(), str(obj.status).capitalize())
+
+    def get_tracking_source_label(self, obj):
+        labels = {"manual_csv": "Manual Upload", "vendor_api": "Vendor API", "easypost": "Carrier Tracking"}
+        return labels.get(obj.tracking_source, "")
+
+
+class BuyerShipmentTrackingViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    Buyer shipment tracking — dedicated B2B endpoint for querying shipment status.
+    Supports filtering by status, date range, and ordering.
+    Rate-limited per buyer company.
+    """
+    serializer_class = BuyerShipmentSerializer
+    action_capability_map = {
+        "list": "fulfillment.handoff.list",
+        "retrieve": "fulfillment.handoff.read",
+    }
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["status", "vendor_company_reference", "tracking_source"]
+    ordering_fields = ["shipped_date", "delivered_date", "updated_at", "created_at"]
+    ordering = ["-updated_at"]
+
+    def get_throttles(self):
+        from config.throttling import BuyerRateThrottle
+        return [BuyerRateThrottle()]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = FulfillmentHandoff.objects.all()
+        is_admin = getattr(user, "is_cixci_admin", False) or (
+            hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
+        )
+        if not is_admin:
+            if not user.entity or not user.entity.company:
+                return qs.none()
+            company = user.entity.company
+            if company.company_type != "buyer":
+                return qs.none()
+            qs = qs.filter(company_scope_reference=company.id)
+
+        shipped_after = self.request.query_params.get("shipped_after")
+        shipped_before = self.request.query_params.get("shipped_before")
+        updated_after = self.request.query_params.get("updated_after")
+        if shipped_after:
+            qs = qs.filter(shipped_date__gte=shipped_after)
+        if shipped_before:
+            qs = qs.filter(shipped_date__lte=shipped_before)
+        if updated_after:
+            qs = qs.filter(updated_at__gte=updated_after)
+        return qs
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['_batch_preload'] = True
+        return ctx
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        items = page if page is not None else list(queryset[:200])
+        sub_ids = [h.routed_suborder_reference for h in items]
+        vendor_ids = list(set(h.vendor_company_reference for h in items))
+        from apps.routing.models import RoutedSuborder
+        from apps.tenant.models import Company
+        subs = {s.id: s for s in RoutedSuborder.objects.select_related('order').filter(id__in=sub_ids)}
+        vendors = dict(Company.objects.filter(id__in=vendor_ids).values_list('id', 'name'))
+        ctx = self.get_serializer_context()
+        ctx['_suborder_cache'] = subs
+        ctx['_vendor_cache'] = vendors
+        serializer = self.get_serializer(items, many=True, context=ctx)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+
 # ─── URLs ─────────────────────────────────────────────────────────────────────
 
 router = DefaultRouter()
 router.register("handoffs", FulfillmentHandoffViewSet, basename="handoff")
+router.register("buyer-shipments", BuyerShipmentTrackingViewSet, basename="buyer-shipment")
 router.register("sla-evaluations", SLAEvaluationRecordViewSet, basename="sla-evaluation")
 router.register("sla-policies", SLAPolicyViewSet, basename="sla-policy")
 router.register("sla-overrides", SLAOverrideViewSet, basename="sla-override")

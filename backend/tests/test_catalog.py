@@ -668,8 +668,9 @@ class TestOutOfStockStatus:
         assert resp.data["rows_failed"] == 1
         assert "was not found for this vendor" in resp.data["errors"][0]["validation_error"]
 
-    def test_bulk_upload_compatibility_fields(self, vendor_client, vendor_user):
+    def test_bulk_upload_compatibility_fields(self, vendor_client, vendor_user, approve_supplier_brand):
         """Test bulk upload endpoint parsing separate compatibility columns and validation."""
+        approve_supplier_brand(vendor_user.company, 'TestBrand')
         import io
         from apps.catalog.models import DynamicDropdownConfig, Product
 
@@ -1066,8 +1067,9 @@ class TestGovernanceAndCompatibilityImport:
         assert resp.data["results"][0]["sku"] == "SEARCH-SKU-123"
 
     @pytest.mark.django_db
-    def test_bulk_upload_comma_separated_device_compatibility(self, vendor_client, vendor_user):
+    def test_bulk_upload_comma_separated_device_compatibility(self, vendor_client, vendor_user, approve_supplier_brand):
         """Verify that comma-separated compatibility fields split and associate correct devices."""
+        approve_supplier_brand(vendor_user.company, 'TestBrand')
         import io
         from apps.devices.models import Device, Manufacturer, DeviceType
         from apps.catalog.models import Product, ProductCompatibilityAssertion, DynamicDropdownConfig
@@ -1181,8 +1183,9 @@ class TestGovernanceAndCompatibilityImport:
 
 
     @pytest.mark.django_db
-    def test_bulk_upload_strict_compatibility_and_status_assignment(self, vendor_client, vendor_user):
+    def test_bulk_upload_strict_compatibility_and_status_assignment(self, vendor_client, vendor_user, approve_supplier_brand):
         """Verify that bulk upload fails on invalid/non-existent device names, and correctly sets active/inactive status."""
+        approve_supplier_brand(vendor_user.company, 'TestBrand')
         import io
         from apps.catalog.models import Product, ProductStatus
         from apps.devices.models import Device, Manufacturer, DeviceType
@@ -1251,8 +1254,9 @@ class TestGovernanceAndCompatibilityImport:
         prod_inactive = Product.objects.get(sku="CASE-SKU-INACTIVE")
         assert prod_inactive.status == ProductStatus.INACTIVE
 
-    def test_bulk_upload_chargers_multiple_devices_compatibility(self, vendor_client, vendor_user):
+    def test_bulk_upload_chargers_multiple_devices_compatibility(self, vendor_client, vendor_user, approve_supplier_brand):
         """Test bulk upload of Chargers & Cables with comma-separated list of devices in Device Compatibility."""
+        approve_supplier_brand(vendor_user.company, 'testcomm')
         import io
         from apps.catalog.models import DynamicDropdownConfig, Product
         from apps.devices.models import Device, DeviceType, Manufacturer
