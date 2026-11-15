@@ -9,7 +9,7 @@ This document is proposal-level architecture. It clarifies Product Catalog modul
 - Which CIXCI platform product records exist for authorized vendor, buyer, tenant, parent, child entity, or system admin scope.
 - Which vendor-submitted accessory facts were accepted by Product Catalog governance and what source/version supplied them.
 - What Vendor Product Identity, Product Identifier, External Product Identifier, Identifier Namespace, and Vendor SKU Mapping records are attached to a product or variant.
-- What Product Type, Product Type Profile reference, category, taxonomy, attributes, structured colors, normalized System Colors, and variant attributes apply.
+- What Product Type, Product Type Profile reference, category, taxonomy, series (product series or line grouping), attributes, structured colors, normalized System Colors, and variant attributes apply.
 - What Product Lifecycle State is recorded: Inactive, Active, End of Life, Archived, or Review Required placeholder.
 - What Product Availability State is recorded: In Stock, Low Stock, Out of Stock, Backorder Available, or Temporarily Unavailable.
 - What Availability Evidence Record supports catalog display or eligibility signals.

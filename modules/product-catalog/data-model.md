@@ -147,7 +147,7 @@ Represents the Product Catalog-owned CIXCI platform product record for an accept
 
 Proposal-level fields:
 
-- Product id, product master id, current lifecycle state, publication state, visibility summary, source vendor scope, Product Type, and version.
+- Product id, product master id, current lifecycle state, publication state, visibility summary, source vendor scope, Product Type, series (product series or line grouping), and version.
 - Vendor authority/source reference for accepted vendor-submitted facts.
 - Release Date, Launch Date, EOL Date, and archival reference where applicable.
 - Current availability state where accepted as catalog availability evidence.

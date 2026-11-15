@@ -158,6 +158,7 @@ class Product(models.Model):
 
     # Identity
     name = models.CharField(max_length=300)
+    series = models.CharField(max_length=255, blank=True, default="")
     sku = models.CharField(max_length=200, db_index=True)
     brand = models.CharField(max_length=200, blank=True)
     brand_reference = models.ForeignKey(Brand, null=True, blank=True, on_delete=models.PROTECT, related_name="offers")

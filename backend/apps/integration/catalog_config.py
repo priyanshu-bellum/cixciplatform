@@ -16,7 +16,7 @@ BALAJI_CONFIG = {
     "category_map": {}, "default_category": "",
 }
 
-TARGETS = {"external_id", "sku", "name", "brand", "upc", "description", "color", "vendor_category", "msrp", "map_price", "sale_price",
+TARGETS = {"external_id", "sku", "name", "series", "brand", "upc", "description", "color", "vendor_category", "msrp", "map_price", "sale_price",
     "vendor_wholesale_price_amount", "vendor_wholesale_price_currency", "inventory_level", "launch_date", "release_date", "eol_date",
     "compatibility_declaration", "images", "bluetooth_compatibility", "headphone_jack_compatibility", "compatible_charging_interface",
     "wireless_charging_compatibility", "storage_expansion_compatibility", "memory_capacity", "compatible_watch_case_size"}

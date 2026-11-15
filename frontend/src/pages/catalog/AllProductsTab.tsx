@@ -132,7 +132,7 @@ export default function AllProductsTab({
       })
       const allProducts = Array.isArray(res.data) ? res.data : res.data?.results ?? []
       const wsData = allProducts.map((p: any) => ({
-        'Product Name': p.name, SKU: p.sku, UPC: p.upc, Brand: p.brand,
+        'Product Name': p.name, Series: p.series || '', SKU: p.sku, UPC: p.upc, Brand: p.brand,
         'Product Category': p.product_category, Status: p.status,
         MSRP: p.msrp, 'Wholesale Price': p.vendor_wholesale_price_amount,
         'MAP Price': p.map_price, Color: p.color, 'System Color': p.system_color,

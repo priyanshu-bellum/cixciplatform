@@ -491,6 +491,7 @@ export default function ProductFormDialog({
 
       const payload: Record<string, any> = {
         name: form.prodName.trim(),
+        series: form.prodSeries.trim(),
         sku: form.prodSku.trim(),
         brand: form.prodBrand.trim(),
         product_type: form.prodType || 'accessory',
@@ -660,6 +661,15 @@ export default function ProductFormDialog({
                 placeholder="SKU"
               />
             </Box>
+
+            <TextField
+              size="small"
+              fullWidth
+              label="Series"
+              value={form.prodSeries}
+              onChange={e => form.setProdSeries(e.target.value)}
+              placeholder="Product series (e.g. Galaxy S, iPhone 15)"
+            />
 
             <Box sx={gridTwoCol}>
               {isVendor ? (

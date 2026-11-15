@@ -8,6 +8,7 @@ export interface ProductsPageResponse {
 export interface Product {
   id: string
   name: string
+  series?: string
   sku: string
   upc?: string
   brand?: string

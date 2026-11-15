@@ -264,7 +264,7 @@ class ProductListSerializer(ProductSerializerBase):
     class Meta:
         model = Product
         fields = [
-            "id", "name", "sku", "upc", "brand", "brand_reference", "product_type",
+            "id", "name", "series", "sku", "upc", "brand", "brand_reference", "product_type",
             "product_category", "vendor_category",  # Category Governance
             "vendor_category_raw", "product_category_override",
             "category_validation_status",
@@ -480,6 +480,7 @@ class ProductDetailSerializer(ProductSerializerBase):
             # Identifiers
             "id",
             "name",
+            "series",
             "sku",
             "upc",
 
@@ -1734,6 +1735,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         columns = [
             ("Brand", 22),
             ("Product Name", 35),
+            ("Series", 22),
             ("Product Status", 18),
             ("EOL Date", 16),
             ("Product Category", 28),
@@ -1856,6 +1858,29 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         response["Content-Disposition"] = 'attachment; filename="CIXCI_Bulk_Upload_Template.xlsx"'
         wb.save(response)
         return response
+
+    @action(detail=False, methods=["post"], url_path="check-skus")
+    def check_skus(self, request):
+        """Return which SKUs already exist for a vendor.
+
+        Used by the import preview to label rows as CREATE vs UPDATE.
+        """
+        skus = request.data.get("skus", [])
+        vendor_company_id = request.data.get("vendor_company_reference")
+        if not vendor_company_id:
+            vendor_company_id = (
+                request.user.entity.company_id
+                if (request.user.entity and request.user.entity.company)
+                else None
+            )
+        if not vendor_company_id or not skus:
+            return Response({"existing": []})
+        existing = list(
+            Product.objects.filter(
+                sku__in=skus, vendor_company_reference=vendor_company_id
+            ).values_list("sku", flat=True)
+        )
+        return Response({"existing": existing})
 
     @action(detail=False, methods=["post"])
     @transaction.atomic
@@ -2002,6 +2027,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         passed_count = 0
         failed_count = 0
         staged_count = 0
+        created_count = 0
+        updated_count = 0
         
         seen_skus = set()
         seen_upcs = set()
@@ -2033,7 +2060,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 update_mode = "create_only"
             elif raw_mode in ["update existing products only", "update_only", "update_existing"]:
                 update_mode = "update_only"
-            elif raw_mode in ["create and update / upsert", "upsert", "create_update"]:
+            elif raw_mode in ["create and update / upsert", "upsert", "create_update", "create_and_update"]:
                 update_mode = "upsert"
             else:
                 update_mode = "upsert"
@@ -2113,10 +2140,13 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         "validation_error": f"Product with SKU ‘{sku}’ was not found for this vendor. Please confirm the SKU or import the product as a new product.",
                         "recommended_correction": "Check the SKU or change the import mode."
                     })
-                
+
+            is_new_row = product is None
+            is_update_row = product is not None
+
             # --- Product Name ---
             name = str(row.get("productname") or row.get("accessoryname") or row.get("name") or "").strip()
-            if not name:
+            if not name and is_new_row:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Product Name",
@@ -2125,6 +2155,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "recommended_correction": "Provide a readable, customer-facing product name."
                 })
                 
+            # --- Series ---
+            series = str(row.get("series") or "").strip()
+
             # --- Brand ---
             brand = str(row.get("brand") or "").strip()
             brand_reference = supplier_brands.get(' '.join(brand.split()).casefold())
@@ -2134,7 +2167,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     'row_number': row_num, 'column_name': 'Brand', 'submitted_value': brand,
                     'validation_error': 'An active approved Owned or Authorized Distributor Brand relationship is required for this supplier.',
                     'recommended_correction': 'Ask CIXCI Admin to configure the supplier Brand relationship.'})
-            if not brand:
+            if not brand and is_new_row:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Brand",
@@ -2174,7 +2207,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             # --- Launch Date ---
             launch_raw = row.get("launchdate")
             launch_date = parse_date_value(launch_raw)
-            if not launch_date:
+            if not launch_date and is_new_row:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Launch Date",
@@ -2198,7 +2231,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             release_raw = row.get("releasedate")
             release_date = parse_date_value(release_raw) if release_raw else None
             if launch_date and launch_date > today_est and launch_date.year != 9999:
-                if not release_date:
+                if not release_date and is_new_row:
                     row_errors.append({
                         "row_number": row_num,
                         "column_name": "Release Date",
@@ -2219,7 +2252,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             eol_raw = row.get("eoldate")
             eol_date = parse_date_value(eol_raw) if eol_raw else None
             if status_str == "eol":
-                if not eol_date:
+                if not eol_date and is_new_row:
                     row_errors.append({
                         "row_number": row_num,
                         "column_name": "EOL Date",
@@ -2257,7 +2290,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             product_category = None  # Canonical CIXCI category
             category_validation = CategoryValidationStatus.PENDING
 
-            if not category_raw:
+            if not category_raw and is_new_row:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Product Category",
@@ -2265,7 +2298,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "validation_error": "Product Category must not be blank.",
                     "recommended_correction": "Specify a valid vendor category."
                 })
-            else:
+            elif category_raw:
                 # Product Category is the canonical choice. An optional Vendor
                 # Category cannot silently redirect it through a mapping.
                 canonical = DynamicDropdownConfig.objects.filter(field_name="product_category", value__iexact=category_raw, status="active").first()
@@ -2304,7 +2337,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             upc_val = str(row.get("upc") or "").strip()
             if upc_val.endswith(".0"):
                 upc_val = upc_val[:-2]
-            if not upc_val:
+            if not upc_val and is_new_row:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "UPC",
@@ -2312,7 +2345,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "validation_error": "UPC must not be blank.",
                     "recommended_correction": "Provide a 12-digit numeric UPC."
                 })
-            elif len(upc_val) != 12 or not upc_val.isdigit():
+            elif upc_val and (len(upc_val) != 12 or not upc_val.isdigit()):
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "UPC",
@@ -2413,7 +2446,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             map_price = parse_decimal_value(row.get("mapprice"))
             sale_price = parse_decimal_value(row.get("saleprice"))
             
-            if wholesale_price is None:
+            if wholesale_price is None and is_new_row:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Vendor Wholesale Price",
@@ -2421,7 +2454,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "validation_error": "Vendor Wholesale Price must not be blank.",
                     "recommended_correction": "Provide a numeric wholesale price."
                 })
-            elif wholesale_price <= 0:
+            elif wholesale_price is not None and wholesale_price <= 0:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Vendor Wholesale Price",
@@ -2430,7 +2463,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "recommended_correction": "Provide a positive price value."
                 })
                 
-            if msrp is None:
+            if msrp is None and is_new_row:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "MSRP",
@@ -2438,7 +2471,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     "validation_error": "MSRP must not be blank.",
                     "recommended_correction": "Provide a numeric MSRP."
                 })
-            elif msrp <= 0:
+            elif msrp is not None and msrp <= 0:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "MSRP",
@@ -2594,7 +2627,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             description = str(row.get("productdescription") or row.get("description") or "").strip()
             short_desc = str(row.get("shortdescription") or "").strip()
             
-            if not description:
+            if not description and is_new_row:
                 row_errors.append({
                     "row_number": row_num,
                     "column_name": "Product Description",
@@ -2656,8 +2689,12 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
             # --- Non-critical enrichment defaults ---
             recommended = parse_bool_value(row.get("recommendedaccessory") or row.get("recommendedacccessory"))
-            inventory = parse_int_value(row.get("inventorylevel")) if row.get("inventorylevel") is not None and str(row.get("inventorylevel")).strip() != "" else 0
-            inventory_threshold = parse_int_value(row.get("inventorythreshold")) or 0
+            _inv_raw = row.get("inventorylevel")
+            _inv_supplied = _inv_raw is not None and str(_inv_raw).strip() != ""
+            inventory = parse_int_value(_inv_raw) if _inv_supplied else (0 if is_new_row else None)
+            _invt_raw = row.get("inventorythreshold")
+            _invt_supplied = _invt_raw is not None and str(_invt_raw).strip() != ""
+            inventory_threshold = parse_int_value(_invt_raw) if _invt_supplied else (0 if is_new_row else None)
             warranty = row.get("brandwarranty") or row.get("warranty") or ""
             meta_t = row.get("metatitle") or ""
             meta_d = row.get("metadescription") or ""
@@ -2863,44 +2900,118 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         company_scope_reference=vendor_company_id
                     )
                 
-                product.name = cleaned_name
-                product.brand = brand
-                # The approved supplier relationship, not the display label or
-                # another supplier's matching SKU, supplies canonical identity.
-                product.brand_reference = brand_reference
-                product.product_type = product_type
-                # Category Governance
-                product.product_category = product_category  # Canonical CIXCI category
-                product.vendor_category = vendor_category    # Trimmed vendor category (for matching)
-                product.vendor_category_raw = vendor_category_raw_val  # Exact input (for audit)
-                product.category_validation_status = category_validation  # Separate from product status
-                product.description = cleaned_desc
-                product.short_description = cleaned_short_desc
-                product.promo_information = promo_info
-                product.upc = upc_val
-                product.color = color
-                product.system_color = sys_color
-                product.vendor_wholesale_price_amount = wholesale_price
-                product.vendor_wholesale_price_currency = "USD"
-                product.msrp = msrp
-                product.map_price = map_price
-                product.sale_price = sale_price
-                product.launch_date = launch_date
-                product.release_date = release_date
-                product.eol_date = eol_date
-                product.recommended_accessory = recommended
-                product.inventory_level = inventory
-                product.inventory_threshold = inventory_threshold
-                product.length = length
-                product.width = width
-                product.height = height
-                product.weight = weight
-                product.warranty = warranty
-                product.meta_title = cleaned_meta_t
-                product.meta_description = cleaned_meta_d
-                product.media_references = media_refs
-                product.status = final_status
-                product.selling_status = "for_sale" if final_status == "active" else "not_for_sale"
+                # Helper: True when the raw CSV cell has a non-blank value.
+                # Zero counts as supplied (§7: Zero Is Not Blank).
+                def _supplied(*keys):
+                    return any(row.get(k) is not None and str(row.get(k)).strip() != "" for k in keys)
+
+                if is_new:
+                    # CREATE: set all fields unconditionally
+                    product.name = cleaned_name
+                    product.series = series
+                    product.brand = brand
+                    product.brand_reference = brand_reference
+                    product.product_type = product_type
+                    product.product_category = product_category
+                    product.vendor_category = vendor_category
+                    product.vendor_category_raw = vendor_category_raw_val
+                    product.category_validation_status = category_validation
+                    product.description = cleaned_desc
+                    product.short_description = cleaned_short_desc
+                    product.promo_information = promo_info
+                    product.upc = upc_val
+                    product.color = color
+                    product.system_color = sys_color
+                    product.vendor_wholesale_price_amount = wholesale_price
+                    product.vendor_wholesale_price_currency = "USD"
+                    product.msrp = msrp
+                    product.map_price = map_price
+                    product.sale_price = sale_price
+                    product.launch_date = launch_date
+                    product.release_date = release_date
+                    product.eol_date = eol_date
+                    product.recommended_accessory = recommended
+                    product.inventory_level = inventory
+                    product.inventory_threshold = inventory_threshold
+                    product.length = length
+                    product.width = width
+                    product.height = height
+                    product.weight = weight
+                    product.warranty = warranty
+                    product.meta_title = cleaned_meta_t
+                    product.meta_description = cleaned_meta_d
+                    product.media_references = media_refs
+                    product.status = final_status
+                    product.selling_status = "for_sale" if final_status == "active" else "not_for_sale"
+                else:
+                    # UPDATE: Blank Field Protection (§5-§8)
+                    # Only update fields intentionally supplied (non-blank).
+                    # Blank/null/omitted = No Change.
+                    if _supplied("productname", "accessoryname", "name"):
+                        product.name = cleaned_name
+                    if _supplied("series"):
+                        product.series = series
+                    if _supplied("brand"):
+                        product.brand = brand
+                        product.brand_reference = brand_reference
+                    if _supplied("producttype"):
+                        product.product_type = product_type
+                    if _supplied("productcategory", "category"):
+                        product.product_category = product_category
+                        product.vendor_category = vendor_category
+                        product.vendor_category_raw = vendor_category_raw_val
+                        product.category_validation_status = category_validation
+                    if _supplied("productdescription", "description"):
+                        product.description = cleaned_desc
+                    if _supplied("shortdescription"):
+                        product.short_description = cleaned_short_desc
+                    if _supplied("promoinformation"):
+                        product.promo_information = promo_info
+                    if _supplied("upc"):
+                        product.upc = upc_val
+                    if _supplied("color"):
+                        product.color = color
+                    if _supplied("systemcolor"):
+                        product.system_color = sys_color
+                    if _supplied("vendorwholesaleprice", "wholesaleprice", "vendorwholesalepriceamount"):
+                        product.vendor_wholesale_price_amount = wholesale_price
+                    if _supplied("msrp"):
+                        product.msrp = msrp
+                    if _supplied("mapprice"):
+                        product.map_price = map_price
+                    if _supplied("saleprice"):
+                        product.sale_price = sale_price
+                    if _supplied("launchdate"):
+                        product.launch_date = launch_date
+                    if _supplied("releasedate"):
+                        product.release_date = release_date
+                    if _supplied("eoldate"):
+                        product.eol_date = eol_date
+                    if _supplied("recommendedaccessory", "recommendedacccessory"):
+                        product.recommended_accessory = recommended
+                    if inventory is not None:
+                        product.inventory_level = inventory
+                    if inventory_threshold is not None:
+                        product.inventory_threshold = inventory_threshold
+                    if _supplied("length"):
+                        product.length = length
+                    if _supplied("width"):
+                        product.width = width
+                    if _supplied("height"):
+                        product.height = height
+                    if _supplied("weight"):
+                        product.weight = weight
+                    if _supplied("brandwarranty", "warranty"):
+                        product.warranty = warranty
+                    if _supplied("metatitle"):
+                        product.meta_title = cleaned_meta_t
+                    if _supplied("metadescription"):
+                        product.meta_description = cleaned_meta_d
+                    if media_refs:
+                        product.media_references = media_refs
+                    if _supplied("productstatus", "status"):
+                        product.status = final_status
+                        product.selling_status = "for_sale" if final_status == "active" else "not_for_sale"
                 
                 try:
                     from apps.catalog.compatibility_import import apply_import_values
@@ -3037,17 +3148,16 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
 
                 products_created.append(product)
-                
+                if is_new:
+                    created_count += 1
+                else:
+                    updated_count += 1
 
 
         # 3. Save import details to the audit trail
-        if validation_errors:
-            transaction.savepoint_rollback(sid)
-            products_created = []
-            passed_count = 0
-            staged_count = 0
-        else:
-            transaction.savepoint_commit(sid)
+        # Partial success (§24): valid rows succeed even when others fail.
+        # Only rows that passed validation reached the save block.
+        transaction.savepoint_commit(sid)
 
         log_catalog_audit(
             event_code="catalog.product.bulk_import",
@@ -3074,6 +3184,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             "rows_passed": passed_count,
             "rows_failed": failed_count,
             "rows_staged": staged_count,
+            "rows_created": created_count,
+            "rows_updated": updated_count,
             "errors": validation_errors,
             "products": ProductListSerializer(products_created, many=True, context=self.get_serializer_context()).data,
             "compatibility_results": compatibility_results,

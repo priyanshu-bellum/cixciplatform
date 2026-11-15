@@ -2026,6 +2026,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProductList'
           description: ''
+  /api/v1/catalog/products/check-skus/:
+    post:
+      operationId: v1_catalog_products_check_skus_create
+      description: |-
+        Return which SKUs already exist for a vendor.
+
+        Used by the import preview to label rows as CREATE vs UPDATE.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductListRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProductListRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProductListRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductList'
+          description: ''
   /api/v1/catalog/products/ids/:
     get:
       operationId: v1_catalog_products_ids_retrieve
@@ -16628,7 +16660,7 @@ components:
           readOnly: true
         channel:
           allOf:
-          - $ref: '#/components/schemas/ChannelFfdEnum'
+          - $ref: '#/components/schemas/Channel4feEnum'
           readOnly: true
         buyer_facing_price:
           type: string
@@ -16824,6 +16856,11 @@ components:
           type: string
           format: date
           nullable: true
+        easypost_tracker_id:
+          type: string
+          description: EasyPost tracker ID — populated when EasyPost takes over tracking
+            for this shipment
+          maxLength: 100
         created_at:
           type: string
           format: date-time
@@ -17029,21 +17066,7 @@ components:
         * `admin_on_behalf` - Admin On Behalf
         * `service_identity_sync` - Service Identity Sync
         * `system_correction` - System Correction
-    Channel368Enum:
-      enum:
-      - email
-      - in_app
-      - sms
-      - webhook
-      - push
-      type: string
-      description: |-
-        * `email` - Email
-        * `in_app` - In-App
-        * `sms` - SMS (placeholder)
-        * `webhook` - Webhook / External (placeholder)
-        * `push` - Push Notification (placeholder)
-    ChannelFfdEnum:
+    Channel4feEnum:
       enum:
       - online_dtc
       - bulk_po
@@ -17063,6 +17086,20 @@ components:
         * `retail_pos` - Retail POS (placeholder)
         * `promotional` - Promotional Campaign (placeholder)
         * `buyer_contract` - Buyer-Specific Contract (placeholder)
+    Channel71eEnum:
+      enum:
+      - email
+      - in_app
+      - sms
+      - webhook
+      - push
+      type: string
+      description: |-
+        * `email` - Email
+        * `in_app` - In-App
+        * `sms` - SMS (placeholder)
+        * `webhook` - Webhook / External (placeholder)
+        * `push` - Push Notification (placeholder)
     ChildOnboardingRequest:
       type: object
       properties:
@@ -17091,12 +17128,9 @@ components:
           type: string
           maxLength: 255
         website:
-          oneOf:
-          - type: string
-            format: uri
-            maxLength: 255
-          - type: string
-            maxLength: 0
+          type: string
+          format: uri
+          maxLength: 255
         region:
           type: string
           maxLength: 50
@@ -17163,12 +17197,9 @@ components:
           minLength: 1
           maxLength: 255
         website:
-          oneOf:
-          - type: string
-            format: uri
-            maxLength: 255
-          - type: string
-            maxLength: 0
+          type: string
+          format: uri
+          maxLength: 255
         region:
           type: string
           minLength: 1
@@ -17368,12 +17399,9 @@ components:
           description: External system ID reference
           maxLength: 255
         website:
-          oneOf:
-          - type: string
-            format: uri
-            maxLength: 255
-          - type: string
-            maxLength: 0
+          type: string
+          format: uri
+          maxLength: 255
         business_email_domain:
           type: string
           maxLength: 255
@@ -17381,12 +17409,9 @@ components:
           type: string
           maxLength: 255
         primary_contact_email:
-          oneOf:
-          - type: string
-            format: email
-            maxLength: 255
-          - type: string
-            maxLength: 0
+          type: string
+          format: email
+          maxLength: 255
         phone_number:
           type: string
           maxLength: 50
@@ -17510,7 +17535,7 @@ components:
           type: string
           maxLength: 255
         status:
-          $ref: '#/components/schemas/Status99bEnum'
+          $ref: '#/components/schemas/Status28cEnum'
         allowed_channels_override:
           nullable: true
           description: If set, overrides company-level channel eligibility for this
@@ -17559,7 +17584,7 @@ components:
           minLength: 1
           maxLength: 255
         status:
-          $ref: '#/components/schemas/Status99bEnum'
+          $ref: '#/components/schemas/Status28cEnum'
         allowed_channels_override:
           nullable: true
           description: If set, overrides company-level channel eligibility for this
@@ -17682,12 +17707,9 @@ components:
           description: External system ID reference
           maxLength: 255
         website:
-          oneOf:
-          - type: string
-            format: uri
-            maxLength: 255
-          - type: string
-            maxLength: 0
+          type: string
+          format: uri
+          maxLength: 255
         business_email_domain:
           type: string
           maxLength: 255
@@ -17695,12 +17717,9 @@ components:
           type: string
           maxLength: 255
         primary_contact_email:
-          oneOf:
-          - type: string
-            format: email
-            maxLength: 255
-          - type: string
-            maxLength: 0
+          type: string
+          format: email
+          maxLength: 255
         phone_number:
           type: string
           maxLength: 50
@@ -18140,7 +18159,7 @@ components:
           type: string
           format: uuid
         channel:
-          $ref: '#/components/schemas/Channel368Enum'
+          $ref: '#/components/schemas/Channel71eEnum'
         status:
           $ref: '#/components/schemas/DeliveryAttemptStatusEnum'
         provider_name:
@@ -18620,7 +18639,7 @@ components:
           type: string
           maxLength: 255
         status:
-          $ref: '#/components/schemas/Status99bEnum'
+          $ref: '#/components/schemas/Status28cEnum'
         address_line1:
           type: string
           maxLength: 255
@@ -18683,7 +18702,7 @@ components:
           minLength: 1
           maxLength: 255
         status:
-          $ref: '#/components/schemas/Status99bEnum'
+          $ref: '#/components/schemas/Status28cEnum'
         address_line1:
           type: string
           maxLength: 255
@@ -18796,7 +18815,7 @@ components:
           type: string
           format: uuid
         channel:
-          $ref: '#/components/schemas/ChannelFfdEnum'
+          $ref: '#/components/schemas/Channel4feEnum'
         vendor_wholesale_price:
           type: string
           format: decimal
@@ -18876,7 +18895,6 @@ components:
         status:
           type: string
           readOnly: true
-          default: active
         pricing_snapshot_reference:
           type: string
           format: uuid
@@ -19021,7 +19039,7 @@ components:
         connector_type:
           $ref: '#/components/schemas/ConnectorTypeEnum'
         status:
-          $ref: '#/components/schemas/Status99bEnum'
+          $ref: '#/components/schemas/Status28cEnum'
         label:
           type: string
           maxLength: 200
@@ -19045,7 +19063,7 @@ components:
         connector_type:
           $ref: '#/components/schemas/ConnectorTypeEnum'
         status:
-          $ref: '#/components/schemas/Status99bEnum'
+          $ref: '#/components/schemas/Status28cEnum'
         label:
           type: string
           minLength: 1
@@ -19679,7 +19697,7 @@ components:
         invoice_type:
           $ref: '#/components/schemas/InvoiceTypeEnum'
         status:
-          $ref: '#/components/schemas/Status173Enum'
+          $ref: '#/components/schemas/Status281Enum'
         counterparty_role:
           type: string
           description: buyer | vendor
@@ -19842,7 +19860,7 @@ components:
         invoice_type:
           $ref: '#/components/schemas/InvoiceTypeEnum'
         status:
-          $ref: '#/components/schemas/Status173Enum'
+          $ref: '#/components/schemas/Status281Enum'
         counterparty_role:
           type: string
           description: buyer | vendor
@@ -19890,7 +19908,7 @@ components:
         invoice_type:
           $ref: '#/components/schemas/InvoiceTypeEnum'
         status:
-          $ref: '#/components/schemas/Status173Enum'
+          $ref: '#/components/schemas/Status281Enum'
         counterparty_role:
           type: string
           minLength: 1
@@ -20558,7 +20576,7 @@ components:
           maxLength: 200
         channel:
           oneOf:
-          - $ref: '#/components/schemas/Channel368Enum'
+          - $ref: '#/components/schemas/Channel71eEnum'
           - $ref: '#/components/schemas/BlankEnum'
         is_enabled:
           type: boolean
@@ -20604,7 +20622,7 @@ components:
           maxLength: 200
         channel:
           oneOf:
-          - $ref: '#/components/schemas/Channel368Enum'
+          - $ref: '#/components/schemas/Channel71eEnum'
           - $ref: '#/components/schemas/BlankEnum'
         is_enabled:
           type: boolean
@@ -20649,7 +20667,7 @@ components:
           type: string
           maxLength: 150
         channel:
-          $ref: '#/components/schemas/Channel368Enum'
+          $ref: '#/components/schemas/Channel71eEnum'
         idempotency_key:
           type: string
           maxLength: 255
@@ -20687,7 +20705,7 @@ components:
           minimum: 0
           default: 1
         channel:
-          $ref: '#/components/schemas/Channel368Enum'
+          $ref: '#/components/schemas/Channel71eEnum'
         event_type:
           type: string
           description: Source event that triggers this template
@@ -20736,7 +20754,7 @@ components:
           minimum: 0
           default: 1
         channel:
-          $ref: '#/components/schemas/Channel368Enum'
+          $ref: '#/components/schemas/Channel71eEnum'
         event_type:
           type: string
           minLength: 1
@@ -20996,11 +21014,8 @@ components:
         last_name:
           type: string
         email:
-          oneOf:
-          - type: string
-            format: email
-          - type: string
-            maxLength: 0
+          type: string
+          format: email
         address1:
           type: string
         address2:
@@ -21065,11 +21080,8 @@ components:
         last_name:
           type: string
         email:
-          oneOf:
-          - type: string
-            format: email
-          - type: string
-            maxLength: 0
+          type: string
+          format: email
         address1:
           type: string
         address2:
@@ -22567,12 +22579,9 @@ components:
           minLength: 1
           maxLength: 255
         website:
-          oneOf:
-          - type: string
-            format: uri
-            maxLength: 255
-          - type: string
-            maxLength: 0
+          type: string
+          format: uri
+          maxLength: 255
         region:
           type: string
           minLength: 1
@@ -22647,7 +22656,7 @@ components:
           minLength: 1
           maxLength: 255
         status:
-          $ref: '#/components/schemas/Status99bEnum'
+          $ref: '#/components/schemas/Status28cEnum'
         allowed_channels_override:
           nullable: true
           description: If set, overrides company-level channel eligibility for this
@@ -22707,12 +22716,9 @@ components:
           description: External system ID reference
           maxLength: 255
         website:
-          oneOf:
-          - type: string
-            format: uri
-            maxLength: 255
-          - type: string
-            maxLength: 0
+          type: string
+          format: uri
+          maxLength: 255
         business_email_domain:
           type: string
           maxLength: 255
@@ -22720,12 +22726,9 @@ components:
           type: string
           maxLength: 255
         primary_contact_email:
-          oneOf:
-          - type: string
-            format: email
-            maxLength: 255
-          - type: string
-            maxLength: 0
+          type: string
+          format: email
+          maxLength: 255
         phone_number:
           type: string
           maxLength: 50
@@ -22927,7 +22930,7 @@ components:
           minLength: 1
           maxLength: 255
         status:
-          $ref: '#/components/schemas/Status99bEnum'
+          $ref: '#/components/schemas/Status28cEnum'
         address_line1:
           type: string
           maxLength: 255
@@ -22987,7 +22990,7 @@ components:
         connector_type:
           $ref: '#/components/schemas/ConnectorTypeEnum'
         status:
-          $ref: '#/components/schemas/Status99bEnum'
+          $ref: '#/components/schemas/Status28cEnum'
         label:
           type: string
           minLength: 1
@@ -23125,7 +23128,7 @@ components:
         invoice_type:
           $ref: '#/components/schemas/InvoiceTypeEnum'
         status:
-          $ref: '#/components/schemas/Status173Enum'
+          $ref: '#/components/schemas/Status281Enum'
         counterparty_role:
           type: string
           minLength: 1
@@ -23301,7 +23304,7 @@ components:
           maxLength: 200
         channel:
           oneOf:
-          - $ref: '#/components/schemas/Channel368Enum'
+          - $ref: '#/components/schemas/Channel71eEnum'
           - $ref: '#/components/schemas/BlankEnum'
         is_enabled:
           type: boolean
@@ -23330,7 +23333,7 @@ components:
           minimum: 0
           default: 1
         channel:
-          $ref: '#/components/schemas/Channel368Enum'
+          $ref: '#/components/schemas/Channel71eEnum'
         event_type:
           type: string
           minLength: 1
@@ -23403,9 +23406,9 @@ components:
           nullable: true
           description: Null = platform-default profile for this vendor
         channel:
-          $ref: '#/components/schemas/ChannelFfdEnum'
+          $ref: '#/components/schemas/Channel4feEnum'
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         vendor_side_commission_rate:
           type: string
           format: decimal
@@ -23449,6 +23452,9 @@ components:
           type: string
           minLength: 1
           maxLength: 300
+        series:
+          type: string
+          maxLength: 255
         sku:
           type: string
           minLength: 1
@@ -23536,7 +23542,7 @@ components:
           pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
           nullable: true
         status:
-          $ref: '#/components/schemas/StatusF0cEnum'
+          $ref: '#/components/schemas/Status920Enum'
         selling_status:
           $ref: '#/components/schemas/SellingStatusEnum'
         launch_date:
@@ -23808,7 +23814,7 @@ components:
           minLength: 1
           maxLength: 100
         status:
-          $ref: '#/components/schemas/Status5c7Enum'
+          $ref: '#/components/schemas/Status516Enum'
         return_received_date:
           type: string
           format: date-time
@@ -23860,7 +23866,7 @@ components:
           type: string
           format: uuid
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         response_window_hours:
           type: integer
           maximum: 2147483647
@@ -23999,7 +24005,7 @@ components:
           type: string
           format: uuid
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         delivery_method:
           type: string
           minLength: 1
@@ -24045,7 +24051,7 @@ components:
         fee_type:
           $ref: '#/components/schemas/FeeTypeEnum'
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         effective_from:
           type: string
           format: date-time
@@ -24190,9 +24196,9 @@ components:
           nullable: true
           description: Null = platform-default profile for this vendor
         channel:
-          $ref: '#/components/schemas/ChannelFfdEnum'
+          $ref: '#/components/schemas/Channel4feEnum'
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         vendor_side_commission_rate:
           type: string
           format: decimal
@@ -24248,9 +24254,9 @@ components:
           nullable: true
           description: Null = platform-default profile for this vendor
         channel:
-          $ref: '#/components/schemas/ChannelFfdEnum'
+          $ref: '#/components/schemas/Channel4feEnum'
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         vendor_side_commission_rate:
           type: string
           format: decimal
@@ -24300,6 +24306,9 @@ components:
         name:
           type: string
           maxLength: 300
+        series:
+          type: string
+          maxLength: 255
         sku:
           type: string
           maxLength: 200
@@ -24388,7 +24397,7 @@ components:
           pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
           nullable: true
         status:
-          $ref: '#/components/schemas/StatusF0cEnum'
+          $ref: '#/components/schemas/Status920Enum'
         selling_status:
           $ref: '#/components/schemas/SellingStatusEnum'
         launch_date:
@@ -24571,6 +24580,9 @@ components:
           type: string
           minLength: 1
           maxLength: 300
+        series:
+          type: string
+          maxLength: 255
         sku:
           type: string
           minLength: 1
@@ -24658,7 +24670,7 @@ components:
           pattern: ^-?\d{0,8}(?:\.\d{0,4})?$
           nullable: true
         status:
-          $ref: '#/components/schemas/StatusF0cEnum'
+          $ref: '#/components/schemas/Status920Enum'
         selling_status:
           $ref: '#/components/schemas/SellingStatusEnum'
         launch_date:
@@ -24809,6 +24821,9 @@ components:
         name:
           type: string
           maxLength: 300
+        series:
+          type: string
+          maxLength: 255
         sku:
           type: string
           maxLength: 200
@@ -24856,7 +24871,7 @@ components:
             * `resolved` - Resolved via Mapping
             * `override_applied` - Override Applied by Admin
         status:
-          $ref: '#/components/schemas/StatusF0cEnum'
+          $ref: '#/components/schemas/Status920Enum'
         vendor_company_reference:
           type: string
           format: uuid
@@ -25031,6 +25046,9 @@ components:
           type: string
           minLength: 1
           maxLength: 300
+        series:
+          type: string
+          maxLength: 255
         sku:
           type: string
           minLength: 1
@@ -25079,7 +25097,7 @@ components:
             * `resolved` - Resolved via Mapping
             * `override_applied` - Override Applied by Admin
         status:
-          $ref: '#/components/schemas/StatusF0cEnum'
+          $ref: '#/components/schemas/Status920Enum'
         vendor_company_reference:
           type: string
           format: uuid
@@ -25683,7 +25701,7 @@ components:
           type: string
           maxLength: 100
         status:
-          $ref: '#/components/schemas/Status5c7Enum'
+          $ref: '#/components/schemas/Status516Enum'
         return_received_date:
           type: string
           format: date-time
@@ -25780,7 +25798,7 @@ components:
           minLength: 1
           maxLength: 100
         status:
-          $ref: '#/components/schemas/Status5c7Enum'
+          $ref: '#/components/schemas/Status516Enum'
         return_received_date:
           type: string
           format: date-time
@@ -25975,7 +25993,7 @@ components:
           type: string
           format: uuid
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         response_window_hours:
           type: integer
           maximum: 2147483647
@@ -26009,7 +26027,7 @@ components:
           type: string
           format: uuid
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         response_window_hours:
           type: integer
           maximum: 2147483647
@@ -26101,7 +26119,7 @@ components:
       - routed_suborder_reference
       - source_fee
       - vendor_company_reference
-    Status173Enum:
+    Status281Enum:
       enum:
       - draft
       - pending_validation
@@ -26133,19 +26151,19 @@ components:
         * `void` - Void
         * `superseded` - Superseded
         * `archived` - Archived
-    Status1f3Enum:
+    Status28cEnum:
       enum:
       - draft
       - active
-      - superseded
+      - suspended
       - retired
       type: string
       description: |-
         * `draft` - Draft
         * `active` - Active
-        * `superseded` - Superseded
+        * `suspended` - Suspended
         * `retired` - Retired
-    Status5c7Enum:
+    Status516Enum:
       enum:
       - return_sent_to_vendor
       - return_received
@@ -26159,19 +26177,7 @@ components:
         * `return_refunded` - Return Refunded
         * `return_rejected` - Return Rejected
         * `return_closed` - Return Closed
-    Status99bEnum:
-      enum:
-      - draft
-      - active
-      - suspended
-      - retired
-      type: string
-      description: |-
-        * `draft` - Draft
-        * `active` - Active
-        * `suspended` - Suspended
-        * `retired` - Retired
-    StatusF0cEnum:
+    Status920Enum:
       enum:
       - draft
       - pending_review
@@ -26189,6 +26195,18 @@ components:
         * `archived` - Archived
         * `eol` - EOL
         * `out_of_stock` - Out of Stock
+    Status988Enum:
+      enum:
+      - draft
+      - active
+      - superseded
+      - retired
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `active` - Active
+        * `superseded` - Superseded
+        * `retired` - Retired
     TargetSystemEnum:
       enum:
       - quickbooks
@@ -26418,12 +26436,9 @@ components:
           minLength: 1
           maxLength: 254
         password:
+          type: string
           writeOnly: true
-          oneOf:
-          - type: string
-            minLength: 8
-          - type: string
-            maxLength: 0
+          minLength: 8
         first_name:
           type: string
           maxLength: 100
@@ -26810,7 +26825,7 @@ components:
           type: string
           format: uuid
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         delivery_method:
           type: string
           description: api | sftp | email | webhook | manual
@@ -26849,7 +26864,7 @@ components:
           type: string
           format: uuid
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         delivery_method:
           type: string
           minLength: 1
@@ -27428,7 +27443,7 @@ components:
         fee_type:
           $ref: '#/components/schemas/FeeTypeEnum'
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         effective_from:
           type: string
           format: date-time
@@ -27482,7 +27497,7 @@ components:
         fee_type:
           $ref: '#/components/schemas/FeeTypeEnum'
         status:
-          $ref: '#/components/schemas/Status1f3Enum'
+          $ref: '#/components/schemas/Status988Enum'
         effective_from:
           type: string
           format: date-time

@@ -173,6 +173,13 @@ export default function ProductCard({
           {(p.brand || p.vendor_name || '').toUpperCase()}
         </div>
 
+        {/* Series */}
+        {p.series && (
+          <div className="admin-card-series" style={{ fontSize: '0.75rem', color: '#888', padding: '0 12px', lineHeight: 1.3 }}>
+            {p.series}
+          </div>
+        )}
+
         {/* Title */}
         <div className="admin-card-title" title={p.name}>
           {p.name}

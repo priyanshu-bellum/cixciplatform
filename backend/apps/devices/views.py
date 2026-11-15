@@ -319,43 +319,185 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def import_template(self, request):
-        import os
+        import io
         from django.http import HttpResponse
-        from django.conf import settings
-        
-        file_paths = [
-            os.path.join(settings.BASE_DIR, "Device CSV Template test.csv"),
-            os.path.join(settings.BASE_DIR, "..", "Device CSV Template test.csv"),
-            os.path.abspath("Device CSV Template test.csv"),
-            os.path.abspath("../Device CSV Template test.csv"),
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from apps.devices.models import Manufacturer, DeviceType, Device
+
+        wb = Workbook()
+
+        # --- Reference sheet (hidden, holds dropdown source lists) ---
+        ref = wb.create_sheet("_Dropdowns")
+
+        manufacturers = list(
+            Manufacturer.objects.filter(is_active=True)
+            .order_by("name")
+            .values_list("name", flat=True)
+        )
+        device_types = list(
+            DeviceType.objects.filter(is_active=True, status="active")
+            .order_by("name")
+            .values_list("name", flat=True)
+        )
+
+        def _distinct_vals(field_name, baseline):
+            """Merge baseline values with distinct non-empty DB values."""
+            db_vals = set(
+                Device.objects.exclude(**{field_name: ""})
+                .values_list(field_name, flat=True)
+                .distinct()
+            )
+            merged = list(dict.fromkeys(baseline + sorted(db_vals - set(baseline))))
+            return merged
+
+        lifecycle_choices = [label for _, label in Device._meta.get_field("lifecycle_status").choices] if Device._meta.get_field("lifecycle_status").choices else [
+            "Available", "Launching", "Inactive", "EOL", "Announced",
+            "Current", "Legacy", "Retired", "Archived",
         ]
-        
-        for path in file_paths:
-            if os.path.exists(path):
-                try:
-                    with open(path, 'rb') as f:
-                        content = f.read()
-                    response = HttpResponse(content, content_type='text/csv')
-                    response['Content-Disposition'] = 'attachment; filename="device_import_template.csv"'
-                    return response
-                except Exception:
-                    pass
-                    
-        import csv
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="device_import_template.csv"'
-        writer = csv.writer(response)
-        writer.writerow([
+
+        dropdown_lists = {
+            "A": ("Manufacturer", manufacturers),
+            "B": ("Device Type", device_types),
+            "C": ("Charging Interface", _distinct_vals("compatible_charging_interface", ["Type-C", "Lightning", "Not Compatible"])),
+            "D": ("Storage Expansion", _distinct_vals("storage_expansion_compatibility", ["microSDXC", "microSDHC", "Not Compatible"])),
+            "E": ("Max Storage", _distinct_vals("maximum_supported_storage", [
+                "16GB", "32GB", "64GB", "128GB", "256GB", "512GB",
+                "1TB", "1.5TB", "2TB", "Not Compatible",
+            ])),
+            "F": ("Headphone Jack", _distinct_vals("headphone_jack_compatibility", ["Lightning", "Type-C", "3.5mm", "Not Compatible"])),
+            "G": ("Bluetooth", _distinct_vals("bluetooth_compatibility", ["Yes", "No"])),
+            "H": ("Wireless Charging", _distinct_vals("wireless_charging_compatibility", [
+                "MagSafe", "MagSafe+Qi2", "Qi", "Qi2", "Not Compatible",
+            ])),
+            "I": ("Watch Case Size", _distinct_vals("compatible_watch_case_size", [
+                "40mm", "41mm", "42mm", "44mm", "45mm", "46mm", "49mm",
+                "Not Compatible",
+            ])),
+            "J": ("Lifecycle Status", lifecycle_choices),
+        }
+
+        for col_letter, (header, values) in dropdown_lists.items():
+            ref[f"{col_letter}1"] = header
+            ref[f"{col_letter}1"].font = Font(bold=True, size=9, color="666666")
+            for i, val in enumerate(values, start=2):
+                ref[f"{col_letter}{i}"] = val
+
+        ref.sheet_state = "hidden"
+
+        # --- Main template sheet ---
+        ws = wb.active
+        ws.title = "Device Import Template"
+
+        headers = [
             "Device Manufacturer", "Device Name", "Device Type", "Launch Date",
-            "Compatible Charging Interface", "Storage Expansion Compatibility", "Maximum Supported Storage",
-            "Headphone Jack Compatibility", "Bluetooth Compatibility", "Wireless Charging Compatibility",
-            "Compatible Watch Case Size"
-        ])
-        writer.writerow([
+            "Compatible Charging Interface", "Storage Expansion Compatibility",
+            "Maximum Supported Storage", "Headphone Jack Compatibility",
+            "Bluetooth Compatibility", "Wireless Charging Compatibility",
+            "Compatible Watch Case Size",
+        ]
+
+        header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+        header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        thin_border = Border(
+            left=Side(style="thin", color="B0B0B0"),
+            right=Side(style="thin", color="B0B0B0"),
+            top=Side(style="thin", color="B0B0B0"),
+            bottom=Side(style="thin", color="B0B0B0"),
+        )
+
+        for col_idx, header in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
+
+        col_widths = [22, 30, 16, 14, 30, 30, 26, 30, 22, 32, 28]
+        for i, w in enumerate(col_widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+        ws.row_dimensions[1].height = 30
+        ws.freeze_panes = "A2"
+
+        # Map template columns → reference sheet columns for DataValidation
+        # (column index in template → reference column letter)
+        dv_map = {
+            1: "A",   # Device Manufacturer
+            3: "B",   # Device Type
+            5: "C",   # Compatible Charging Interface
+            6: "D",   # Storage Expansion Compatibility
+            7: "E",   # Maximum Supported Storage
+            8: "F",   # Headphone Jack Compatibility
+            9: "G",   # Bluetooth Compatibility
+            10: "H",  # Wireless Charging Compatibility
+            11: "I",  # Compatible Watch Case Size
+        }
+
+        max_data_rows = 500
+        for tmpl_col, ref_col in dv_map.items():
+            _, values = dropdown_lists[ref_col]
+            end_row = len(values) + 1
+            formula = f"'_Dropdowns'!${ref_col}$2:${ref_col}${end_row}"
+            dv = DataValidation(
+                type="list",
+                formula1=formula,
+                allow_blank=True,
+                showErrorMessage=True,
+                errorTitle="Invalid value",
+                error=f"Select a value from the dropdown list.",
+                showInputMessage=True,
+                promptTitle=headers[tmpl_col - 1],
+                prompt=f"Choose from the list or leave blank.",
+            )
+            col_letter = get_column_letter(tmpl_col)
+            dv.sqref = f"{col_letter}2:{col_letter}{max_data_rows + 1}"
+            ws.add_data_validation(dv)
+
+        # Date validation for Launch Date (column D)
+        date_dv = DataValidation(
+            type="custom",
+            formula1='AND(ISNUMBER(D2),D2>0)',
+            allow_blank=True,
+            showErrorMessage=True,
+            errorTitle="Invalid date",
+            error="Enter a date in MM/DD/YYYY format.",
+            showInputMessage=True,
+            promptTitle="Launch Date",
+            prompt="Enter date as MM/DD/YYYY (e.g. 09/15/2026).",
+        )
+        date_dv.sqref = f"D2:D{max_data_rows + 1}"
+        ws.add_data_validation(date_dv)
+
+        # Format Launch Date column as date
+        for row_idx in range(2, max_data_rows + 2):
+            ws.cell(row=row_idx, column=4).number_format = "MM/DD/YYYY"
+
+        # Example row
+        example_data = [
             "Apple", "iPhone 17", "Phone", "09/15/2026",
-            "Type-C", "Not Compatible", "",
-            "Type-C", "Yes", "MagSafe", "Not Compatible"
-        ])
+            "Type-C", "Not Compatible", "Not Compatible",
+            "Not Compatible", "Yes", "MagSafe+Qi2", "Not Compatible",
+        ]
+        example_font = Font(color="888888", italic=True, size=10)
+        for col_idx, val in enumerate(example_data, start=1):
+            cell = ws.cell(row=2, column=col_idx, value=val)
+            cell.font = example_font
+            cell.border = thin_border
+
+        # Serialize to bytes
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        response = HttpResponse(
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = 'attachment; filename="device_import_template.xlsx"'
         return response
 
     @action(detail=False, methods=["post"])
@@ -381,13 +523,29 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if not file:
             return Response({"error": "No file uploaded."}, status=400)
 
+        fname = getattr(file, "name", "").lower()
+        is_xlsx = fname.endswith(".xlsx") or fname.endswith(".xls")
+
         try:
-            decoded_file = file.read().decode('utf-8-sig')
-            io_string = io.StringIO(decoded_file)
-            reader = csv.reader(io_string)
-            headers = next(reader)
+            if is_xlsx:
+                import openpyxl
+                wb = openpyxl.load_workbook(file, data_only=True)
+                ws = wb.active
+                raw = list(ws.iter_rows(values_only=True))
+                headers = [str(c or "").strip() for c in raw[0]] if raw else []
+                rows = []
+                for r in raw[1:]:
+                    vals = [str(c) if c is not None else "" for c in r]
+                    if any(v.strip() for v in vals):
+                        rows.append(vals)
+            else:
+                decoded_file = file.read().decode('utf-8-sig')
+                io_string = io.StringIO(decoded_file)
+                reader = csv.reader(io_string)
+                headers = next(reader)
+                rows = list(reader)
         except Exception as e:
-            return Response({"error": f"Failed to parse CSV file: {str(e)}"}, status=400)
+            return Response({"error": f"Failed to parse file: {str(e)}"}, status=400)
 
         expected_cols = [
             "Device Manufacturer", "Device Name", "Device Type", "Launch Date",
@@ -398,11 +556,10 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
         headers = [h.strip() for h in headers if h.strip()]
         if headers != expected_cols:
-            return Response({"error": f"CSV columns do not match the expected template. Expected: {', '.join(expected_cols)}"}, status=400)
+            return Response({"error": f"Columns do not match the expected template. Expected: {', '.join(expected_cols)}"}, status=400)
 
-        rows = list(reader)
         if not rows:
-            return Response({"error": "No data rows found in the CSV file."}, status=400)
+            return Response({"error": "No data rows found in the file."}, status=400)
 
         validation_errors = []
         imported_count = 0

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -133,9 +133,9 @@ interface BulkUploadDialogProps {
 const STEPS = ['Upload & Preview CSV', 'Upload Images (ZIP)']
 
 const UPDATE_MODE_OPTIONS = [
-  { value: 'create_only', label: 'Create Only' },
-  { value: 'update_existing', label: 'Update Existing' },
-  { value: 'create_and_update', label: 'Create & Update' },
+  { value: 'create_only', label: 'Create New Only', desc: 'Only create new products. Existing SKUs are rejected.' },
+  { value: 'update_existing', label: 'Update Existing', desc: 'Only update existing products. New SKUs are rejected. Blank fields = No Change.' },
+  { value: 'create_and_update', label: 'Upsert (Create & Update)', desc: 'Create new + update existing in one file. Blank fields on updates = No Change.' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -167,10 +167,13 @@ export default function BulkUploadDialog({
     cellErrors: {},
   })
   const [updateMode, setUpdateMode] = useState('create_only')
+  const [confirmed, setConfirmed] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
   const [importedCount, setImportedCount] = useState(0)
+  const [importSummary, setImportSummary] = useState<{ created: number; updated: number; failed: number; staged: number } | null>(null)
+  const [existingSkus, setExistingSkus] = useState<Set<string>>(new Set())
   const csvInputRef = useRef<HTMLInputElement>(null)
 
   // Step 2 state
@@ -191,10 +194,13 @@ export default function BulkUploadDialog({
       setCsvPreviewRows([])
       setCsvErrors({ hasErrors: false, rowErrors: {}, cellErrors: {} })
       setUpdateMode('create_only')
+      setConfirmed(false)
       setUploading(false)
       setUploadError(null)
       setUploadSuccess(null)
       setImportedCount(0)
+      setImportSummary(null)
+      setExistingSkus(new Set())
       setZipFile(null)
       setZipUploading(false)
       setZipError(null)
@@ -209,8 +215,10 @@ export default function BulkUploadDialog({
   const handleCsvFileSelect = useCallback(
     async (file: File) => {
       setCsvFile(file)
+      setConfirmed(false)
       setUploadError(null)
       setUploadSuccess(null)
+      setImportSummary(null)
 
       try {
         let headers: string[] = []
@@ -262,16 +270,55 @@ export default function BulkUploadDialog({
           allowedColors,
           allowedBrands,
           dropdownsLoaded,
+          updateMode,
         })
         setCsvErrors(validation)
+
+        // Check which SKUs already exist for row labeling
+        const skuColIdx = headers.findIndex(h => h.toLowerCase().replace(/[^a-z0-9]/g, '') === 'sku')
+        if (skuColIdx >= 0) {
+          const skus = rows.map(r => (r[skuColIdx] ?? '').trim()).filter(Boolean)
+          if (skus.length > 0) {
+            try {
+              const vendorRef = isAdmin ? supplierId : undefined
+              const payload: any = { skus }
+              if (vendorRef) payload.vendor_company_reference = vendorRef
+              const resp = await api.post('/catalog/products/check-skus/', payload)
+              setExistingSkus(new Set(resp.data?.existing ?? []))
+            } catch {
+              setExistingSkus(new Set())
+            }
+          } else {
+            setExistingSkus(new Set())
+          }
+        }
       } catch (err: any) {
         setUploadError(`Failed to parse file: ${err.message || 'Unknown error'}`)
         setCsvHeaders([])
         setCsvPreviewRows([])
       }
     },
-    [user, allowedCategories, allowedColors, allowedBrands, dropdownsLoaded],
+    [user, allowedCategories, allowedColors, allowedBrands, dropdownsLoaded, updateMode, isAdmin, supplierId],
   )
+
+  // Re-validate when update mode changes
+  useEffect(() => {
+    if (csvHeaders.length > 0 && csvPreviewRows.length > 0) {
+      const isVendor = user?.role === 'vendor' || user?.company_type === 'vendor'
+      const validation = validateCsvRows(csvHeaders, csvPreviewRows, {
+        isVendor,
+        companyName: user?.company_name,
+        allowedCategories,
+        allowedColors,
+        allowedBrands,
+        dropdownsLoaded,
+        updateMode,
+      })
+      setCsvErrors(validation)
+      setConfirmed(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateMode])
 
   // ---------------------------------------------------------------------------
   // Inline cell edit handler
@@ -294,12 +341,13 @@ export default function BulkUploadDialog({
           allowedColors,
           allowedBrands,
           dropdownsLoaded,
+          updateMode,
         })
         setCsvErrors(validation)
         return latest
       })
     },
-    [csvHeaders, user, allowedCategories, allowedColors, allowedBrands, dropdownsLoaded],
+    [csvHeaders, user, allowedCategories, allowedColors, allowedBrands, dropdownsLoaded, updateMode],
   )
 
   // ---------------------------------------------------------------------------
@@ -326,13 +374,20 @@ export default function BulkUploadDialog({
       })
 
       const data = res.data || {}
-      const count = Array.isArray(data.products) ? data.products.length
-        : Number(data.imported_count ?? data.count ?? (Number(data.rows_passed || 0) + Number(data.rows_staged || 0)))
+      const created = Number(data.rows_created || 0)
+      const updated = Number(data.rows_updated || 0)
+      const count = created + updated || (Array.isArray(data.products) ? data.products.length
+        : Number(data.imported_count ?? data.count ?? (Number(data.rows_passed || 0) + Number(data.rows_staged || 0))))
       const failed = Number(data.rows_failed || 0)
+      const staged = Number(data.rows_staged || 0)
       setImportedCount(count)
+      setImportSummary({ created, updated, failed, staged })
       if (count > 0) {
-        const staged = Number(data.rows_staged || 0)
-        setUploadSuccess(`${count} product(s) imported.${staged ? ` ${staged} require review before activation.` : ''}`)
+        const parts = []
+        if (created > 0) parts.push(`${created} created`)
+        if (updated > 0) parts.push(`${updated} updated`)
+        if (staged > 0) parts.push(`${staged} staged for review`)
+        setUploadSuccess(`${count} product(s) imported${parts.length ? ` (${parts.join(', ')})` : ''}.`)
         onUploaded()
       }
       if (failed > 0 || data.errors?.length) {
@@ -341,16 +396,6 @@ export default function BulkUploadDialog({
         setUploadError([`${failed} row(s) failed.`, ...details].join('\n'))
       } else if (!count) {
         setUploadError('No products were imported. Review the selected file and update mode.')
-      }
-
-      // Prompt to continue to image upload
-      if (count > 0) {
-        const goToImages = window.confirm(
-          `${count} product(s) imported successfully. Would you like to upload product images (ZIP) now?`,
-        )
-        if (goToImages) {
-          setActiveStep(1)
-        }
       }
     } catch (err: any) {
       const msg =
@@ -455,6 +500,34 @@ export default function BulkUploadDialog({
   // Derived — has a CSV been parsed?
   // ---------------------------------------------------------------------------
   const hasCsvPreview = csvHeaders.length > 0 && csvPreviewRows.length > 0
+
+  // Per-row CREATE / UPDATE / REJECT labels
+  const skuColIdx = useMemo(
+    () => csvHeaders.findIndex(h => h.toLowerCase().replace(/[^a-z0-9]/g, '') === 'sku'),
+    [csvHeaders],
+  )
+
+  const rowLabels = useMemo(() => {
+    if (!hasCsvPreview || skuColIdx < 0) return []
+    return csvPreviewRows.map(row => {
+      const sku = (row[skuColIdx] ?? '').trim()
+      if (!sku) return 'REJECT'
+      const exists = existingSkus.has(sku)
+      if (updateMode === 'create_only') return exists ? 'REJECT' : 'CREATE'
+      if (updateMode === 'update_existing') return exists ? 'UPDATE' : 'REJECT'
+      return exists ? 'UPDATE' : 'CREATE'
+    })
+  }, [hasCsvPreview, csvPreviewRows, skuColIdx, existingSkus, updateMode])
+
+  const previewCounts = useMemo(() => {
+    const counts = { create: 0, update: 0, reject: 0 }
+    rowLabels.forEach(l => {
+      if (l === 'CREATE') counts.create++
+      else if (l === 'UPDATE') counts.update++
+      else counts.reject++
+    })
+    return counts
+  }, [rowLabels])
 
   // ---------------------------------------------------------------------------
   // Render
@@ -579,15 +652,15 @@ export default function BulkUploadDialog({
                     Change File
                   </Button>
 
-                  <FormControl size="small" sx={{ minWidth: 170 }}>
-                    <InputLabel>Update Mode</InputLabel>
+                  <FormControl size="small" sx={{ minWidth: 210 }}>
+                    <InputLabel>Import Mode</InputLabel>
                     <Select
                       value={updateMode}
-                      label="Update Mode"
-                      onChange={(e) => setUpdateMode(e.target.value)}
+                      label="Import Mode"
+                      onChange={(e) => { setUpdateMode(e.target.value); setConfirmed(false) }}
                     >
                       {UPDATE_MODE_OPTIONS.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>
+                        <MenuItem key={opt.value} value={opt.value} title={opt.desc}>
                           {opt.label}
                         </MenuItem>
                       ))}
@@ -617,12 +690,81 @@ export default function BulkUploadDialog({
                   )}
                 </Box>
 
+                {/* Mode description */}
+                {!uploadSuccess && (
+                  <Alert severity="info" sx={{ py: 0.5 }} icon={false}>
+                    <strong>{UPDATE_MODE_OPTIONS.find(o => o.value === updateMode)?.label}:</strong>{' '}
+                    {UPDATE_MODE_OPTIONS.find(o => o.value === updateMode)?.desc}
+                    {updateMode !== 'create_only' && (
+                      <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+                        Blank fields on existing products will be preserved (not overwritten). Zero is treated as an explicit value.
+                      </Typography>
+                    )}
+                  </Alert>
+                )}
+
+                {/* Pre-import row classification summary */}
+                {hasCsvPreview && !uploadSuccess && !confirmed && rowLabels.length > 0 && (
+                  <Box sx={{
+                    display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap',
+                    px: 1.5, py: 0.75, borderRadius: 1,
+                    background: 'var(--bg-elevated, #fafafa)',
+                    border: '1px solid var(--border, #e0e0e0)',
+                    fontSize: 12,
+                  }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600 }}>Preview:</Typography>
+                    {previewCounts.create > 0 && (
+                      <Chip label={`${previewCounts.create} Create`} size="small"
+                        sx={{ bgcolor: '#e8f5e9', color: '#2e7d32', fontWeight: 600, fontSize: 11, height: 22 }} />
+                    )}
+                    {previewCounts.update > 0 && (
+                      <Chip label={`${previewCounts.update} Update`} size="small"
+                        sx={{ bgcolor: '#e3f2fd', color: '#1565c0', fontWeight: 600, fontSize: 11, height: 22 }} />
+                    )}
+                    {previewCounts.reject > 0 && (
+                      <Chip label={`${previewCounts.reject} Reject`} size="small"
+                        sx={{ bgcolor: '#ffebee', color: '#d32f2f', fontWeight: 600, fontSize: 11, height: 22 }} />
+                    )}
+                  </Box>
+                )}
+
+                {/* Import summary */}
+                {uploadSuccess && importSummary && (
+                  <Alert severity="success" sx={{ py: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Import Complete</Typography>
+                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', fontSize: 13 }}>
+                      {importSummary.created > 0 && <span>Created: <strong>{importSummary.created}</strong></span>}
+                      {importSummary.updated > 0 && <span>Updated: <strong>{importSummary.updated}</strong></span>}
+                      {importSummary.staged > 0 && <span>Review: <strong>{importSummary.staged}</strong></span>}
+                      {importSummary.failed > 0 && <span style={{ color: '#d32f2f' }}>Failed: <strong>{importSummary.failed}</strong></span>}
+                    </Box>
+                    <Button size="small" variant="text" sx={{ mt: 1 }} onClick={() => setActiveStep(1)}>
+                      Upload Product Images (ZIP)
+                    </Button>
+                  </Alert>
+                )}
+
                 {/* Alerts */}
-                {uploadError && <Alert severity="error" sx={{ py: 0.5 }}>{uploadError}</Alert>}
-                {uploadSuccess && <Alert severity="success" sx={{ py: 0.5 }}>{uploadSuccess}</Alert>}
+                {uploadError && <Alert severity="error" sx={{ py: 0.5, whiteSpace: 'pre-line' }}>{uploadError}</Alert>}
+                {uploadSuccess && !importSummary && <Alert severity="success" sx={{ py: 0.5 }}>{uploadSuccess}</Alert>}
                 {csvErrors.hasErrors && (
                   <Alert severity="warning" sx={{ py: 0.5 }}>
-                    Validation errors found. Fix highlighted cells or the server will validate on upload.
+                    Validation errors found. Fix highlighted cells before confirming.
+                  </Alert>
+                )}
+                {confirmed && !uploading && !uploadSuccess && (
+                  <Alert severity="info" sx={{ py: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Confirm Import</Typography>
+                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', fontSize: 13 }}>
+                      <span>Total: <strong>{csvPreviewRows.length}</strong></span>
+                      {previewCounts.create > 0 && <span style={{ color: '#2e7d32' }}>Create: <strong>{previewCounts.create}</strong></span>}
+                      {previewCounts.update > 0 && <span style={{ color: '#1565c0' }}>Update: <strong>{previewCounts.update}</strong></span>}
+                      {previewCounts.reject > 0 && <span style={{ color: '#d32f2f' }}>Reject: <strong>{previewCounts.reject}</strong></span>}
+                    </Box>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+                      Click <strong>Apply {UPDATE_MODE_OPTIONS.find(o => o.value === updateMode)?.label}</strong> to commit.
+                      {updateMode !== 'create_only' && ' Blank fields on existing products will not be overwritten.'}
+                    </Typography>
                   </Alert>
                 )}
 
@@ -647,6 +789,22 @@ export default function BulkUploadDialog({
                             }}
                           >
                             #
+                          </th>
+                          <th
+                            style={{
+                              position: 'sticky',
+                              top: 0,
+                              background: 'var(--bg-elevated, #f5f5f5)',
+                              padding: '6px 8px',
+                              textAlign: 'center',
+                              borderBottom: '2px solid var(--border)',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              minWidth: 60,
+                              zIndex: 1,
+                            }}
+                          >
+                            Action
                           </th>
                           {csvHeaders.map((h, i) => (
                             <th
@@ -689,6 +847,34 @@ export default function BulkUploadDialog({
                                   title={csvErrors.rowErrors[rowIdx].join('\n')}
                                 >
                                   !
+                                </span>
+                              )}
+                            </td>
+                            <td
+                              style={{
+                                padding: '2px 4px',
+                                borderBottom: '1px solid var(--border)',
+                                textAlign: 'center',
+                                verticalAlign: 'top',
+                              }}
+                            >
+                              {rowLabels[rowIdx] && (
+                                <span
+                                  style={{
+                                    display: 'inline-block',
+                                    padding: '1px 6px',
+                                    borderRadius: 4,
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    letterSpacing: 0.5,
+                                    color: '#fff',
+                                    background:
+                                      rowLabels[rowIdx] === 'CREATE' ? '#2e7d32'
+                                      : rowLabels[rowIdx] === 'UPDATE' ? '#1565c0'
+                                      : '#d32f2f',
+                                  }}
+                                >
+                                  {rowLabels[rowIdx]}
                                 </span>
                               )}
                             </td>
@@ -825,13 +1011,23 @@ export default function BulkUploadDialog({
         <Button onClick={onClose} disabled={uploading || zipUploading}>
           {uploadSuccess || zipSuccess ? 'Done' : 'Cancel'}
         </Button>
-        {activeStep === 0 && csvFile && (
+        {activeStep === 0 && csvFile && !uploadSuccess && !confirmed && (
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={() => setConfirmed(true)}
+            disabled={!csvFile || uploading || csvErrors.hasErrors}
+          >
+            Confirm Import ({csvPreviewRows.length} rows)
+          </Button>
+        )}
+        {activeStep === 0 && csvFile && !uploadSuccess && confirmed && (
           <Button
             variant="contained"
             onClick={handleCsvUpload}
             disabled={!csvFile || uploading}
           >
-            {uploading ? 'Uploading...' : 'Upload CSV'}
+            {uploading ? 'Applying...' : `Apply ${UPDATE_MODE_OPTIONS.find(o => o.value === updateMode)?.label}`}
           </Button>
         )}
         {activeStep === 1 && (

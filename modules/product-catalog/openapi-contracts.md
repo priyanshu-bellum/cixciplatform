@@ -76,7 +76,7 @@ Expose Product Catalog ingestion, product lookup, compatibility lookup, lifecycl
 Product summary/detail schemas should support:
 
 - Product id, product master id, variant id.
-- Vendor, brand, Product Type.
+- Vendor, brand, series (product series or line grouping), Product Type.
 - Accessory name.
 - SKU and UPC as text identifiers.
 - Product category/subcategory.

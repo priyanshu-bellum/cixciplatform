@@ -10,6 +10,7 @@ export function parseWirelessCharging(val: string): string[] {
 
 export function useProductForm() {
   const [prodName, setProdName] = useState('')
+  const [prodSeries, setProdSeries] = useState('')
   const [prodStatus, setProdStatus] = useState('')
   const [prodSku, setProdSku] = useState('')
   const [prodBrand, setProdBrand] = useState('')
@@ -72,7 +73,7 @@ export function useProductForm() {
   const [compUniversalDeviceTypes, setCompUniversalDeviceTypes] = useState<string[]>([])
 
   const resetForm = useCallback(() => {
-    setProdName(''); setProdSku(''); setProdBrand(''); setProdType(''); setProdCategory(''); setProdVendorCategory('')
+    setProdName(''); setProdSeries(''); setProdSku(''); setProdBrand(''); setProdType(''); setProdCategory(''); setProdVendorCategory('')
     setProdCategoryOverride(''); setProdCategoryValidationStatus('')
     setProdDescription(''); setProdPrice(''); setProdCurrency('USD'); setProdUpc(''); setProdStatus('')
     setProdLaunchDate(''); setProdReleaseDate(''); setProdEolDate(''); setProdColor(''); setProdSystemColor('')
@@ -96,7 +97,7 @@ export function useProductForm() {
       const parsed = parseFloat(val)
       return isNaN(parsed) ? '' : parsed.toFixed(2)
     }
-    setProdName(p.name || ''); setProdSku(p.sku || ''); setProdBrand(p.brand || '')
+    setProdName(p.name || ''); setProdSeries(p.series || ''); setProdSku(p.sku || ''); setProdBrand(p.brand || '')
     setProdStatus(p.status || 'active'); setProdType(p.product_type || 'accessory')
     setProdCategory(p.product_category || ''); setProdVendorCategory(p.vendor_category || '')
     setProdCategoryOverride(p.product_category_override || '')
@@ -148,7 +149,7 @@ export function useProductForm() {
 
   const isAddDirty = useCallback(() => {
     return (
-      prodName !== '' || prodStatus !== '' || prodSku !== '' || prodBrand !== '' || prodType !== '' ||
+      prodName !== '' || prodSeries !== '' || prodStatus !== '' || prodSku !== '' || prodBrand !== '' || prodType !== '' ||
       prodCategory !== '' || prodVendorCategory !== '' || prodDescription !== '' || prodPrice !== '' || prodCurrency !== 'USD' ||
       prodUpc !== '' || prodLaunchDate !== '' || prodReleaseDate !== '' || prodEolDate !== '' ||
       prodColor !== '' || prodSystemColor !== '' || prodMsrp !== '' || prodMapPrice !== '' ||
@@ -163,7 +164,7 @@ export function useProductForm() {
       compMemoryCapacity !== '' || compWatchCaseSize !== '' || compUniversalDeviceTypes.length > 0
     )
   }, [
-    prodName, prodStatus, prodSku, prodBrand, prodType, prodCategory, prodVendorCategory, prodDescription, prodPrice,
+    prodName, prodSeries, prodStatus, prodSku, prodBrand, prodType, prodCategory, prodVendorCategory, prodDescription, prodPrice,
     prodCurrency, prodUpc, prodLaunchDate, prodReleaseDate, prodEolDate, prodColor, prodSystemColor,
     prodMsrp, prodMapPrice, prodSalePrice, prodRecommendedAccessory, prodInventoryLevel,
     prodInventoryThreshold, prodLength, prodWidth, prodHeight, prodWeight, prodWarranty,
@@ -191,6 +192,7 @@ export function useProductForm() {
     const mediaList = editingProduct.media_references || []
     return (
       prodName !== (editingProduct.name || '') ||
+      prodSeries !== (editingProduct.series || '') ||
       prodSku !== (editingProduct.sku || '') ||
       prodBrand !== (editingProduct.brand || '') ||
       prodStatus !== (editingProduct.status || '') ||
@@ -239,7 +241,7 @@ export function useProductForm() {
       compWatchCaseSize !== (editingProduct.compatible_watch_case_size || '')
     )
   }, [
-    prodName, prodSku, prodBrand, prodStatus, prodType, prodCategory, prodVendorCategory, prodDescription, prodPrice,
+    prodName, prodSeries, prodSku, prodBrand, prodStatus, prodType, prodCategory, prodVendorCategory, prodDescription, prodPrice,
     prodCurrency, prodUpc, prodLaunchDate, prodReleaseDate, prodEolDate, prodColor, prodSystemColor,
     prodMsrp, prodMapPrice, prodSalePrice, prodRecommendedAccessory, prodInventoryLevel,
     prodInventoryThreshold, prodLength, prodWidth, prodHeight, prodWeight, prodWarranty,
@@ -274,7 +276,7 @@ export function useProductForm() {
 
   return {
     // Basic fields
-    prodName, setProdName, prodStatus, setProdStatus, prodSku, setProdSku,
+    prodName, setProdName, prodSeries, setProdSeries, prodStatus, setProdStatus, prodSku, setProdSku,
     prodBrand, setProdBrand, prodType, setProdType, prodCategory, setProdCategory,
     prodVendorCategory, setProdVendorCategory,
     prodCategoryOverride, setProdCategoryOverride,

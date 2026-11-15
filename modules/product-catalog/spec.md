@@ -14,7 +14,7 @@ Product Catalog aligns with ADR-0007. Product Catalog remains accessory-first wh
 
 Accessory vendors are authoritative for vendor-submitted accessory facts where those facts are accepted by Product Catalog governance.
 
-Vendor-submitted facts may include accessory name, SKU, UPC, product category, brand, color, variant attributes, product descriptions, catalog-carried pricing inputs, availability/inventory inputs, compatibility assertions, media assignment suggestions, lifecycle signals, availability signals, release date, launch date, and end-of-life date.
+Vendor-submitted facts may include accessory name, SKU, UPC, product category, brand, series (product series or line grouping), color, variant attributes, product descriptions, catalog-carried pricing inputs, availability/inventory inputs, compatibility assertions, media assignment suggestions, lifecycle signals, availability signals, release date, launch date, and end-of-life date.
 
 Product Catalog owns:
 

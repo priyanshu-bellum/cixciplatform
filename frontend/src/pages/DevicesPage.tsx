@@ -1423,7 +1423,7 @@ export default function DevicesPage() {
 
             <Box sx={{ mb: 2.25 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
-                <Typography variant="subtitle2">Device CSV Template</Typography>
+                <Typography variant="subtitle2">Device Import Template</Typography>
                 <Button
                   variant="outlined"
                   size="small"
@@ -1434,7 +1434,7 @@ export default function DevicesPage() {
                 </Button>
               </Box>
               <Typography variant="caption" color="text.secondary">
-                Download the standard Device CSV Import template to ensure proper columns and validation alignment.
+                Download the Device Import template (Excel) with dropdown-validated columns for manufacturers, device types, and compatibility fields.
               </Typography>
             </Box>
 
@@ -1457,7 +1457,7 @@ export default function DevicesPage() {
                 <input
                   ref={importFileRef}
                   type="file"
-                  accept=".csv"
+                  accept=".csv,.xlsx,.xls"
                   hidden
                   onChange={e => setImportFile(e.target.files?.[0] || null)}
                 />

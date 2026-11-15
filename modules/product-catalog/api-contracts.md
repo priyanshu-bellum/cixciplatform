@@ -65,6 +65,7 @@ Proposal-level fields:
 - Product id and variant id where applicable.
 - Vendor reference.
 - Brand.
+- Series (product series or line grouping, e.g. Galaxy S, iPhone 15).
 - Product Type.
 - Accessory name.
 - SKU and UPC as text identifiers.

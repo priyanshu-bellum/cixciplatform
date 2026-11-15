@@ -120,6 +120,7 @@ export function validateCsvRows(
     allowedColors: string[]
     allowedBrands: string[]
     dropdownsLoaded: boolean
+    updateMode?: string
   }
 ): ValidationResult {
   if (csvHeaders.length === 0 || csvPreviewRows.length === 0) {
@@ -157,18 +158,18 @@ export function validateCsvRows(
   const cellErrors: Record<string, boolean> = {}
   const seenSkus = new Set<string>()
   let hasErrors = false
+  const isUpdateOnly = opts.updateMode === 'update_existing'
 
   csvPreviewRows.forEach((row, rowIdx) => {
     const errors: string[] = []
 
     // Brand
     if (brandColIdx === -1) {
-      errors.push("Missing 'Brand' column.")
+      if (!isUpdateOnly) errors.push("Missing 'Brand' column.")
     } else {
       const val = row[brandColIdx]?.trim()
       if (!val) {
-        errors.push("Brand is required.")
-        cellErrors[`${rowIdx}-${brandColIdx}`] = true
+        if (!isUpdateOnly) { errors.push("Brand is required."); cellErrors[`${rowIdx}-${brandColIdx}`] = true }
       } else if (val.length > 200) {
         errors.push("Brand exceeds database limit of 200 characters.")
         cellErrors[`${rowIdx}-${brandColIdx}`] = true
@@ -183,10 +184,10 @@ export function validateCsvRows(
 
     // Product Name
     if (nameColIdx === -1) {
-      errors.push("Missing 'Product Name' or 'Name' column.")
+      if (!isUpdateOnly) errors.push("Missing 'Product Name' or 'Name' column.")
     } else {
       const val = row[nameColIdx]?.trim()
-      if (!val) { errors.push("Product Name is required."); cellErrors[`${rowIdx}-${nameColIdx}`] = true }
+      if (!val) { if (!isUpdateOnly) { errors.push("Product Name is required."); cellErrors[`${rowIdx}-${nameColIdx}`] = true } }
       else if (val.length > 300) { errors.push("Product Name exceeds database limit of 300 characters."); cellErrors[`${rowIdx}-${nameColIdx}`] = true }
     }
 
@@ -204,18 +205,18 @@ export function validateCsvRows(
     }
 
     // UPC
-    if (upcColIdx === -1) { errors.push("Missing 'UPC' column.") }
+    if (upcColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'UPC' column.") }
     else {
       const val = row[upcColIdx]?.trim()
-      if (!val) { errors.push("UPC is required."); cellErrors[`${rowIdx}-${upcColIdx}`] = true }
+      if (!val) { if (!isUpdateOnly) { errors.push("UPC is required."); cellErrors[`${rowIdx}-${upcColIdx}`] = true } }
       else if (!/^\d{12}$/.test(val)) { errors.push("UPC must follow valid UPC-A format (12 numeric characters)."); cellErrors[`${rowIdx}-${upcColIdx}`] = true }
     }
 
     // Category
-    if (categoryColIdx === -1) { errors.push("Missing 'Product Category' column.") }
+    if (categoryColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'Product Category' column.") }
     else {
       const val = row[categoryColIdx]?.trim()
-      if (!val) { errors.push("Product Category is required."); cellErrors[`${rowIdx}-${categoryColIdx}`] = true }
+      if (!val) { if (!isUpdateOnly) { errors.push("Product Category is required."); cellErrors[`${rowIdx}-${categoryColIdx}`] = true } }
       else {
         const match = opts.allowedCategories.some(cat => cat.toLowerCase() === val.toLowerCase())
         if (opts.dropdownsLoaded && !match) { errors.push(`Product Category must be one of: ${opts.allowedCategories.join(', ')}`); cellErrors[`${rowIdx}-${categoryColIdx}`] = true }
@@ -223,22 +224,22 @@ export function validateCsvRows(
     }
 
     // Launch Date
-    if (launchDateColIdx === -1) { errors.push("Missing 'Launch Date' column.") }
-    else { const val = row[launchDateColIdx]?.trim(); if (!val) { errors.push("Launch Date is required."); cellErrors[`${rowIdx}-${launchDateColIdx}`] = true } }
+    if (launchDateColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'Launch Date' column.") }
+    else { const val = row[launchDateColIdx]?.trim(); if (!val && !isUpdateOnly) { errors.push("Launch Date is required."); cellErrors[`${rowIdx}-${launchDateColIdx}`] = true } }
 
     // Color
-    if (colorColIdx === -1) { errors.push("Missing 'Color' column.") }
+    if (colorColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'Color' column.") }
     else {
       const val = row[colorColIdx]?.trim()
-      if (!val) { errors.push("Color is required."); cellErrors[`${rowIdx}-${colorColIdx}`] = true }
+      if (!val) { if (!isUpdateOnly) { errors.push("Color is required."); cellErrors[`${rowIdx}-${colorColIdx}`] = true } }
       else if (val.length > 100) { errors.push("Color exceeds database limit of 100 characters."); cellErrors[`${rowIdx}-${colorColIdx}`] = true }
     }
 
     // System Color
-    if (sysColorColIdx === -1) { errors.push("Missing 'System Color' column.") }
+    if (sysColorColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'System Color' column.") }
     else {
       const val = row[sysColorColIdx]?.trim()
-      if (!val) { errors.push("System Color is required."); cellErrors[`${rowIdx}-${sysColorColIdx}`] = true }
+      if (!val) { if (!isUpdateOnly) { errors.push("System Color is required."); cellErrors[`${rowIdx}-${sysColorColIdx}`] = true } }
       else {
         const sysColors = val.replace(/;/g, ',').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
         const invalid = sysColors.filter(sc => !opts.allowedColors.some(ac => ac.toLowerCase() === sc))
@@ -247,43 +248,43 @@ export function validateCsvRows(
     }
 
     // Warranty
-    if (warrantyColIdx === -1) { errors.push("Missing 'Brand Warranty' column.") }
+    if (warrantyColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'Brand Warranty' column.") }
     else {
       const val = row[warrantyColIdx]?.trim()
-      if (!val) { errors.push("Brand Warranty is required."); cellErrors[`${rowIdx}-${warrantyColIdx}`] = true }
+      if (!val) { if (!isUpdateOnly) { errors.push("Brand Warranty is required."); cellErrors[`${rowIdx}-${warrantyColIdx}`] = true } }
       else if (val.length > 200) { errors.push("Warranty exceeds database limit of 200 characters."); cellErrors[`${rowIdx}-${warrantyColIdx}`] = true }
     }
 
     // Wholesale Price
-    if (wholesaleColIdx === -1) { errors.push("Missing 'Vendor Wholesale Price' column.") }
-    else { const val = row[wholesaleColIdx]?.trim(); if (!val) { errors.push("Vendor Wholesale Price is required."); cellErrors[`${rowIdx}-${wholesaleColIdx}`] = true } }
+    if (wholesaleColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'Vendor Wholesale Price' column.") }
+    else { const val = row[wholesaleColIdx]?.trim(); if (!val && !isUpdateOnly) { errors.push("Vendor Wholesale Price is required."); cellErrors[`${rowIdx}-${wholesaleColIdx}`] = true } }
 
     // MSRP
-    if (msrpColIdx === -1) { errors.push("Missing 'MSRP' column.") }
-    else { const val = row[msrpColIdx]?.trim(); if (!val) { errors.push("MSRP is required."); cellErrors[`${rowIdx}-${msrpColIdx}`] = true } }
+    if (msrpColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'MSRP' column.") }
+    else { const val = row[msrpColIdx]?.trim(); if (!val && !isUpdateOnly) { errors.push("MSRP is required."); cellErrors[`${rowIdx}-${msrpColIdx}`] = true } }
 
     // Dimensions
     for (const [idx, name] of [[lengthColIdx, 'Length'], [widthColIdx, 'Width'], [heightColIdx, 'Height'], [weightColIdx, 'Weight']] as [number, string][]) {
-      if (idx === -1) { errors.push(`Missing '${name}' column.`) }
-      else { const val = row[idx]?.trim(); if (!val) { errors.push(`${name} is required.`); cellErrors[`${rowIdx}-${idx}`] = true } }
+      if (idx === -1) { if (!isUpdateOnly) errors.push(`Missing '${name}' column.`) }
+      else { const val = row[idx]?.trim(); if (!val && !isUpdateOnly) { errors.push(`${name} is required.`); cellErrors[`${rowIdx}-${idx}`] = true } }
     }
 
     // Description
-    if (descColIdx === -1) { errors.push("Missing 'Product Description' column.") }
-    else { const val = row[descColIdx]?.trim(); if (!val) { errors.push("Product Description is required."); cellErrors[`${rowIdx}-${descColIdx}`] = true } }
+    if (descColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'Product Description' column.") }
+    else { const val = row[descColIdx]?.trim(); if (!val && !isUpdateOnly) { errors.push("Product Description is required."); cellErrors[`${rowIdx}-${descColIdx}`] = true } }
 
     // Compatibility
     const structuredCompatibility = normalizedHeaders.some(header => ['universaldevicetypes', 'compatiblecharginginterface', 'headphonejackcompatibility', 'bluetoothcompatibility', 'wirelesschargingcompatibility', 'storageexpansioncompatibility', 'memorycapacity', 'compatiblewatchcasesize'].includes(header))
-    if (!structuredCompatibility) {
+    if (!structuredCompatibility && !isUpdateOnly) {
       if (compatColIdx === -1) { errors.push("Provide Device Compatibility or structured compatibility columns.") }
       else { const val = row[compatColIdx]?.trim(); if (!val) { errors.push("Device Compatibility is required for this file format."); cellErrors[`${rowIdx}-${compatColIdx}`] = true } }
     }
 
     // Status
-    if (statusColIdx === -1) { errors.push("Missing 'Product Status' column.") }
+    if (statusColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'Product Status' column.") }
     else {
       const val = row[statusColIdx]?.trim()
-      if (!val) { errors.push("Product Status is required."); cellErrors[`${rowIdx}-${statusColIdx}`] = true }
+      if (!val) { if (!isUpdateOnly) { errors.push("Product Status is required."); cellErrors[`${rowIdx}-${statusColIdx}`] = true } }
       else {
         const validStatuses = ['active', 'inactive', 'eol', 'out_of_stock']
         if (!validStatuses.includes(val.toLowerCase())) { errors.push(`Product Status must be one of: Active, Inactive, EOL, Out of Stock. Got '${val}'.`); cellErrors[`${rowIdx}-${statusColIdx}`] = true }
@@ -291,10 +292,10 @@ export function validateCsvRows(
     }
 
     // Inventory Level
-    if (inventoryLevelColIdx === -1) { errors.push("Missing 'Inventory Level' column.") }
+    if (inventoryLevelColIdx === -1) { if (!isUpdateOnly) errors.push("Missing 'Inventory Level' column.") }
     else {
       const val = row[inventoryLevelColIdx]?.trim()
-      if (!val) { errors.push("Inventory Level is required."); cellErrors[`${rowIdx}-${inventoryLevelColIdx}`] = true }
+      if (!val) { if (!isUpdateOnly) { errors.push("Inventory Level is required."); cellErrors[`${rowIdx}-${inventoryLevelColIdx}`] = true } }
       else if (isNaN(Number(val)) || Number(val) < 0) { errors.push(`Inventory Level must be a non-negative number. Got '${val}'.`); cellErrors[`${rowIdx}-${inventoryLevelColIdx}`] = true }
     }
 
