@@ -47,7 +47,19 @@ BALAJI_COMMERCE_CONFIG['orders']['status_map'].update({'Pending Fulfillment':'pr
 # The documented Balaji shipment schema does NOT provide line quantities or ETA.
 BALAJI_COMMERCE_CONFIG['shipments'].update(lines_path='',eta_path='',delivered_at_path='')
 BALAJI_COMMERCE_CONFIG['webhook'].update(scheme='balaji_v1',signature_header='Balaji-Signature',timestamp_header='',
-    registration_path='/api/v1/webhooks')
+    registration_path='/api/v1/webhooks',
+    events=['order.created','order.updated','shipment.created','shipment.delivered',
+            'invoice.created','invoice.paid','credit_memo.created','payment.applied',
+            'return.created','return.updated','item.stock_changed','item.eta_changed'],
+    event_routes={'order.created':'order','order.updated':'order',
+                  'shipment.created':'shipment','shipment.delivered':'shipment',
+                  'invoice.created':'finance','invoice.paid':'finance',
+                  'credit_memo.created':'finance','payment.applied':'finance',
+                  'return.created':'return','return.updated':'return',
+                  'item.stock_changed':'inventory','item.eta_changed':'inventory'},
+    invoice_record_path='invoice',credit_memo_record_path='credit_memo',
+    payment_record_path='payment',return_record_path='return',
+    item_record_path='item')
 
 
 def default_commerce_config():
@@ -102,7 +114,14 @@ def validate_commerce_config(value):
     if not isinstance(value,dict) or set(value)!=set(GENERIC_COMMERCE_CONFIG) or value.get('version')!=1:
         raise ValidationError('Use version 1 of the supported supplier capability configuration.')
     for kind in ('order','orders','shipments','webhook','ship_to'):
-        if not isinstance(value[kind],dict) or set(value[kind])!=set(GENERIC_COMMERCE_CONFIG[kind]):
+        if not isinstance(value[kind],dict):
+            raise ValidationError(f'Use the supported {kind} configuration fields.')
+        required = set(GENERIC_COMMERCE_CONFIG[kind])
+        actual = set(value[kind])
+        if kind == 'webhook':
+            if not required <= actual or len(actual) > len(required) + 10:
+                raise ValidationError(f'Use the supported {kind} configuration fields.')
+        elif actual != required:
             raise ValidationError(f'Use the supported {kind} configuration fields.')
     for kind in ('order','orders','shipments'):
         route=value[kind]['path']
@@ -151,8 +170,8 @@ def validate_commerce_config(value):
     if not isinstance(hook['events'],list) or not 1<=len(hook['events'])<=20 or any(not isinstance(event,str) or len(event)>100 for event in hook['events']):
         raise ValidationError('Configure a bounded list of provider event names.')
     routes=hook['event_routes']
-    if not isinstance(routes,dict) or set(routes)!=set(hook['events']) or any(not isinstance(kind,str) or kind not in ('order','shipment','catalog','ignore') for kind in routes.values()):
-        raise ValidationError('Map each configured event to order, shipment, catalog or ignore.')
+    if not isinstance(routes,dict) or set(routes)!=set(hook['events']) or any(not isinstance(kind,str) or kind not in ('order','shipment','catalog','finance','return','inventory','ignore') for kind in routes.values()):
+        raise ValidationError('Map each configured event to a supported route or ignore.')
     if value['ship_to']['mode'] not in ('unconfigured','address','address_id','store_id'):
         raise ValidationError('Choose verified supplier shipping-address behavior.')
     if value['ship_to']['address_id'] is not None and (type(value['ship_to']['address_id']) is not int or value['ship_to']['address_id']<1):

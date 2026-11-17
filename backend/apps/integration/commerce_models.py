@@ -185,3 +185,54 @@ class VendorOutboundDelivery(models.Model):
             models.Index(fields=['vendor_company','event_type']),
             models.Index(fields=['status','next_retry_at']),
         ]
+
+
+class VendorFinanceRecord(models.Model):
+    """Vendor-originated finance records — invoices, credit memos, payments received via webhook or API sync."""
+    RECORD_TYPES=[('invoice','Invoice'),('credit_memo','Credit Memo'),('payment','Payment')]
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    profile=models.ForeignKey(VendorCommerceProfile,on_delete=models.PROTECT,related_name='finance_records')
+    vendor_company=models.ForeignKey('tenant.Company',on_delete=models.PROTECT,related_name='vendor_finance_records')
+    record_type=models.CharField(max_length=20,choices=RECORD_TYPES,db_index=True)
+    external_id=models.CharField(max_length=200)
+    external_number=models.CharField(max_length=200,blank=True)
+    status=models.CharField(max_length=50,blank=True)
+    issued_on=models.DateField(null=True,blank=True)
+    due_on=models.DateField(null=True,blank=True)
+    total_cents=models.BigIntegerField(default=0)
+    amount_due_cents=models.BigIntegerField(default=0)
+    currency=models.CharField(max_length=3,default='USD')
+    po_number=models.CharField(max_length=150,blank=True,db_index=True)
+    pdf_url=models.URLField(max_length=1000,blank=True)
+    raw_data=models.JSONField(default=dict)
+    source=models.CharField(max_length=20,default='webhook',choices=[('webhook','Webhook'),('api_sync','API Sync')])
+    created_at=models.DateTimeField(default=timezone.now)
+    updated_at=models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table='integration_vendor_finance_record'
+        constraints=[models.UniqueConstraint(fields=['profile','record_type','external_id'],name='vendor_finance_unique_record')]
+        indexes=[models.Index(fields=['vendor_company','record_type'])]
+
+
+class VendorReturnRecord(models.Model):
+    """Vendor-originated return/RMA records received via webhook or API sync."""
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    profile=models.ForeignKey(VendorCommerceProfile,on_delete=models.PROTECT,related_name='return_records')
+    vendor_company=models.ForeignKey('tenant.Company',on_delete=models.PROTECT,related_name='vendor_return_records')
+    external_id=models.CharField(max_length=200)
+    status=models.CharField(max_length=50,blank=True)
+    source_order_number=models.CharField(max_length=200,blank=True,db_index=True)
+    po_number=models.CharField(max_length=150,blank=True,db_index=True)
+    total_cents=models.BigIntegerField(default=0)
+    currency=models.CharField(max_length=3,default='USD')
+    credit_memo_id=models.CharField(max_length=200,blank=True)
+    raw_data=models.JSONField(default=dict)
+    source=models.CharField(max_length=20,default='webhook',choices=[('webhook','Webhook'),('api_sync','API Sync')])
+    created_at=models.DateTimeField(default=timezone.now)
+    updated_at=models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table='integration_vendor_return_record'
+        constraints=[models.UniqueConstraint(fields=['profile','external_id'],name='vendor_return_unique_record')]
+        indexes=[models.Index(fields=['vendor_company','status'])]

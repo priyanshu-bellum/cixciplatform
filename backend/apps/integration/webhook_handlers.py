@@ -1,7 +1,10 @@
 """Webhook event handlers — update dispatch status and fulfillment tracking."""
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import timezone
-from .commerce_models import SupplierOrderDispatch, VendorCommerceProfile
+from .commerce_models import (
+    SupplierOrderDispatch, VendorCommerceProfile,
+    VendorFinanceRecord, VendorReturnRecord,
+)
 from .catalog_config import path_value
 from .catalog_sync import audit
 
@@ -188,6 +191,149 @@ def handle_shipment_event(event_type, record, profile, receipt):
 
     if tracking_url and handoff:
         _store_tracking_url(handoff, str(tracking_url)[:1000])
+
+
+def handle_finance_event(event_type, record_type, record, profile, receipt):
+    """Handle invoice.created, invoice.paid, credit_memo.created, payment.applied."""
+    if not isinstance(record, dict):
+        return
+    external_id = str(record.get('id', ''))
+    if not external_id:
+        receipt.error_code = 'MISSING_FINANCE_ID'
+        return
+
+    defaults = {
+        'vendor_company': profile.vendor_company,
+        'external_number': str(record.get('invoice_number') or record.get('number', ''))[:200],
+        'status': str(record.get('status', ''))[:50],
+        'total_cents': int(record.get('total_cents', 0) or 0),
+        'amount_due_cents': int(record.get('amount_due_cents') or record.get('amount_remaining_cents') or 0),
+        'currency': str(record.get('currency', 'USD'))[:3],
+        'po_number': str(record.get('po_number', ''))[:150],
+        'pdf_url': str(record.get('pdf_url', ''))[:1000],
+        'raw_data': record,
+        'source': 'webhook',
+    }
+    for date_field in ('issued_on', 'due_on'):
+        raw = record.get(date_field)
+        if raw:
+            try:
+                from django.utils.dateparse import parse_date
+                defaults[date_field] = parse_date(str(raw)[:10])
+            except (ValueError, TypeError):
+                pass
+
+    for applied in record.get('applied_to', []):
+        if isinstance(applied, dict) and applied.get('invoice_number') and not defaults['po_number']:
+            defaults['po_number'] = str(applied.get('po_number', ''))[:150]
+
+    try:
+        obj, created = VendorFinanceRecord.objects.update_or_create(
+            profile=profile, record_type=record_type, external_id=external_id[:200],
+            defaults=defaults,
+        )
+    except IntegrityError:
+        receipt.error_code = 'FINANCE_RECORD_CONFLICT'
+        return
+
+    audit(f'webhook_{record_type}_{event_type.split(".")[-1]}', profile.connection, profile.updated_by,
+          finance_record_id=str(obj.pk), external_id=external_id[:100],
+          record_type=record_type, receipt_id=str(receipt.pk))
+
+
+def handle_return_event(event_type, record, profile, receipt):
+    """Handle return.created, return.updated."""
+    if not isinstance(record, dict):
+        return
+    external_id = str(record.get('id', ''))
+    if not external_id:
+        receipt.error_code = 'MISSING_RETURN_ID'
+        return
+
+    defaults = {
+        'vendor_company': profile.vendor_company,
+        'status': str(record.get('status', ''))[:50],
+        'source_order_number': str(record.get('source_order', {}).get('order_number', '') if isinstance(record.get('source_order'), dict) else record.get('source_order', ''))[:200],
+        'po_number': str(record.get('source_order', {}).get('po_number', '') if isinstance(record.get('source_order'), dict) else record.get('po_number', ''))[:150],
+        'total_cents': int(record.get('total_cents', 0) or 0),
+        'currency': str(record.get('currency', 'USD'))[:3],
+        'credit_memo_id': str(record.get('credit_memo', {}).get('id', '') if isinstance(record.get('credit_memo'), dict) else record.get('credit_memo', ''))[:200],
+        'raw_data': record,
+        'source': 'webhook',
+    }
+
+    try:
+        obj, created = VendorReturnRecord.objects.update_or_create(
+            profile=profile, external_id=external_id[:200],
+            defaults=defaults,
+        )
+    except IntegrityError:
+        receipt.error_code = 'RETURN_RECORD_CONFLICT'
+        return
+
+    if defaults['po_number']:
+        dispatch = _resolve_dispatch(profile, defaults['po_number'], defaults['source_order_number'])
+        if dispatch:
+            _fire_outbound_event(
+                profile.vendor_company_id, f'return.{event_type.split(".")[-1]}',
+                {'dispatch_id': str(dispatch.pk), 'po_number': dispatch.po_number,
+                 'return_id': external_id[:100], 'status': defaults['status']},
+                source_id=f'return:{dispatch.pk}:{external_id}')
+
+    audit(f'webhook_return_{event_type.split(".")[-1]}', profile.connection, profile.updated_by,
+          return_record_id=str(obj.pk), external_id=external_id[:100],
+          receipt_id=str(receipt.pk))
+
+
+def handle_inventory_event(event_type, record, profile, receipt):
+    """Handle item.stock_changed, item.eta_changed — update Product inventory_level."""
+    if not isinstance(record, dict):
+        return
+    sku = str(record.get('sku', ''))
+    if not sku:
+        receipt.error_code = 'MISSING_ITEM_SKU'
+        return
+
+    from apps.integration.models import VendorCatalogItem
+    source_item = VendorCatalogItem.objects.filter(
+        connection__vendor_company=profile.vendor_company,
+        external_id=sku,
+    ).select_related('product').first()
+
+    if not source_item:
+        source_item = VendorCatalogItem.objects.filter(
+            connection__vendor_company=profile.vendor_company,
+            payload__sku=sku,
+        ).select_related('product').first()
+
+    if not source_item or not source_item.product:
+        receipt.error_code = 'ITEM_NOT_FOUND'
+        return
+
+    product = source_item.product
+    changed = False
+
+    if event_type == 'item.stock_changed':
+        new_stock = record.get('stock_on_hand')
+        if new_stock is not None:
+            try:
+                product.inventory_level = int(new_stock)
+                changed = True
+            except (ValueError, TypeError):
+                pass
+
+    if event_type == 'item.eta_changed':
+        new_eta = record.get('eta')
+        if new_eta and hasattr(product, 'eta'):
+            product.eta = str(new_eta)[:100]
+            changed = True
+
+    if changed:
+        product.save()
+
+    audit(f'webhook_{event_type.replace(".", "_")}', profile.connection, profile.updated_by,
+          product_id=str(product.pk), sku=sku[:100],
+          receipt_id=str(receipt.pk))
 
 
 def _resolve_dispatch(profile, po_number, external_order_id):

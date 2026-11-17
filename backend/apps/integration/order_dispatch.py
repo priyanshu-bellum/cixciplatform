@@ -194,6 +194,84 @@ def process_supplier_dispatch(dispatch_id):
                 audit('supplier_order_failed',current.profile.connection,current.profile.updated_by,dispatch_id=current.pk,code=current.last_error_code,status='failure')
 
 
+def cancel_supplier_order(dispatch_id, *, actor=None):
+    """Cancel an order via DELETE /orders/{po_number} — Balaji adapter only."""
+    with transaction.atomic():
+        dispatch = SupplierOrderDispatch.objects.select_for_update().select_related(
+            'profile__connection__vendor_company', 'profile__updated_by',
+        ).get(pk=dispatch_id)
+        if dispatch.status in ('cancelled', 'failed', 'configuration_required'):
+            raise ValidationError('This order is not in a cancellable state.')
+        if not dispatch.profile or dispatch.profile.adapter != 'balaji':
+            raise ValidationError('Order cancellation is only supported for the Balaji adapter.')
+        if dispatch.mode == 'preview':
+            dispatch.status = 'cancelled'
+            dispatch.save(update_fields=['status', 'updated_at'])
+            audit('supplier_order_cancelled', dispatch.profile.connection,
+                  actor or dispatch.profile.updated_by,
+                  dispatch_id=str(dispatch.pk), po_number=dispatch.po_number, mode='preview')
+            return dispatch
+
+    profile = dispatch.profile
+    path = f'/api/v1/orders/{dispatch.po_number}'
+    transport = profile_transport(profile, path)
+    _reserve_request(profile.connection, catalog_rows=False)
+
+    from .catalog_transport import PinnedHTTPSConnection
+    from .catalog_secrets import decrypt_credentials
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(transport.endpoint_url)
+    creds = decrypt_credentials(transport)
+    token = creds.get('api_key') or creds.get('token') or ''
+
+    conn = PinnedHTTPSConnection(parsed.hostname, parsed.port or 443)
+    headers = {'Accept': 'application/json'}
+    if transport.auth_type == 'bearer' and token:
+        headers['Authorization'] = f'Bearer {token}'
+    elif transport.auth_type == 'api_key' and token:
+        headers[transport.auth_header] = token
+
+    try:
+        conn.request('DELETE', parsed.path, headers=headers)
+        resp = conn.getresponse()
+        body = resp.read()
+        http_status = resp.status
+    finally:
+        conn.close()
+
+    if http_status in (200, 202, 204):
+        with transaction.atomic():
+            current = SupplierOrderDispatch.objects.select_for_update().get(pk=dispatch.pk)
+            current.status = 'cancelled'
+            current.provider_status = 'cancelled'
+            current.response_summary = {
+                **current.response_summary, 'cancel_http': http_status,
+            }
+            current.save()
+            audit('supplier_order_cancelled', profile.connection,
+                  actor or profile.updated_by,
+                  dispatch_id=str(current.pk), po_number=current.po_number,
+                  mode=current.mode, http_status=http_status)
+            transaction.on_commit(lambda: _fire_outbound_event(
+                current.vendor_company_id, 'order.status_changed',
+                {'dispatch_id': str(current.pk), 'po_number': current.po_number,
+                 'status': 'cancelled', 'previous_status': dispatch.status},
+                source_id=f'cancel:{current.pk}'))
+        return current
+    else:
+        import json as _json
+        try:
+            err = _json.loads(body)
+        except Exception:
+            err = {'raw': body.decode('utf-8', errors='replace')[:500]}
+        raise CatalogTransportError(
+            'ORDER_CANCEL_REJECTED',
+            status=http_status,
+            detail=err,
+        )
+
+
 def _fire_outbound_event(vendor_company_id, event_type, event_data, *, source_id=None):
     try:
         from .webhook_dispatch import queue_outbound_event

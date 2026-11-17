@@ -166,11 +166,27 @@ class WebhookReceiverView(View):
         return JsonResponse({'status': 'accepted', 'event_id': event_id}, status=200)
 
     def _verify_balaji(self, payload_bytes, signature, profile):
+        """Balaji signature format: 't=<unix_ts>,v1=<hmac_hex>' — HMAC of '{ts}.{body}'."""
         key = read_webhook_secret(profile)
         if not key:
             return False
-        expected = hmac.new(key, payload_bytes, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected, signature)
+        parts = {}
+        for segment in signature.split(','):
+            if '=' in segment:
+                k, v = segment.split('=', 1)
+                parts[k.strip()] = v.strip()
+        ts = parts.get('t', '')
+        v1 = parts.get('v1', '')
+        if not ts or not v1:
+            return False
+        try:
+            if abs(time.time() - int(ts)) > TIMESTAMP_TOLERANCE:
+                return False
+        except (ValueError, TypeError):
+            return False
+        message = f'{ts}.'.encode() + payload_bytes
+        expected = hmac.new(key, message, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, v1)
 
     def _verify_timestamp(self, payload_bytes, signature, timestamp, profile, config):
         key = read_webhook_secret(profile)
@@ -202,7 +218,10 @@ def _encrypt_payload(payload_bytes):
 
 
 def _dispatch_event(route, event_type, data, profile, config, receipt):
-    from .webhook_handlers import handle_order_event, handle_shipment_event
+    from .webhook_handlers import (
+        handle_order_event, handle_shipment_event,
+        handle_finance_event, handle_return_event, handle_inventory_event,
+    )
     if route == 'order':
         record_path = config.get('order_record_path', 'order')
         record = path_value(data, record_path) if record_path else data
@@ -211,3 +230,20 @@ def _dispatch_event(route, event_type, data, profile, config, receipt):
         record_path = config.get('shipment_record_path', 'shipment')
         record = path_value(data, record_path) if record_path else data
         handle_shipment_event(event_type, record or data, profile, receipt)
+    elif route == 'finance':
+        record_type_map = {
+            'invoice.created': 'invoice', 'invoice.paid': 'invoice',
+            'credit_memo.created': 'credit_memo', 'payment.applied': 'payment',
+        }
+        rtype = record_type_map.get(event_type, 'invoice')
+        record_path = config.get(f'{rtype}_record_path', rtype)
+        record = path_value(data, record_path) if record_path else data
+        handle_finance_event(event_type, rtype, record or data, profile, receipt)
+    elif route == 'return':
+        record_path = config.get('return_record_path', 'return')
+        record = path_value(data, record_path) if record_path else data
+        handle_return_event(event_type, record or data, profile, receipt)
+    elif route == 'inventory':
+        record_path = config.get('item_record_path', 'item')
+        record = path_value(data, record_path) if record_path else data
+        handle_inventory_event(event_type, record or data, profile, receipt)

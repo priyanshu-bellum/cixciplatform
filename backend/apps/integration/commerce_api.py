@@ -12,7 +12,8 @@ from apps.tenant.mixins import CheckAccessMixin
 from .commerce_models import (
     VendorCommerceProfile, SupplierOrderDispatch,
     VendorWebhookReceipt, VendorCommercePollRun,
-    VendorOutboundDelivery, OUTBOUND_EVENTS, OUTBOUND_EVENT_KEYS,
+    VendorOutboundDelivery, VendorFinanceRecord, VendorReturnRecord,
+    OUTBOUND_EVENTS, OUTBOUND_EVENT_KEYS,
 )
 from .commerce_config import (
     GENERIC_COMMERCE_CONFIG, BALAJI_COMMERCE_CONFIG,
@@ -113,6 +114,29 @@ class OutboundDeliverySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class FinanceRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VendorFinanceRecord
+        fields = (
+            'id', 'record_type', 'external_id', 'external_number',
+            'status', 'issued_on', 'due_on', 'total_cents',
+            'amount_due_cents', 'currency', 'po_number', 'pdf_url',
+            'source', 'created_at', 'updated_at',
+        )
+        read_only_fields = fields
+
+
+class ReturnRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VendorReturnRecord
+        fields = (
+            'id', 'external_id', 'status', 'source_order_number',
+            'po_number', 'total_cents', 'currency', 'credit_memo_id',
+            'source', 'created_at', 'updated_at',
+        )
+        read_only_fields = fields
+
+
 class PollRunSerializer(serializers.ModelSerializer):
     class Meta:
         model = VendorCommercePollRun
@@ -131,8 +155,12 @@ class VendorCommerceProfileViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         'webhooks': 'integration.connection.read',
         'polls': 'integration.connection.read',
         'outbound_log': 'integration.connection.read',
+        'finance_records': 'integration.connection.read',
+        'return_records': 'integration.connection.read',
         'generate_outbound_secret': 'integration.connection.write',
         'rotate_outbound_secret': 'integration.connection.write',
+        'cancel_order': 'integration.connection.write',
+        'sync_finance': 'integration.connection.write',
     }
 
     def check_permissions(self, request):
@@ -281,4 +309,62 @@ class VendorCommerceProfileViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 {'polling_enabled': 'Enable polling before requesting a poll.'})
         from .shipment_poll import request_shipment_poll
         run = request_shipment_poll(profile.pk, actor=request.user)
+        return Response(PollRunSerializer(run).data, status=202)
+
+    @action(detail=True, methods=['get'], url_path='finance-records')
+    def finance_records(self, request, pk=None):
+        profile = self.get_object()
+        qs = profile.finance_records.filter(
+            vendor_company=profile.vendor_company,
+        ).order_by('-created_at')
+        record_type = request.query_params.get('type')
+        if record_type in ('invoice', 'credit_memo', 'payment'):
+            qs = qs.filter(record_type=record_type)
+        page = self.paginate_queryset(qs)
+        return self.get_paginated_response(
+            FinanceRecordSerializer(page, many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='return-records')
+    def return_records(self, request, pk=None):
+        profile = self.get_object()
+        qs = profile.return_records.filter(
+            vendor_company=profile.vendor_company,
+        ).order_by('-created_at')
+        page = self.paginate_queryset(qs)
+        return self.get_paginated_response(
+            ReturnRecordSerializer(page, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='cancel-order')
+    def cancel_order(self, request, pk=None):
+        profile = self.get_object()
+        dispatch_id = request.data.get('dispatch_id')
+        if not dispatch_id:
+            raise serializers.ValidationError(
+                {'dispatch_id': 'Provide the dispatch ID to cancel.'})
+        dispatch = SupplierOrderDispatch.objects.filter(
+            pk=dispatch_id, profile=profile,
+            vendor_company=profile.vendor_company,
+        ).first()
+        if not dispatch:
+            raise serializers.ValidationError(
+                {'dispatch_id': 'Dispatch not found for this profile.'})
+        from .order_dispatch import cancel_supplier_order
+        result = cancel_supplier_order(dispatch.pk, actor=request.user)
+        return Response(DispatchSerializer(result).data)
+
+    @action(detail=True, methods=['post'], url_path='sync-finance')
+    def sync_finance(self, request, pk=None):
+        profile = self.get_object()
+        if profile.adapter != 'balaji':
+            raise serializers.ValidationError(
+                {'adapter': 'Finance sync is only available for the Balaji adapter.'})
+        kind = request.data.get('kind', 'invoice')
+        if kind not in ('invoice', 'credit_memo', 'payment', 'return'):
+            raise serializers.ValidationError(
+                {'kind': 'Choose invoice, credit_memo, payment, or return.'})
+        from .finance_sync import request_finance_sync
+        run = request_finance_sync(profile.pk, kind=kind, actor=request.user)
+        if not run:
+            raise serializers.ValidationError(
+                {'detail': 'Finance sync could not be started.'})
         return Response(PollRunSerializer(run).data, status=202)

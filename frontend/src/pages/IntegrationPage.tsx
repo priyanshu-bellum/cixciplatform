@@ -33,6 +33,13 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import CloseIcon from '@mui/icons-material/Close'
 import StorefrontIcon from '@mui/icons-material/Storefront'
 import SyncIcon from '@mui/icons-material/Sync'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn'
+import CancelIcon from '@mui/icons-material/Cancel'
+import InventoryIcon from '@mui/icons-material/Inventory'
+import Select from '@mui/material/Select'
+import InputLabel from '@mui/material/InputLabel'
+import FormControl from '@mui/material/FormControl'
 import MenuItem from '@mui/material/MenuItem'
 import api from '../lib/apiClient'
 import PageHeader from '../components/layout/PageHeader'
@@ -108,6 +115,37 @@ export default function IntegrationPage() {
     queryFn: () => api.get(`/integration/vendor-commerce-profiles/${outboundLogOpen}/outbound-log/`).then(r => r.data),
     enabled: !!outboundLogOpen,
   })
+
+  // Finance records panel state
+  const [financeOpen, setFinanceOpen] = useState<string | null>(null)
+  const [financeTypeFilter, setFinanceTypeFilter] = useState<string>('all')
+  const { data: financeData, isLoading: finLoading, refetch: refetchFinance } = useQuery({
+    queryKey: ['finance-records', financeOpen, financeTypeFilter],
+    queryFn: () => {
+      const params = financeTypeFilter !== 'all' ? { type: financeTypeFilter } : {}
+      return api.get(`/integration/vendor-commerce-profiles/${financeOpen}/finance-records/`, { params }).then(r => r.data)
+    },
+    enabled: !!financeOpen,
+  })
+
+  // Return records panel state
+  const [returnsOpen, setReturnsOpen] = useState<string | null>(null)
+  const { data: returnsData, isLoading: retLoading } = useQuery({
+    queryKey: ['return-records', returnsOpen],
+    queryFn: () => api.get(`/integration/vendor-commerce-profiles/${returnsOpen}/return-records/`).then(r => r.data),
+    enabled: !!returnsOpen,
+  })
+
+  // Dispatches panel state
+  const [dispatchesOpen, setDispatchesOpen] = useState<string | null>(null)
+  const { data: dispatchesData, isLoading: dispLoading, refetch: refetchDispatches } = useQuery({
+    queryKey: ['dispatches', dispatchesOpen],
+    queryFn: () => api.get(`/integration/vendor-commerce-profiles/${dispatchesOpen}/dispatches/`).then(r => r.data),
+    enabled: !!dispatchesOpen,
+  })
+
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [isCancelling, setIsCancelling] = useState<string | null>(null)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [commerceError, setCommerceError] = useState('')
 
@@ -298,6 +336,43 @@ export default function IntegrationPage() {
       showSnackbar(detail, 'error')
     } finally {
       setIsGeneratingSecret(false)
+    }
+  }
+
+  const handleSyncFinance = async (profileId: string, kind: string) => {
+    setIsSyncing(true)
+    try {
+      await api.post(`/integration/vendor-commerce-profiles/${profileId}/sync-finance/`, { kind })
+      showSnackbar(`Finance sync (${kind}) triggered`, 'success')
+      setTimeout(() => refetchFinance(), 2000)
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.adapter?.[0]
+        || JSON.stringify(err?.response?.data) || 'Failed to trigger finance sync.'
+      showSnackbar(detail, 'error')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const handleCancelOrder = async (profileId: string, dispatchId: string) => {
+    const confirmed = await confirm({
+      title: 'Cancel Order',
+      message: 'Are you sure you want to cancel this order? For live orders this will send a cancellation request to the vendor API.',
+      confirmLabel: 'Cancel Order',
+      confirmColor: 'error',
+    })
+    if (!confirmed) return
+    setIsCancelling(dispatchId)
+    try {
+      await api.post(`/integration/vendor-commerce-profiles/${profileId}/cancel-order/`, { dispatch_id: dispatchId })
+      showSnackbar('Order cancelled successfully', 'success')
+      refetchDispatches()
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.dispatch_id?.[0]
+        || JSON.stringify(err?.response?.data) || 'Failed to cancel order.'
+      showSnackbar(detail, 'error')
+    } finally {
+      setIsCancelling(null)
     }
   }
 
@@ -584,9 +659,30 @@ export default function IntegrationPage() {
       label: 'Actions',
       sortable: false,
       align: 'right' as const,
-      width: 140,
+      width: 220,
       render: (row) => (
-        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {row.order_enabled && (
+            <Tooltip title="Dispatches">
+              <IconButton size="small" color="primary" onClick={() => setDispatchesOpen(dispatchesOpen === row.id ? null : row.id)}>
+                <InventoryIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {row.adapter === 'balaji' && (
+            <>
+              <Tooltip title="Finance Records">
+                <IconButton size="small" color="info" onClick={() => setFinanceOpen(financeOpen === row.id ? null : row.id)}>
+                  <ReceiptLongIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Return Records">
+                <IconButton size="small" color="warning" onClick={() => setReturnsOpen(returnsOpen === row.id ? null : row.id)}>
+                  <AssignmentReturnIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
           {row.polling_enabled && (
             <Tooltip title="Trigger Poll Now">
               <IconButton size="small" color="primary" onClick={() => handleTriggerPoll(row.id)}>
@@ -694,6 +790,172 @@ export default function IntegrationPage() {
                 rowKey={(row: any) => row.id}
                 emptyMessage="No outbound deliveries yet"
                 emptyIcon={<CallMadeIcon sx={{ fontSize: 48 }} />}
+              />
+            </Paper>
+          </Collapse>
+
+          {/* ── Dispatches Panel ── */}
+          <Collapse in={!!dispatchesOpen}>
+            <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <InventoryIcon fontSize="small" color="primary" /> Order Dispatches
+                </Typography>
+                <Button size="small" onClick={() => setDispatchesOpen(null)}>Close</Button>
+              </Box>
+              <DataTable
+                columns={[
+                  { id: 'po_number', label: 'PO Number', render: (row: any) => (
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 500 }}>{row.po_number}</Typography>
+                  )},
+                  { id: 'status', label: 'Status', render: (row: any) => <StatusChip status={row.status} /> },
+                  { id: 'mode', label: 'Mode', render: (row: any) => (
+                    <Chip label={MODE_LABELS[row.mode] || row.mode} size="small"
+                      color={row.mode === 'live' ? 'success' : row.mode === 'test' ? 'warning' : 'default'} variant="filled" />
+                  )},
+                  { id: 'external_order_id', label: 'External ID', render: (row: any) => row.external_order_id || '—' },
+                  { id: 'provider_status', label: 'Provider Status', render: (row: any) => row.provider_status || '—' },
+                  { id: 'attempt_count', label: 'Attempts', render: (row: any) => row.attempt_count ?? 0 },
+                  { id: 'created_at', label: 'Created', render: (row: any) => formatETDate(row.created_at) },
+                  { id: 'actions', label: '', sortable: false, align: 'right' as const, width: 100, render: (row: any) => {
+                    const cancellable = !['cancelled', 'failed', 'configuration_required'].includes(row.status)
+                    return cancellable ? (
+                      <Button
+                        size="small" color="error" variant="outlined"
+                        startIcon={isCancelling === row.id ? <CircularProgress size={14} color="inherit" /> : <CancelIcon />}
+                        disabled={!!isCancelling}
+                        onClick={() => handleCancelOrder(dispatchesOpen!, row.id)}
+                        sx={{ fontSize: 11, textTransform: 'none' }}
+                      >
+                        Cancel
+                      </Button>
+                    ) : null
+                  }},
+                ] as Column<any>[]}
+                rows={dispatchesData?.results ?? (Array.isArray(dispatchesData) ? dispatchesData : [])}
+                loading={dispLoading}
+                rowKey={(row: any) => row.id}
+                emptyMessage="No order dispatches"
+                emptyIcon={<InventoryIcon sx={{ fontSize: 48 }} />}
+              />
+            </Paper>
+          </Collapse>
+
+          {/* ── Finance Records Panel ── */}
+          <Collapse in={!!financeOpen}>
+            <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ReceiptLongIcon fontSize="small" color="info" /> Finance Records
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Record Type</InputLabel>
+                    <Select
+                      value={financeTypeFilter}
+                      label="Record Type"
+                      onChange={(e) => setFinanceTypeFilter(e.target.value)}
+                    >
+                      <MenuItem value="all">All</MenuItem>
+                      <MenuItem value="invoice">Invoices</MenuItem>
+                      <MenuItem value="credit_memo">Credit Memos</MenuItem>
+                      <MenuItem value="payment">Payments</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Button
+                    size="small" variant="outlined" color="info"
+                    startIcon={isSyncing ? <CircularProgress size={14} color="inherit" /> : <SyncIcon />}
+                    disabled={isSyncing}
+                    onClick={() => handleSyncFinance(financeOpen!, financeTypeFilter !== 'all' ? financeTypeFilter : 'invoice')}
+                    sx={{ textTransform: 'none', fontSize: 12 }}
+                  >
+                    Sync Now
+                  </Button>
+                  <Button size="small" onClick={() => setFinanceOpen(null)}>Close</Button>
+                </Box>
+              </Box>
+              <DataTable
+                columns={[
+                  { id: 'record_type', label: 'Type', render: (row: any) => (
+                    <Chip label={row.record_type?.replace(/_/g, ' ')} size="small" variant="outlined"
+                      color={row.record_type === 'invoice' ? 'info' : row.record_type === 'credit_memo' ? 'warning' : 'success'} />
+                  )},
+                  { id: 'external_number', label: 'Number', render: (row: any) => (
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 500 }}>{row.external_number || row.external_id}</Typography>
+                  )},
+                  { id: 'status', label: 'Status', render: (row: any) => <StatusChip status={row.status || 'unknown'} /> },
+                  { id: 'po_number', label: 'PO Number', render: (row: any) => row.po_number || '—' },
+                  { id: 'total', label: 'Total', render: (row: any) => {
+                    const amt = (row.total_cents ?? 0) / 100
+                    return `${row.currency || 'USD'} ${amt.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                  }},
+                  { id: 'amount_due', label: 'Amount Due', render: (row: any) => {
+                    const amt = (row.amount_due_cents ?? 0) / 100
+                    return `${row.currency || 'USD'} ${amt.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                  }},
+                  { id: 'issued_on', label: 'Issued', render: (row: any) => row.issued_on || '—' },
+                  { id: 'due_on', label: 'Due', render: (row: any) => row.due_on || '—' },
+                  { id: 'source', label: 'Source', render: (row: any) => (
+                    <Chip label={row.source?.replace(/_/g, ' ')} size="small" variant="outlined" />
+                  )},
+                  { id: 'pdf_url', label: 'PDF', sortable: false, render: (row: any) => row.pdf_url ? (
+                    <Button size="small" href={row.pdf_url} target="_blank" rel="noopener" sx={{ fontSize: 11, textTransform: 'none' }}>
+                      View
+                    </Button>
+                  ) : '—' },
+                ] as Column<any>[]}
+                rows={financeData?.results ?? (Array.isArray(financeData) ? financeData : [])}
+                loading={finLoading}
+                rowKey={(row: any) => row.id}
+                emptyMessage="No finance records yet"
+                emptyIcon={<ReceiptLongIcon sx={{ fontSize: 48 }} />}
+              />
+            </Paper>
+          </Collapse>
+
+          {/* ── Return Records Panel ── */}
+          <Collapse in={!!returnsOpen}>
+            <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AssignmentReturnIcon fontSize="small" color="warning" /> Return Records
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <Button
+                    size="small" variant="outlined" color="warning"
+                    startIcon={isSyncing ? <CircularProgress size={14} color="inherit" /> : <SyncIcon />}
+                    disabled={isSyncing}
+                    onClick={() => handleSyncFinance(returnsOpen!, 'return')}
+                    sx={{ textTransform: 'none', fontSize: 12 }}
+                  >
+                    Sync Returns
+                  </Button>
+                  <Button size="small" onClick={() => setReturnsOpen(null)}>Close</Button>
+                </Box>
+              </Box>
+              <DataTable
+                columns={[
+                  { id: 'external_id', label: 'Return ID', render: (row: any) => (
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 500 }}>{row.external_id}</Typography>
+                  )},
+                  { id: 'status', label: 'Status', render: (row: any) => <StatusChip status={row.status || 'unknown'} /> },
+                  { id: 'po_number', label: 'PO Number', render: (row: any) => row.po_number || '—' },
+                  { id: 'source_order_number', label: 'Source Order', render: (row: any) => row.source_order_number || '—' },
+                  { id: 'total', label: 'Total', render: (row: any) => {
+                    const amt = (row.total_cents ?? 0) / 100
+                    return `${row.currency || 'USD'} ${amt.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                  }},
+                  { id: 'credit_memo_id', label: 'Credit Memo', render: (row: any) => row.credit_memo_id || '—' },
+                  { id: 'source', label: 'Source', render: (row: any) => (
+                    <Chip label={row.source?.replace(/_/g, ' ')} size="small" variant="outlined" />
+                  )},
+                  { id: 'created_at', label: 'Created', render: (row: any) => formatETDate(row.created_at) },
+                ] as Column<any>[]}
+                rows={returnsData?.results ?? (Array.isArray(returnsData) ? returnsData : [])}
+                loading={retLoading}
+                rowKey={(row: any) => row.id}
+                emptyMessage="No return records yet"
+                emptyIcon={<AssignmentReturnIcon sx={{ fontSize: 48 }} />}
               />
             </Paper>
           </Collapse>

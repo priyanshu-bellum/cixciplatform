@@ -55,3 +55,15 @@ def process_outbound_webhook(delivery_id):
 def retry_stalled_outbound():
     from .webhook_dispatch import retry_stalled_deliveries
     return retry_stalled_deliveries()
+
+
+@shared_task(name='integration.vendor_commerce.finance_sync', queue='vendor_commerce')
+def process_finance_sync(run_id):
+    from .finance_sync import process_finance_poll
+    process_finance_poll(run_id)
+
+
+@shared_task(name='integration.vendor_commerce.dispatch_finance_syncs', queue='vendor_commerce')
+def dispatch_finance_syncs():
+    from .finance_sync import dispatch_due_finance_syncs
+    return dispatch_due_finance_syncs()

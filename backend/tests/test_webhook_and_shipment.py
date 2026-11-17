@@ -84,7 +84,10 @@ def _make_commerce_profile(connection, vendor_company, user, adapter='balaji', m
 def _sign_balaji(payload_bytes, profile):
     from apps.integration.webhook_receiver import read_webhook_secret
     key = read_webhook_secret(profile)
-    return hmac.new(key, payload_bytes, hashlib.sha256).hexdigest()
+    ts = str(int(time.time()))
+    message = f'{ts}.'.encode() + payload_bytes
+    sig = hmac.new(key, message, hashlib.sha256).hexdigest()
+    return f't={ts},v1={sig}'
 
 
 @pytest.fixture(autouse=True, scope='session')
@@ -145,7 +148,7 @@ class TestWebhookReceiver:
         assert data['status'] == 'duplicate'
 
     def test_unsubscribed_event_ignored(self):
-        payload = {'id': 'evt_004', 'type': 'invoice.created', 'data': {}}
+        payload = {'id': 'evt_004', 'type': 'catalog.updated', 'data': {}}
         response = self._post_webhook(payload)
         assert response.status_code == 200
         data = json.loads(response.content)
