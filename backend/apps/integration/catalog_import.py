@@ -143,7 +143,7 @@ def ingest_rows(connection, run, items, actor):
     for raw, canonical in connection.config.get('category_map', {}).items():
         configured_categories.setdefault(raw.strip().casefold(), set()).add(canonical)
     counts = {"created_count": 0, "updated_count": 0, "unchanged_count": 0, "review_count": 0, "error_count": 0}
-    unchanged, observations = [], []
+    unchanged, observations, deferred_images = [], [], []
     approved_brands = set(links.values())
     for identifier, (payload, digest, fields, field_errors) in prepared.items():
         source = existing.get(identifier)
@@ -194,7 +194,17 @@ def ingest_rows(connection, run, items, actor):
         if (product and incoming_brand not in (None, '', product.brand)
                 and (not product.brand_reference_id or incoming_brand_id != product.brand_reference_id)):
             errors.append({"code": "BRAND_CHANGE_REQUIRES_REVIEW", "field": "brand"})
-        attrs = {key: value for key, value in fields.items() if key not in {"external_id", "images", "compatibility_declaration"}}
+        attrs = {key: value for key, value in fields.items() if key not in {"external_id", "images", "compatibility_declaration", "description_features"}}
+        # Append vendor feature bullets to description when the config maps description_features.
+        raw_features = fields.get("description_features")
+        if raw_features:
+            if isinstance(raw_features, list):
+                bullets = "\n".join(f"• {str(f).strip()}" for f in raw_features if str(f).strip())
+            else:
+                bullets = str(raw_features).strip()
+            if bullets:
+                desc = str(attrs.get("description") or "").strip()
+                attrs["description"] = f"{desc}\n\n{bullets}".strip() if desc else bullets
         for required in ("sku", "name"):
             if not isinstance(attrs.get(required), str) or not attrs[required].strip():
                 errors.append({"code": "REQUIRED_FIELD", "field": required})
@@ -218,7 +228,13 @@ def ingest_rows(connection, run, items, actor):
             errors.append({"code": "SENSITIVE_DATA_REMOVED", "field": "source"})
         if config:
             try:
-                compatibility_input = {'devicecompatibility': fields.get('compatibility_declaration', '')}
+                compat_raw = fields.get('compatibility_declaration', '')
+                if isinstance(compat_raw, list):
+                    compat_raw = '; '.join(
+                        entry.get('name', '') if isinstance(entry, dict) else str(entry)
+                        for entry in compat_raw if entry
+                    )
+                compatibility_input = {'devicecompatibility': compat_raw or ''}
                 compatibility_input.update({field.replace('_', ''): fields[field] for field in COMPATIBILITY_FIELDS if field in fields})
                 values, types, devices = parse_compatibility_row(compatibility_input, config)
                 attrs.update(values)
@@ -246,9 +262,17 @@ def ingest_rows(connection, run, items, actor):
                     errors.append({"code": "PRODUCT_VALIDATION_REQUIRED", "field": field})
         canonical = product
         new_product = False
-        fatal_codes = {"OFFER_ALREADY_MANAGED", "REQUIRED_FIELD", "REMOTE_ID_REQUIRED", "CONFLICTING_DUPLICATE", "CONFLICTING_SKU_IDENTITY", "SKU_CHANGE_REQUIRES_REVIEW", "BRAND_CHANGE_REQUIRES_REVIEW", "COMPATIBILITY_REVIEW_REQUIRED", "CATEGORY_MAPPING_CONFLICT"}
-        fatal = any(error["code"] in fatal_codes for error in errors)
-        if valid and not fatal and not (product and product.status == "active" and errors):
+        identity_fatal = {"OFFER_ALREADY_MANAGED", "REQUIRED_FIELD", "REMOTE_ID_REQUIRED", "CONFLICTING_DUPLICATE", "CONFLICTING_SKU_IDENTITY", "SKU_CHANGE_REQUIRES_REVIEW", "BRAND_CHANGE_REQUIRES_REVIEW", "CATEGORY_MAPPING_CONFLICT"}
+        compat_fatal = {"COMPATIBILITY_REVIEW_REQUIRED"}
+        error_codes = {error["code"] for error in errors}
+        fatal = bool(error_codes & identity_fatal)
+        compat_only = not fatal and bool(error_codes & compat_fatal)
+        if compat_only and product and product.status == "active" and valid and serializer is not None:
+            compat_fields = {"device_ids", "compatibility_update_type", "compatibility_declaration"}
+            for field in compat_fields:
+                serializer.validated_data.pop(field, None)
+        allow_save = valid and not fatal and not (product and product.status == "active" and errors and not compat_only)
+        if allow_save:
             try:
                 with transaction.atomic():
                     if product is None:
@@ -272,15 +296,8 @@ def ingest_rows(connection, run, items, actor):
             counts["unchanged_count"] += 1
         if canonical and not canonical.primary_image_reference:
             image_urls = fields.get("images")
-            actor_id = getattr(actor, "id", None)
-            try:
-                linked = process_vendor_product_images(
-                    canonical, image_urls, connection.vendor_company_id, actor_id,
-                )
-                if linked:
-                    errors = [e for e in errors if e.get("code") != "MEDIA_REVIEW_REQUIRED"]
-            except Exception:
-                logger.debug("Vendor image processing deferred for %s", canonical.sku, exc_info=True)
+            if image_urls and isinstance(image_urls, list):
+                deferred_images.append((canonical.pk, image_urls, connection.vendor_company_id, getattr(actor, "id", None)))
         if source is None:
             source = VendorCatalogItem(connection=connection, external_id=identifier)
         source.product, source.payload, source.source_hash = canonical, payload, digest
@@ -308,4 +325,4 @@ def ingest_rows(connection, run, items, actor):
         # Every observation is new; retain the existing append-only audit store
         # without adding one extra insert round trip per source row.
         AuditRecord.objects.bulk_create(observations, batch_size=200)
-    return counts
+    return counts, deferred_images

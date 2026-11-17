@@ -562,11 +562,16 @@ export default function ProductFormDialog({
       form.resetForm()
       onSaved()
     } catch (err: any) {
-      const detail = err?.response?.data?.detail
-        || err?.response?.data?.message
-        || (typeof err?.response?.data === 'object' ? JSON.stringify(err.response.data) : null)
-        || err.message
-        || 'An unexpected error occurred.'
+      let detail = err?.response?.data?.detail || err?.response?.data?.message
+      if (detail && typeof detail === 'object') {
+        detail = Object.entries(detail).map(([field, msgs]) =>
+          `${field.replace(/_/g, ' ')}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`
+        ).join('; ')
+      }
+      if (!detail) {
+        detail = typeof err?.response?.data === 'object' ? JSON.stringify(err.response.data) : null
+      }
+      detail = detail || err.message || 'An unexpected error occurred.'
       form.setFormError(`Failed to ${mode === 'add' ? 'create' : 'update'} product: ${detail}`)
     } finally {
       setSubmitting(false)

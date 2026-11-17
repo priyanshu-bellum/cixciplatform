@@ -148,7 +148,7 @@ def process_vendor_product_images(product, image_urls, vendor_company_id, actor_
     media_refs = []
     primary_id = None
 
-    for url in image_urls[:3]:
+    for url in image_urls[:6]:
         if not isinstance(url, str) or not url.strip():
             continue
         asset_id = create_vendor_media_asset(

@@ -7,17 +7,40 @@ from django.core.exceptions import ValidationError
 BALAJI_CONFIG = {
     "version": 1,
     "items_path": "data.items", "next_cursor_path": "data.next_cursor", "watermark_path": "data.next_updated_since",
-    "success_path": "success", "pagination": "cursor", "cursor_param": "cursor", "limit_param": "limit", "page_size": 100,
+    "success_path": "success", "pagination": "cursor", "cursor_param": "cursor", "limit_param": "limit", "updated_since_param": "updated_since", "page_size": 100,
     "daily_row_limit": 50000, "daily_request_limit": 50000, "requests_per_minute": 120, "budget_timezone": "America/Los_Angeles",
-    "fields": {"external_id": {"path": "sku"}, "sku": {"path": "sku"}, "name": {"path": "name"}, "brand": {"path": "brand"},
-        "upc": {"path": "upc"}, "vendor_wholesale_price_amount": {"path": "unit_price_cents", "transform": "cents"},
-        "vendor_wholesale_price_currency": {"path": "currency"}, "inventory_level": {"path": "quantity_available"},
-        "color": {"path": "color"}, "compatibility_declaration": {"path": "device"}, "images": {"path": "image_urls"}},
-    "category_map": {}, "default_category": "",
+    "fields": {"external_id": {"path": "sku"}, "sku": {"path": "sku"}, "name": {"path": "name"}, "series": {"path": "series"},
+        "brand": {"path": "brand"}, "upc": {"path": "upc"}, "description": {"path": "description"}, "description_features": {"path": "features"},
+        "vendor_category": {"path": "category"}, "color": {"path": "color"},
+        "vendor_wholesale_price_amount": {"path": "unit_price_cents", "transform": "cents"},
+        "vendor_wholesale_price_currency": {"path": "currency"},
+        "msrp": {"path": "msrp_cents", "transform": "cents"},
+        "map_price": {"path": "map_price_cents", "transform": "cents"},
+        "inventory_level": {"path": "quantity_available"},
+        "launch_date": {"path": "launch_date"},
+        "weight": {"path": "weight_oz"}, "length": {"path": "length_in"},
+        "width": {"path": "width_in"}, "height": {"path": "height_in"},
+        "compatibility_declaration": {"path": "compatible_devices"}, "images": {"path": "image_urls"}},
+    "category_map": {
+        "Phone Cases": "Cases", "Cases": "Cases",
+        "Screen Protectors": "Screen Protection", "Screen Protection": "Screen Protection",
+        "Cables": "Chargers and Cables", "Wall Chargers": "Chargers and Cables",
+        "Chargers": "Chargers and Cables", "Chargers and Cables": "Chargers and Cables",
+        "Speakers": "Speakers",
+        "Headphones": "Headphones", "Earbuds": "Headphones",
+        "Memory": "Memory", "Memory Cards": "Memory",
+        "Wearable Tech": "Wearable Tech", "Wearables": "Wearable Tech",
+        "Phone Attachments": "Phone Attachments",
+        "Other Accessories": "Phone Attachments",
+        "Other": "Phone Attachments",
+    },
+    "default_category": "Phone Attachments",
 }
 
-TARGETS = {"external_id", "sku", "name", "series", "brand", "upc", "description", "color", "vendor_category", "msrp", "map_price", "sale_price",
+TARGETS = {"external_id", "sku", "name", "series", "brand", "upc", "description", "description_features", "color",
+    "vendor_category", "msrp", "map_price", "sale_price",
     "vendor_wholesale_price_amount", "vendor_wholesale_price_currency", "inventory_level", "launch_date", "release_date", "eol_date",
+    "weight", "length", "width", "height",
     "compatibility_declaration", "images", "bluetooth_compatibility", "headphone_jack_compatibility", "compatible_charging_interface",
     "wireless_charging_compatibility", "storage_expansion_compatibility", "memory_capacity", "compatible_watch_case_size"}
 PATH = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_-]*)(?:\.(?:[A-Za-z_][A-Za-z0-9_-]*|[0-9]+))*$")
@@ -65,7 +88,7 @@ def path_value(data, path, default=None):
 
 
 def validate_config(value):
-    if not isinstance(value, dict) or set(value) - set(BALAJI_CONFIG) - {"page_param", "offset_param", "has_more_path"}:
+    if not isinstance(value, dict) or set(value) - set(BALAJI_CONFIG) - {"page_param", "offset_param", "has_more_path", "updated_since_param"}:
         raise ValidationError("Use the supported catalog configuration fields.")
     config = deepcopy(value)
     if config.get("version") != 1 or config.get("pagination") not in ("cursor", "page", "offset", "none"):
@@ -78,7 +101,7 @@ def validate_config(value):
         raise ValidationError("Cursor pagination needs a next-cursor response path.")
     if config["pagination"] in ("page", "offset") and not config.get("has_more_path"):
         raise ValidationError("Page/offset pagination requires the provider's explicit has-more response field.")
-    for key in ("cursor_param", "limit_param", "page_param", "offset_param"):
+    for key in ("cursor_param", "limit_param", "page_param", "offset_param", "updated_since_param"):
         if key in config and (not isinstance(config[key], str) or not PARAM.fullmatch(config[key])):
             raise ValidationError(f"Invalid query parameter: {key}.")
     for key, ceiling in (("page_size", 200), ("daily_row_limit", 50000), ("daily_request_limit", 50000), ("requests_per_minute", 120)):

@@ -721,9 +721,10 @@ class ProductDetailSerializer(ProductSerializerBase):
         # ── Media readiness gate (Rule §21/§31) ──
         # A product may be saved as Draft without media, but cannot become
         # Active without a valid, transparent PNG primary image.
+        # Vendor API Sync bypasses this gate: images are processed separately.
         from apps.catalog.models import ProductStatus
         new_status = attrs.get("status", self.instance.status if self.instance else None)
-        if new_status == ProductStatus.ACTIVE:
+        if new_status == ProductStatus.ACTIVE and self.context.get('update_source') != 'Vendor API Sync':
             gate_instance = self.instance
             if gate_instance is None:
                 gate_instance = self.Meta.model(**{
@@ -1198,8 +1199,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "color",
         "status",
     ]
-    ordering_fields = ["name", "created_at", "exported_date"]
-    ordering = ["-created_at"]
+    ordering_fields = ["name", "created_at", "exported_date", "status"]
+    ordering = ["status", "-created_at"]
 
     def check_permissions(self, request):
         super().check_permissions(request)
@@ -1795,7 +1796,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         ws.row_dimensions[1].height = 30
         ws.freeze_panes = "A2"
 
-        # Product Status dropdown (column C = index 3) — vendor-facing statuses only
+        # Build a lookup from column header to its 1-based index so
+        # dropdowns stay correct when columns are added or reordered.
+        col_index = {name: idx for idx, (name, _) in enumerate(columns, start=1)}
+
+        # Product Status dropdown — vendor-facing statuses only
         from apps.catalog.models import ProductStatus as PS
         _VENDOR_STATUSES = {PS.ACTIVE, PS.INACTIVE, PS.EOL, PS.OUT_OF_STOCK}
         status_labels = [label for val, label in PS.choices if val in _VENDOR_STATUSES]
@@ -1808,11 +1813,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             errorTitle="Invalid Status",
             error=f"Please select one of: {status_formula}.",
         )
-        status_col_letter = get_column_letter(3)
+        status_col_letter = get_column_letter(col_index["Product Status"])
         status_dv.add(f"{status_col_letter}2:{status_col_letter}1000")
         ws.add_data_validation(status_dv)
 
-        # Product Category dropdown (column E = index 5) — dynamic from DynamicDropdownConfig
+        # Product Category dropdown — dynamic from DynamicDropdownConfig
         categories = list(
             DynamicDropdownConfig.objects.filter(
                 field_name="product_category", status="active"
@@ -1828,11 +1833,11 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 errorTitle="Invalid Category",
                 error="Please select a valid Product Category.",
             )
-            cat_col_letter = get_column_letter(5)
+            cat_col_letter = get_column_letter(col_index["Product Category"])
             cat_dv.add(f"{cat_col_letter}2:{cat_col_letter}1000")
             ws.add_data_validation(cat_dv)
 
-        # System Color dropdown (column K = index 11) — dynamic from DynamicDropdownConfig
+        # System Color dropdown — dynamic from DynamicDropdownConfig
         sys_colors = list(
             DynamicDropdownConfig.objects.filter(
                 field_name="system_color", status="active"
@@ -1848,7 +1853,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 errorTitle="Invalid System Color",
                 error="Please select a valid System Color.",
             )
-            color_col_letter = get_column_letter(11)
+            color_col_letter = get_column_letter(col_index["System Color"])
             color_dv.add(f"{color_col_letter}2:{color_col_letter}1000")
             ws.add_data_validation(color_dv)
 

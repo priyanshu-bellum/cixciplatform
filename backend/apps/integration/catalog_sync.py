@@ -91,6 +91,18 @@ def catalog_request_params(config, cursor=None, *, limit=None):
     return params
 
 
+def _process_deferred_images(deferred_images):
+    from .catalog_media import process_vendor_product_images
+    from apps.catalog.models import Product
+    for product_pk, image_urls, vendor_company_id, actor_id in deferred_images:
+        try:
+            product = Product.objects.get(pk=product_pk)
+            if not product.primary_image_reference:
+                process_vendor_product_images(product, image_urls, vendor_company_id, actor_id)
+        except Exception:
+            pass
+
+
 def test_catalog_connection(connection, actor):
     """Bounded authenticated preview, not a successful catalog import."""
     if (connection.is_retired or saved_integration_mode(connection.vendor_company) != 'api'
@@ -133,6 +145,8 @@ def _page(connection, run):
         return [row.payload for row in rows[:connection.config["page_size"]]], next_cursor, None
     cfg = connection.config
     params = catalog_request_params(cfg, run.page_cursor)
+    if run.trigger != "manual" and run.page_index == 0 and connection.last_watermark:
+        params[cfg.get("updated_since_param", "updated_since")] = connection.last_watermark
     mode = cfg["pagination"]
     budget_id = _reserve_request(connection)
     payload = fetch_json(connection, params)
@@ -224,7 +238,7 @@ def process_sync_page(run_id):
             from .catalog_import import ingest_rows
             from apps.catalog.services import defer_buyer_projection_refresh
             with defer_buyer_projection_refresh():
-                counts = ingest_rows(current, run, items, actor)
+                counts, deferred_images = ingest_rows(current, run, items, actor)
             for name, value in counts.items():
                 setattr(run, name, getattr(run, name) + value)
             run.rows_seen += len(items); run.page_index += 1
@@ -251,6 +265,8 @@ def process_sync_page(run_id):
             # One bulk invalidation per page; source Product and completed history are untouched.
             from apps.catalog.models import BuyerScopedCompatibilityProjection
             BuyerScopedCompatibilityProjection.objects.exclude(status="review_required").update(status="review_required", review_required_reason="vendor_catalog_sync")
+        if deferred_images:
+            _process_deferred_images(deferred_images)
     except CatalogTransportError as error:
         _fail(run_id, token, error)
     except ValidationError:
