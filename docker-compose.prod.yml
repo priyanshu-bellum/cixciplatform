@@ -37,6 +37,7 @@ services:
       - MEDIA_URL=${MEDIA_URL:-}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@cixci.com}
+      - VENDOR_CATALOG_ENCRYPTION_KEYS=${VENDOR_CATALOG_ENCRYPTION_KEYS:-}
     depends_on:
       - redis
     restart: always
@@ -46,7 +47,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: cixci_celery_${ENV_NAME}
-    command: celery -A config worker -l info
+    command: celery -A config worker -l info -Q celery,vendor_catalog,vendor_commerce
     volumes:
       - ./backend:/app
     environment:
@@ -66,6 +67,30 @@ services:
       - MEDIA_URL=${MEDIA_URL:-}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@cixci.com}
+      - VENDOR_CATALOG_ENCRYPTION_KEYS=${VENDOR_CATALOG_ENCRYPTION_KEYS:-}
+    depends_on:
+      - redis
+    restart: always
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cixci_beat_${ENV_NAME}
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./backend:/app
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=False
+      - VENDOR_CATALOG_ENCRYPTION_KEYS=${VENDOR_CATALOG_ENCRYPTION_KEYS:-}
     depends_on:
       - redis
     restart: always
