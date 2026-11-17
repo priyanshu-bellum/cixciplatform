@@ -656,19 +656,19 @@ export default function IntegrationPage() {
               </Box>
               <DataTable
                 columns={[
-                  { id: 'event_type', label: 'Event', render: (row) => <Chip label={row.event_type} size="small" variant="outlined" /> },
-                  { id: 'status', label: 'Status', render: (row) => <StatusChip status={row.status} /> },
-                  { id: 'attempt_count', label: 'Attempts', render: (row) => row.attempt_count ?? 0 },
-                  { id: 'last_response_code', label: 'HTTP', render: (row) => row.last_response_code
+                  { id: 'event_type', label: 'Event', render: (row: any) => <Chip label={row.event_type} size="small" variant="outlined" /> },
+                  { id: 'status', label: 'Status', render: (row: any) => <StatusChip status={row.status} /> },
+                  { id: 'attempt_count', label: 'Attempts', render: (row: any) => row.attempt_count ?? 0 },
+                  { id: 'last_response_code', label: 'HTTP', render: (row: any) => row.last_response_code
                     ? <Chip label={row.last_response_code} size="small" color={row.last_response_code < 300 ? 'success' : 'error'} variant="filled" />
                     : '—' },
-                  { id: 'last_error', label: 'Error', render: (row) => row.last_error ? <Typography variant="caption" color="error">{row.last_error}</Typography> : '—' },
-                  { id: 'delivered_at', label: 'Delivered', render: (row) => row.delivered_at ? formatETDate(row.delivered_at) : '—' },
-                  { id: 'created_at', label: 'Created', render: (row) => formatETDate(row.created_at) },
-                ]}
+                  { id: 'last_error', label: 'Error', render: (row: any) => row.last_error ? <Typography variant="caption" color="error">{row.last_error}</Typography> : '—' },
+                  { id: 'delivered_at', label: 'Delivered', render: (row: any) => row.delivered_at ? formatETDate(row.delivered_at) : '—' },
+                  { id: 'created_at', label: 'Created', render: (row: any) => formatETDate(row.created_at) },
+                ] as Column<any>[]}
                 rows={outboundLogData?.results ?? (Array.isArray(outboundLogData) ? outboundLogData : [])}
                 loading={olLoading}
-                rowKey={(row) => row.id}
+                rowKey={(row: any) => row.id}
                 emptyMessage="No outbound deliveries yet"
                 emptyIcon={<CallMadeIcon sx={{ fontSize: 48 }} />}
               />
