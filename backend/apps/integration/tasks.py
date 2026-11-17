@@ -43,3 +43,15 @@ def dispatch_due_shipment_polls():
         except Exception:
             pass
     return started
+
+
+@shared_task(name='integration.vendor_commerce.outbound_delivery', queue='vendor_commerce')
+def process_outbound_webhook(delivery_id):
+    from .webhook_dispatch import process_outbound_delivery
+    process_outbound_delivery(delivery_id)
+
+
+@shared_task(name='integration.vendor_commerce.retry_outbound', queue='vendor_commerce')
+def retry_stalled_outbound():
+    from .webhook_dispatch import retry_stalled_deliveries
+    return retry_stalled_deliveries()

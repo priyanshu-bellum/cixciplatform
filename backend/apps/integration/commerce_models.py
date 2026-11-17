@@ -5,6 +5,16 @@ from django.core.exceptions import ValidationError
 from .commerce_config import default_commerce_config
 
 
+OUTBOUND_EVENTS = [
+    ('order.routed', 'Order Routed to Vendor'),
+    ('order.dispatched', 'Order Dispatched'),
+    ('order.status_changed', 'Order Status Changed'),
+    ('shipment.updated', 'Shipment Updated'),
+    ('shipment.delivered', 'Shipment Delivered'),
+]
+OUTBOUND_EVENT_KEYS = {k for k, _ in OUTBOUND_EVENTS}
+
+
 class VendorCommerceProfile(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     connection=models.OneToOneField('integration.VendorCatalogConnection',on_delete=models.PROTECT,related_name='commerce_profile')
@@ -14,6 +24,9 @@ class VendorCommerceProfile(models.Model):
     order_enabled=models.BooleanField(default=False)
     webhook_enabled=models.BooleanField(default=False)
     polling_enabled=models.BooleanField(default=False)
+    outbound_enabled=models.BooleanField(default=False)
+    outbound_url=models.URLField(max_length=1000,blank=True)
+    outbound_events=models.JSONField(default=list,blank=True)
     config=models.JSONField(default=default_commerce_config)
     config_version=models.UUIDField(default=uuid.uuid4,editable=False)
     receiver_id=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
@@ -35,6 +48,14 @@ class VendorCommerceProfile(models.Model):
             raise ValidationError('Select a supported adapter and execution mode.')
         if self.webhook_enabled and not self.encrypted_webhook_secret:
             raise ValidationError('A signing secret is required before accepting webhooks.')
+        if self.outbound_enabled:
+            if not self.outbound_url:
+                raise ValidationError('An outbound webhook URL is required before enabling outbound events.')
+            if not self.encrypted_webhook_secret:
+                raise ValidationError('A signing secret is required for outbound webhook HMAC signatures.')
+            invalid = set(self.outbound_events or []) - OUTBOUND_EVENT_KEYS
+            if invalid:
+                raise ValidationError(f'Unsupported outbound events: {", ".join(sorted(invalid))}')
         from .commerce_config import validate_commerce_config
         validate_commerce_config(self.config)
         if self.mode=='live' and (not self.config['order']['idempotency_verified'] or self.config['ship_to']['mode']=='unconfigured'):
@@ -135,3 +156,31 @@ class VendorCommercePollRun(models.Model):
     class Meta:
         db_table='integration_vendor_commerce_poll'
         constraints=[models.UniqueConstraint(fields=['profile','kind'],condition=models.Q(status__in=['queued','running','retrying']),name='vendor_one_active_poll')]
+
+
+class VendorOutboundDelivery(models.Model):
+    """Outbound event webhook delivery — tenant-scoped to a single vendor."""
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    profile=models.ForeignKey(VendorCommerceProfile,on_delete=models.PROTECT,related_name='outbound_deliveries')
+    vendor_company=models.ForeignKey('tenant.Company',on_delete=models.PROTECT,related_name='outbound_webhook_deliveries')
+    event_type=models.CharField(max_length=100,db_index=True)
+    idempotency_key=models.CharField(max_length=255,unique=True,db_index=True)
+    payload=models.JSONField(default=dict)
+    status=models.CharField(max_length=20,default='pending',db_index=True,choices=[
+        ('pending','Pending'),('in_flight','In Flight'),('delivered','Delivered'),
+        ('failed','Failed'),('retrying','Retrying'),
+    ])
+    attempt_count=models.PositiveSmallIntegerField(default=0)
+    max_attempts=models.PositiveSmallIntegerField(default=5)
+    next_retry_at=models.DateTimeField(null=True,blank=True)
+    last_response_code=models.PositiveSmallIntegerField(null=True,blank=True)
+    last_error=models.CharField(max_length=500,blank=True)
+    delivered_at=models.DateTimeField(null=True,blank=True)
+    created_at=models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table='integration_vendor_outbound_delivery'
+        indexes=[
+            models.Index(fields=['vendor_company','event_type']),
+            models.Index(fields=['status','next_retry_at']),
+        ]

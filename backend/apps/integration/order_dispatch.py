@@ -67,6 +67,12 @@ def request_supplier_dispatch(suborder_id,*,retry=False,actor=None):
     dispatch.save()
     audit('supplier_order_queued',profile.connection,actor,dispatch_id=dispatch.pk,suborder_id=suborder.pk,mode=dispatch.mode)
     transaction.on_commit(lambda:publish_dispatch(dispatch.pk))
+    if not retry:
+        transaction.on_commit(lambda: _fire_outbound_event(
+            dispatch.vendor_company_id, 'order.routed',
+            {'dispatch_id': str(dispatch.pk), 'po_number': dispatch.po_number,
+             'suborder_id': str(suborder.pk), 'mode': dispatch.mode},
+            source_id=f'routed:{dispatch.pk}'))
     return dispatch
 
 
@@ -163,6 +169,12 @@ def process_supplier_dispatch(dispatch_id):
             current.lease_token,current.lease_expires_at=None,None;current.save()
             audit('supplier_order_result',profile.connection,profile.updated_by,dispatch_id=current.pk,suborder_id=current.suborder_id,
                 mode=current.mode,result=outcome,provider_status=provider_status,external_order_id=str(external_id))
+            if outcome in ('accepted','held','test_validated') and dispatch.mode!='preview':
+                transaction.on_commit(lambda: _fire_outbound_event(
+                    current.vendor_company_id,'order.dispatched',
+                    {'dispatch_id':str(current.pk),'po_number':current.po_number,
+                     'status':outcome,'external_order_id':str(external_id),'mode':current.mode},
+                    source_id=str(current.pk)))
     except (CatalogTransportError,ValidationError) as error:
         with transaction.atomic():
             current=SupplierOrderDispatch.objects.select_for_update().get(pk=dispatch.pk)
@@ -180,3 +192,11 @@ def process_supplier_dispatch(dispatch_id):
             current.lease_token,current.lease_expires_at=None,None;current.save()
             if current.profile_id:
                 audit('supplier_order_failed',current.profile.connection,current.profile.updated_by,dispatch_id=current.pk,code=current.last_error_code,status='failure')
+
+
+def _fire_outbound_event(vendor_company_id, event_type, event_data, *, source_id=None):
+    try:
+        from .webhook_dispatch import queue_outbound_event
+        queue_outbound_event(vendor_company_id, event_type, event_data, source_id=source_id)
+    except Exception:
+        pass

@@ -165,6 +165,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 300.0,
         "options": {"queue": "vendor_commerce"},
     },
+    "retry_stalled_outbound_webhooks_every_2_mins": {
+        "task": "integration.vendor_commerce.retry_outbound",
+        "schedule": 120.0,
+        "options": {"queue": "vendor_commerce"},
+    },
 }
 
 # ─── REST Framework ───────────────────────────────────────────────────────────

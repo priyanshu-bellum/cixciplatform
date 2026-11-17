@@ -58,6 +58,12 @@ def handle_order_event(event_type, record, profile, receipt):
         if changed:
             current.updated_at = timezone.now()
             current.save()
+            _fire_outbound_event(
+                profile.vendor_company_id, 'order.status_changed',
+                {'dispatch_id': str(current.pk), 'po_number': current.po_number,
+                 'status': normalized, 'provider_status': str(raw_status)[:100],
+                 'external_order_id': current.external_order_id},
+                source_id=f'order_status:{current.pk}:{normalized}')
 
         audit('webhook_order_update', profile.connection, profile.updated_by,
               dispatch_id=str(current.pk), event_type=event_type,
@@ -167,6 +173,16 @@ def handle_shipment_event(event_type, record, profile, receipt):
               carrier=str(carrier or '')[:100], normalized=normalized,
               receipt_id=str(receipt.pk))
 
+        if changed:
+            outbound_type = 'shipment.delivered' if normalized == 'delivered' else 'shipment.updated'
+            _fire_outbound_event(
+                profile.vendor_company_id, outbound_type,
+                {'dispatch_id': str(dispatch.pk), 'po_number': dispatch.po_number,
+                 'shipment_id': str(shipment_id)[:200], 'status': normalized,
+                 'tracking_number': str(tracking_number or '')[:100],
+                 'carrier': str(carrier or '')[:100]},
+                source_id=f'shipment:{dispatch.pk}:{shipment_id}:{normalized}')
+
         if normalized == 'delivered':
             _check_parent_completeness(handoff, dispatch)
 
@@ -252,3 +268,11 @@ def _check_parent_completeness(handoff, dispatch):
 
 def _store_tracking_url(handoff, url):
     pass
+
+
+def _fire_outbound_event(vendor_company_id, event_type, event_data, *, source_id=None):
+    try:
+        from .webhook_dispatch import queue_outbound_event
+        queue_outbound_event(vendor_company_id, event_type, event_data, source_id=source_id)
+    except Exception:
+        pass

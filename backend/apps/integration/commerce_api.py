@@ -12,6 +12,7 @@ from apps.tenant.mixins import CheckAccessMixin
 from .commerce_models import (
     VendorCommerceProfile, SupplierOrderDispatch,
     VendorWebhookReceipt, VendorCommercePollRun,
+    VendorOutboundDelivery, OUTBOUND_EVENTS, OUTBOUND_EVENT_KEYS,
 )
 from .commerce_config import (
     GENERIC_COMMERCE_CONFIG, BALAJI_COMMERCE_CONFIG,
@@ -27,14 +28,17 @@ class CommerceProfileSerializer(serializers.ModelSerializer):
     webhook_url = serializers.SerializerMethodField()
     connection_label = serializers.CharField(source='connection.label', read_only=True)
     vendor_name = serializers.CharField(source='vendor_company.name', read_only=True)
+    available_outbound_events = serializers.SerializerMethodField()
 
     class Meta:
         model = VendorCommerceProfile
         fields = (
             'id', 'connection', 'vendor_company', 'adapter', 'mode',
             'order_enabled', 'webhook_enabled', 'polling_enabled',
+            'outbound_enabled', 'outbound_url', 'outbound_events',
             'config', 'config_version', 'receiver_id',
             'webhook_secret', 'has_webhook_secret', 'webhook_url',
+            'available_outbound_events',
             'next_poll_at', 'connection_label', 'vendor_name',
             'created_at', 'updated_at',
         )
@@ -51,6 +55,18 @@ class CommerceProfileSerializer(serializers.ModelSerializer):
         if obj.webhook_enabled and obj.receiver_id:
             return f'/api/v1/integration/webhooks/{obj.receiver_id}/'
         return None
+
+    def get_available_outbound_events(self, obj):
+        return [{'key': k, 'label': v} for k, v in OUTBOUND_EVENTS]
+
+    def validate_outbound_events(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Must be a list of event keys.')
+        invalid = set(value) - OUTBOUND_EVENT_KEYS
+        if invalid:
+            raise serializers.ValidationError(
+                f'Unsupported events: {", ".join(sorted(invalid))}')
+        return list(set(value))
 
     def validate(self, data):
         webhook_secret = data.pop('webhook_secret', None)
@@ -82,6 +98,16 @@ class WebhookReceiptSerializer(serializers.ModelSerializer):
         read_only_fields = [f.name for f in VendorWebhookReceipt._meta.fields]
 
 
+class OutboundDeliverySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VendorOutboundDelivery
+        fields = (
+            'id', 'event_type', 'status', 'attempt_count',
+            'last_response_code', 'last_error', 'delivered_at', 'created_at',
+        )
+        read_only_fields = fields
+
+
 class PollRunSerializer(serializers.ModelSerializer):
     class Meta:
         model = VendorCommercePollRun
@@ -99,6 +125,7 @@ class VendorCommerceProfileViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         'dispatches': 'integration.connection.read',
         'webhooks': 'integration.connection.read',
         'polls': 'integration.connection.read',
+        'outbound_log': 'integration.connection.read',
     }
 
     def check_permissions(self, request):
@@ -200,6 +227,16 @@ class VendorCommerceProfileViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         page = self.paginate_queryset(qs)
         return self.get_paginated_response(
             PollRunSerializer(page, many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='outbound-log')
+    def outbound_log(self, request, pk=None):
+        profile = self.get_object()
+        qs = profile.outbound_deliveries.filter(
+            vendor_company=profile.vendor_company
+        ).order_by('-created_at')
+        page = self.paginate_queryset(qs)
+        return self.get_paginated_response(
+            OutboundDeliverySerializer(page, many=True).data)
 
     @action(detail=True, methods=['post'])
     def poll_now(self, request, pk=None):

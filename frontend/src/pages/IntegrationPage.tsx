@@ -17,10 +17,14 @@ import Tooltip from '@mui/material/Tooltip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Switch from '@mui/material/Switch'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import Checkbox from '@mui/material/Checkbox'
+import FormGroup from '@mui/material/FormGroup'
+import Collapse from '@mui/material/Collapse'
 import Paper from '@mui/material/Paper'
 import PowerOutlinedIcon from '@mui/icons-material/PowerOutlined'
 import WebhookIcon from '@mui/icons-material/Webhook'
 import CallReceivedIcon from '@mui/icons-material/CallReceived'
+import CallMadeIcon from '@mui/icons-material/CallMade'
 import VpnKeyOutlinedIcon from '@mui/icons-material/VpnKeyOutlined'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
@@ -92,7 +96,16 @@ export default function IntegrationPage() {
     order_enabled: false,
     webhook_enabled: false,
     polling_enabled: false,
+    outbound_enabled: false,
+    outbound_url: '',
+    outbound_events: [] as string[],
     webhook_secret: '',
+  })
+  const [outboundLogOpen, setOutboundLogOpen] = useState<string | null>(null)
+  const { data: outboundLogData, isLoading: olLoading } = useQuery({
+    queryKey: ['outbound-log', outboundLogOpen],
+    queryFn: () => api.get(`/integration/vendor-commerce-profiles/${outboundLogOpen}/outbound-log/`).then(r => r.data),
+    enabled: !!outboundLogOpen,
   })
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [commerceError, setCommerceError] = useState('')
@@ -202,7 +215,9 @@ export default function IntegrationPage() {
     setEditingProfile(null)
     setCommerceForm({
       connection: '', vendor_company: '', adapter: 'generic_json', mode: 'preview',
-      order_enabled: false, webhook_enabled: false, polling_enabled: false, webhook_secret: '',
+      order_enabled: false, webhook_enabled: false, polling_enabled: false,
+      outbound_enabled: false, outbound_url: '', outbound_events: [],
+      webhook_secret: '',
     })
     setCommerceError('')
     setCommerceModalOpen(true)
@@ -218,6 +233,9 @@ export default function IntegrationPage() {
       order_enabled: !!profile.order_enabled,
       webhook_enabled: !!profile.webhook_enabled,
       polling_enabled: !!profile.polling_enabled,
+      outbound_enabled: !!profile.outbound_enabled,
+      outbound_url: profile.outbound_url || '',
+      outbound_events: Array.isArray(profile.outbound_events) ? profile.outbound_events : [],
       webhook_secret: '',
     })
     setCommerceError('')
@@ -517,9 +535,10 @@ export default function IntegrationPage() {
       render: (row) => (
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
           {row.order_enabled && <Chip label="Orders" size="small" color="info" variant="outlined" />}
-          {row.webhook_enabled && <Chip label="Webhook" size="small" color="secondary" variant="outlined" />}
+          {row.webhook_enabled && <Chip label="Inbound" size="small" color="secondary" variant="outlined" />}
+          {row.outbound_enabled && <Chip label="Outbound" size="small" color="success" variant="outlined" />}
           {row.polling_enabled && <Chip label="Polling" size="small" color="default" variant="outlined" />}
-          {!row.order_enabled && !row.webhook_enabled && !row.polling_enabled && (
+          {!row.order_enabled && !row.webhook_enabled && !row.polling_enabled && !row.outbound_enabled && (
             <Typography variant="caption" color="text.disabled">None enabled</Typography>
           )}
         </Box>
@@ -549,6 +568,13 @@ export default function IntegrationPage() {
             <Tooltip title="Trigger Poll Now">
               <IconButton size="small" color="primary" onClick={() => handleTriggerPoll(row.id)}>
                 <SyncIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {row.outbound_enabled && (
+            <Tooltip title="Outbound Delivery Log">
+              <IconButton size="small" color="success" onClick={() => setOutboundLogOpen(outboundLogOpen === row.id ? null : row.id)}>
+                <CallMadeIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}
@@ -620,6 +646,34 @@ export default function IntegrationPage() {
             emptyMessage="No vendor commerce profiles configured"
             emptyIcon={<StorefrontIcon sx={{ fontSize: 48 }} />}
           />
+          <Collapse in={!!outboundLogOpen}>
+            <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CallMadeIcon fontSize="small" color="success" /> Outbound Delivery Log
+                </Typography>
+                <Button size="small" onClick={() => setOutboundLogOpen(null)}>Close</Button>
+              </Box>
+              <DataTable
+                columns={[
+                  { id: 'event_type', label: 'Event', render: (row) => <Chip label={row.event_type} size="small" variant="outlined" /> },
+                  { id: 'status', label: 'Status', render: (row) => <StatusChip status={row.status} /> },
+                  { id: 'attempt_count', label: 'Attempts', render: (row) => row.attempt_count ?? 0 },
+                  { id: 'last_response_code', label: 'HTTP', render: (row) => row.last_response_code
+                    ? <Chip label={row.last_response_code} size="small" color={row.last_response_code < 300 ? 'success' : 'error'} variant="filled" />
+                    : '—' },
+                  { id: 'last_error', label: 'Error', render: (row) => row.last_error ? <Typography variant="caption" color="error">{row.last_error}</Typography> : '—' },
+                  { id: 'delivered_at', label: 'Delivered', render: (row) => row.delivered_at ? formatETDate(row.delivered_at) : '—' },
+                  { id: 'created_at', label: 'Created', render: (row) => formatETDate(row.created_at) },
+                ]}
+                rows={outboundLogData?.results ?? (Array.isArray(outboundLogData) ? outboundLogData : [])}
+                loading={olLoading}
+                rowKey={(row) => row.id}
+                emptyMessage="No outbound deliveries yet"
+                emptyIcon={<CallMadeIcon sx={{ fontSize: 48 }} />}
+              />
+            </Paper>
+          </Collapse>
         </Box>
       )}
 
@@ -830,27 +884,75 @@ export default function IntegrationPage() {
                 label={<Typography variant="body2">Inbound Webhooks</Typography>}
               />
               <FormControlLabel
+                control={<Switch checked={commerceForm.outbound_enabled} onChange={(e) => setCommerceForm(f => ({ ...f, outbound_enabled: e.target.checked }))} size="small" />}
+                label={<Typography variant="body2">Outbound Webhooks</Typography>}
+              />
+              <FormControlLabel
                 control={<Switch checked={commerceForm.polling_enabled} onChange={(e) => setCommerceForm(f => ({ ...f, polling_enabled: e.target.checked }))} size="small" />}
                 label={<Typography variant="body2">Shipment Polling</Typography>}
               />
             </Paper>
 
-            {commerceForm.webhook_enabled && (
+            {(commerceForm.webhook_enabled || commerceForm.outbound_enabled) && (
               <TextField
                 label="Webhook Signing Secret" type="password" fullWidth size="small"
                 value={commerceForm.webhook_secret}
                 onChange={(e) => setCommerceForm(f => ({ ...f, webhook_secret: e.target.value }))}
                 helperText={editingProfile?.has_webhook_secret
                   ? 'Leave blank to keep existing secret. Enter a new value to replace it.'
-                  : 'Required when webhooks are enabled.'}
+                  : 'Required for inbound webhook verification and outbound HMAC signing.'}
               />
             )}
 
             {editingProfile?.webhook_url && (
               <Alert severity="info" icon={<WebhookIcon />}>
-                Webhook endpoint: <code>{editingProfile.webhook_url}</code>
+                Inbound webhook endpoint: <code>{editingProfile.webhook_url}</code>
               </Alert>
             )}
+
+            <Collapse in={commerceForm.outbound_enabled}>
+              <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Typography variant="subtitle2">Outbound Webhook Configuration</Typography>
+                <TextField
+                  label="Outbound Webhook URL" fullWidth size="small"
+                  placeholder="https://vendor-api.example.com/webhooks/cixci"
+                  value={commerceForm.outbound_url}
+                  onChange={(e) => setCommerceForm(f => ({ ...f, outbound_url: e.target.value }))}
+                  helperText="CIXCI will POST event payloads to this HTTPS endpoint with HMAC signature."
+                />
+                <Box>
+                  <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>Subscribed Events</Typography>
+                  <FormGroup>
+                    {(editingProfile?.available_outbound_events || [
+                      { key: 'order.routed', label: 'Order Routed to Vendor' },
+                      { key: 'order.dispatched', label: 'Order Dispatched' },
+                      { key: 'order.status_changed', label: 'Order Status Changed' },
+                      { key: 'shipment.updated', label: 'Shipment Updated' },
+                      { key: 'shipment.delivered', label: 'Shipment Delivered' },
+                    ]).map((evt: { key: string; label: string }) => (
+                      <FormControlLabel
+                        key={evt.key}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={commerceForm.outbound_events.includes(evt.key)}
+                            onChange={(e) => {
+                              setCommerceForm(f => ({
+                                ...f,
+                                outbound_events: e.target.checked
+                                  ? [...f.outbound_events, evt.key]
+                                  : f.outbound_events.filter(k => k !== evt.key),
+                              }))
+                            }}
+                          />
+                        }
+                        label={<Typography variant="body2">{evt.label}</Typography>}
+                      />
+                    ))}
+                  </FormGroup>
+                </Box>
+              </Paper>
+            </Collapse>
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
