@@ -31,6 +31,7 @@ class VendorCommerceProfile(models.Model):
     config_version=models.UUIDField(default=uuid.uuid4,editable=False)
     receiver_id=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
     encrypted_webhook_secret=models.TextField(blank=True,editable=False)
+    encrypted_outbound_secret=models.TextField(blank=True,editable=False)
     provider_webhook_id=models.CharField(max_length=200,blank=True)
     next_poll_at=models.DateTimeField(null=True,blank=True)
     updated_by=models.ForeignKey('tenant.User',on_delete=models.PROTECT)
@@ -51,8 +52,8 @@ class VendorCommerceProfile(models.Model):
         if self.outbound_enabled:
             if not self.outbound_url:
                 raise ValidationError('An outbound webhook URL is required before enabling outbound events.')
-            if not self.encrypted_webhook_secret:
-                raise ValidationError('A signing secret is required for outbound webhook HMAC signatures.')
+            if not self.encrypted_outbound_secret:
+                raise ValidationError('Generate a signing secret before enabling outbound webhooks.')
             invalid = set(self.outbound_events or []) - OUTBOUND_EVENT_KEYS
             if invalid:
                 raise ValidationError(f'Unsupported outbound events: {", ".join(sorted(invalid))}')

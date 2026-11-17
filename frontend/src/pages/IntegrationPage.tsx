@@ -26,6 +26,7 @@ import WebhookIcon from '@mui/icons-material/Webhook'
 import CallReceivedIcon from '@mui/icons-material/CallReceived'
 import CallMadeIcon from '@mui/icons-material/CallMade'
 import VpnKeyOutlinedIcon from '@mui/icons-material/VpnKeyOutlined'
+import AutorenewIcon from '@mui/icons-material/Autorenew'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
@@ -109,6 +110,11 @@ export default function IntegrationPage() {
   })
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [commerceError, setCommerceError] = useState('')
+
+  // Outbound secret one-time-view dialog state
+  const [outboundSecretDialog, setOutboundSecretDialog] = useState(false)
+  const [generatedOutboundSecret, setGeneratedOutboundSecret] = useState<string | null>(null)
+  const [isGeneratingSecret, setIsGeneratingSecret] = useState(false)
 
   /* ── queries ── */
   const { data: connData, isLoading: cLoading } = useQuery({
@@ -275,6 +281,23 @@ export default function IntegrationPage() {
       showSnackbar('Shipment poll triggered', 'success')
     } catch (err: any) {
       showSnackbar(err?.response?.data?.polling_enabled?.[0] || 'Failed to trigger poll', 'error')
+    }
+  }
+
+  const handleGenerateOutboundSecret = async (profileId: string, rotate = false) => {
+    setIsGeneratingSecret(true)
+    try {
+      const endpoint = rotate ? 'rotate-outbound-secret' : 'generate-outbound-secret'
+      const res = await api.post(`/integration/vendor-commerce-profiles/${profileId}/${endpoint}/`)
+      setGeneratedOutboundSecret(res.data.secret)
+      setOutboundSecretDialog(true)
+      queryClient.invalidateQueries({ queryKey: ['integration-commerce-profiles'] })
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail?.[0] || err?.response?.data?.detail
+        || JSON.stringify(err?.response?.data) || 'Failed to generate signing secret.'
+      showSnackbar(detail, 'error')
+    } finally {
+      setIsGeneratingSecret(false)
     }
   }
 
@@ -893,14 +916,14 @@ export default function IntegrationPage() {
               />
             </Paper>
 
-            {(commerceForm.webhook_enabled || commerceForm.outbound_enabled) && (
+            {commerceForm.webhook_enabled && (
               <TextField
-                label="Webhook Signing Secret" type="password" fullWidth size="small"
+                label="Inbound Webhook Signing Secret" type="password" fullWidth size="small"
                 value={commerceForm.webhook_secret}
                 onChange={(e) => setCommerceForm(f => ({ ...f, webhook_secret: e.target.value }))}
                 helperText={editingProfile?.has_webhook_secret
                   ? 'Leave blank to keep existing secret. Enter a new value to replace it.'
-                  : 'Required for inbound webhook verification and outbound HMAC signing.'}
+                  : 'Required for inbound webhook signature verification.'}
               />
             )}
 
@@ -951,6 +974,53 @@ export default function IntegrationPage() {
                     ))}
                   </FormGroup>
                 </Box>
+                {editingProfile && (
+                  <Box sx={{ pt: 1 }}>
+                    <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>Signing Secret</Typography>
+                    {editingProfile.has_outbound_secret ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip label="Secret configured" color="success" size="small" variant="outlined" />
+                        <Button
+                          size="small" variant="outlined" color="warning"
+                          startIcon={isGeneratingSecret ? <CircularProgress size={14} color="inherit" /> : <AutorenewIcon />}
+                          disabled={isGeneratingSecret}
+                          onClick={async () => {
+                            const confirmed = await confirm({
+                              title: 'Rotate Outbound Signing Secret',
+                              message: 'This will generate a new signing secret and invalidate the current one. The vendor must update their verification with the new secret. Continue?',
+                              confirmLabel: 'Rotate Secret',
+                              confirmColor: 'warning',
+                            })
+                            if (confirmed) handleGenerateOutboundSecret(editingProfile.id, true)
+                          }}
+                          sx={{ textTransform: 'none', fontSize: 12 }}
+                        >
+                          Rotate Secret
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Button
+                        size="small" variant="contained"
+                        startIcon={isGeneratingSecret ? <CircularProgress size={14} color="inherit" /> : <VpnKeyOutlinedIcon />}
+                        disabled={isGeneratingSecret}
+                        onClick={() => handleGenerateOutboundSecret(editingProfile.id)}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        {isGeneratingSecret ? 'Generating...' : 'Generate Signing Secret'}
+                      </Button>
+                    )}
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      {editingProfile.has_outbound_secret
+                        ? 'The vendor uses this secret to verify HMAC signatures on webhook payloads.'
+                        : 'Generate a signing secret for outbound HMAC signatures. It will be shown once — copy and share with the vendor.'}
+                    </Typography>
+                  </Box>
+                )}
+                {!editingProfile && (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    Save the profile first, then generate the outbound signing secret.
+                  </Alert>
+                )}
               </Paper>
             </Collapse>
           </Box>
@@ -963,6 +1033,40 @@ export default function IntegrationPage() {
             startIcon={isSavingProfile ? <CircularProgress size={16} color="inherit" /> : undefined}
           >
             {isSavingProfile ? 'Saving...' : (editingProfile ? 'Update' : 'Create')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Outbound Secret One-Time-View Dialog ── */}
+      <Dialog open={outboundSecretDialog} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Outbound Webhook Signing Secret
+        </DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Copy this secret now. For security, it will not be shown again. Share it with the vendor so they can verify webhook signatures.
+          </Alert>
+          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Signing Secret</Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <TextField
+              value={generatedOutboundSecret || ''}
+              slotProps={{ input: { readOnly: true } }}
+              fullWidth size="small"
+              sx={{ '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: 13 } }}
+            />
+            <Button
+              variant="outlined"
+              startIcon={copiedKeyId === 'outbound-secret' ? <CheckIcon color="success" /> : <ContentCopyIcon />}
+              onClick={() => handleCopy(generatedOutboundSecret || '', 'outbound-secret')}
+              sx={{ flexShrink: 0 }}
+            >
+              {copiedKeyId === 'outbound-secret' ? 'Copied' : 'Copy'}
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button variant="contained" onClick={() => { setOutboundSecretDialog(false); setGeneratedOutboundSecret(null) }}>
+            I have copied the secret
           </Button>
         </DialogActions>
       </Dialog>

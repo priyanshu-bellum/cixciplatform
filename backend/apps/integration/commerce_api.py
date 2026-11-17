@@ -20,11 +20,13 @@ from .commerce_config import (
 )
 from .catalog_sync import audit
 from .webhook_receiver import encrypt_webhook_secret
+import secrets
 
 
 class CommerceProfileSerializer(serializers.ModelSerializer):
     webhook_secret = serializers.CharField(write_only=True, required=False, allow_blank=True)
     has_webhook_secret = serializers.SerializerMethodField()
+    has_outbound_secret = serializers.SerializerMethodField()
     webhook_url = serializers.SerializerMethodField()
     connection_label = serializers.CharField(source='connection.label', read_only=True)
     vendor_name = serializers.CharField(source='vendor_company.name', read_only=True)
@@ -37,7 +39,7 @@ class CommerceProfileSerializer(serializers.ModelSerializer):
             'order_enabled', 'webhook_enabled', 'polling_enabled',
             'outbound_enabled', 'outbound_url', 'outbound_events',
             'config', 'config_version', 'receiver_id',
-            'webhook_secret', 'has_webhook_secret', 'webhook_url',
+            'webhook_secret', 'has_webhook_secret', 'has_outbound_secret', 'webhook_url',
             'available_outbound_events',
             'next_poll_at', 'connection_label', 'vendor_name',
             'created_at', 'updated_at',
@@ -50,6 +52,9 @@ class CommerceProfileSerializer(serializers.ModelSerializer):
 
     def get_has_webhook_secret(self, obj):
         return bool(obj.encrypted_webhook_secret)
+
+    def get_has_outbound_secret(self, obj):
+        return bool(obj.encrypted_outbound_secret)
 
     def get_webhook_url(self, obj):
         if obj.webhook_enabled and obj.receiver_id:
@@ -126,6 +131,8 @@ class VendorCommerceProfileViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         'webhooks': 'integration.connection.read',
         'polls': 'integration.connection.read',
         'outbound_log': 'integration.connection.read',
+        'generate_outbound_secret': 'integration.connection.write',
+        'rotate_outbound_secret': 'integration.connection.write',
     }
 
     def check_permissions(self, request):
@@ -237,6 +244,34 @@ class VendorCommerceProfileViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         page = self.paginate_queryset(qs)
         return self.get_paginated_response(
             OutboundDeliverySerializer(page, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='generate-outbound-secret')
+    def generate_outbound_secret(self, request, pk=None):
+        profile = self.get_object()
+        if profile.encrypted_outbound_secret:
+            raise serializers.ValidationError(
+                {'detail': 'An outbound signing secret already exists. Use rotate to replace it.'})
+        raw_secret = 'whsec_' + secrets.token_hex(32)
+        profile.encrypted_outbound_secret = encrypt_webhook_secret(raw_secret.encode())
+        profile.updated_by = request.user
+        profile.save(update_fields=['encrypted_outbound_secret', 'updated_by', 'updated_at'])
+        audit('outbound_secret_generated', profile.connection, request.user,
+              profile_id=str(profile.pk))
+        return Response({'secret': raw_secret})
+
+    @action(detail=True, methods=['post'], url_path='rotate-outbound-secret')
+    def rotate_outbound_secret(self, request, pk=None):
+        profile = self.get_object()
+        if not profile.encrypted_outbound_secret:
+            raise serializers.ValidationError(
+                {'detail': 'No outbound secret to rotate. Generate one first.'})
+        raw_secret = 'whsec_' + secrets.token_hex(32)
+        profile.encrypted_outbound_secret = encrypt_webhook_secret(raw_secret.encode())
+        profile.updated_by = request.user
+        profile.save(update_fields=['encrypted_outbound_secret', 'updated_by', 'updated_at'])
+        audit('outbound_secret_rotated', profile.connection, request.user,
+              profile_id=str(profile.pk))
+        return Response({'secret': raw_secret})
 
     @action(detail=True, methods=['post'])
     def poll_now(self, request, pk=None):

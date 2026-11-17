@@ -16,6 +16,33 @@ from .catalog_sync import audit
 from .catalog_transport import CatalogTransportError, public_target, PinnedHTTPSConnection
 
 
+def _read_outbound_secret(profile):
+    raw = profile.encrypted_outbound_secret
+    if not raw:
+        return None
+    try:
+        from cryptography.fernet import Fernet, MultiFernet
+        parts = raw.split('|')
+        if len(parts) >= 2:
+            keys = parts[:-1]
+            token = parts[-1]
+            if len(keys) > 1:
+                f = MultiFernet([Fernet(k) for k in keys])
+            else:
+                f = Fernet(keys[0])
+            return f.decrypt(token.encode())
+        from django.conf import settings
+        env_keys = getattr(settings, 'VENDOR_CATALOG_ENCRYPTION_KEYS', [])
+        if isinstance(env_keys, str):
+            env_keys = [k.strip() for k in env_keys.split(',') if k.strip()]
+        if env_keys:
+            f = MultiFernet([Fernet(k.encode() if isinstance(k, str) else k) for k in env_keys]) if len(env_keys) > 1 else Fernet(env_keys[0].encode() if isinstance(env_keys[0], str) else env_keys[0])
+            return f.decrypt(raw.encode())
+        return None
+    except Exception:
+        return None
+
+
 def queue_outbound_event(vendor_company_id, event_type, event_data, *, source_id=None):
     """Queue an outbound webhook for every profile subscribed to this event.
 
@@ -99,7 +126,7 @@ def process_outbound_delivery(delivery_id):
     profile = delivery.profile
 
     if (not profile.outbound_enabled or not profile.outbound_url
-            or not profile.encrypted_webhook_secret
+            or not profile.encrypted_outbound_secret
             or profile.connection.is_retired
             or profile.vendor_company.status != 'active'):
         _fail_delivery(delivery, 'PROFILE_DISABLED')
@@ -114,8 +141,7 @@ def process_outbound_delivery(delivery_id):
             delivery.payload, ensure_ascii=False, allow_nan=False, separators=(',', ':')
         ).encode('utf-8')
 
-        from .webhook_receiver import read_webhook_secret
-        secret = read_webhook_secret(profile)
+        secret = _read_outbound_secret(profile)
         if not secret:
             _fail_delivery(delivery, 'SECRET_UNAVAILABLE')
             return

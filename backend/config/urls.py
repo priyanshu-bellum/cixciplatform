@@ -467,8 +467,10 @@ class VendorSchemaView(APIView):
                 "description": (
                     "CIXCI pushes real-time event notifications to your registered webhook endpoint via HTTPS POST.\n\n"
                     "### Setup\n"
-                    "Provide your HTTPS webhook URL to your CIXCI account manager. "
-                    "CIXCI will configure your endpoint and share a signing secret for signature verification.\n\n"
+                    "1. Provide your HTTPS webhook URL to your CIXCI account manager.\n"
+                    "2. CIXCI generates a unique signing secret (`whsec_...`) for your endpoint.\n"
+                    "3. Your account manager shares this secret once — store it securely.\n"
+                    "4. Use the secret to verify HMAC-SHA256 signatures on every webhook delivery.\n\n"
                     "### Supported Events\n"
                     "| Event | Description |\n"
                     "| --- | --- |\n"

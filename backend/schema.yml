@@ -7086,6 +7086,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/CommerceProfile'
           description: ''
+  /api/v1/integration/vendor-commerce-profiles/{id}/generate-outbound-secret/:
+    post:
+      operationId: v1_integration_vendor_commerce_profiles_generate_outbound_secret_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
+          description: ''
   /api/v1/integration/vendor-commerce-profiles/{id}/outbound-log/:
     get:
       operationId: v1_integration_vendor_commerce_profiles_outbound_log_retrieve
@@ -7168,6 +7207,45 @@ paths:
         required: true
       tags:
       - v1
+      security:
+      - cookieAuth: []
+      - ApiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommerceProfile'
+          description: ''
+  /api/v1/integration/vendor-commerce-profiles/{id}/rotate-outbound-secret/:
+    post:
+      operationId: v1_integration_vendor_commerce_profiles_rotate_outbound_secret_create
+      description: |-
+        Mixin that enforces check_access() before allowing any action.
+
+        Subclasses define `required_capability` (str) or
+        `action_capability_map` (dict mapping action name → capability_code).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CommerceProfileRequest'
+        required: true
       security:
       - cookieAuth: []
       - ApiKeyAuth: []
@@ -17337,6 +17415,9 @@ components:
         has_webhook_secret:
           type: string
           readOnly: true
+        has_outbound_secret:
+          type: string
+          readOnly: true
         webhook_url:
           type: string
           readOnly: true
@@ -17367,6 +17448,7 @@ components:
       - connection
       - connection_label
       - created_at
+      - has_outbound_secret
       - has_webhook_secret
       - id
       - receiver_id

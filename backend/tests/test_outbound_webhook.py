@@ -83,7 +83,7 @@ def _make_outbound_profile(connection, vendor_company, user, outbound_url='https
         outbound_events=outbound_events,
         config=config,
         updated_by=user,
-        encrypted_webhook_secret=encrypted_secret,
+        encrypted_outbound_secret=encrypted_secret,
     )
 
 
@@ -318,3 +318,97 @@ class TestRetryStalled:
         count = retry_stalled_deliveries()
         assert count == 1
         mock_publish.assert_called_with(delivery.pk)
+
+
+@pytest.mark.django_db(transaction=True)
+class TestOutboundSecretGeneration:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.vendor = _make_company('Vendor Secret Test')
+        self.entity = _make_entity(self.vendor)
+        self.user = _make_user(self.entity, f'outbound-sec-{_uid()}@test.cixci')
+        self.conn = _make_connection(self.vendor)
+
+    def _make_profile_no_secret(self):
+        from apps.integration.commerce_models import VendorCommerceProfile
+        config = deepcopy(GENERIC_COMMERCE_CONFIG)
+        config['order']['idempotency_verified'] = True
+        config['ship_to'] = {'mode': 'address_id', 'address_id': 1, 'store_id': ''}
+        return VendorCommerceProfile.objects.create(
+            connection=self.conn,
+            vendor_company=self.vendor,
+            adapter='generic_json',
+            mode='live',
+            order_enabled=True,
+            outbound_enabled=False,
+            outbound_url='https://vendor-api.example.com/webhooks/cixci',
+            config=config,
+            updated_by=self.user,
+        )
+
+    def test_generate_stores_encrypted_secret(self):
+        """generate_outbound_secret should store encrypted secret and return whsec_ prefixed plaintext."""
+        from apps.integration.commerce_api import VendorCommerceProfileViewSet
+        from rest_framework.test import APIRequestFactory
+
+        profile = self._make_profile_no_secret()
+        assert not profile.encrypted_outbound_secret
+
+        factory = APIRequestFactory()
+        request = factory.post(f'/integration/vendor-commerce-profiles/{profile.pk}/generate-outbound-secret/')
+        request.user = self.user
+        request.user.is_cixci_admin = True
+
+        view = VendorCommerceProfileViewSet.as_view({'post': 'generate_outbound_secret'})
+        response = view(request, pk=str(profile.pk))
+
+        assert response.status_code == 200
+        secret = response.data['secret']
+        assert secret.startswith('whsec_')
+        assert len(secret) == 6 + 64  # whsec_ + 32 bytes hex
+
+        profile.refresh_from_db()
+        assert profile.encrypted_outbound_secret
+
+    def test_rotate_replaces_secret(self):
+        """rotate_outbound_secret should return a different secret than generate."""
+        from apps.integration.commerce_api import VendorCommerceProfileViewSet
+        from rest_framework.test import APIRequestFactory
+
+        profile = self._make_profile_no_secret()
+        factory = APIRequestFactory()
+
+        # Generate first
+        request = factory.post(f'/integration/vendor-commerce-profiles/{profile.pk}/generate-outbound-secret/')
+        request.user = self.user
+        request.user.is_cixci_admin = True
+        view = VendorCommerceProfileViewSet.as_view({'post': 'generate_outbound_secret'})
+        resp1 = view(request, pk=str(profile.pk))
+        secret1 = resp1.data['secret']
+
+        # Rotate
+        profile.refresh_from_db()
+        request = factory.post(f'/integration/vendor-commerce-profiles/{profile.pk}/rotate-outbound-secret/')
+        request.user = self.user
+        request.user.is_cixci_admin = True
+        view = VendorCommerceProfileViewSet.as_view({'post': 'rotate_outbound_secret'})
+        resp2 = view(request, pk=str(profile.pk))
+        secret2 = resp2.data['secret']
+
+        assert secret1 != secret2
+        assert secret2.startswith('whsec_')
+
+    def test_generate_rejects_if_secret_exists(self):
+        """generate should fail if outbound secret already exists."""
+        from apps.integration.commerce_api import VendorCommerceProfileViewSet
+        from rest_framework.test import APIRequestFactory
+
+        profile = _make_outbound_profile(self.conn, self.vendor, self.user)
+        factory = APIRequestFactory()
+        request = factory.post(f'/integration/vendor-commerce-profiles/{profile.pk}/generate-outbound-secret/')
+        request.user = self.user
+        request.user.is_cixci_admin = True
+        view = VendorCommerceProfileViewSet.as_view({'post': 'generate_outbound_secret'})
+        response = view(request, pk=str(profile.pk))
+
+        assert response.status_code == 400
