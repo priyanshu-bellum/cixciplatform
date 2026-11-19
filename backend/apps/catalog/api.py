@@ -20,7 +20,7 @@ from .models import (
     Product, ProductCompatibilityAssertion,
     BuyerScopedCompatibilityProjection, BuyerProductExportJob,
     DynamicDropdownConfig, ProductStatus, VendorCategoryMapping,
-    VendorCategoryMappingStatus,
+    VendorCategoryMappingStatus, VendorColorMapping, VendorColorMappingStatus,
 )
 from .services import recalculate_buyer_compatibility_projection
 
@@ -273,11 +273,12 @@ class ProductListSerializer(ProductSerializerBase):
             "description", "short_description", "promo_information",
             "msrp", "map_price", "sale_price", "buyer_wholesale_price",
             "vendor_wholesale_price_amount", "vendor_wholesale_price_currency",
-            "color", "system_color",
+            "color", "system_color", "system_colors",
             "launch_date", "eol_date",
             "inventory_level",
-            "length", "width", "height", "weight",
+            "length", "width", "height", "weight", "weight_unit",
             "warranty",
+            "is_clearance", "clearance_type", "clearance_end_date",
             "meta_title", "meta_description",
             "primary_image_reference", "primary_image_url", "media_references",
             "device_compatibility",
@@ -516,10 +517,12 @@ class ProductDetailSerializer(ProductSerializerBase):
             # Physical Attributes
             "color",
             "system_color",
+            "system_colors",
             "length",
             "width",
             "height",
             "weight",
+            "weight_unit",
 
             # Inventory
             "inventory_level",
@@ -549,6 +552,15 @@ class ProductDetailSerializer(ProductSerializerBase):
             "storage_expansion_compatibility",
             "memory_capacity",
             "compatible_watch_case_size",
+
+            # Clearance
+            "is_clearance",
+            "clearance_type",
+            "clearance_end_date",
+
+            # Sync & Source Preservation
+            "needs_buyer_sync",
+            "vendor_original_data",
 
             # System Fields
             "vendor_company_reference",
@@ -1026,7 +1038,10 @@ class ProductFilterSet(django_filters.FilterSet):
         if not value:
             return queryset
         from django.db.models import Q
-        return queryset.filter(Q(color__in=value) | Q(system_color__in=value))
+        q = Q(color__in=value) | Q(system_color__in=value)
+        for v in value:
+            q |= Q(system_colors__contains=[v])
+        return queryset.filter(q)
 
     def filter_msrp_range(self, queryset, name, value):
         """
@@ -3196,6 +3211,164 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             "compatibility_results": compatibility_results,
         }, status=200 if not validation_errors else 207)
 
+    # ── Batch Revalidation (Normalization Spec §13) ───────────────────────
+    @action(detail=False, methods=["post"], url_path="batch-revalidate")
+    def batch_revalidate(self, request):
+        """
+        Batch revalidation of existing products through normalization pipeline.
+
+        Modes:
+          - report: Show original→proposed changes without applying (default)
+          - preview: Return full diff for admin approval
+          - commit: Apply PASS-only changes and audit each modification
+
+        Filters: vendor_company_reference, product_category, status, date_from, date_to
+        """
+        if not request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI Admins can run batch revalidation.")
+
+        mode = request.data.get("mode", "report")
+        if mode not in ("report", "preview", "commit"):
+            return Response({"error": "mode must be report, preview, or commit"}, status=status.HTTP_400_BAD_REQUEST)
+
+        limit = min(int(request.data.get("limit", 500)), 2000)
+        qs = Product.objects.all()
+
+        vendor_ref = request.data.get("vendor_company_reference")
+        if vendor_ref:
+            qs = qs.filter(vendor_company_reference=vendor_ref)
+        category = request.data.get("product_category")
+        if category:
+            qs = qs.filter(product_category=category)
+        prod_status = request.data.get("status")
+        if prod_status:
+            qs = qs.filter(status=prod_status)
+        date_from = request.data.get("date_from")
+        if date_from:
+            qs = qs.filter(updated_at__date__gte=date_from)
+        date_to = request.data.get("date_to")
+        if date_to:
+            qs = qs.filter(updated_at__date__lte=date_to)
+
+        products = qs.order_by("-updated_at")[:limit]
+
+        from apps.catalog.normalization import normalize_product, normalize_short_description, RULE_VERSION, Outcome
+
+        results = []
+        summary = {"total": 0, "pass": 0, "warn": 0, "fail": 0, "changed": 0, "applied": 0}
+        CONTENT_FIELDS = ["name", "description", "short_description", "meta_title", "meta_description"]
+
+        for product in products:
+            summary["total"] += 1
+            norm = normalize_product(
+                name=product.name or "",
+                brand=product.brand or "",
+                category=product.product_category or "",
+                color=product.color or "",
+                short_description=product.short_description,
+                description=product.description,
+                meta_title=product.meta_title,
+                meta_description=product.meta_description,
+            )
+
+            changes = {}
+            for field in CONTENT_FIELDS:
+                original = getattr(product, field, None) or ""
+                proposed = norm.changes.get(field)
+                if proposed is None:
+                    proposed = ""
+                if str(original).strip() != str(proposed).strip():
+                    changes[field] = {"original": original, "proposed": proposed}
+
+            if norm.outcome == Outcome.PASS:
+                summary["pass"] += 1
+            elif norm.outcome == Outcome.WARN:
+                summary["warn"] += 1
+            else:
+                summary["fail"] += 1
+
+            if changes:
+                summary["changed"] += 1
+
+            entry = {
+                "product_id": str(product.id),
+                "sku": product.sku,
+                "name": product.name,
+                "outcome": norm.outcome,
+                "rule_version": RULE_VERSION,
+                "changes": changes,
+                "warnings": norm.warnings,
+            }
+
+            if mode == "commit" and changes and norm.outcome == Outcome.PASS:
+                update_fields = ["updated_at"]
+                for field, diff in changes.items():
+                    setattr(product, field, diff["proposed"])
+                    update_fields.append(field)
+                # §15: Mark for buyer sync when buyer-facing fields changed
+                from apps.catalog.normalization import detect_buyer_sync_needed
+                original_vals = {f: d["original"] for f, d in changes.items()}
+                proposed_vals = {f: d["proposed"] for f, d in changes.items()}
+                if detect_buyer_sync_needed(original_vals, proposed_vals):
+                    product.needs_buyer_sync = True
+                    update_fields.append("needs_buyer_sync")
+                product.save(update_fields=update_fields)
+                entry["applied"] = True
+                summary["applied"] += 1
+            else:
+                entry["applied"] = False
+
+            results.append(entry)
+
+        if mode == "commit" and summary["applied"] > 0:
+            try:
+                from apps.catalog.services import log_catalog_audit
+                log_catalog_audit(
+                    event_code="catalog.batch_revalidation.committed",
+                    description=f"Batch revalidation committed: {summary['applied']}/{summary['total']} products updated (rule v{RULE_VERSION})",
+                    product_id=None,
+                    actor_id=request.user.id,
+                    status="success",
+                )
+            except Exception:
+                pass
+
+        return Response({
+            "mode": mode,
+            "rule_version": RULE_VERSION,
+            "summary": summary,
+            "results": results if mode in ("preview", "commit") else results[:50],
+        })
+
+    @action(detail=False, methods=["get"], url_path="pending-sync")
+    def pending_sync(self, request):
+        """§15: List products that need buyer sync after normalization changes."""
+        if not request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI Admins can view pending sync.")
+        limit = min(int(request.query_params.get("limit", 100)), 1000)
+        products = Product.objects.filter(needs_buyer_sync=True).order_by("-updated_at")[:limit]
+        return Response({
+            "count": Product.objects.filter(needs_buyer_sync=True).count(),
+            "products": [
+                {"id": str(p.id), "sku": p.sku, "name": p.name, "vendor": str(p.vendor_company_reference), "updated_at": p.updated_at.isoformat()}
+                for p in products
+            ],
+        })
+
+    @action(detail=False, methods=["post"], url_path="clear-sync")
+    def clear_sync(self, request):
+        """§15: Mark products as synced after buyer integration has processed them."""
+        if not request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI Admins can clear sync flags.")
+        product_ids = request.data.get("product_ids", [])
+        if not product_ids:
+            return Response({"error": "product_ids required"}, status=status.HTTP_400_BAD_REQUEST)
+        updated = Product.objects.filter(id__in=product_ids, needs_buyer_sync=True).update(needs_buyer_sync=False)
+        return Response({"cleared": updated})
+
 
 class BuyerCompatibilityProjectionViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
     """
@@ -3849,6 +4022,243 @@ class VendorCategoryMappingViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         }, status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST)
 
 
+# ─── Vendor Color Mapping ─────────────────────────────────────────────────────
+
+class VendorColorMappingSerializer(serializers.ModelSerializer):
+    vendor_company_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+    affected_product_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VendorColorMapping
+        fields = [
+            "id", "vendor_company_reference", "vendor_company_name",
+            "vendor_color", "system_color", "status",
+            "affected_product_count",
+            "created_at", "updated_at",
+            "created_by", "created_by_name",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_vendor_company_name(self, obj):
+        try:
+            from config.cache_service import company_cache
+            return company_cache.get_name(obj.vendor_company_reference)
+        except Exception:
+            return None
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return None
+        try:
+            from apps.tenant.models import User
+            user = User.objects.filter(id=obj.created_by).first()
+            return user.full_name if user else None
+        except Exception:
+            return None
+
+    def get_affected_product_count(self, obj):
+        return Product.objects.filter(
+            vendor_company_reference=obj.vendor_company_reference,
+            color__iexact=obj.vendor_color.strip(),
+        ).count()
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and request.user:
+            validated_data['created_by'] = request.user.id
+        return super().create(validated_data)
+
+
+class VendorColorMappingViewSet(CheckAccessMixin, viewsets.ModelViewSet):
+    queryset = VendorColorMapping.objects.all().order_by('-created_at')
+    serializer_class = VendorColorMappingSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ["vendor_company_reference", "status"]
+    search_fields = ["vendor_color", "system_color"]
+
+    action_capability_map = {
+        "list": None,
+        "retrieve": None,
+        "create": "admin_only",
+        "update": "admin_only",
+        "partial_update": "admin_only",
+        "destroy": "admin_only",
+    }
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if hasattr(user, 'company') and user.company and user.company.company_type == 'vendor':
+            qs = qs.filter(vendor_company_reference=user.company.id)
+        return qs
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        count = self._apply_color_to_products(instance)
+        self._audit_log("catalog.color_mapping.created", instance,
+                        f"Created color mapping: '{instance.vendor_color}' → '{instance.system_color}' ({count} products updated)")
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        old_color = serializer.instance.system_color
+        instance = serializer.save()
+        count = self._apply_color_to_products(instance)
+        self._audit_log("catalog.color_mapping.updated", instance,
+                        f"Updated color mapping: '{instance.vendor_color}' → '{instance.system_color}' (was '{old_color}', {count} products updated)")
+
+    def perform_destroy(self, instance):
+        self._audit_log("catalog.color_mapping.deleted", instance,
+                        f"Deleted color mapping: '{instance.vendor_color}' → '{instance.system_color}'")
+        super().perform_destroy(instance)
+
+    def _apply_color_to_products(self, mapping):
+        if mapping.status != VendorColorMappingStatus.ACTIVE:
+            return 0
+        vendor_id = mapping.vendor_company_reference
+        color_mappings = dict(
+            VendorColorMapping.objects.filter(
+                vendor_company_reference=vendor_id, status=VendorColorMappingStatus.ACTIVE,
+            ).values_list('vendor_color', 'system_color')
+        )
+        color_mappings_lower = {k.strip().casefold(): v for k, v in color_mappings.items()}
+        exact = Product.objects.filter(
+            vendor_company_reference=vendor_id,
+            color__iexact=mapping.vendor_color.strip(),
+        )
+        count = exact.update(system_color=mapping.system_color, system_colors=[mapping.system_color])
+        compound = Product.objects.filter(
+            vendor_company_reference=vendor_id,
+            color__icontains=mapping.vendor_color.strip(),
+        ).exclude(color__iexact=mapping.vendor_color.strip())
+        from apps.catalog.normalization import resolve_system_colors
+        for product in compound:
+            colors_list, primary, _ = resolve_system_colors(product.color, color_mappings_lower)
+            if colors_list:
+                product.system_color = primary
+                product.system_colors = colors_list
+                product.save(update_fields=['system_color', 'system_colors', 'updated_at'])
+                count += 1
+        return count
+
+    def _audit_log(self, event_code, mapping, description):
+        try:
+            from apps.catalog.services import log_catalog_audit
+            log_catalog_audit(
+                event_code=event_code,
+                description=description,
+                product_id=None,
+                actor_id=self.request.user.id if self.request.user else None,
+                status="success",
+            )
+        except Exception:
+            import logging
+            logging.getLogger("apps.catalog").error(
+                f"Failed to log audit for {event_code}: {description}")
+
+    @action(detail=False, methods=['get'])
+    def unresolved(self, request):
+        """List vendor colors with no active mapping for a given vendor."""
+        vendor_id = request.query_params.get('vendor_company_reference')
+        if not vendor_id:
+            return Response({"error": "vendor_company_reference required"}, status=status.HTTP_400_BAD_REQUEST)
+        mapped = set(
+            VendorColorMapping.objects.filter(
+                vendor_company_reference=vendor_id,
+                status=VendorColorMappingStatus.ACTIVE,
+            ).values_list('vendor_color', flat=True)
+        )
+        mapped_lower = {c.strip().casefold() for c in mapped}
+        from django.db.models import Count
+        unresolved = (
+            Product.objects.filter(vendor_company_reference=vendor_id)
+            .exclude(color='').exclude(color__isnull=True)
+            .values('color').annotate(count=Count('id')).order_by('-count')
+        )
+        results = [
+            {"vendor_color": row["color"], "product_count": row["count"]}
+            for row in unresolved
+            if row["color"].strip().casefold() not in mapped_lower
+        ]
+        return Response({"unresolved": results, "total_unresolved": len(results)})
+
+    @action(detail=False, methods=['post'])
+    def bulk_create(self, request):
+        if not request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only CIXCI Admins can create color mappings.")
+        mappings_data = request.data.get('mappings', [])
+        if not isinstance(mappings_data, list):
+            return Response({"error": "Expected 'mappings' array"}, status=status.HTTP_400_BAD_REQUEST)
+        created, errors = [], []
+        for idx, data in enumerate(mappings_data):
+            serializer = self.get_serializer(data=data)
+            if serializer.is_valid():
+                self.perform_create(serializer)
+                created.append(serializer.data)
+            else:
+                errors.append({"index": idx, "data": data, "errors": serializer.errors})
+        return Response({
+            "created": created, "errors": errors,
+            "summary": {"total": len(mappings_data), "created": len(created), "failed": len(errors)}
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST)
+
+
+# ─── Import Alerts (missing devices + unresolved categories) ─────────────────
+
+class ImportAlertViewSet(viewsets.ViewSet):
+    """Admin dashboard for import data quality alerts."""
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        if not request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Admin only.")
+        try:
+            from apps.notification.models import NotificationRequest
+        except ImportError:
+            return Response({"alerts": []})
+
+        event_types = [
+            "catalog.unresolved_category",
+            "catalog.unresolved_color",
+            "catalog.missing_device_reference",
+        ]
+        alerts = NotificationRequest.objects.filter(
+            event_type__in=event_types,
+        ).order_by("-created_at")[:50]
+
+        result = []
+        for a in alerts:
+            payload = a.safe_payload_summary or {}
+            result.append({
+                "id": str(a.id),
+                "event_type": a.event_type,
+                "source_module": a.source_module,
+                "source_record_id": str(a.source_record_id) if a.source_record_id else None,
+                "message": payload.get("message", ""),
+                "items": payload.get("unresolved_categories")
+                    or payload.get("unresolved_colors")
+                    or payload.get("missing_devices", []),
+                "count": payload.get("count", 0),
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            })
+        return Response({"alerts": result})
+
+    @action(detail=True, methods=["post"])
+    def dismiss(self, request, pk=None):
+        if not request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Admin only.")
+        try:
+            from apps.notification.models import NotificationRequest
+            NotificationRequest.objects.filter(pk=pk).delete()
+        except Exception:
+            pass
+        return Response({"dismissed": True})
+
+
 # ─── URLs ─────────────────────────────────────────────────────────────────────
 
 router = DefaultRouter()
@@ -3857,5 +4267,7 @@ router.register("my-projection", BuyerCompatibilityProjectionViewSet, basename="
 router.register("export-jobs", BuyerExportJobViewSet, basename="export-job")
 router.register("dropdown-configs", DynamicDropdownConfigViewSet, basename="dropdown-config")
 router.register("vendor-category-mappings", VendorCategoryMappingViewSet, basename="vendor-category-mapping")
+router.register("vendor-color-mappings", VendorColorMappingViewSet, basename="vendor-color-mapping")
+router.register("import-alerts", ImportAlertViewSet, basename="import-alert")
 
 urlpatterns = [path("", include(router.urls))]

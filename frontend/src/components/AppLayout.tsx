@@ -7,12 +7,12 @@ import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import MenuIcon from '@mui/icons-material/Menu'
-import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined'
 import LightModeIcon from '@mui/icons-material/LightModeOutlined'
 import DarkModeIcon from '@mui/icons-material/DarkModeOutlined'
 import Sidebar, { DRAWER_WIDTH } from './Sidebar'
 import { useThemeMode } from '../theme/ThemeProvider'
 import SearchBar from './forms/SearchBar'
+import NotificationBell from './NotificationBell'
 
 const TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -91,11 +91,7 @@ export default function AppLayout() {
               </IconButton>
             </Tooltip>
 
-            <Tooltip title="Notifications">
-              <IconButton size="small">
-                <NotificationsOutlinedIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <NotificationBell />
           </Toolbar>
         </AppBar>
 

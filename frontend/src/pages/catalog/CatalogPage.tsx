@@ -1,15 +1,24 @@
 import React, { useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Alert from '@mui/material/Alert'
+import AlertTitle from '@mui/material/AlertTitle'
+import Chip from '@mui/material/Chip'
+import Collapse from '@mui/material/Collapse'
+import IconButton from '@mui/material/IconButton'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
 import Button from '@mui/material/Button'
+import Typography from '@mui/material/Typography'
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import SettingsIcon from '@mui/icons-material/Settings'
 import ImageIcon from '@mui/icons-material/Image'
+import RuleIcon from '@mui/icons-material/Rule'
+import CloseIcon from '@mui/icons-material/Close'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import api from '../../lib/apiClient'
 import { useAuthStore } from '../../stores/authStore'
 import { useConfirmDialog } from '../../hooks/useConfirmDialog'
@@ -24,6 +33,7 @@ import ProductFormDialog from './dialogs/ProductFormDialog'
 import ManageProductDialog from './dialogs/ManageProductDialog'
 import BulkUploadDialog from './dialogs/BulkUploadDialog'
 import DropdownManagerDialog from './dialogs/DropdownManagerDialog'
+import BatchRevalidateDialog from './dialogs/BatchRevalidateDialog'
 
 export default function CatalogPage() {
   const queryClient = useQueryClient()
@@ -38,6 +48,20 @@ export default function CatalogPage() {
   const isCixciAdmin = user?.is_cixci_admin || user?.company_type === 'cixci_internal'
   const isVendor = user?.company_type === 'vendor'
   const isBuyer = user?.company_type === 'buyer'
+  const [alertsExpanded, setAlertsExpanded] = useState(true)
+
+  const { data: importAlertsData, refetch: refetchAlerts } = useQuery({
+    queryKey: ['import-alerts'],
+    queryFn: () => api.get('/catalog/import-alerts/').then(r => r.data),
+    enabled: isCixciAdmin,
+    refetchInterval: 60000,
+  })
+  const importAlerts: any[] = importAlertsData?.alerts ?? []
+
+  const dismissAlert = useMutation({
+    mutationFn: (id: string) => api.post(`/catalog/import-alerts/${id}/dismiss/`),
+    onSuccess: () => refetchAlerts(),
+  })
 
   // Tab state — read initial tab from URL (e.g. ?tab=projection from Device Catalog)
   const [searchParams] = useSearchParams()
@@ -55,6 +79,7 @@ export default function CatalogPage() {
   const [showManageDialog, setShowManageDialog] = useState(false)
   const [showBulkDialog, setShowBulkDialog] = useState(false)
   const [showDropdownDialog, setShowDropdownDialog] = useState(false)
+  const [showBatchRevalidate, setShowBatchRevalidate] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [selectedManageProduct, setSelectedManageProduct] = useState<any>(null)
   const [bulkImagesOnly, setBulkImagesOnly] = useState(false)
@@ -186,14 +211,24 @@ export default function CatalogPage() {
         </>
       )}
       {isCixciAdmin && (
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<SettingsIcon />}
-          onClick={() => setShowDropdownDialog(true)}
-        >
-          Manage Dropdowns
-        </Button>
+        <>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<RuleIcon />}
+            onClick={() => setShowBatchRevalidate(true)}
+          >
+            Batch Revalidate
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<SettingsIcon />}
+            onClick={() => setShowDropdownDialog(true)}
+          >
+            Manage Dropdowns
+          </Button>
+        </>
       )}
     </Box>
   )
@@ -201,6 +236,53 @@ export default function CatalogPage() {
   return (
     <Box>
       <PageHeader title="Product Catalog" actions={headerActions} />
+
+      {isCixciAdmin && importAlerts.length > 0 && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={
+            <IconButton size="small" onClick={() => setAlertsExpanded(v => !v)}>
+              {alertsExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </IconButton>
+          }
+        >
+          <AlertTitle>Import Data Quality Alerts ({importAlerts.length})</AlertTitle>
+          <Collapse in={alertsExpanded}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
+              {importAlerts.map((alert: any) => (
+                <Box key={alert.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                  <Chip
+                    size="small"
+                    label={
+                      alert.event_type === 'catalog.missing_device_reference' ? 'Missing Devices' :
+                      alert.event_type === 'catalog.unresolved_category' ? 'Unmapped Categories' :
+                      'Unmapped Colors'
+                    }
+                    color={alert.event_type === 'catalog.missing_device_reference' ? 'error' : 'warning'}
+                    sx={{ minWidth: 130 }}
+                  />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2">{alert.message}</Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
+                      {(alert.items || []).slice(0, 10).map((item: string) => (
+                        <Chip key={item} label={item} size="small" variant="outlined" />
+                      ))}
+                      {(alert.items || []).length > 10 && (
+                        <Chip label={`+${alert.items.length - 10} more`} size="small" variant="outlined" />
+                      )}
+                    </Box>
+                  </Box>
+                  <IconButton size="small" onClick={() => dismissAlert.mutate(alert.id)} title="Dismiss">
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              ))}
+            </Box>
+          </Collapse>
+        </Alert>
+      )}
+
       {isBuyer && regionalContext?.enforced && regionalContext.status === 'configuration_required' && <Alert severity="warning" sx={{ mb: 2 }}>
         Configuration Required: contact your administrator to review your Entity Operating Region, Vendor eligibility and regional fee setup.
       </Alert>}
@@ -309,6 +391,12 @@ export default function CatalogPage() {
         onClose={() => setShowDropdownDialog(false)}
         dropdownConfigs={dropdownConfigs}
         onConfigChanged={() => refetchDropdownConfigs()}
+      />
+
+      <BatchRevalidateDialog
+        open={showBatchRevalidate}
+        onClose={() => setShowBatchRevalidate(false)}
+        categories={allowedCategories}
       />
 
       <ConfirmDialog {...dialogProps} />

@@ -518,6 +518,10 @@ export default function ProductFormDialog({
         width: form.prodWidth ? parseFloat(form.prodWidth) : null,
         height: form.prodHeight ? parseFloat(form.prodHeight) : null,
         weight: form.prodWeight ? parseFloat(form.prodWeight) : null,
+        weight_unit: form.prodWeightUnit || 'oz',
+        is_clearance: form.prodIsClearance,
+        clearance_type: form.prodIsClearance ? form.prodClearanceType : '',
+        clearance_end_date: form.prodIsClearance && form.prodClearanceType === 'end_date' && form.prodClearanceEndDate ? form.prodClearanceEndDate : null,
         warranty: form.prodWarranty.trim(),
         short_description: form.prodShortDescription.trim(),
         promo_information: form.prodPromoInformation.trim(),
@@ -976,16 +980,27 @@ export default function ProductFormDialog({
               placeholder="0.00"
               slotProps={{ htmlInput: { step: '0.01' }, input: { endAdornment: <InputAdornment position="end">in</InputAdornment> } }}
             />
-            <TextField
-              size="small"
-              fullWidth
-              type="number"
-              label={`Weight ${isVendor ? '*' : ''}`}
-              value={form.prodWeight}
-              onChange={e => form.setProdWeight(e.target.value)}
-              placeholder="0.00"
-              slotProps={{ htmlInput: { step: '0.01' }, input: { endAdornment: <InputAdornment position="end">oz</InputAdornment> } }}
-            />
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <TextField
+                size="small"
+                fullWidth
+                type="number"
+                label={`Weight ${isVendor ? '*' : ''}`}
+                value={form.prodWeight}
+                onChange={e => form.setProdWeight(e.target.value)}
+                placeholder="0.00"
+                slotProps={{ htmlInput: { step: '0.01' }, input: { endAdornment: <InputAdornment position="end">{form.prodWeightUnit || 'oz'}</InputAdornment> } }}
+              />
+              <FormControl size="small" sx={{ minWidth: 80 }}>
+                <InputLabel>Unit</InputLabel>
+                <Select value={form.prodWeightUnit} onChange={e => form.setProdWeightUnit(e.target.value as string)} label="Unit">
+                  <MenuItem value="oz">oz</MenuItem>
+                  <MenuItem value="lb">lb</MenuItem>
+                  <MenuItem value="g">g</MenuItem>
+                  <MenuItem value="kg">kg</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
           </Box>
 
           {/* ---- Inventory ---- */}
@@ -1055,6 +1070,45 @@ export default function ProductFormDialog({
               </Box>
             </>
           )}
+
+          {/* ---- Clearance ---- */}
+          <Typography sx={sectionTitleSx}>Clearance</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  size="small"
+                  checked={form.prodIsClearance}
+                  onChange={e => form.setProdIsClearance(e.target.checked)}
+                />
+              }
+              label="Mark as Clearance Product"
+              sx={{ '& .MuiFormControlLabel-label': { fontSize: 14 } }}
+            />
+            {form.prodIsClearance && (
+              <Box sx={gridTwoCol}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Clearance Type</InputLabel>
+                  <Select value={form.prodClearanceType} onChange={e => form.setProdClearanceType(e.target.value as string)} label="Clearance Type">
+                    <MenuItem value="">None</MenuItem>
+                    <MenuItem value="end_date">End Date Based</MenuItem>
+                    <MenuItem value="inventory">Inventory Based</MenuItem>
+                  </Select>
+                </FormControl>
+                {form.prodClearanceType === 'end_date' && (
+                  <TextField
+                    size="small"
+                    fullWidth
+                    type="date"
+                    label="Clearance End Date"
+                    value={form.prodClearanceEndDate}
+                    onChange={e => form.setProdClearanceEndDate(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                  />
+                )}
+              </Box>
+            )}
+          </Box>
 
           {/* ---- Images ---- */}
           <Typography sx={sectionTitleSx}>Images</Typography>

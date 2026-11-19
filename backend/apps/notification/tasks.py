@@ -216,6 +216,23 @@ def process_notification_request(request_id):
                 attempt.save(update_fields=["status", "provider_name", "delivered_at"])
                 logger.info("Created InAppNotification for user %s (%s)", recipient_user.email, request_id)
 
+                try:
+                    from apps.notification.broadcast import broadcast_notification, broadcast_unread_count
+                    broadcast_notification(str(recipient_user.id), {
+                        "event_type": req.event_type,
+                        "title": subject,
+                        "body": body,
+                        "source_module": req.source_module,
+                        "classification": req.classification,
+                        "link": link,
+                    })
+                    unread = InAppNotification.objects.filter(
+                        recipient=recipient_user, is_read=False
+                    ).count()
+                    broadcast_unread_count(str(recipient_user.id), unread)
+                except Exception:
+                    logger.debug("WebSocket broadcast skipped", exc_info=True)
+
             elif req.channel == NotificationChannel.EMAIL:
                 # Delegate external transport to Integration Management
                 res = send_notification_email(

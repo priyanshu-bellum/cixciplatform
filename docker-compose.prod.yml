@@ -13,7 +13,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: cixci_backend_${ENV_NAME}
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    command: daphne -b 0.0.0.0 -p 8000 config.asgi:application
     volumes:
       - ./backend:/app
     ports:

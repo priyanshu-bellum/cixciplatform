@@ -38,7 +38,11 @@ export function useProductForm() {
   const [prodWidth, setProdWidth] = useState('')
   const [prodHeight, setProdHeight] = useState('')
   const [prodWeight, setProdWeight] = useState('')
+  const [prodWeightUnit, setProdWeightUnit] = useState('oz')
   const [prodWarranty, setProdWarranty] = useState('')
+  const [prodIsClearance, setProdIsClearance] = useState(false)
+  const [prodClearanceType, setProdClearanceType] = useState('')
+  const [prodClearanceEndDate, setProdClearanceEndDate] = useState('')
   const [prodShortDescription, setProdShortDescription] = useState('')
   const [prodPromoInformation, setProdPromoInformation] = useState('')
   const [prodImageUrl1, setProdImageUrl1] = useState('')
@@ -79,7 +83,9 @@ export function useProductForm() {
     setProdLaunchDate(''); setProdReleaseDate(''); setProdEolDate(''); setProdColor(''); setProdSystemColor('')
     setProdMsrp(''); setProdMapPrice(''); setProdSalePrice(''); setProdRecommendedAccessory(false)
     setProdInventoryLevel(''); setProdInventoryThreshold(''); setProdLength(''); setProdWidth('')
-    setProdHeight(''); setProdWeight(''); setProdWarranty(''); setProdShortDescription('')
+    setProdHeight(''); setProdWeight(''); setProdWeightUnit('oz'); setProdWarranty('')
+    setProdIsClearance(false); setProdClearanceType(''); setProdClearanceEndDate('')
+    setProdShortDescription('')
     setProdPromoInformation(''); setProdImageUrl1(''); setProdImageUrl2(''); setProdImageUrl3('')
     setProdImageUrl4(''); setProdImageUrl5(''); setProdMetaTitle(''); setProdMetaDescription('')
     setSelectedImageFile(null); setImagePreviewUrl(''); setProdPrimaryImageUrl('')
@@ -117,7 +123,11 @@ export function useProductForm() {
     setProdWidth(p.width != null ? String(p.width) : '')
     setProdHeight(p.height != null ? String(p.height) : '')
     setProdWeight(p.weight != null ? String(p.weight) : '')
-    setProdWarranty(p.warranty || ''); setProdShortDescription(p.short_description || '')
+    setProdWeightUnit(p.weight_unit || 'oz')
+    setProdWarranty(p.warranty || '')
+    setProdIsClearance(!!p.is_clearance); setProdClearanceType(p.clearance_type || '')
+    setProdClearanceEndDate(p.clearance_end_date || '')
+    setProdShortDescription(p.short_description || '')
     setProdPromoInformation(p.promo_information || '')
 
     const primaryUrl = p.primary_image_url || ''
@@ -155,7 +165,9 @@ export function useProductForm() {
       prodColor !== '' || prodSystemColor !== '' || prodMsrp !== '' || prodMapPrice !== '' ||
       prodSalePrice !== '' || prodRecommendedAccessory !== false || prodInventoryLevel !== '' ||
       prodInventoryThreshold !== '' || prodLength !== '' || prodWidth !== '' || prodHeight !== '' ||
-      prodWeight !== '' || prodWarranty !== '' || prodShortDescription !== '' || prodPromoInformation !== '' ||
+      prodWeight !== '' || prodWeightUnit !== 'oz' || prodIsClearance !== false ||
+      prodClearanceType !== '' || prodClearanceEndDate !== '' ||
+      prodWarranty !== '' || prodShortDescription !== '' || prodPromoInformation !== '' ||
       prodImageUrl1 !== '' || prodImageUrl2 !== '' || prodImageUrl3 !== '' || prodImageUrl4 !== '' ||
       prodImageUrl5 !== '' || prodMetaTitle !== '' || prodMetaDescription !== '' ||
       selectedDeviceIds.length > 0 || selectedImageFile !== null || prodPrimaryImageUrl !== '' ||
@@ -167,8 +179,9 @@ export function useProductForm() {
     prodName, prodSeries, prodStatus, prodSku, prodBrand, prodType, prodCategory, prodVendorCategory, prodDescription, prodPrice,
     prodCurrency, prodUpc, prodLaunchDate, prodReleaseDate, prodEolDate, prodColor, prodSystemColor,
     prodMsrp, prodMapPrice, prodSalePrice, prodRecommendedAccessory, prodInventoryLevel,
-    prodInventoryThreshold, prodLength, prodWidth, prodHeight, prodWeight, prodWarranty,
-    prodShortDescription, prodPromoInformation, prodImageUrl1, prodImageUrl2, prodImageUrl3,
+    prodInventoryThreshold, prodLength, prodWidth, prodHeight, prodWeight, prodWeightUnit,
+    prodIsClearance, prodClearanceType, prodClearanceEndDate,
+    prodWarranty, prodShortDescription, prodPromoInformation, prodImageUrl1, prodImageUrl2, prodImageUrl3,
     prodImageUrl4, prodImageUrl5, prodMetaTitle, prodMetaDescription, selectedDeviceIds,
     selectedImageFile, prodPrimaryImageUrl, uploadedZipImages, compBluetooth, compHeadphoneJack,
     compChargingInterface, compWirelessCharging, compStorageExpansion, compMemoryCapacity,
@@ -218,6 +231,10 @@ export function useProductForm() {
       prodWidth !== (editingProduct.width != null ? String(editingProduct.width) : '') ||
       prodHeight !== (editingProduct.height != null ? String(editingProduct.height) : '') ||
       prodWeight !== (editingProduct.weight != null ? String(editingProduct.weight) : '') ||
+      prodWeightUnit !== (editingProduct.weight_unit || 'oz') ||
+      prodIsClearance !== (!!editingProduct.is_clearance) ||
+      prodClearanceType !== (editingProduct.clearance_type || '') ||
+      prodClearanceEndDate !== (editingProduct.clearance_end_date || '') ||
       prodWarranty !== (editingProduct.warranty || '') ||
       prodShortDescription !== (editingProduct.short_description || '') ||
       prodPromoInformation !== (editingProduct.promo_information || '') ||
@@ -244,8 +261,9 @@ export function useProductForm() {
     prodName, prodSeries, prodSku, prodBrand, prodStatus, prodType, prodCategory, prodVendorCategory, prodDescription, prodPrice,
     prodCurrency, prodUpc, prodLaunchDate, prodReleaseDate, prodEolDate, prodColor, prodSystemColor,
     prodMsrp, prodMapPrice, prodSalePrice, prodRecommendedAccessory, prodInventoryLevel,
-    prodInventoryThreshold, prodLength, prodWidth, prodHeight, prodWeight, prodWarranty,
-    prodShortDescription, prodPromoInformation, prodImageUrl1, prodImageUrl2, prodImageUrl3,
+    prodInventoryThreshold, prodLength, prodWidth, prodHeight, prodWeight, prodWeightUnit,
+    prodIsClearance, prodClearanceType, prodClearanceEndDate,
+    prodWarranty, prodShortDescription, prodPromoInformation, prodImageUrl1, prodImageUrl2, prodImageUrl3,
     prodImageUrl4, prodImageUrl5, prodMetaTitle, prodMetaDescription, selectedDeviceIds,
     selectedImageFile, prodPrimaryImageUrl, uploadedZipImages, compBluetooth, compHeadphoneJack,
     compChargingInterface, compWirelessCharging, compStorageExpansion, compMemoryCapacity,
@@ -288,7 +306,10 @@ export function useProductForm() {
     prodRecommendedAccessory, setProdRecommendedAccessory,
     prodInventoryLevel, setProdInventoryLevel, prodInventoryThreshold, setProdInventoryThreshold,
     prodLength, setProdLength, prodWidth, setProdWidth, prodHeight, setProdHeight,
-    prodWeight, setProdWeight, prodWarranty, setProdWarranty,
+    prodWeight, setProdWeight, prodWeightUnit, setProdWeightUnit,
+    prodWarranty, setProdWarranty,
+    prodIsClearance, setProdIsClearance, prodClearanceType, setProdClearanceType,
+    prodClearanceEndDate, setProdClearanceEndDate,
     prodShortDescription, setProdShortDescription, prodPromoInformation, setProdPromoInformation,
     prodImageUrl1, setProdImageUrl1, prodImageUrl2, setProdImageUrl2,
     prodImageUrl3, setProdImageUrl3, prodImageUrl4, setProdImageUrl4,

@@ -1,0 +1,71 @@
+# Codebase map
+
+Use this map to select a module, then read source and its callers. Files listed here
+are important ownership boundaries, not an exhaustive directory listing. Verified
+2026-11-19; API and model inventories are [separate](API_REGISTRY.md).
+
+| Path | Responsibility / important symbols | Consumers and modification risks |
+|---|---|---|
+| [backend/manage.py](../../backend/manage.py) | Django CLI entry; default settings selection | All admin/test/migration commands; verify DB target |
+| [config/settings.py](../../backend/config/settings.py) | Apps, middleware, DRF/JWT, storage, cache, beat | Every backend process; eager task default and provider settings matter |
+| [config/test_settings.py](../../backend/config/test_settings.py) | In-memory DB/cache, eager tasks, import-network controls | Backend tests; media readiness defaults differ from main settings |
+| [config/settings_local.py](../../backend/config/settings_local.py) | SQLite/local development | Never infer production behavior from local overrides |
+| [config/compatibility_test_settings.py](../../backend/config/compatibility_test_settings.py) | Dedicated PostgreSQL test DB configuration | Existing verification scripts; local-copy stack only |
+| [config/urls.py](../../backend/config/urls.py) | Active API composition, admin/buyer/vendor schema views | All clients; stored schema is not resolver truth |
+| [config/exceptions.py](../../backend/config/exceptions.py) | cixci_exception_handler | Error shape changes affect every Axios consumer |
+| [config/pagination.py](../../backend/config/pagination.py) | CixciCursorPagination | List consumers; nullable count and paginate=false behavior |
+| [config/cache_service.py](../../backend/config/cache_service.py) | CompanyCache, DropdownCache, category mappings | Catalog/tenant; bulk writes bypass signals |
+| [tenant/models.py](../../backend/apps/tenant/models.py) | Company, CompanyEntity, User, memberships/capabilities, regions | All apps; Company.save creates HQ and defaults |
+| [tenant/services.py](../../backend/apps/tenant/services.py) | check_access, resolve_buyer_scope, provisioning/audit helpers | Permission mixins and domain services; tenant fallback branches |
+| [tenant/mixins.py](../../backend/apps/tenant/mixins.py) | CheckAccessMixin, TenantScopedQuerysetMixin, BuyerScopedQuerysetMixin | Viewsets; generic triad mixin differs from shared company/entity portfolios |
+| [tenant/middleware.py](../../backend/apps/tenant/middleware.py) | TenantIsolationMiddleware | Lazy scope attachment; not a complete authorization guard |
+| [tenant/views.py](../../backend/apps/tenant/views.py) and [serializers](../../backend/apps/tenant/serializers.py) | Company/user/invitation/membership APIs | CompanyUsersPage, SettingsPage; admin delegation and lifecycle |
+| [tenant/regional_api.py](../../backend/apps/tenant/regional_api.py), [regional_visibility.py](../../backend/apps/tenant/regional_visibility.py), [country_regions.py](../../backend/apps/tenant/country_regions.py) | Region governance, eligibility and country normalization | RegionalPage, buyer catalog and pricing |
+| [audit/models.py](../../backend/apps/audit/models.py), [views](../../backend/apps/audit/views.py) | AuditRecord, evidence/file spine, read APIs | Domain audit helpers; append-only hook defects in known issues |
+| [notification/services.py](../../backend/apps/notification/services.py), [tasks](../../backend/apps/notification/tasks.py), [api](../../backend/apps/notification/api.py) | Preference ladder, notification requests, delivery, reminders | In-app UI, vendor/buyer events; preference scope needs review |
+| [media/validation.py](../../backend/apps/media/validation.py), [readiness](../../backend/apps/media/readiness.py), [matching](../../backend/apps/media/matching.py) | Image/ZIP validation, activation gate, SKU matching | Shared media API, import adapter, catalog exports; buyer visibility |
+| [media/views.py](../../backend/apps/media/views.py), [utils](../../backend/apps/media/utils.py) | Short URL proxy and UUID/base62 | Public image URLs; do not assume API auth guards protect these |
+| [devices/models.py](../../backend/apps/devices/models.py), [views](../../backend/apps/devices/views.py), [services](../../backend/apps/devices/services.py) | Device/reference CRUD, company/entity portfolios and snapshots | DevicesPage, catalog projections; lifecycle/date/security contracts |
+| [devices/tasks.py](../../backend/apps/devices/tasks.py) | Device lifecycle task | Beat and visibility rules |
+| [catalog/models.py](../../backend/apps/catalog/models.py) | Product, dropdown governance, compatibility/export entities | Most commerce modules; source truth, activation and SKU scope |
+| [catalog/api.py](../../backend/apps/catalog/api.py) | Product serializers/viewsets, import, assertions, exports, dropdown routes | CatalogPage and external buyer APIs; large shared surface |
+| [catalog/compatibility_contract.py](../../backend/apps/catalog/compatibility_contract.py), [values](../../backend/apps/catalog/compatibility_values.py), [engine](../../backend/apps/catalog/compatibility_engine.py) | Normalized fields/values and comparison semantics | Device/product editors, CSV/API ingestion, projections; never create parallel matching rules |
+| [catalog/compatibility_commands.py](../../backend/apps/catalog/compatibility_commands.py), [configuration](../../backend/apps/catalog/compatibility_configuration.py), [import](../../backend/apps/catalog/compatibility_import.py), [rebuild](../../backend/apps/catalog/compatibility_rebuild.py) | Audited mutation, governed configuration, import parsing, rebuilds | Manual/API catalog ingestion; post_migrate rebuild effects |
+| [catalog/services.py](../../backend/apps/catalog/services.py), [source_visibility](../../backend/apps/catalog/source_visibility.py), [tasks](../../backend/apps/catalog/tasks.py) | Projection recalculation/self-heal, supplier holds, export/lifecycle jobs | Buyer catalog and images; preserve historical exports and current eligibility |
+| [catalog/offer_models.py](../../backend/apps/catalog/offer_models.py), [offer_services](../../backend/apps/catalog/offer_services.py), [offer_api](../../backend/apps/catalog/offer_api.py) | Versioned BuyerExportMapping, freeze_export_selection, resolve_exported_line | Export→order acceptance; listing collisions and frozen supplier/pricing |
+| [pricing/services.py](../../backend/apps/pricing/services.py), [api](../../backend/apps/pricing/api.py) | Commission calculation, effective/MAP/shipping snapshots | Catalog, order, PO/invoice; Decimal and bindability contracts |
+| [routing/api.py](../../backend/apps/routing/api.py), [models](../../backend/apps/routing/models.py), [services](../../backend/apps/routing/services.py), [tasks](../../backend/apps/routing/tasks.py) | Order acceptance, AcceptedOrderLine, vendor exports and delivery evidence | OrdersPage, supplier dispatch; idempotency/supplier split and audit |
+| [procurement/services.py](../../backend/apps/procurement/services.py), [models](../../backend/apps/procurement/models.py) | orchestrate_po_finalization, PO line validation | Shared PO APIs; legacy synthetic success path differs from real dispatch |
+| [fulfillment/api.py](../../backend/apps/fulfillment/api.py), [tasks](../../backend/apps/fulfillment/tasks.py), [carrier_tracking](../../backend/apps/fulfillment/carrier_tracking.py) | Shipping/return imports, handoff/tracking/SLA and buyer signals | FulfillmentPage, integration poll/webhooks, invoices |
+| [invoicing/api.py](../../backend/apps/invoicing/api.py), [models](../../backend/apps/invoicing/models.py) | Invoice transitions, manual/from-order generation, exceptions/matches | InvoicingPage; issued-state/evidence and monetary immutability |
+| [integration/catalog_config.py](../../backend/apps/integration/catalog_config.py), [catalog_api](../../backend/apps/integration/catalog_api.py), [catalog_sync](../../backend/apps/integration/catalog_sync.py), [catalog_import](../../backend/apps/integration/catalog_import.py) | Config validation, durable page sync and canonical adapter | VendorCatalogConsole; budgets, locks, config versions; user WIP in adapter |
+| [integration/catalog_secrets.py](../../backend/apps/integration/catalog_secrets.py), [catalog_transport](../../backend/apps/integration/catalog_transport.py), [catalog_media](../../backend/apps/integration/catalog_media.py) | Encryption/redaction, DNS-pinned bounded HTTPS, images | All provider operations; preserve SSRF and credential boundaries |
+| [integration/commerce_api.py](../../backend/apps/integration/commerce_api.py), [commerce_config](../../backend/apps/integration/commerce_config.py), [commerce_models](../../backend/apps/integration/commerce_models.py) | Vendor commerce configuration/profile and durable dispatch/poll/receipt records | IntegrationPage and operations APIs |
+| [integration/order_dispatch.py](../../backend/apps/integration/order_dispatch.py), [shipment_poll](../../backend/apps/integration/shipment_poll.py), [finance_sync](../../backend/apps/integration/finance_sync.py) | Supplier delivery, incremental shipment/financial/return synchronization | vendor_commerce queue, fulfillment and vendor records |
+| [integration/webhook_receiver.py](../../backend/apps/integration/webhook_receiver.py), [webhook_handlers](../../backend/apps/integration/webhook_handlers.py), [webhook_dispatch](../../backend/apps/integration/webhook_dispatch.py) | HMAC verification, dedup/dispatch, signed outbound retries | Providers and durable receipts; replay, encryption and scope |
+| [integration/authentication.py](../../backend/apps/integration/authentication.py), [storefront_api](../../backend/apps/integration/storefront_api.py), [operations_api](../../backend/apps/integration/operations_api.py) | Company API keys, BuyerStorefront CRUD, retry/monitoring | External buyers and admins; cross-company/entity scope |
+| [shared_api.py](../../backend/apps/shared_api.py) | Active MediaAsset/BuyerProductImages, analytics, generic integration/API-key, PO, LaunchEvent viewsets | Five apps and all associated pages; inspect class names, not its stale “stubs” header |
+| [analytics/tasks.py](../../backend/apps/analytics/tasks.py), [models](../../backend/apps/analytics/models.py) | aggregate_reporting_window_metrics, immutable aggregation | AnalyticsPage, notification summaries; global source queries |
+| [launch/models.py](../../backend/apps/launch/models.py) | LaunchEvent coordination record | Shared CRUD and LaunchPage; full readiness orchestration unverified |
+
+## Frontend and operations
+
+| Path | Responsibility / dependencies / consumers |
+|---|---|
+| [frontend/src/main.tsx](../../frontend/src/main.tsx), [App.tsx](../../frontend/src/App.tsx) | Entry, providers and routes; lazy admin vendor UI and auth initialization |
+| [apiClient.ts](../../frontend/src/lib/apiClient.ts), [authStore.ts](../../frontend/src/stores/authStore.ts) | Axios/JWT refresh and Zustand identity; every API consumer |
+| [Sidebar.tsx](../../frontend/src/components/Sidebar.tsx), [AppLayout.tsx](../../frontend/src/components/AppLayout.tsx) | Navigation and shell; UI visibility alone is not authorization |
+| [catalog/CatalogPage.tsx](../../frontend/src/pages/catalog/CatalogPage.tsx), [AllProductsTab.tsx](../../frontend/src/pages/catalog/AllProductsTab.tsx), [CompatibilityTab.tsx](../../frontend/src/pages/catalog/CompatibilityTab.tsx) | Product/projection/import/export UX; coordinated filter/query invalidation |
+| [useProductForm.ts](../../frontend/src/pages/catalog/hooks/useProductForm.ts), [ProductFormDialog.tsx](../../frontend/src/pages/catalog/dialogs/ProductFormDialog.tsx), [compatibilityEntry.ts](../../frontend/src/pages/catalog/compatibilityEntry.ts) | Shared manual-entry compatibility state; keep API/CSV field parity |
+| [VendorCatalogConsole.tsx](../../frontend/src/components/VendorCatalogConsole.tsx), [VendorCatalogConfigEditor.tsx](../../frontend/src/components/VendorCatalogConfigEditor.tsx) | Connection editing, testing, sync/review; admin VendorCatalogPage |
+| [IntegrationPage.tsx](../../frontend/src/pages/IntegrationPage.tsx) | Connections, keys, commerce/webhook controls; shared and dedicated integration APIs |
+| [RegionalPage.tsx](../../frontend/src/pages/RegionalPage.tsx), [regional/](../../frontend/src/pages/regional/) | Region/distribution/shipping setup; tenant and pricing APIs |
+| [StubPages.tsx](../../frontend/src/pages/StubPages.tsx) | Contains actual SettingsPage company management; filename does not establish feature completeness |
+| [pages/](../../frontend/src/pages/) | Named Devices, Pricing, Orders, Fulfillment, Invoicing, Procurement, Notifications, Media, Analytics, Launch and BuyerProductImages consumers; module guides map exact files |
+| [backend/tests/](../../backend/tests/), [conftest](../../backend/tests/conftest.py), [pytest.ini](../../backend/pytest.ini) | API/service regression suites and shared company/user fixtures; default test_settings |
+| [scripts/](../../scripts/) | Browser smoke, backend isolated verification, memory inventory/render/validation; QA environment values supplied privately |
+| [docker-compose.yml](../../docker-compose.yml), [prod](../../docker-compose.prod.yml), [local-copy](../../docker-compose.local-copy.yml) | Three distinct topologies; do not interchange database targets |
+| [docs/](../), [architecture/](../../architecture/), [modules/](../../modules/) | Existing release guides, architecture authority and design specifications; never delete valid guidance |
+
+Generated files, dependencies, uploaded assets, caches, dumps, `.local-copy` artifacts,
+binary reports and stored schema output are excluded from broad source analysis.

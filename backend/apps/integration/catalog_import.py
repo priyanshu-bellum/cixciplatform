@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from rest_framework.exceptions import ValidationError as APIValidationError
 from django.utils import timezone
-from apps.catalog.models import Product, DynamicDropdownConfig, VendorBrandRelationship, VendorCategoryMapping
+from apps.catalog.models import Product, DynamicDropdownConfig, VendorBrandRelationship, VendorCategoryMapping, VendorColorMapping
 from apps.catalog.api import ProductDetailSerializer
 from apps.catalog.compatibility_import import parse_compatibility_row
 from apps.catalog.compatibility_contract import COMPATIBILITY_FIELDS
@@ -142,8 +142,19 @@ def ingest_rows(connection, run, items, actor):
                 approved_categories.setdefault(key, set()).add(canonical)
     for raw, canonical in connection.config.get('category_map', {}).items():
         configured_categories.setdefault(raw.strip().casefold(), set()).add(canonical)
+    # Color mapping: vendor color → system color
+    color_mappings = {}
+    for vc, sc in VendorColorMapping.objects.filter(
+        vendor_company_reference=connection.vendor_company_id, status='active'
+    ).values_list('vendor_color', 'system_color').iterator():
+        color_mappings[vc.strip().casefold()] = sc
+
     counts = {"created_count": 0, "updated_count": 0, "unchanged_count": 0, "review_count": 0, "error_count": 0}
     unchanged, observations, deferred_images = [], [], []
+    resolved_brand_names = set()
+    unresolved_colors = set()
+    missing_device_names = set()
+    unresolved_categories = set()
     approved_brands = set(links.values())
     for identifier, (payload, digest, fields, field_errors) in prepared.items():
         source = existing.get(identifier)
@@ -208,6 +219,37 @@ def ingest_rows(connection, run, items, actor):
         for required in ("sku", "name"):
             if not isinstance(attrs.get(required), str) or not attrs[required].strip():
                 errors.append({"code": "REQUIRED_FIELD", "field": required})
+        # §4 Source Preservation — capture raw vendor values before normalization
+        attrs["vendor_original_data"] = {
+            k: attrs.get(k) for k in
+            ("name", "description", "short_description", "meta_title",
+             "meta_description", "color", "brand")
+            if attrs.get(k)
+        }
+        # Run normalization on import data — deterministic rules (§5-§10)
+        from apps.catalog.normalization import normalize_product
+        if isinstance(attrs.get("name"), str) and attrs["name"].strip():
+            norm = normalize_product(
+                name=attrs.get("name", ""),
+                brand=attrs.get("brand", product.brand if product else "") or "",
+                category=category or "",
+                color=attrs.get("color", "") or "",
+                short_description=attrs.get("short_description"),
+                description=attrs.get("description"),
+                meta_title=attrs.get("meta_title"),
+                meta_description=attrs.get("meta_description"),
+            )
+            if norm.changes.get("name"):
+                attrs["name"] = norm.changes["name"]
+            if "description" in norm.changes and norm.changes["description"] is not None:
+                attrs["description"] = norm.changes["description"]
+            if not attrs.get("meta_title"):
+                attrs["meta_title"] = norm.changes.get("meta_title", "")
+            if not attrs.get("meta_description"):
+                attrs["meta_description"] = norm.changes.get("meta_description", "")
+            # §6: short_description is vendor pass-through only — never auto-generate
+            for w in norm.warnings:
+                errors.append({"code": w.get("code", "NORMALIZATION_WARNING"), "field": w.get("field", "normalization")})
         config = categories.get(category)
         if not config:
             errors.append({"code": "CATEGORY_MAPPING_REQUIRED", "field": "product_category"})
@@ -220,8 +262,27 @@ def ingest_rows(connection, run, items, actor):
         brand_id = links.get(" ".join(str(brand).split()).casefold())
         if brand_id:
             attrs["brand_reference"] = str(brand_id)
+            if brand.strip():
+                resolved_brand_names.add(brand.strip())
         else:
             errors.append({"code": "BRAND_RELATIONSHIP_REQUIRED", "field": "brand"})
+        # Color mapping: resolve vendor color → system color (supports multicolor)
+        vendor_color = attrs.get("color") or (product.color if product else "")
+        if vendor_color and isinstance(vendor_color, str):
+            from apps.catalog.normalization import resolve_system_colors
+            system_colors_list, primary_color, color_warnings = resolve_system_colors(vendor_color, color_mappings)
+            if system_colors_list:
+                attrs["system_color"] = primary_color
+                attrs["system_colors"] = system_colors_list
+            elif vendor_color.strip():
+                unresolved_colors.add(vendor_color.strip())
+
+        # Track unresolved categories for notification
+        if any(e.get("code") == "CATEGORY_MAPPING_REQUIRED" for e in errors):
+            raw_cat = fields.get("vendor_category", "")
+            if isinstance(raw_cat, str) and raw_cat.strip():
+                unresolved_categories.add(raw_cat.strip())
+
         if not product or not product.primary_image_reference:
             errors.append({"code": "MEDIA_REVIEW_REQUIRED", "field": "images"})
         if "[REDACTED]" in json.dumps(payload):
@@ -242,6 +303,12 @@ def ingest_rows(connection, run, items, actor):
                     attrs.update(compatibility_mode="universal_device_type", compatible_device_types=types)
                 if devices:
                     attrs.update(device_ids=devices, compatibility_update_type="add")
+                # Track device references for missing-device notification
+                if compat_raw and isinstance(compat_raw, str) and compat_raw.strip():
+                    for device_name in compat_raw.split(';'):
+                        device_name = device_name.strip()
+                        if device_name and not devices:
+                            missing_device_names.add(device_name)
             except (ValidationError, TypeError, AttributeError):
                 errors.append({"code": "COMPATIBILITY_REVIEW_REQUIRED", "field": "compatibility_declaration"})
         attrs.update(vendor_company_reference=connection.vendor_company_id)
@@ -322,7 +389,85 @@ def ingest_rows(connection, run, items, actor):
             VendorCatalogItem.objects.filter(pk__in=unchanged).update(last_seen_at=timezone.now(), last_seen_run=run, is_listed=True)
     if observations:
         from apps.audit.models import AuditRecord
-        # Every observation is new; retain the existing append-only audit store
-        # without adding one extra insert round trip per source row.
         AuditRecord.objects.bulk_create(observations, batch_size=200)
+    if resolved_brand_names:
+        existing_brands = set(DynamicDropdownConfig.objects.filter(
+            field_name="brand", value__in=resolved_brand_names,
+        ).values_list("value", flat=True))
+        new_brands = resolved_brand_names - existing_brands
+        if new_brands:
+            DynamicDropdownConfig.objects.bulk_create(
+                [DynamicDropdownConfig(field_name="brand", value=name, display_name=name) for name in new_brands],
+                ignore_conflicts=True,
+            )
+
+    # Emit dashboard notifications for unresolved colors, categories, missing devices
+    _emit_import_notifications(connection, unresolved_colors, unresolved_categories, missing_device_names)
+
     return counts, deferred_images
+
+
+def _emit_import_notifications(connection, unresolved_colors, unresolved_categories, missing_device_names):
+    """Create dashboard notifications for import data quality issues."""
+    try:
+        from apps.notification.models import NotificationRequest
+    except ImportError:
+        return
+
+    vendor_id = connection.vendor_company_id
+    notifications = []
+
+    if unresolved_categories:
+        notifications.append(NotificationRequest(
+            event_type="catalog.category_mapping_required",
+            source_module="integration",
+            classification="DASHBOARD_ONLY",
+            safe_payload_summary={
+                "vendor_company_id": str(vendor_id),
+                "connection_id": str(connection.pk),
+                "unresolved_categories": sorted(unresolved_categories)[:20],
+                "count": len(unresolved_categories),
+                "message": f"{len(unresolved_categories)} vendor categories need mapping to CIXCI categories",
+            },
+        ))
+
+    if unresolved_colors:
+        notifications.append(NotificationRequest(
+            event_type="catalog.color_mapping_required",
+            source_module="integration",
+            classification="DASHBOARD_ONLY",
+            safe_payload_summary={
+                "vendor_company_id": str(vendor_id),
+                "connection_id": str(connection.pk),
+                "unresolved_colors": sorted(unresolved_colors)[:20],
+                "count": len(unresolved_colors),
+                "message": f"{len(unresolved_colors)} vendor colors need mapping to system colors",
+            },
+        ))
+
+    if missing_device_names:
+        notifications.append(NotificationRequest(
+            event_type="catalog.missing_device_reference",
+            source_module="integration",
+            classification="DASHBOARD_ONLY",
+            safe_payload_summary={
+                "vendor_company_id": str(vendor_id),
+                "connection_id": str(connection.pk),
+                "missing_devices": sorted(missing_device_names)[:20],
+                "count": len(missing_device_names),
+                "message": f"{len(missing_device_names)} products reference devices not found in CIXCI",
+            },
+        ))
+
+    if notifications:
+        try:
+            NotificationRequest.objects.bulk_create(notifications, ignore_conflicts=True)
+            from apps.notification.broadcast import broadcast_import_alert
+            for nr in notifications:
+                broadcast_import_alert({
+                    "event_type": nr.event_type,
+                    "message": (nr.safe_payload_summary or {}).get("message", ""),
+                    "count": (nr.safe_payload_summary or {}).get("count", 0),
+                })
+        except Exception as exc:
+            logger.warning("Failed to create import notifications: %s", exc)

@@ -2,8 +2,8 @@
 Media validation service.
 
 Enforces the CIXCI Media / Image Asset Management Validation Rules:
-- PNG only (extension + MIME sniff + PNG signature)
-- Real transparency (alpha channel with at least one non-opaque pixel)
+- PNG or JPEG/JPG (extension + MIME sniff + signature)
+- Real transparency required for PNG (alpha channel with non-opaque pixel)
 - File size / pixel-dimension limits
 - Filename sanitisation (no path traversal, unsafe chars, length)
 - Content-hash duplicate detection
@@ -22,6 +22,10 @@ from django.conf import settings
 
 # PNG magic number
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+JPEG_SIGNATURE = b"\xff\xd8\xff"
+
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+ALLOWED_IMAGE_MIMES = {"image/png", "image/jpeg"}
 
 # Asset types that must obey image validation rules. Other types
 # (document, other) are not covered by the image rules.
@@ -120,6 +124,14 @@ def is_png_bytes(head: bytes) -> bool:
     return head[:8] == PNG_SIGNATURE
 
 
+def is_jpeg_bytes(head: bytes) -> bool:
+    return head[:3] == JPEG_SIGNATURE
+
+
+def is_allowed_image_bytes(head: bytes) -> bool:
+    return is_png_bytes(head) or is_jpeg_bytes(head)
+
+
 def sniff_mime(head: bytes) -> str:
     """Best-effort MIME sniffing from magic bytes (never trusts client input)."""
     if is_png_bytes(head):
@@ -201,23 +213,24 @@ def validate_image_bytes(
         return result
 
     # ── Format: extension, signature, MIME ──
-    if ext != ".png":
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
         result.errors.append(
-            f"Unsupported file type '{ext}'. Only PNG images are allowed."
+            f"Unsupported file type '{ext}'. Allowed: PNG, JPEG, JPG."
         )
         return result
 
     head = data[:32]
     sniffed = sniff_mime(head)
-    if sniffed != "image/png":
+    if sniffed not in ALLOWED_IMAGE_MIMES:
         result.errors.append(
-            f"File content is '{sniffed}', not PNG. Renamed files are rejected."
+            f"File content is '{sniffed}', not a supported image format. "
+            "Renamed files are rejected."
         )
         return result
 
-    if mime_hint and mime_hint not in ("image/png", "", None):
+    if mime_hint and mime_hint not in (*ALLOWED_IMAGE_MIMES, "", None):
         result.errors.append(
-            f"Declared content type '{mime_hint}' does not match PNG."
+            f"Declared content type '{mime_hint}' is not a supported image format."
         )
         return result
 
@@ -250,13 +263,14 @@ def validate_image_bytes(
         )
         return result
 
-    if not check_transparency(img):
+    is_png = sniffed == "image/png"
+    if is_png and not check_transparency(img):
         result.errors.append(
-            "Image has no transparent background (alpha channel required)."
+            "PNG image has no transparent background (alpha channel required)."
         )
         return result
 
-    result.has_transparency = True
+    result.has_transparency = check_transparency(img) if is_png else False
 
     # ── Duplicate detection ──
     if check_duplicates and result.content_hash and company_id:
@@ -362,13 +376,13 @@ def validate_zip_archive(
                 base_name = sanitize_filename(os.path.basename(info.filename))
                 ext = extension_of(base_name)
 
-                if ext != ".png":
+                if ext not in ALLOWED_IMAGE_EXTENSIONS:
                     summary["unsupported_type"] += 1
                     entries.append({
                         "filename": base_name,
                         "source_name": info.filename,
                         "status": "failed",
-                        "reason": f"Unsupported file type '{ext or 'unknown'}'. Only PNG is allowed.",
+                        "reason": f"Unsupported file type '{ext or 'unknown'}'. Allowed: PNG, JPEG, JPG.",
                         "data": None,
                     })
                     continue
@@ -504,11 +518,11 @@ def validate_image_url(url: str, timeout: int = 10):
             f"Remote image exceeds the {max_image_bytes() / 1024 / 1024:.0f} MB limit."
         ]
 
-    if ctype and ctype not in ("image/png", "application/octet-stream", ""):
-        errors.append(f"Remote content type '{ctype}' is not PNG.")
+    if ctype and ctype not in (*ALLOWED_IMAGE_MIMES, "application/octet-stream", ""):
+        errors.append(f"Remote content type '{ctype}' is not a supported image format.")
 
-    if not is_png_bytes(data[:8]):
-        errors.append("Remote content is not a PNG image.")
+    if not is_allowed_image_bytes(data[:8]):
+        errors.append("Remote content is not a supported image format (PNG/JPEG).")
 
     ok = len(errors) == 0
     return ok, (data if ok else None), filename, errors

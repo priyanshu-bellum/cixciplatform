@@ -353,6 +353,14 @@ def _emit_projection_changed_notification_intent(buyer_ref, company_ref, new_cou
     )
 
 
+def emit_clearance_notification_intent(product_id, vendor_ref, clearance_type, actor_id):
+    """Notify eligible buyers when a product enters clearance status."""
+    logger.info(
+        "NOTIFICATION_INTENT: catalog.product.clearance | product=%s | vendor=%s | type=%s | actor=%s",
+        product_id, vendor_ref, clearance_type, actor_id,
+    )
+
+
 def log_catalog_audit(event_code: str, description: str, product_id, actor_id, status="success"):
     """Log a catalog-related audit record to the append-only AuditRecord table."""
     try:

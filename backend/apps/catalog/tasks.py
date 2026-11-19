@@ -3,6 +3,7 @@ from django.utils import timezone
 from celery import shared_task
 from apps.catalog.models import Product, ProductStatus
 from apps.catalog.services import log_catalog_audit
+from apps.catalog.normalization import format_description_html, format_description_plaintext
 from apps.media.utils import media_short_url
 
 @shared_task
@@ -223,10 +224,17 @@ def _process_buyer_export_job(job_id):
                 url = product.media_references[0]
             return url
 
-        def build_product_row(p):
+        def build_product_row(p, output_format="json"):
             vendor = resolve_vendor(p.vendor_company_reference)
             vendor_name = vendor.name if vendor else "Unknown Vendor"
             image_url = resolve_image_url(p)
+
+            # §14: Format description per buyer API contract
+            raw_desc = p.description or ""
+            if output_format in ("json", "API"):
+                formatted_desc = format_description_html(raw_desc)
+            else:
+                formatted_desc = format_description_plaintext(raw_desc)
 
             # Vendor return address: sent once per vendor per buyer (per spec)
             vendor_id = str(p.vendor_company_reference)
@@ -254,7 +262,7 @@ def _process_buyer_export_job(job_id):
                 "vendor_color": p.color or "",
                 "system_color": p.system_color or "",
                 "device_compatibility": "; ".join(sorted(device_names.get(str(p.id), set()))),
-                "product_description": p.description or "",
+                "product_description": formatted_desc,
                 "image_urls": image_url,
                 "brand_warranty": p.warranty or "",
                 "inventory_level": str(p.inventory_level) if p.inventory_level is not None else "",
@@ -301,7 +309,7 @@ def _process_buyer_export_job(job_id):
 
         if job.format in ["json", "API"]:
             mime_type = "application/json"
-            data_list = [build_product_row(p) for p in products]
+            data_list = [build_product_row(p, output_format="json") for p in products]
             content = json.dumps(data_list, indent=2)
         elif job.format == "xlsx":
             mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -312,7 +320,7 @@ def _process_buyer_export_job(job_id):
             writer = csv.writer(f_out)
             writer.writerow(export_headers)
             for p in products:
-                row_data = build_product_row(p)
+                row_data = build_product_row(p, output_format="csv")
                 writer.writerow([row_data.get(h, "") for h in export_headers])
             content = f_out.getvalue()
             mime_type = "text/csv"
@@ -355,7 +363,7 @@ def _process_buyer_export_job(job_id):
             ws.freeze_panes = "A2"
 
             for row_idx, p in enumerate(products, start=2):
-                row_data = build_product_row(p)
+                row_data = build_product_row(p, output_format="xlsx")
                 for col_idx, h in enumerate(export_headers, start=1):
                     cell = ws.cell(row=row_idx, column=col_idx, value=row_data.get(h, ""))
                     cell.border = thin_border

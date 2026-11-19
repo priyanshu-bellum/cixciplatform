@@ -38,8 +38,13 @@ pytest==8.3.2
 pytest-django==4.8.0
 factory-boy==3.3.1
 
-# Production WSGI Server
+# WebSocket / ASGI
+channels[daphne]==4.1.0
+channels-redis==4.2.0
+
+# Production Server
 gunicorn==22.0.0
+daphne==4.1.2
 
 # Timezones
 pytz==2024.1

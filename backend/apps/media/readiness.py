@@ -2,8 +2,8 @@
 Media readiness service.
 
 Implements the platform rule: a product cannot become Active / buyer-facing /
-downloadable / exportable / orderable until it has at least one valid,
-transparent PNG assigned with a primary image.
+downloadable / exportable / orderable until it has at least one valid primary
+image assigned (PNG with transparency, or JPEG/JPG).
 
 Readiness is computed from MediaAsset state; it is never stored on the
 product row (so it can never drift from the underlying assets).
@@ -86,17 +86,19 @@ def compute_media_readiness(product) -> MediaReadiness:
         readiness.issues.append("primary_not_ready")
         return readiness
 
-    # Primary must be a transparent PNG (Rule §3). Legacy assets may store the
-    # extension without the leading dot ("png"), so normalise before comparing.
+    ALLOWED_EXTS = {"png", "jpg", "jpeg"}
+    ALLOWED_MIMES = {"image/png", "image/jpeg"}
+
     primary_ext = (getattr(primary, "file_extension", "") or "").strip().lower().lstrip(".")
     primary_mime = (getattr(primary, "mime_type", "") or "").strip().lower()
-    if primary_ext != "png" or primary_mime != "image/png":
-        readiness.reason = "Primary image is not a PNG."
-        readiness.issues.append("primary_not_png")
+    if primary_ext not in ALLOWED_EXTS or primary_mime not in ALLOWED_MIMES:
+        readiness.reason = "Primary image must be PNG, JPEG, or JPG."
+        readiness.issues.append("primary_unsupported_format")
         return readiness
 
-    if not getattr(primary, "has_transparency", False):
-        readiness.reason = "Primary image has no transparent background."
+    is_png = primary_mime == "image/png"
+    if is_png and not getattr(primary, "has_transparency", False):
+        readiness.reason = "Primary PNG image has no transparent background."
         readiness.issues.append("primary_not_transparent")
         return readiness
 
@@ -123,8 +125,9 @@ def assert_can_become_active(product, raise_error=True):
     from rest_framework.exceptions import ValidationError
     raise ValidationError({
         "status": (
-            "A product cannot become Active without a valid, transparent PNG "
-            f"primary image. Issues: {', '.join(readiness.issues) or 'media incomplete'}."
+            "A product cannot become Active without a valid primary image "
+            "(PNG with transparency, or JPEG/JPG). "
+            f"Issues: {', '.join(readiness.issues) or 'media incomplete'}."
         ),
         "media_readiness": {
             "is_ready": False,
@@ -154,8 +157,7 @@ def valid_primary_asset_ids():
     qs = MediaAsset.objects.filter(
         status="ready",
         review_status="approved",
-        mime_type="image/png",
-        has_transparency=True,
+        mime_type__in=["image/png", "image/jpeg"],
     ).exclude(status__in=NON_BUYER_FACING_STATUSES)
     return set(qs.values_list("id", flat=True))
 

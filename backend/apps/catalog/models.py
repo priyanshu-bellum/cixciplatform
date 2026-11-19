@@ -183,6 +183,7 @@ class Product(models.Model):
     eol_date = models.DateField(null=True, blank=True)
     color = models.CharField(max_length=100, blank=True, null=True)
     system_color = models.CharField(max_length=100, blank=True, null=True)
+    system_colors = models.JSONField(default=list, blank=True, help_text="All resolved system colors for multi-color products")
     msrp = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     map_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     sale_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
@@ -193,6 +194,8 @@ class Product(models.Model):
     width = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
     height = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
     weight = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
+    weight_unit = models.CharField(max_length=10, default="oz", blank=True,
+                                   help_text="Weight unit: oz, lb, g, kg")
     warranty = models.CharField(max_length=200, blank=True, null=True)
     short_description = models.TextField(blank=True, null=True)
     promo_information = models.TextField(blank=True, null=True)
@@ -200,6 +203,22 @@ class Product(models.Model):
     meta_description = models.TextField(blank=True, null=True)
     deactivation_reason = models.CharField(max_length=200, blank=True, null=True)
 
+    # Clearance
+    is_clearance = models.BooleanField(default=False, help_text="Whether this product is on clearance")
+    clearance_type = models.CharField(max_length=30, blank=True, default="",
+                                      choices=[("", "None"), ("end_date", "End Date Based"),
+                                               ("inventory", "Inventory Based")],
+                                      help_text="How clearance status is determined")
+    clearance_end_date = models.DateField(null=True, blank=True,
+                                          help_text="End date for clearance pricing (if end_date type)")
+
+    # Buyer sync tracking (§15)
+    needs_buyer_sync = models.BooleanField(default=False,
+        help_text="Set when normalization changes buyer-facing fields; cleared after sync")
+
+    # Source preservation (§4) — raw vendor data before normalization
+    vendor_original_data = models.JSONField(default=dict, blank=True,
+        help_text="Original vendor-supplied field values captured at import time, before normalization")
 
     # Category-specific compatibility fields
     headphone_jack_compatibility = models.CharField(max_length=50, default="", blank=True)
@@ -597,46 +616,32 @@ class Product(models.Model):
                 return text
             return " ".join(colors_pattern.sub("", text).split())
 
-        if is_new:
-            if self.name:
-                self.name = " ".join(self.name.split())
-            self.description = _strip_colors(self.description)
-            self.short_description = _strip_colors(self.short_description)
-            if not self.short_description:
-                self.short_description = _strip_colors(
-                    f"Premium {self.brand or ''} {self.product_category or 'accessory'} designed for optimal compatibility."
-                )
+        from apps.catalog.normalization import normalize_product, normalize_short_description, clean_text
 
-            if not self.meta_title and self.name:
-                self.meta_title = f"{self.brand or ''} {self.name} | CIXCI"
-                if len(self.meta_title) > 65:
-                    self.meta_title = self.meta_title[:62] + "..."
+        should_normalize = is_new
+        if not is_new and _original:
+            content_fields = ["name", "description", "short_description", "meta_title", "meta_description", "promo_information"]
+            should_normalize = any(getattr(self, f) != getattr(_original, f) for f in content_fields)
 
-            if not self.meta_description and self.name:
-                self.meta_description = f"Purchase the high-quality {self.name} ({self.sku}) in our {self.product_category or 'accessory'} section."
-                if len(self.meta_description) > 160:
-                    self.meta_description = self.meta_description[:157] + "..."
-        elif _original:
-            content_fields = ["description", "short_description", "meta_title", "meta_description", "promo_information"]
-            content_changed = any(
-                getattr(self, f) != getattr(_original, f) for f in content_fields
+        if should_normalize and self.name:
+            result = normalize_product(
+                name=self.name,
+                brand=self.brand or "",
+                category=self.product_category or "",
+                color=self.color or "",
+                short_description=self.short_description,
+                description=self.description,
+                meta_title=self.meta_title,
+                meta_description=self.meta_description,
             )
-
-            if content_changed:
-                if self.name:
-                    self.name = " ".join(self.name.split())
-                self.description = _strip_colors(self.description)
-                self.short_description = _strip_colors(self.short_description)
-
-                if not self.meta_title and self.name:
-                    self.meta_title = f"{self.brand or ''} {self.name} | CIXCI"
-                    if len(self.meta_title) > 65:
-                        self.meta_title = self.meta_title[:62] + "..."
-
-                if not self.meta_description and self.name:
-                    self.meta_description = f"Purchase the high-quality {self.name} ({self.sku}) in our {self.product_category or 'accessory'} section."
-                    if len(self.meta_description) > 160:
-                        self.meta_description = self.meta_description[:157] + "..."
+            self.name = result.changes.get("name") or self.name
+            self.description = result.changes.get("description") or self.description
+            norm_short, _ = normalize_short_description(self.short_description)
+            self.short_description = norm_short
+            if not self.meta_title:
+                self.meta_title = result.changes.get("meta_title", "")
+            if not self.meta_description:
+                self.meta_description = result.changes.get("meta_description", "")
 
 
         self.clean()
@@ -815,6 +820,19 @@ class Product(models.Model):
                     from apps.catalog.services import trigger_catalog_recalculation_for_product
                     trigger_catalog_recalculation_for_product(self.id)
                 except Exception as e:
+                    pass
+
+            # Clearance notification: notify eligible buyers when product enters clearance
+            if not is_new and _original and not _original.is_clearance and self.is_clearance:
+                try:
+                    from apps.catalog.services import emit_clearance_notification_intent
+                    emit_clearance_notification_intent(
+                        product_id=self.id,
+                        vendor_ref=self.vendor_company_reference,
+                        clearance_type=self.clearance_type or "manual",
+                        actor_id=actor_id,
+                    )
+                except Exception:
                     pass
 
 
@@ -1201,6 +1219,38 @@ class VendorCategoryMapping(models.Model):
 
     def __str__(self):
         return f"VendorCategoryMapping({self.vendor_category} → {self.cixci_category})"
+
+
+class VendorColorMappingStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    INACTIVE = "inactive", "Inactive"
+    REVIEW_REQUIRED = "review_required", "Review Required"
+
+
+class VendorColorMapping(models.Model):
+    """
+    Maps vendor-specific color names to canonical CIXCI system colors.
+    e.g. vendor "Mint" → system "Green", vendor "Plum" → system "Purple".
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company_reference = models.UUIDField(db_index=True, help_text="Vendor company ID")
+    vendor_color = models.CharField(max_length=100, help_text="Original vendor color name")
+    system_color = models.CharField(max_length=100, help_text="Canonical CIXCI system color")
+    status = models.CharField(max_length=20, choices=VendorColorMappingStatus.choices,
+                              default=VendorColorMappingStatus.ACTIVE)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        db_table = "catalog_vendor_color_mapping"
+        unique_together = [("vendor_company_reference", "vendor_color")]
+        indexes = [
+            models.Index(fields=["vendor_company_reference", "vendor_color", "status"]),
+        ]
+
+    def __str__(self):
+        return f"VendorColorMapping({self.vendor_color} → {self.system_color})"
 
 
 from .offer_models import BuyerExportMapping  # noqa: E402,F401

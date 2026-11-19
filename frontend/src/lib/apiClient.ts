@@ -6,6 +6,15 @@ interface RetryConfig extends NonNullable<import('axios').AxiosError['config']> 
 
 let refreshRequest: Promise<string> | null = null
 
+function parseTokenExp(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return typeof payload.exp === 'number' ? payload.exp : null
+  } catch {
+    return null
+  }
+}
+
 function refreshAccessToken(): Promise<string> {
   if (!refreshRequest) {
     const refresh = localStorage.getItem('refresh')
@@ -25,6 +34,7 @@ function refreshAccessToken(): Promise<string> {
       if (typeof data.refresh === 'string' && data.refresh) {
         localStorage.setItem('refresh', data.refresh)
       }
+      scheduleProactiveRefresh(data.access)
       return data.access as string
     }).finally(() => {
       refreshRequest = null
@@ -33,6 +43,25 @@ function refreshAccessToken(): Promise<string> {
 
   return refreshRequest
 }
+
+let proactiveTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleProactiveRefresh(accessToken: string) {
+  if (proactiveTimer) clearTimeout(proactiveTimer)
+  const exp = parseTokenExp(accessToken)
+  if (!exp) return
+  const msUntilExpiry = exp * 1000 - Date.now()
+  const refreshAt = msUntilExpiry - 5 * 60 * 1000
+  if (refreshAt <= 0) return
+  proactiveTimer = setTimeout(() => {
+    if (localStorage.getItem('access') && localStorage.getItem('refresh')) {
+      refreshAccessToken().catch(() => {})
+    }
+  }, refreshAt)
+}
+
+const initialAccess = localStorage.getItem('access')
+if (initialAccess) scheduleProactiveRefresh(initialAccess)
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1',
@@ -64,6 +93,7 @@ api.interceptors.response.use(
       } catch (refreshErr) {
         localStorage.removeItem('access')
         localStorage.removeItem('refresh')
+        if (proactiveTimer) clearTimeout(proactiveTimer)
         if (window.location.pathname !== '/login') {
           window.location.href = '/login'
         }

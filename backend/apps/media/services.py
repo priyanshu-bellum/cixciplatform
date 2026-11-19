@@ -41,18 +41,23 @@ def generate_renditions(asset):
 
         with Image.open(source_path) as img:
             base_w, base_h = img.size
-            base_stem, _ = os.path.splitext(storage_key)
+            base_stem, base_ext = os.path.splitext(storage_key)
+            src_is_jpeg = base_ext.lower() in (".jpg", ".jpeg")
+            save_format = "JPEG" if src_is_jpeg else "PNG"
+            save_ext = base_ext if src_is_jpeg else ".png"
+            save_mime = "image/jpeg" if src_is_jpeg else "image/png"
             for rendition_type, target in RENDITION_SPECS:
-                # Never upscale
                 if base_w <= target and base_h <= target:
                     continue
                 ratio = target / float(max(base_w, base_h))
                 new_size = (max(1, int(base_w * ratio)), max(1, int(base_h * ratio)))
                 resized = img.resize(new_size, Image.LANCZOS)
-                rend_key = f"{base_stem}_{rendition_type}.png"
+                if src_is_jpeg:
+                    resized = resized.convert("RGB")
+                rend_key = f"{base_stem}_{rendition_type}{save_ext}"
                 rend_path = os.path.join(settings.MEDIA_ROOT, rend_key)
                 os.makedirs(os.path.dirname(rend_path), exist_ok=True)
-                resized.save(rend_path, format="PNG")
+                resized.save(rend_path, format=save_format)
                 Rendition.objects.update_or_create(
                     asset=asset,
                     rendition_type=rendition_type,
@@ -61,7 +66,7 @@ def generate_renditions(asset):
                         "width": new_size[0],
                         "height": new_size[1],
                         "file_size_bytes": os.path.getsize(rend_path),
-                        "mime_type": "image/png",
+                        "mime_type": save_mime,
                         "is_ready": True,
                     },
                 )

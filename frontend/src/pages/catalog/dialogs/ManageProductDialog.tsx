@@ -43,7 +43,7 @@ interface ManageProductDialogProps {
   compatibilityError?: boolean
 }
 
-type TabKey = 'details' | 'compatibility' | 'bulk' | 'audit'
+type TabKey = 'details' | 'compatibility' | 'bulk' | 'audit' | 'original'
 
 export default function ManageProductDialog({
   open,
@@ -323,8 +323,11 @@ export default function ManageProductDialog({
     if (!isBuyer) {
       list.push({ id: 'audit', label: 'Audit Trail' })
     }
+    if (!isBuyer && product?.vendor_original_data && Object.keys(product.vendor_original_data).length > 0) {
+      list.push({ id: 'original', label: 'Vendor Original' })
+    }
     return list
-  }, [isBuyer, isCixciAdmin])
+  }, [isBuyer, isCixciAdmin, product?.vendor_original_data])
 
   if (!product) return null
 
@@ -691,6 +694,10 @@ export default function ManageProductDialog({
                         <Typography variant="body2">{product.system_color || '—'}</Typography>
                       </DetailField>
 
+                      <DetailField label="Series">
+                        <Typography variant="body2">{product.series || '—'}</Typography>
+                      </DetailField>
+
                       <DetailField label="Product Category">
                         <Typography variant="body2">{product.product_category || '—'}</Typography>
                       </DetailField>
@@ -764,7 +771,7 @@ export default function ManageProductDialog({
                       </DetailField>
 
                       <DetailField label="Weight">
-                        <Typography variant="body2">{product.weight ? `${product.weight} lbs` : '—'}</Typography>
+                        <Typography variant="body2">{product.weight ? `${product.weight} ${product.weight_unit || 'oz'}` : '—'}</Typography>
                       </DetailField>
 
                       <DetailField label="Inventory Level">
@@ -780,6 +787,29 @@ export default function ManageProductDialog({
                       </DetailField>
                     </Box>
                   </SectionCard>
+
+                  {/* Clearance */}
+                  {product.is_clearance && (
+                    <SectionCard title="Clearance">
+                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '14px 20px' }}>
+                        <DetailField label="Clearance Status">
+                          <Chip label="Clearance" size="small" color="warning" sx={{ fontSize: 11, height: 22 }} />
+                        </DetailField>
+                        {product.clearance_type && (
+                          <DetailField label="Clearance Type">
+                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                              {product.clearance_type.replace(/_/g, ' ')}
+                            </Typography>
+                          </DetailField>
+                        )}
+                        {product.clearance_end_date && (
+                          <DetailField label="Clearance End Date">
+                            <Typography variant="body2">{formatDate(product.clearance_end_date)}</Typography>
+                          </DetailField>
+                        )}
+                      </Box>
+                    </SectionCard>
+                  )}
 
                   {/* Vendor Return Address — Admin Only */}
                   {isCixciAdmin && (product.vendor_return_address1 || product.vendor_return_address) && (
@@ -1143,6 +1173,59 @@ export default function ManageProductDialog({
             {/* ════════════════════════════════════════════════════════════════ */}
             {/* 4. AUDIT TAB                                                    */}
             {/* ════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'original' && !isBuyer && product?.vendor_original_data && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Alert severity="info" sx={{ fontSize: 12 }}>
+                  Comparison of vendor-supplied original values vs. current normalized values. Changes made by the normalization service are highlighted.
+                </Alert>
+                {(() => {
+                  const orig = product.vendor_original_data || {}
+                  const fieldMap: { key: string; label: string; currentKey?: string }[] = [
+                    { key: 'name', label: 'Product Name' },
+                    { key: 'brand', label: 'Brand' },
+                    { key: 'color', label: 'Color', currentKey: 'color' },
+                    { key: 'description', label: 'Description' },
+                    { key: 'short_description', label: 'Short Description' },
+                    { key: 'meta_title', label: 'Meta Title' },
+                    { key: 'meta_description', label: 'Meta Description' },
+                  ]
+                  return fieldMap.filter(f => orig[f.key] != null).map(f => {
+                    const originalVal = String(orig[f.key] || '')
+                    const currentVal = String(product[f.currentKey || f.key] || '')
+                    const changed = originalVal.trim() !== currentVal.trim()
+                    return (
+                      <Box key={f.key} sx={{ border: 1, borderColor: changed ? 'warning.main' : 'divider', borderRadius: 2, overflow: 'hidden' }}>
+                        <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', bgcolor: changed ? 'warning.light' : 'action.hover', display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: 11.5, letterSpacing: 0.8, textTransform: 'uppercase', color: changed ? 'warning.dark' : 'text.secondary' }}>
+                            {f.label}
+                          </Typography>
+                          {changed && <Chip label="Modified" size="small" color="warning" sx={{ height: 18, fontSize: '0.65rem' }} />}
+                        </Box>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 0 }}>
+                          <Box sx={{ p: 2, borderRight: { md: 1 }, borderColor: 'divider', bgcolor: changed ? 'error.50' : 'transparent' }}>
+                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 0.5, fontWeight: 600, textTransform: 'uppercase', fontSize: 10 }}>
+                              Vendor Original
+                            </Typography>
+                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: changed ? 'error.dark' : 'text.primary' }}>
+                              {originalVal || <em style={{ color: 'gray' }}>empty</em>}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ p: 2, bgcolor: changed ? 'success.50' : 'transparent' }}>
+                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 0.5, fontWeight: 600, textTransform: 'uppercase', fontSize: 10 }}>
+                              Current (Normalized)
+                            </Typography>
+                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: changed ? 'success.dark' : 'text.primary' }}>
+                              {currentVal || <em style={{ color: 'gray' }}>empty</em>}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Box>
+                    )
+                  })
+                })()}
+              </Box>
+            )}
+
             {activeTab === 'audit' && !isBuyer && (
               <Box sx={{ maxHeight: 400, overflowY: 'auto', pr: 0.5 }}>
                 {isLoadingAudit ? (

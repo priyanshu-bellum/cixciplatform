@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Paper, Tab, Tabs, TextField, Typography } from '@mui/material'
+import { Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, MenuItem, Paper, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material'
 import api from '../lib/apiClient'
 import { apiError } from '../hooks/useCompatibilityOptions'
 import VendorCatalogConfigEditor from './VendorCatalogConfigEditor'
@@ -11,10 +11,36 @@ const list = (value: any) => value?.results || value || []
 const savedMode = (company: any) => { try { return JSON.parse(company.external_id || '{}')?.integration_mode } catch { return '' } }
 const cursor = (next: string | null) => next ? new URL(next, location.origin).searchParams.get('cursor') : null
 
+const _COLOR_HINTS: Record<string, string> = {
+  'black': 'Black', 'clear': 'Clear', 'blue': 'Blue', 'pink': 'Pink', 'purple': 'Purple',
+  'red': 'Red', 'green': 'Green', 'white': 'White', 'orange': 'Orange', 'gold': 'Gold',
+  'silver': 'Silver', 'gray': 'Gray', 'grey': 'Gray', 'beige': 'Beige', 'brown': 'Brown',
+  'smoke': 'Gray', 'crimson': 'Red', 'burgundy': 'Red', 'violet': 'Purple', 'lilac': 'Purple',
+  'mint': 'Green', 'forest green': 'Green', 'dark green': 'Green', 'hunter green': 'Green',
+  'steel blue': 'Blue', 'cobalt blue': 'Blue', 'dark blue': 'Blue', 'midnight blue': 'Blue',
+  'pacific blue': 'Blue', 'space blue': 'Blue', 'marine blue': 'Blue', 'navy blue': 'Blue',
+  'frost blue': 'Blue', 'nightfall blue': 'Blue', 'pastel blue': 'Blue',
+  'rose gold': 'Gold', 'champagne': 'Gold', 'titanium': 'Gray', 'charcoal': 'Gray',
+  'gunmetal gray': 'Gray', 'frost gray': 'Gray', 'frost': 'Clear', 'clear frost': 'Clear',
+  'blossom': 'Pink', 'flamingo': 'Pink', 'blush pink': 'Pink', 'aqua pink': 'Pink',
+  'plum': 'Purple', 'amethyst': 'Purple', 'ultra violet': 'Purple', 'clear purple': 'Purple',
+  'clear lilac': 'Purple', 'shadow mauve': 'Purple', 'peri': 'Purple',
+  'opal': 'Clear', 'iridescent': 'Clear', 'prism': 'Clear', 'clear magsafe': 'Clear',
+  'midnight': 'Black', 'carbon': 'Black', 'magnetic black': 'Black',
+}
+function _suggestSystem(vendorColor: string): string {
+  const key = vendorColor.trim().toLowerCase()
+  if (_COLOR_HINTS[key]) return _COLOR_HINTS[key]
+  for (const [hint, system] of Object.entries(_COLOR_HINTS)) {
+    if (key.includes(hint) || hint.includes(key)) return system
+  }
+  return ''
+}
+
 export default function VendorCatalogConsole({ company, initialTab = 'config', initialConnection = '' }: { company: any; initialTab?: string; initialConnection?: string }) {
   const queryClient = useQueryClient()
   const enabled = savedMode(company) === 'api'
-  const [tab, setTab] = useState(enabled && ['config', 'brands', 'review', 'history'].includes(initialTab) ? initialTab : 'brands')
+  const [tab, setTab] = useState(enabled && ['config', 'brands', 'colors', 'review', 'history'].includes(initialTab) ? initialTab : 'brands')
   const initialApplied = useRef(false)
   const [id, setId] = useState('')
   const [label, setLabel] = useState('')
@@ -39,6 +65,9 @@ export default function VendorCatalogConsole({ company, initialTab = 'config', i
   const [brandId, setBrandId] = useState('')
   const [relationship, setRelationship] = useState('owned')
   const [inspected, setInspected] = useState<any>(null)
+  const [colorVendor, setColorVendor] = useState('')
+  const [colorSystem, setColorSystem] = useState('')
+  const [editingColor, setEditingColor] = useState<any>(null)
   const metadata = useQuery({ queryKey: ['vendor-catalog-template', template], enabled,
     queryFn: async () => (await api.get(`${base}template/`, { params: { provider: template } })).data })
   const connections = useQuery({ queryKey: ['vendor-catalog-connections', company.id], enabled,
@@ -56,6 +85,10 @@ export default function VendorCatalogConsole({ company, initialTab = 'config', i
     queryFn: async () => list((await api.get('/integration/catalog-brands/', { params: { paginate: 'false' } })).data) })
   const relationships = useQuery({ queryKey: ['vendor-brand-relationships', company.id], enabled: tab === 'brands',
     queryFn: async () => list((await api.get('/integration/vendor-brand-relationships/', { params: { vendor_company: company.id, paginate: 'false' } })).data) })
+  const colorMappings = useQuery({ queryKey: ['vendor-color-mappings', company.id], enabled: tab === 'colors',
+    queryFn: async () => list((await api.get('/catalog/vendor-color-mappings/', { params: { vendor_company_reference: company.id } })).data) })
+  const unresolvedColors = useQuery({ queryKey: ['vendor-unresolved-colors', company.id], enabled: tab === 'colors',
+    queryFn: async () => (await api.get('/catalog/vendor-color-mappings/unresolved/', { params: { vendor_company_reference: company.id } })).data })
   useEffect(() => {
     initialApplied.current = false
     setId(''); setLabel(''); setEndpoint(''); setAuthType('bearer'); setAuthHeader('X-API-Key')
@@ -136,7 +169,7 @@ export default function VendorCatalogConsole({ company, initialTab = 'config', i
             <Paper key={label} variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="h6" sx={{ fontWeight: 600 }}>{value}</Typography></Paper>)}
         </Box>}
         <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto" sx={{ mb: 2 }}>
-          <Tab value="config" label="Connection & Mapping" disabled={!enabled}/><Tab value="brands" label="Vendor Brands"/><Tab value="review" label="Imported Rows & Review" disabled={!enabled || !id}/><Tab value="history" label="Run History" disabled={!enabled || !id}/>
+          <Tab value="config" label="Connection & Mapping" disabled={!enabled}/><Tab value="brands" label="Vendor Brands"/><Tab value="colors" label="Color Mappings"/><Tab value="review" label="Imported Rows & Review" disabled={!enabled || !id}/><Tab value="history" label="Run History" disabled={!enabled || !id}/>
         </Tabs>
         {tab === 'config' && <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {!id && <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -180,6 +213,69 @@ export default function VendorCatalogConsole({ company, initialTab = 'config', i
           <TextField select label="Supplier Brand relationship" value={relationship} onChange={event => setRelationship(event.target.value)} size="small"><MenuItem value="owned">Owned</MenuItem><MenuItem value="authorized_distributor">Authorized Distributor</MenuItem></TextField>
           <Button disabled={busy || !brandId} onClick={() => perform(async () => { await api.post('/integration/vendor-brand-relationships/', { vendor_company: company.id, brand: brandId, relationship_type: relationship }); await relationships.refetch() }, 'Supplier Brand relationship approved.')}>Approve Brand Relationship</Button>
           {(relationships.data || []).map((row: any) => <Box key={row.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Typography sx={{ flex: 1 }}>{row.brand_name} · {row.relationship_type === 'owned' ? 'Owned' : 'Authorized Distributor'} · {row.is_active ? 'Active' : 'Retired'}</Typography><Button disabled={busy} onClick={() => perform(async () => { await api.patch(`/integration/vendor-brand-relationships/${row.id}/`, { is_active: !row.is_active }); await relationships.refetch() }, 'Brand relationship updated.')}>{row.is_active ? 'Retire' : 'Reactivate'}</Button></Box>)}
+        </Box>}
+        {tab === 'colors' && <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography>Map vendor color names to canonical CIXCI system colors. When a mapping is created or updated, all matching products are updated automatically.</Typography>
+          {unresolvedColors.data?.total_unresolved > 0 && <Alert severity="warning">
+            {unresolvedColors.data.total_unresolved} vendor color(s) have no active mapping. Click a color below to create a mapping.
+          </Alert>}
+          {unresolvedColors.data?.unresolved?.length > 0 && <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>Unresolved vendor colors</Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+              {unresolvedColors.data.unresolved.map((row: any) =>
+                <Tooltip key={row.vendor_color} title={`${row.product_count} product(s) — click to map`}>
+                  <Chip label={`${row.vendor_color} (${row.product_count})`} size="small" color="warning" variant="outlined"
+                    onClick={() => { setColorVendor(row.vendor_color); setColorSystem(_suggestSystem(row.vendor_color)); setEditingColor(null) }}/>
+                </Tooltip>
+              )}
+            </Box>
+          </Box>}
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{editingColor ? 'Edit mapping' : 'Add new mapping'}</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr auto' }, gap: 1.5, alignItems: 'start' }}>
+            <TextField label="Vendor color" value={colorVendor} onChange={e => setColorVendor(e.target.value)} size="small"
+              disabled={!!editingColor} helperText={editingColor ? 'Editing existing mapping' : 'Color name from vendor feed'}/>
+            <TextField label="System color" value={colorSystem} onChange={e => setColorSystem(e.target.value)} size="small"
+              helperText="Canonical CIXCI color (e.g. Black, Blue, Green, Red, Purple, Pink, Clear, White, Gold, Silver, Gray, Orange, Brown)"/>
+            <Box sx={{ display: 'flex', gap: 1, pt: 0.5 }}>
+              <Button variant="contained" size="small" disabled={busy || !colorVendor.trim() || !colorSystem.trim()}
+                onClick={() => perform(async () => {
+                  if (editingColor) {
+                    await api.patch(`/catalog/vendor-color-mappings/${editingColor.id}/`, { system_color: colorSystem.trim(), status: 'active' })
+                  } else {
+                    await api.post('/catalog/vendor-color-mappings/', {
+                      vendor_company_reference: company.id, vendor_color: colorVendor.trim(),
+                      system_color: colorSystem.trim(), status: 'active',
+                    })
+                  }
+                  setColorVendor(''); setColorSystem(''); setEditingColor(null)
+                  await colorMappings.refetch(); await unresolvedColors.refetch()
+                }, editingColor ? 'Color mapping updated. Products reprocessed.' : 'Color mapping created. Products reprocessed.')}
+              >{editingColor ? 'Update' : 'Save'}</Button>
+              {editingColor && <Button size="small" onClick={() => { setEditingColor(null); setColorVendor(''); setColorSystem('') }}>Cancel</Button>}
+            </Box>
+          </Box>
+          {(colorMappings.data || []).length > 0 && <>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Active mappings ({colorMappings.data.length})</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+              {(colorMappings.data || []).map((row: any) =>
+                <Box key={row.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                  <Typography sx={{ flex: 1, fontWeight: 500 }}>
+                    {row.vendor_color} <Typography component="span" color="text.secondary">→</Typography> {row.system_color}
+                  </Typography>
+                  <Chip label={row.status} size="small" color={row.status === 'active' ? 'success' : 'default'} variant="outlined"/>
+                  <Typography variant="caption" color="text.secondary">{row.affected_product_count} products</Typography>
+                  <Button size="small" disabled={busy} onClick={() => {
+                    setEditingColor(row); setColorVendor(row.vendor_color); setColorSystem(row.system_color)
+                  }}>Edit</Button>
+                  <Button size="small" color="error" disabled={busy} onClick={() => perform(async () => {
+                    await api.delete(`/catalog/vendor-color-mappings/${row.id}/`)
+                    await colorMappings.refetch(); await unresolvedColors.refetch()
+                  }, `Mapping "${row.vendor_color} → ${row.system_color}" deleted.`)}>Delete</Button>
+                </Box>
+              )}
+            </Box>
+          </>}
+          {!colorMappings.isFetching && !(colorMappings.data || []).length && <Typography color="text.secondary">No color mappings yet. Create mappings above, or click unresolved colors to quick-map them.</Typography>}
         </Box>}
         {tab === 'review' && <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <Button component={Link} to={`/catalog?tab=api-imports&connection=${id}`} sx={{ alignSelf: 'flex-start' }}>View imports in Product Catalog</Button>

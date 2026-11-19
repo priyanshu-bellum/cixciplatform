@@ -1,0 +1,47 @@
+# Business rules and unresolved requirements
+
+Rules below distinguish **required** (explicit repository/user instruction) from
+**observed** (verified implementation, not proof of approved business policy).
+Specifications and approved requirements define intended behavior; code/tests
+describe implemented behavior. Resolve conflicts explicitly before changing code.
+
+| ID | Authority | Rule / evidence |
+|---|---|---|
+| BR-TEN-001 | Required | Enforce tenant isolation and parent/child company architecture. Scope every read, mutation, worker and export; never trust client company IDs alone. [AGENTS.md](../../AGENTS.md) |
+| BR-TEN-002 | Observed | Company hierarchy has at most parent+child; a child cannot be marked parent; MAP flag only on vendors. Company.save calls full_clean and creates HQ/default capabilities. [Company](../../backend/apps/tenant/models.py) |
+| BR-AUTH-001 | Required + observed | Capabilities via check_access are the designed gate; role bundles are not independent authority. Actual fallback and direct-view checks differ; preserve and investigate them before changes. [services](../../backend/apps/tenant/services.py), [mixins](../../backend/apps/tenant/mixins.py), ISSUE-005 |
+| BR-AUD-001 | Required + observed limits | Meaningful actions require audit. Audit/evidence/history must be preserved; corrections append or supersede rather than silently rewrite. Some save guards are defective and bulk operations bypass guards. [audit models](../../backend/apps/audit/models.py), ISSUE-001 |
+| BR-SRC-001 | Required | Treat source catalog data as read-only unless explicitly allowed. Buyer projections/export selections do not grant authority to mutate supplier Product or device capability truth. Explicit vendor ingest/manual management are controlled source mutation paths. [source ownership](../../modules/product-catalog/spec.md) |
+| BR-DEV-001 | Observed | My Devices is shared by company/entity; mutation creates a snapshot/change record. Archived/future launch devices are excluded; ordinary inactive-device checks depend on launch date. Empty portfolio is valid. Projection storage remains per user. [services](../../backend/apps/devices/services.py), [projection](../../backend/apps/catalog/services.py) |
+| BR-CMP-001 | Observed | Matching uses governed category/device type/assigned comparison rules and normalized values. Storage capacity cannot qualify alone; Bluetooth compares affirmative support; wireless matching uses approved normalized intersection and device-type restrictions. Explicit exclusions/approved universal scope and canonical evidence participate. No inference of capability from an unrecognized option. [engine](../../backend/apps/catalog/compatibility_engine.py), [contract](../../backend/apps/catalog/compatibility_contract.py) |
+| BR-CAT-001 | Observed | Product/category/date/compatibility status and current supplier eligibility restrict buyer visibility. API-managed sources on review hold, unlisted items or retired supplier/brand approval cannot stay visible through a stale projection. Historical exports remain frozen. [visibility](../../backend/apps/catalog/source_visibility.py), [tasks](../../backend/apps/catalog/tasks.py) |
+| BR-MED-001 | Required by existing rules; observed guard | Activation/buyer export/order eligibility requires a ready, approved, transparent PNG primary image. Assets must satisfy extension/MIME/content/size/dimension validation; ZIP matching and scope are constrained. Some test settings disable buyer media readiness for fixtures; that is not the runtime rule. [readiness](../../backend/apps/media/readiness.py), [validation](../../backend/apps/media/validation.py), [rules.txt](../../rules.txt) |
+| BR-REG-001 | Observed | Commercial operating region IDs are distinct from address geography; country normalization and governed operating/approved regions determine eligibility. Distribution/shipping setup uses these identities. Do not equate arbitrary geography labels with an approved commercial region. [regional visibility](../../backend/apps/tenant/regional_visibility.py), [country mapping](../../backend/apps/tenant/country_regions.py) |
+| BR-EXP-001 | Observed | Export selection versions bind company/entity/storefront, supplier and frozen pricing; replacing an external listing's supplier requires explicit current-mapping confirmation. Orders resolve an exported mapping within buyer/entity/storefront, never a global SKU/UPC. [offer services](../../backend/apps/catalog/offer_services.py) |
+| BR-PRC-001 | Observed; approval provenance unknown | Buyer commission = MSRP × buyer percentage; standard 14%, no_commission 0%, custom company percentage. Buyer price = vendor wholesale + buyer commission. Approved vendor commission applies to vendor wholesale; otherwise 0%. Decimal is used. Net invoice quantity = max(0, delivered − returned). Vendor payout = (vendor wholesale − vendor commission) × net quantity. [pricing](../../backend/apps/pricing/services.py) |
+| BR-PRC-002 | Observed; unresolved rationale | Snapshot MAP logic includes buyer-facing price >= map_price as a violation absent exception, missing MAP when vendor enforcement is on, and sale-price checks below effective MAP. Do not “correct” a surprising comparator without business clarification. Bindability affects downstream order/PO/invoice acceptance. [pricing](../../backend/apps/pricing/services.py) |
+| BR-PRO-001 | Observed; approval provenance unknown | PO line_total uses frozen MSRP × quantity when MSRP exists, otherwise buyer wholesale snapshot × quantity. Unit snapshot may differ from displayed line total. Nested create validates product orderability and freezes values. [PO model](../../backend/apps/procurement/models.py), [shared API](../../backend/apps/shared_api.py) |
+| BR-INV-001 | Observed + design requirement | Invoice/run transitions are explicit maps. Previously issued financial history should use later adjustments/supersession, not silent recalculation. Manual/from-order generation is transactional; no verified complete settlement/payment engine. [invoice API](../../backend/apps/invoicing/api.py), [models](../../backend/apps/invoicing/models.py) |
+| BR-INT-001 | Observed | Vendor sync requires saved API mode, approved source/brand/category rules, bounded request budgets and valid config. Raw invalid observations remain durable/reviewable. Credentials are encrypted/redacted; HTTPS/DNS pinning and endpoint/response bounds must persist. [sync](../../backend/apps/integration/catalog_sync.py), [adapter](../../backend/apps/integration/catalog_import.py), [transport](../../backend/apps/integration/catalog_transport.py) |
+| BR-WHK-001 | Observed | Inbound commerce webhooks require active vendor/profile, configured signature scheme, valid timestamp where applicable, body limits and allowed event identity/type. Duplicate provider events return duplicate success; test/ignored events do not apply live facts. Failed processing is retained in a receipt. [receiver](../../backend/apps/integration/webhook_receiver.py) |
+| BR-NTF-001 | Observed + design requirement | Legal unsubscribe and hard suppression precede required/system notification override; optional preferences, source policy, quiet hours and digest then participate. The implementation contains scope/precedence gaps; do not claim the intended ladder is fully enforced. [services](../../backend/apps/notification/services.py), ISSUE-006 |
+
+## Unresolved before related behavior changes
+
+- **UQ-001:** Confirm fallback capability semantics and mandatory inactive entity/
+  membership checks; current early buyer/vendor returns skip later checks.
+- **UQ-002:** Confirm MAP comparator/exception rules, currency rounding and exchange
+  policy. No new financial policy is authorized by this documentation task.
+- **UQ-003:** Confirm intended PO approval/delivery/SLA sequence, actual address
+  requirement, rollback boundary and per-line pricing snapshots. Synthetic success
+  in legacy orchestration is observed behavior, not an approved business rule.
+- **UQ-004:** Define analytics/launch audience and scope. Current global queries must
+  not be interpreted as authorization to expose all tenants.
+- **UQ-005:** Confirm notification entity identity, per-recipient behavior, tenant scope
+  for event/channel preferences, overnight/timezone semantics and required-source-policy order.
+- **UQ-006:** Clarify complete event/launch readiness/settlement requirements against
+  existing specifications; API/model presence alone does not establish implementation.
+
+For future changes, list concrete assumptions and stop the conflicting behavior
+implementation until the owner resolves the rule. Documentation/diagnostic work
+can continue without inventing a policy.
