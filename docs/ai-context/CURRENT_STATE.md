@@ -1,16 +1,41 @@
 # Current state
 
-Active task: TASK-011 — completed.
+Active task: TASK-012 — Balaji test server client issue fixes (in progress).
 
-Local operations checkpoint (2026-11-19): Docker 29.2.1 running. Local-copy backend
-and frontend rebuilt and force-recreated; running image IDs match rebuilt tags.
-Frontend http://localhost:5173/ returns 200; backend login OPTIONS returns 200 and
-protected catalog GET returns expected unauthenticated 403. DB/Redis stayed healthy.
-No source, migration or provider-job change for this operation. Prior implementation
-notes below are preserved; this task did not revalidate every earlier claim.
+Updated 2026-11-20 against `main` at `18a376b` plus local working-tree changes.
+Active work: Balaji Wireless test server — 6 client video issues being resolved.
 
-Updated 2026-11-19 against `main` at `0c5e2a5` plus local working-tree changes.
-Active work: JWT session fix (P0), JPEG/JPG image acceptance, client issue backlog.
+## Completed this session (2026-11-20)
+
+- **Canonical product catalog import adapter** (`catalog_import.py`):
+  - Added `_NULLABLE_TEXT_FIELDS` sanitization — vendor APIs return null for absent
+    text fields; DRF CharFields reject None. Fields: series, color, short_description,
+    warranty, meta_title, meta_description, promo_information, vendor_category,
+    vendor_category_raw. None values removed before serializer creation.
+  - Broadened retry logic — when serializer fails on non-essential fields (compat,
+    category rules), strips failing fields and retries. Prevents product creation
+    failures from missing compatibility_mode, compatible_charging_interface, etc.
+  - **Reverted** weight_unit='oz' default — weight comes from Balaji as-is with unit.
+    We do not set weight_unit ourselves during import.
+
+- **Test server fixes applied** (via docker exec scripts, not git push):
+  - `fix_all_orphans.py`: Updated connection config with 5 missing category mappings
+    (Headsets and Headphones, Headsets, Car Chargers, Power Banks, Tablet Cases).
+    Created 98 products, ran color normalization + text cleanup on all 1715 products.
+  - `fix_remaining.py`: Progressive retry for 80 remaining orphans. Created 76 more.
+    4 remain: 3x wholesale price > MSRP (Balaji data error), 1x duplicate SKU.
+  - Container catalog_import.py updated with _NULLABLE_TEXT_FIELDS fix and broadened
+    retry. weight_unit line removed from container.
+  - **Final state: 1791 products, 4 orphans (all Balaji data quality issues)**
+
+- **Client video issues status**:
+  1. Wrong categories → FIXED (config updated + category fix script)
+  2. Missing products → FIXED (178 orphans → 4 remaining, all data errors)
+  3. Series not showing → FIXED (_NULLABLE_TEXT_FIELDS prevents None rejection)
+  4. Weight in lbs not oz → NOT A CODE BUG (Balaji field is weight_oz; model default
+     is oz; frontend shows weight_unit. Weight comes as-is from Balaji.)
+  5. Warranty text in descriptions → FIXED (warranty now separate field, not in desc)
+  6. Wearable Tech empty → FIXED (category mapping + product creation)
 
 ## Completed this session (2026-11-19)
 

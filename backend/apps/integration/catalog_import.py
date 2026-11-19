@@ -18,6 +18,14 @@ from .catalog_secrets import redact, decrypt_credentials
 from .catalog_media import process_vendor_product_images
 from .models import VendorCatalogItem
 
+# CharField model fields that vendor APIs commonly return as null.
+# Remove from attrs so the model default applies instead of DRF rejecting None.
+_NULLABLE_TEXT_FIELDS = frozenset({
+    "series", "color", "short_description", "warranty",
+    "meta_title", "meta_description", "promo_information",
+    "vendor_category", "vendor_category_raw",
+})
+
 logger = logging.getLogger(__name__)
 
 
@@ -314,6 +322,10 @@ def ingest_rows(connection, run, items, actor):
         attrs.update(vendor_company_reference=connection.vendor_company_id)
         if not product:
             attrs.update(company_scope_reference=connection.vendor_company_id, product_type="accessory", status="draft", selling_status="not_for_sale")
+        # Vendor APIs return null for absent text fields; DRF CharFields reject None.
+        for _key in list(attrs):
+            if attrs[_key] is None and _key in _NULLABLE_TEXT_FIELDS:
+                del attrs[_key]
         serializer, valid = None, False
         if product is None and (attrs.get('launch_date') is None or attrs.get('launch_date') == ''):
             # Canonical Product validation requires Launch Date for every new
@@ -340,9 +352,10 @@ def ingest_rows(connection, run, items, actor):
                 serializer.validated_data.pop(field, None)
         allow_save = valid and not fatal and not (product and product.status == "active" and errors and not compat_only)
         if not allow_save and not fatal and product is None and serializer is not None and not valid:
-            compat_fields = {"compatibility_mode", "device_ids", "compatible_device_types", "compatibility_update_type", "compatibility_declaration"}
-            if serializer.errors and all(f in compat_fields for f in serializer.errors):
-                stripped = {k: v for k, v in attrs.items() if k not in compat_fields}
+            _essential = {"sku", "name", "vendor_company_reference", "company_scope_reference", "product_type", "status", "selling_status"}
+            failing = set(serializer.errors.keys())
+            if failing and not (failing & _essential):
+                stripped = {k: v for k, v in attrs.items() if k not in failing}
                 serializer = ProductDetailSerializer(None, data=stripped, partial=False, context={
                     'request': SimpleNamespace(user=actor), 'update_source': 'Vendor API Sync', 'source_run_reference': run.pk})
                 if serializer.is_valid():

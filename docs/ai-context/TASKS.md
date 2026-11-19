@@ -133,21 +133,45 @@ TASK-002–008 record earlier discoveries. IDs are permanent.
 
 ## TASK-010 — Client issue backlog (Nov 2026 video feedback)
 
-- Status: pending
+- Status: in-progress
 - Related: memory `project_client-issues-nov2026.md`
 - Reference docs: `docs/CIXCI_Product_Data_Normalization_*.docx`,
   `docs/CIXCI_Category_Governance_*.docx`
 - Subtasks (priority order):
-  1. Product data normalization service (22-section deterministic rules)
-  2. Category governance (vendor→CIXCI canonical mapping + dashboard notifications)
-  3. Color mapping configuration (vendor color→system color)
-  4. Multicolor support for products
-  5. Missing device notifications (dashboard alert for unknown devices)
-  6. ~~Weight unit fix (pounds→ounces)~~ — DONE: backend model + frontend display/edit
-  7. ~~Clearance marking (end-date or inventory-based)~~ — DONE: backend model + frontend display/edit
-  8. ~~Series field on product detail/edit page~~ — DONE: ManageProductDialog + ProductFormDialog
-  9. ~~Short description enforcement (never auto-generate)~~ — DONE: normalization service
-  10. Existing product batch revalidation — PENDING
+  1. ~~Product data normalization service~~ — DONE
+  2. ~~Category governance~~ — DONE (config + DB mapping + notifications)
+  3. ~~Color mapping configuration~~ — DONE
+  4. ~~Multicolor support~~ — DONE
+  5. ~~Missing device notifications~~ — DONE
+  6. ~~Weight unit fix~~ — NOT A CODE BUG (Balaji sends weight_oz; model default is oz; we don't override)
+  7. ~~Clearance marking~~ — DONE: backend model + frontend display/edit
+  8. ~~Series field~~ — DONE: ManageProductDialog + ProductFormDialog
+  9. ~~Short description enforcement~~ — DONE: normalization service
+  10. ~~Existing product batch revalidation~~ — DONE: backend + frontend
 - Dependencies: normalization spec doc rules, category governance doc rules
 - Acceptance: each subtask needs tests; tenant isolation preserved; no auto-generated
   business rules
+
+## TASK-012 — Balaji test server: client video issue fixes
+
+- Status: in-progress
+- Related: TASK-010
+- Modules: catalog_import.py, catalog_config.py, test server container
+- Changes in repo (ready for deploy):
+  1. `_NULLABLE_TEXT_FIELDS` sanitization in catalog_import.py (prevents None rejection)
+  2. Broadened retry in catalog_import.py (strips non-essential failing fields)
+  3. weight_unit default REMOVED (Balaji sends weight with unit as-is)
+- Test server fixes applied (via scripts, not git):
+  - Connection config: 5 new category mappings added
+  - fix_all_orphans.py: 98 products created + normalization
+  - fix_remaining.py: 76 more products created (progressive retry)
+  - Final: 1791 products, 4 orphans (3 wholesale>MSRP, 1 dup SKU — Balaji data)
+- Client issues resolved:
+  1. Wrong categories → FIXED
+  2. Missing products → FIXED (178→4 orphans, all data errors)
+  3. Series not showing → FIXED
+  4. Weight → NOT A BUG (comes from Balaji as-is)
+  5. Warranty text in descriptions → FIXED
+  6. Wearable Tech empty → FIXED
+- Remaining: deploy repo code, verify celery worker processes vendor_catalog queue,
+  batch activate products if needed, address 4 remaining data-quality orphans with Balaji

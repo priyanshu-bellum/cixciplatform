@@ -1,21 +1,20 @@
 # Session handoff
 
-Active task: TASK-011 — completed.
+Active task: TASK-012 — Balaji test server client issue fixes (in progress).
 
-Local operations checkpoint (2026-11-19): Docker checked; local backend/frontend
-rebuilt with docker-compose.local-copy.yml and restarted using
-`up -d --no-deps --force-recreate backend frontend`. Both running image IDs match
-rebuilt tags (backend 315e44fad24b, frontend 990a99ab96c8). Frontend GET 200,
-backend login OPTIONS 200 and catalog GET 403 without authentication all passed.
-PostgreSQL/Redis were not restarted and remain healthy. Build output has only a
-nonblocking Vite large-chunk warning. Evidence: .local-copy/operations/ build log
-and restart-smoke.json. No code edits/new tests/migrations/imports/provider jobs.
-Next: use frontend at http://localhost:5173/ and backend at http://localhost:8000/;
-resume other implementation only when requested. Earlier handoff details below
-are preserved. Root startup/task consistency validator passed; no fresh structural
-inventory was collected for this operational task.
+Checkpoint: 2026-11-20, Balaji client video issue fixes.
 
-Checkpoint: 2026-11-19, production bugfixes + client issue backlog session.
+## Key changes ready for deploy
+
+`catalog_import.py` has 3 permanent fixes that prevent future import failures:
+1. `_NULLABLE_TEXT_FIELDS` constant (line 21-27) — identifies text fields vendors return as null
+2. None sanitization loop (line 325-328) — removes None from text fields before DRF validation
+3. Broadened retry (line 354-362) — if serializer fails on non-essential fields, strips them and retries
+4. weight_unit default REMOVED — Balaji sends weight with unit, we don't override it
+
+Test server state: 1791 products, 4 orphans (3 wholesale>MSRP, 1 duplicate SKU — Balaji data issues).
+Connection config already updated on test server with 5 extra category mappings.
+Container code patched via docker exec; deploying the repo will make it permanent.
 
 ## Completed this session
 
