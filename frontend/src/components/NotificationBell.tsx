@@ -16,7 +16,7 @@ import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined'
 import DoneAllIcon from '@mui/icons-material/DoneAll'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import api from '../lib/apiClient'
@@ -48,7 +48,7 @@ function timeAgo(dateStr: string): string {
 
 function classificationIcon(classification: string) {
   switch (classification) {
-    case 'critical': return <ErrorOutlineIcon fontSize="small" color="error" />
+    case 'critical': return <ErrorOutlinedIcon fontSize="small" color="error" />
     case 'warning': return <WarningAmberIcon fontSize="small" color="warning" />
     default: return <InfoOutlinedIcon fontSize="small" color="info" />
   }
@@ -141,7 +141,7 @@ export default function NotificationBell() {
         }}
       >
         <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="subtitle1" fontWeight={700}>Notifications</Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Notifications</Typography>
           {unreadCount > 0 && (
             <Button
               size="small"
@@ -159,7 +159,7 @@ export default function NotificationBell() {
           {isCixciAdmin && importAlerts.length > 0 && (
             <>
               <Box sx={{ px: 2, py: 1, bgcolor: 'warning.main', color: 'warning.contrastText' }}>
-                <Typography variant="caption" fontWeight={600}>
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>
                   Import Alerts ({importAlerts.length})
                 </Typography>
               </Box>
@@ -174,7 +174,7 @@ export default function NotificationBell() {
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           <WarningAmberIcon fontSize="small" color="warning" />
-                          <Typography variant="body2" fontWeight={600} noWrap>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
                             {alert.event_type === 'catalog.missing_device_reference'
                               ? 'Missing Devices'
                               : alert.event_type === 'catalog.unresolved_category'
@@ -232,7 +232,7 @@ export default function NotificationBell() {
                   <Box sx={{ mr: 1, mt: 0.5 }}>{classificationIcon(n.classification)}</Box>
                   <ListItemText
                     primary={
-                      <Typography variant="body2" fontWeight={n.is_read ? 400 : 600} noWrap>
+                      <Typography variant="body2" sx={{ fontWeight: n.is_read ? 400 : 600 }} noWrap>
                         {n.title}
                       </Typography>
                     }
