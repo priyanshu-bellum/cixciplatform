@@ -339,6 +339,14 @@ def ingest_rows(connection, run, items, actor):
             for field in compat_fields:
                 serializer.validated_data.pop(field, None)
         allow_save = valid and not fatal and not (product and product.status == "active" and errors and not compat_only)
+        if not allow_save and not fatal and product is None and serializer is not None and not valid:
+            compat_fields = {"compatibility_mode", "device_ids", "compatible_device_types", "compatibility_update_type", "compatibility_declaration"}
+            if serializer.errors and all(f in compat_fields for f in serializer.errors):
+                stripped = {k: v for k, v in attrs.items() if k not in compat_fields}
+                serializer = ProductDetailSerializer(None, data=stripped, partial=False, context={
+                    'request': SimpleNamespace(user=actor), 'update_source': 'Vendor API Sync', 'source_run_reference': run.pk})
+                if serializer.is_valid():
+                    allow_save = True
         if allow_save:
             try:
                 with transaction.atomic():
@@ -421,6 +429,7 @@ def _emit_import_notifications(connection, unresolved_colors, unresolved_categor
         notifications.append(NotificationRequest(
             event_type="catalog.category_mapping_required",
             source_module="integration",
+            company_scope_reference=vendor_id,
             classification="DASHBOARD_ONLY",
             safe_payload_summary={
                 "vendor_company_id": str(vendor_id),
@@ -435,6 +444,7 @@ def _emit_import_notifications(connection, unresolved_colors, unresolved_categor
         notifications.append(NotificationRequest(
             event_type="catalog.color_mapping_required",
             source_module="integration",
+            company_scope_reference=vendor_id,
             classification="DASHBOARD_ONLY",
             safe_payload_summary={
                 "vendor_company_id": str(vendor_id),
@@ -449,6 +459,7 @@ def _emit_import_notifications(connection, unresolved_colors, unresolved_categor
         notifications.append(NotificationRequest(
             event_type="catalog.missing_device_reference",
             source_module="integration",
+            company_scope_reference=vendor_id,
             classification="DASHBOARD_ONLY",
             safe_payload_summary={
                 "vendor_company_id": str(vendor_id),
@@ -461,7 +472,9 @@ def _emit_import_notifications(connection, unresolved_colors, unresolved_categor
 
     if notifications:
         try:
-            NotificationRequest.objects.bulk_create(notifications, ignore_conflicts=True)
+            from django.db import transaction
+            with transaction.atomic():
+                NotificationRequest.objects.bulk_create(notifications, ignore_conflicts=True)
             from apps.notification.broadcast import broadcast_import_alert
             for nr in notifications:
                 broadcast_import_alert({
