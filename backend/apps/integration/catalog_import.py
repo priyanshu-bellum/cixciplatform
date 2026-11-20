@@ -355,14 +355,11 @@ def ingest_rows(connection, run, items, actor):
         fatal = bool(error_codes & identity_fatal)
         compat_only = not fatal and bool(error_codes & compat_fatal)
         blocking_errors = [e for e in errors if e["code"] not in informational]
-        if compat_only and product and product.status == "active" and valid and serializer is not None:
+        if compat_only and valid and serializer is not None:
             compat_fields = {"device_ids", "compatibility_update_type", "compatibility_declaration"}
             for field in compat_fields:
                 serializer.validated_data.pop(field, None)
-        # A new canonical row must not manufacture feature/default matches from
-        # an unresolved or conflicting source declaration. Keep its raw source
-        # staged for review; existing approved history remains intact.
-        allow_save = (valid and not fatal and not (product is None and compat_only)
+        allow_save = (valid and not fatal
             and not (product and product.status == "active" and blocking_errors and not compat_only))
         if allow_save:
             try:
