@@ -34,14 +34,14 @@ def canonical_device(value):
 
 
 @transaction.atomic
-def update_explicit_selections(product, items, actor, *, update_type="replace", basis="manual_assertion", change_source="Manual Selection"):
+def update_explicit_selections(product, items, actor, *, update_type="replace", basis="manual_assertion", change_source="Manual Selection", vendor_import=False):
     admin = authorize_edit(actor, product)
     product = Product.objects.select_for_update().get(pk=product.pk)
     if update_type not in ("add", "remove", "replace"):
         raise ValidationError({"update_type": "Use add, remove or replace."})
     if not isinstance(items, list):
         raise ValidationError({"assertions": "Supply a list of canonical device selections."})
-    if update_type == "replace" and not admin and (product.status == "active" or product.is_tied_to_activity):
+    if update_type == "replace" and not admin and not vendor_import and (product.status == "active" or product.is_tied_to_activity):
         raise ValidationError({"update_type": "Replacing compatibility on a live or previously exported/sold product requires CIXCI Admin approval. Use Add or a reasoned exclusion."})
     if update_type == "remove":
         selections = []
@@ -58,7 +58,7 @@ def update_explicit_selections(product, items, actor, *, update_type="replace", 
             apply_mapping_control(product, actor, "exclude", device.id, reason=item["exclusion_reason"], notes=item.get("notes", ""), reconcile=False)
         return reconcile_product_compatibility(product, actor.id, change_source)
     config = DynamicDropdownConfig.objects.filter(field_name="product_category", value=product.product_category).first()
-    if update_type != "remove" and (not config or config.status != "active" or category_mode(config.compatibility_mode) not in ("device_specific", "hybrid") or product.compatibility_mode != "direct_device"):
+    if not vendor_import and update_type != "remove" and (not config or config.status != "active" or category_mode(config.compatibility_mode) not in ("device_specific", "hybrid") or product.compatibility_mode != "direct_device"):
         raise ValidationError({"device_ids": "Explicit model selections require a Device Specific or Hybrid category."})
     allowed_types = configured_type_ids(config) if config else set()
     selected = {}
@@ -70,7 +70,7 @@ def update_explicit_selections(product, items, actor, *, update_type="replace", 
         compatible = item.get("is_compatible", True)
         if not isinstance(compatible, bool):
             raise ValidationError({"is_compatible": "Use a JSON boolean."})
-        if update_type != "remove" and (str(device.device_type_id) not in allowed_types or device.device_type.code not in CURRENT_DEVICE_TYPE_CODES or device.device_type.status != "active" or not device.device_type.is_active):
+        if not vendor_import and update_type != "remove" and (str(device.device_type_id) not in allowed_types or device.device_type.code not in CURRENT_DEVICE_TYPE_CODES or device.device_type.status != "active" or not device.device_type.is_active):
             raise ValidationError({"device_ids": "A selected device is outside the category's approved current types."})
         notes = item.get("notes", "")
         if not isinstance(notes, str):

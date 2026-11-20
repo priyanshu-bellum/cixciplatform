@@ -241,9 +241,11 @@ class ProductSerializerBase(serializers.ModelSerializer):
         from django.core.exceptions import ValidationError as DjangoValidationError
         from .compatibility_commands import update_explicit_selections
         try:
+            is_vendor_sync = self.context.get('update_source') == 'Vendor API Sync'
             update_explicit_selections(instance, device_ids, request.user, update_type=update_type,
-                basis='imported' if self.context.get('update_source') == 'Vendor API Sync' else 'manual_assertion',
-                change_source=self.context.get('update_source') or ("Vendor API" if not getattr(request.user, "is_cixci_admin", False) else "CIXCI Admin"))
+                basis='imported' if is_vendor_sync else 'manual_assertion',
+                change_source=self.context.get('update_source') or ("Vendor API" if not getattr(request.user, "is_cixci_admin", False) else "CIXCI Admin"),
+                vendor_import=is_vendor_sync)
             instance.refresh_from_db(fields=["compatibility_status"])
         except DjangoValidationError as error:
             raise serializers.ValidationError(error.message_dict if hasattr(error, "message_dict") else error.messages) from error
