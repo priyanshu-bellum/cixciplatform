@@ -71,5 +71,7 @@ class Command(BaseCommand):
             ))
             return
 
-        updated = Product.objects.filter(pk__in=ready).update(status="active")
+        updated = Product.objects.filter(pk__in=ready).update(
+            status="active", selling_status="for_sale"
+        )
         self.stdout.write(self.style.SUCCESS(f"\nActivated {updated} products."))

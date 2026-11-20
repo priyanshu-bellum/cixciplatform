@@ -268,15 +268,17 @@ def run_universal_device_type_mapping(product, actor_id=None, change_source="Uni
 
 def run_device_remapping(device, actor_id=None, change_source="System Remap"):
     """The same reconciliation removes stale type/status matches as well as adds."""
+    from .services import defer_buyer_projection_refresh, invalidate_buyer_projection_cache
     changed = 0
-    # Include inactive/mismatched categories and products with old assertions;
-    # filtering to the new type would leave stale relationships behind.
     feature_categories = [row.value for row in DynamicDropdownConfig.objects.filter(field_name="product_category")
                           if category_mode(row.compatibility_mode) in ("feature_based", "hybrid") and str(device.device_type_id) in configured_type_ids(row)]
     prior_products = ProductCompatibilityAssertion.objects.filter(device_reference=device.id).values_list("product_id", flat=True)
     affected = Product.objects.filter(Q(product_category__in=feature_categories) |
         Q(compatibility_mode="universal_device_type", universal_type_scopes__device_type_id=device.device_type_id, universal_type_scopes__is_active=True) |
         Q(id__in=prior_products)).distinct()
-    for product in affected.order_by("pk").iterator():
-        changed += reconcile_product_compatibility(product, actor_id, change_source, device_ids=[device.id])
+    with defer_buyer_projection_refresh():
+        for product in affected.order_by("pk").iterator():
+            changed += reconcile_product_compatibility(product, actor_id, change_source, device_ids=[device.id])
+    if changed:
+        invalidate_buyer_projection_cache("device_remapping")
     return changed

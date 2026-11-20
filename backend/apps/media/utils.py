@@ -39,22 +39,13 @@ def media_short_url(asset_id) -> str:
     """
     Return the public URL for a media asset.
 
-    When MEDIA_USE_SHORT_URLS is True (production):
-        {MEDIA_BASE_URL}/api/img/<base62>   — absolute URL for external consumers
-    When False (test / local / default):
-        {MEDIA_URL}{storage_key}  — original full-length URL
+    Always uses the proxy path /api/img/<base62> which MediaProxyView serves
+    directly from local storage or redirects to cloud storage. This avoids
+    dependence on Django's static file serving or external web server config.
+
+    MEDIA_BASE_URL (optional) prepends an absolute origin for external consumers.
     """
     from django.conf import settings
 
-    if getattr(settings, "MEDIA_USE_SHORT_URLS", False):
-        base = getattr(settings, "MEDIA_BASE_URL", "").rstrip("/")
-        return f"{base}/api/img/{uuid_to_b62(asset_id)}"
-
-    # Long-URL mode: look up the storage_key for this asset
-    from apps.media.models import MediaAsset
-    try:
-        sk = MediaAsset.objects.values_list("storage_key", flat=True).get(id=asset_id)
-    except MediaAsset.DoesNotExist:
-        return ""
-    media_url = getattr(settings, "MEDIA_URL", "/media/")
-    return f"{media_url}{sk}"
+    base = getattr(settings, "MEDIA_BASE_URL", "").rstrip("/")
+    return f"{base}/api/img/{uuid_to_b62(asset_id)}"

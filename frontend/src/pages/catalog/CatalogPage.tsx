@@ -34,6 +34,7 @@ import ManageProductDialog from './dialogs/ManageProductDialog'
 import BulkUploadDialog from './dialogs/BulkUploadDialog'
 import DropdownManagerDialog from './dialogs/DropdownManagerDialog'
 import BatchRevalidateDialog from './dialogs/BatchRevalidateDialog'
+import MissingDevicesTab from './MissingDevicesTab'
 
 export default function CatalogPage() {
   const queryClient = useQueryClient()
@@ -69,6 +70,7 @@ export default function CatalogPage() {
     const t = searchParams.get('tab')
     if (t === 'my-compatibility' || t === 'projection') return 'projection'
     if (t === 'api-imports' && isCixciAdmin) return 'api-imports'
+    if (t === 'missing-devices' && isCixciAdmin) return 'missing-devices'
     return 'products'
   })()
   const [tab, setTab] = useState<string>(initialTab)
@@ -260,7 +262,8 @@ export default function CatalogPage() {
                       'Unmapped Colors'
                     }
                     color={alert.event_type === 'catalog.missing_device_reference' ? 'error' : 'warning'}
-                    sx={{ minWidth: 130 }}
+                    sx={{ minWidth: 130, cursor: alert.event_type === 'catalog.missing_device_reference' ? 'pointer' : undefined }}
+                    onClick={alert.event_type === 'catalog.missing_device_reference' ? () => setTab('missing-devices') : undefined}
                   />
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="body2">{alert.message}</Typography>
@@ -294,11 +297,14 @@ export default function CatalogPage() {
       >
         <Tab label="All Products" value="products" />
         {isCixciAdmin && <Tab label="API Import Review" value="api-imports" />}
+        {isCixciAdmin && <Tab label="Missing Devices" value="missing-devices" />}
         {isBuyer && <Tab label="My Compatibility" value="projection" />}
         {isBuyer && <Tab label="Added Products" value="export_jobs" />}
       </Tabs>
 
       {tab === 'api-imports' && isCixciAdmin && <VendorImportReviewTab initialConnection={searchParams.get('connection') || ''} onEditProduct={handleEditProduct}/>}
+
+      {tab === 'missing-devices' && isCixciAdmin && <MissingDevicesTab />}
 
       {tab === 'products' && (
         <AllProductsTab

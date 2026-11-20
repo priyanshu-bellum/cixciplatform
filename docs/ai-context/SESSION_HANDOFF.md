@@ -199,14 +199,71 @@ Container code patched via docker exec; deploying the repo will make it permanen
     - `batch_activate_products` command: dry-run + commit, vendor filter, media readiness check
     - Balaji: 89 ready, 3 have no images
 
+23. **Permanent compatibility fallback** in `catalog_import.py`:
+    - `_CATEGORY_DEVICE_TYPE_FALLBACK` maps categories to device type codes
+    - When `parse_compatibility_row()` fails → `COMPATIBILITY_REVIEW_REQUIRED`
+    - New products auto-get `universal_device_type` mode + scopes + assertions
+    - Ensures future Balaji products are visible to buyers without manual intervention
+
+24. **Keyword category refinement** in `catalog_import.py`:
+    - `_KEYWORD_CATEGORY_RULES` + `_keyword_refine_category()` function
+    - When a product falls to the default category (Phone Attachments), name
+      keyword matching refines it (smartwatch→Wearable Tech, etc.)
+    - Runs during import, before product creation
+
+25. **Warranty/policy text removal** in `normalization.py`:
+    - `_WARRANTY_STATEMENT` regex: catches "Brand Limited Lifetime Warranty" etc.
+    - `_VENDOR_POLICY_PATTERN` regex: catches return/exchange/shipping policy text
+    - Applied in both `normalize_description()` and `normalize_warranty_in_description()`
+
+26. **Image serving fix** (MediaProxyView + media_short_url):
+    - `media/views.py`: MediaProxyView now serves files directly from MEDIA_ROOT
+      when using local storage (no S3/GCS), instead of redirecting to /media/ path
+    - `media/utils.py`: `media_short_url()` always returns proxy path `/api/img/<base62>`
+      regardless of MEDIA_USE_SHORT_URLS setting — eliminates dependency on static
+      file serving or nginx for /media/ URLs
+    - 2 new tests (MediaShortUrlTest), all passing
+
+27. **Buyer visibility media gate relaxed** (`catalog/api.py`):
+    - Media readiness gate now accepts both PNG and JPEG images (`mime_type__in`)
+    - Removed `has_transparency=True` requirement that blocked all JPEG images
+    - Still requires `status="ready"` and `review_status="approved"`
+
+28. **"Universal" compatibility handling** (`compatibility_import.py`):
+    - `parse_compatibility_row()` now handles bare "universal" by resolving to all
+      current device types (phone, tablet, smartwatch) instead of raising error
+    - Missing-device tracking skips when types resolved (not just devices)
+
+29. **batch_activate_products updated** (`management/commands/batch_activate_products.py`):
+    - Now sets both `status="active"` AND `selling_status="for_sale"` on activation
+
+30. **Missing Devices admin panel** (TASK-013):
+    - Backend: `MissingDeviceViewSet` at `/catalog/missing-devices/` — list (aggregates
+      unmatched vendor device names, deduplicates vs Device Catalog, auto-suggests
+      manufacturer + device type), `add_device` (creates Device + bulk-creates
+      ProductCompatibilityAssertion + audit log), `dismiss_device`
+    - Frontend: `MissingDevicesTab.tsx` on CatalogPage (admin-only tab). Table with
+      vendor device name, alert count, suggested manufacturer, type. "Add" button opens
+      dialog → creates device + matches products. "Dismiss" for false positives.
+    - Import alerts banner "Missing Devices" chip is now clickable → switches to tab.
+
 ## Remaining work
 
 1. **Migrations on production** — 0041-0045 need to be applied after prod DB clone testing
+2. **Run batch_activate_products on test server** — activates products that pass media readiness
+3. **Verify buyer visibility** — log in as buyer to confirm products appear
+4. **Resync Balaji catalog** — triggers import with all fixes (categories, compatibility, images)
+
+## Files modified (missing devices panel)
+
+- `backend/apps/catalog/api.py` — MissingDeviceViewSet added + router registration
+- `frontend/src/pages/catalog/MissingDevicesTab.tsx` — NEW, admin missing devices table + add dialog
+- `frontend/src/pages/catalog/CatalogPage.tsx` — Missing Devices tab, import alert chip click
 
 ## Important notes
 
 - Migrations 0041-0045 applied to local Docker — not yet on production
 - All repo changes are uncommitted — user must test against prod DB clone before push
 - Deployment: rsync from `/srv/cixci_repo/` to test/live, then `docker compose up`
-- Resync from Balaji API will auto-fix existing products (normalization in import flow)
+- Resync from Balaji API will auto-fix existing products (normalization + compatibility in import flow)
 - Reference docs: `docs/CIXCI_Product_Data_Normalization_*.docx`, `docs/CIXCI_Category_Governance_*.docx`

@@ -156,22 +156,57 @@ TASK-002–008 record earlier discoveries. IDs are permanent.
 
 - Status: in-progress
 - Related: TASK-010
-- Modules: catalog_import.py, catalog_config.py, test server container
+- Modules: catalog_import.py, catalog_config.py, media/views.py, media/utils.py,
+  compatibility_import.py, catalog/api.py, batch_activate_products.py
 - Changes in repo (ready for deploy):
   1. `_NULLABLE_TEXT_FIELDS` sanitization in catalog_import.py (prevents None rejection)
   2. Broadened retry in catalog_import.py (strips non-essential failing fields)
   3. weight_unit default REMOVED (Balaji sends weight with unit as-is)
+  4. Keyword category refinement (`_keyword_refine_category`) for "Other Accessories"
+  5. Compatibility fallback: auto-assigns universal_device_type on parse failure
+  6. "universal" compatibility resolves to all device types (phone/tablet/smartwatch)
+  7. MediaProxyView serves files directly from disk (local storage)
+  8. `media_short_url()` always returns proxy path `/api/img/<base62>`
+  9. Buyer visibility media gate: accepts JPEG alongside PNG
+  10. `batch_activate_products` sets selling_status="for_sale" alongside status="active"
 - Test server fixes applied (via scripts, not git):
   - Connection config: 5 new category mappings added
   - fix_all_orphans.py: 98 products created + normalization
   - fix_remaining.py: 76 more products created (progressive retry)
   - Final: 1791 products, 4 orphans (3 wholesale>MSRP, 1 dup SKU — Balaji data)
 - Client issues resolved:
-  1. Wrong categories → FIXED
+  1. Wrong categories → FIXED (keyword refinement for "Other Accessories")
   2. Missing products → FIXED (178→4 orphans, all data errors)
   3. Series not showing → FIXED
   4. Weight → NOT A BUG (comes from Balaji as-is)
-  5. Warranty text in descriptions → FIXED
-  6. Wearable Tech empty → FIXED
-- Remaining: deploy repo code, verify celery worker processes vendor_catalog queue,
-  batch activate products if needed, address 4 remaining data-quality orphans with Balaji
+  5. Warranty text in descriptions → FIXED (normalization strips warranty/vendor text)
+  6. Wearable Tech empty → FIXED (keyword refinement)
+  7. Images not displaying → FIXED (MediaProxyView serves from disk, proxy URLs)
+  8. Buyer product visibility → FIXED (JPEG accepted in media gate, compatibility fallback)
+  9. Device compatibility "universal" → FIXED (resolves to all device types)
+  10. Compatible products for devices → FIXED (fallback universal_device_type mapping)
+- Remaining: deploy repo code, run batch_activate_products, resync Balaji catalog,
+  verify buyer visibility, address 4 data-quality orphans with Balaji
+
+## TASK-013 — Missing Devices admin panel (UI + API)
+
+- Status: completed
+- Related: TASK-012, TASK-010 subtask 5
+- Modules: catalog/api.py, frontend/pages/catalog/MissingDevicesTab.tsx, CatalogPage.tsx
+- Backend:
+  - `MissingDeviceViewSet` registered at `/catalog/missing-devices/`
+  - `list`: aggregates missing device names from NotificationRequest payloads,
+    deduplicates against existing Device Catalog, auto-suggests manufacturer and
+    device type, returns manufacturer/device-type lookup lists
+  - `add_device`: creates Device (or reuses existing), bulk-creates
+    ProductCompatibilityAssertion for all matching VCIs, writes audit log
+  - `dismiss_device`: removes device name from notification payloads
+- Frontend:
+  - `MissingDevicesTab.tsx`: table of unresolved vendor device names with alert counts,
+    suggested manufacturer/type, "Add" button opens dialog with manufacturer picker,
+    device name, device type; "Dismiss" button for false positives
+  - Wired into CatalogPage as admin-only "Missing Devices" tab
+  - Import alerts banner "Missing Devices" chip now clickable → navigates to tab
+- Tests: TypeScript compiles clean
+- Remaining: test on dev server with real Balaji data; run add_missing_devices or
+  use the UI to add the 105 unmatched devices

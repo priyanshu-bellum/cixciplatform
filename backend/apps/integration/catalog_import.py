@@ -13,6 +13,8 @@ from apps.catalog.models import Product, DynamicDropdownConfig, VendorBrandRelat
 from apps.catalog.api import ProductDetailSerializer
 from apps.catalog.compatibility_import import parse_compatibility_row
 from apps.catalog.compatibility_contract import COMPATIBILITY_FIELDS
+from apps.catalog.compatibility_contract import sync_product_scope
+from apps.catalog.compatibility_engine import run_universal_device_type_mapping
 from .catalog_config import path_value
 from .catalog_secrets import redact, decrypt_credentials
 from .catalog_media import process_vendor_product_images
@@ -27,6 +29,20 @@ _NULLABLE_TEXT_FIELDS = frozenset({
 })
 
 logger = logging.getLogger(__name__)
+
+# Fallback: when vendor compatibility declaration cannot be parsed, assign
+# universal_device_type based on the product's resolved category so buyers
+# can still see the product.  Device-specific categories (Cases, Screen
+# Protection, Tablet Cases) are EXCLUDED — they need individual device
+# matching, not universal; leaving them out keeps them in review.
+_CATEGORY_DEVICE_TYPE_FALLBACK = {
+    "Headphones": ["phone"],
+    "Speakers": ["phone"],
+    "Chargers and Cables": ["phone"],
+    "Phone Attachments": ["phone"],
+    "Wearable Tech": ["smartwatch"],
+    "Memory": ["phone"],
+}
 
 
 def canonical_evidence(product):
@@ -53,6 +69,37 @@ def source_observation(connection, run, actor, source, before, after, old_hash, 
         service_trigger_reference='Vendor API Sync', correlation_id=run.pk,
         company_scope_reference=connection.vendor_company_id, source_module='integration',
         source_record_type='VendorCatalogItem', source_record_id=source.pk)
+
+
+_KEYWORD_CATEGORY_RULES = (
+    ("Wearable Tech", (
+        "smartwatch", "smart watch", "watch band", "watch strap", "fitness band",
+        "fitness tracker", "wearable", "apple watch", "galaxy watch", "fitbit",
+    )),
+    ("Headphones", (
+        "headphone", "headset", "earbud", "earphone", "earpiece",
+        "tws", "true wireless", "airpod", "over-ear", "on-ear", "in-ear",
+    )),
+    ("Speakers", (
+        "speaker", "soundbar", "bluetooth speaker", "portable speaker",
+    )),
+    ("Chargers and Cables", (
+        "charger", "charging", "cable", "power bank", "power adapter",
+        "car charger", "wall charger", "usb-c", "lightning cable", "fast charge",
+        "wireless charger", "magsafe charger",
+    )),
+)
+
+
+def _keyword_refine_category(category, product_name, default_category):
+    """Refine catch-all categories using product name keywords."""
+    if category != default_category or not product_name:
+        return category
+    name_lower = product_name.lower()
+    for target_cat, keywords in _KEYWORD_CATEGORY_RULES:
+        if any(kw in name_lower for kw in keywords):
+            return target_cat
+    return category
 
 
 def resolved_category(raw, product, configured, approved, default):
@@ -176,6 +223,7 @@ def ingest_rows(connection, run, items, actor):
         old_review = (source.review_required, deepcopy(source.review_errors)) if source else None
         category, category_errors = resolved_category(fields.get('vendor_category'), cached_product or products.get(safe_sku),
             configured_categories, approved_categories, connection.config.get('default_category'))
+        category = _keyword_refine_category(category, fields.get('name', ''), connection.config.get('default_category'))
         if (source and source.source_hash == digest and not source.review_required
                 and source.applied_config_version == connection.config_version
                 and safe_sku not in conflicting_skus and identifier not in duplicates
@@ -312,13 +360,20 @@ def ingest_rows(connection, run, items, actor):
                 if devices:
                     attrs.update(device_ids=devices, compatibility_update_type="add")
                 # Track device references for missing-device notification
-                if compat_raw and isinstance(compat_raw, str) and compat_raw.strip():
+                if compat_raw and isinstance(compat_raw, str) and compat_raw.strip() and not devices and not types:
                     for device_name in compat_raw.split(';'):
                         device_name = device_name.strip()
-                        if device_name and not devices:
+                        if device_name:
                             missing_device_names.add(device_name)
             except (ValidationError, TypeError, AttributeError):
                 errors.append({"code": "COMPATIBILITY_REVIEW_REQUIRED", "field": "compatibility_declaration"})
+                # Track unmatched device names even when parsing fails, so
+                # admins see which devices need adding to the Device Catalog.
+                if compat_raw and isinstance(compat_raw, str):
+                    for _dn in compat_raw.split(';'):
+                        _dn = _dn.strip()
+                        if _dn and _dn.casefold() != 'universal':
+                            missing_device_names.add(_dn)
         attrs.update(vendor_company_reference=connection.vendor_company_id)
         if not product:
             attrs.update(company_scope_reference=connection.vendor_company_id, product_type="accessory", status="draft", selling_status="not_for_sale")
@@ -382,6 +437,23 @@ def ingest_rows(connection, run, items, actor):
                 canonical = Product.objects.get(pk=product.pk) if product else None
         elif product:
             counts["unchanged_count"] += 1
+        # Fallback: if product exists but has no compatibility assertions and
+        # compatibility declaration parsing failed, assign universal_device_type
+        # based on category so the product can appear in buyer catalogs.
+        if canonical and new_product and "COMPATIBILITY_REVIEW_REQUIRED" in error_codes:
+            try:
+                from apps.devices.models import DeviceType
+                cat = canonical.product_category or ''
+                type_codes = _CATEGORY_DEVICE_TYPE_FALLBACK.get(cat, ["phone"])
+                target_types = list(DeviceType.objects.filter(code__in=type_codes, is_active=True))
+                if target_types and canonical.compatibility_mode != "universal_device_type":
+                    Product.objects.filter(pk=canonical.pk).update(compatibility_mode="universal_device_type")
+                    canonical.refresh_from_db()
+                if target_types:
+                    sync_product_scope(canonical, target_types, actor_id=getattr(actor, "id", None))
+                    run_universal_device_type_mapping(canonical, actor_id=getattr(actor, "id", None))
+            except Exception:
+                logger.debug("Fallback compatibility setup failed for %s", canonical.sku, exc_info=True)
         if canonical and not canonical.primary_image_reference:
             image_urls = fields.get("images")
             if image_urls and isinstance(image_urls, list):
@@ -477,11 +549,31 @@ def _emit_import_notifications(connection, unresolved_colors, unresolved_categor
             safe_payload_summary={
                 "vendor_company_id": str(vendor_id),
                 "connection_id": str(connection.pk),
-                "missing_devices": sorted(missing_device_names)[:20],
+                "missing_devices": sorted(missing_device_names)[:50],
                 "count": len(missing_device_names),
-                "message": f"{len(missing_device_names)} products reference devices not found in CIXCI",
+                "message": f"{len(missing_device_names)} vendor device names not found in CIXCI Device Catalog — add these devices so cases/screen protectors can be matched",
             },
         ))
+        # Audit log: record each missing device name so admins can see the
+        # full list and add them to the Device Catalog.
+        try:
+            from apps.audit.models import AuditRecord
+            audit_entries = []
+            for device_name in sorted(missing_device_names):
+                audit_entries.append(AuditRecord(
+                    event_code="catalog.compatibility.missing_device",
+                    event_description=f"Vendor device '{device_name}' not found in CIXCI Device Catalog. Add this device so cases and screen protectors can be matched to it.",
+                    status="pending_review",
+                    service_trigger_reference="vendor_catalog_sync",
+                    source_module="integration",
+                    company_scope_reference=vendor_id,
+                    source_record_type="VendorCatalogConnection",
+                    source_record_id=connection.pk,
+                ))
+            if audit_entries:
+                AuditRecord.objects.bulk_create(audit_entries, batch_size=200, ignore_conflicts=True)
+        except Exception as exc:
+            logger.warning("Failed to create missing device audit entries: %s", exc)
 
     if notifications:
         try:

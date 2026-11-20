@@ -1456,14 +1456,14 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             Q(release_date__isnull=True) | Q(release_date__lte=today_est)
         )
 
-        # Media readiness gate (Rule §24): buyers only see products whose primary
-        # image is a valid, transparent PNG. Toggle via MEDIA_READINESS_ENFORCE_BUYER
-        # (default True in production; can be disabled for legacy data).
+        # Media readiness gate (Rule §24): buyers only see products with an
+        # approved, ready primary image. Accepts PNG and JPEG from vendor imports.
         from django.conf import settings as _settings
         if getattr(_settings, "MEDIA_READINESS_ENFORCE_BUYER", True):
             from apps.media.models import MediaAsset
             ready_asset_ids = MediaAsset.objects.filter(
-                status="ready", mime_type="image/png", has_transparency=True,
+                status="ready",
+                mime_type__in=["image/png", "image/jpeg"],
                 review_status="approved",
             ).values_list("id", flat=True)
             qs = qs.filter(primary_image_reference__in=list(ready_asset_ids))
@@ -4259,6 +4259,237 @@ class ImportAlertViewSet(viewsets.ViewSet):
         return Response({"dismissed": True})
 
 
+# ─── Missing Devices (admin panel to add unmatched vendor devices) ────────────
+
+class MissingDeviceViewSet(viewsets.ViewSet):
+    """Admin panel: list vendor device names not in CIXCI Device Catalog
+    and add them so cases/screen protectors can get compatibility assertions."""
+    permission_classes = [IsAuthenticated]
+
+    def _require_admin(self, request):
+        if not request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Admin only.")
+
+    def list(self, request):
+        """Return aggregated missing device names with product counts."""
+        self._require_admin(request)
+        try:
+            from apps.notification.models import NotificationRequest
+        except ImportError:
+            return Response({"devices": []})
+
+        alerts = NotificationRequest.objects.filter(
+            event_type="catalog.missing_device_reference",
+        ).order_by("-created_at")
+
+        device_counts: dict[str, int] = {}
+        vendor_ids: set[str] = set()
+        for alert in alerts:
+            payload = alert.safe_payload_summary or {}
+            for name in payload.get("missing_devices", []):
+                device_counts[name] = device_counts.get(name, 0) + 1
+            vid = payload.get("vendor_company_id")
+            if vid:
+                vendor_ids.add(vid)
+
+        from apps.devices.models import Device, Manufacturer, DeviceType
+        existing_devices = set()
+        for d in Device.objects.select_related("manufacturer").all():
+            existing_devices.add(f"{d.manufacturer.name} {d.name}".strip().lower())
+            existing_devices.add(d.name.strip().lower())
+
+        manufacturers = {m.name.lower(): {"id": str(m.id), "name": m.name}
+                         for m in Manufacturer.objects.filter(is_active=True)}
+        device_types = {dt.code: {"id": str(dt.id), "code": dt.code, "name": dt.name}
+                        for dt in DeviceType.objects.filter(is_active=True)}
+
+        result = []
+        for name, alert_count in sorted(device_counts.items(), key=lambda x: -x[1]):
+            if name.strip().lower() in existing_devices:
+                continue
+            suggested_mfr, suggested_type = self._suggest_manufacturer_type(name, manufacturers)
+            result.append({
+                "vendor_device_name": name,
+                "alert_count": alert_count,
+                "suggested_manufacturer": suggested_mfr,
+                "suggested_device_type": suggested_type,
+                "already_exists": False,
+            })
+
+        return Response({
+            "devices": result,
+            "total": len(result),
+            "manufacturers": sorted(manufacturers.values(), key=lambda m: m["name"]),
+            "device_types": sorted(device_types.values(), key=lambda d: d["name"]),
+        })
+
+    def _suggest_manufacturer_type(self, vendor_name, manufacturers):
+        vn = vendor_name.lower()
+        mfr_map = {
+            "iphone": "apple", "ipad": "apple", "airpods": "apple", "apple": "apple",
+            "galaxy": "samsung", "samsung": "samsung",
+            "pixel": "google", "google": "google",
+            "moto": "motorola", "motorola": "motorola",
+            "oneplus": "oneplus", "one plus": "oneplus",
+            "lg ": "lg", "nokia": "nokia", "tcl": "tcl",
+            "kyocera": "kyocera", "zte": "zte", "revvl": "tcl",
+            "boost": "samsung", "cricket": "samsung",
+        }
+        suggested_mfr = None
+        for keyword, mfr_key in mfr_map.items():
+            if keyword in vn:
+                for m_name, m_data in manufacturers.items():
+                    if mfr_key in m_name:
+                        suggested_mfr = m_data
+                        break
+                break
+
+        suggested_type = "phone"
+        if "ipad" in vn or "tab" in vn:
+            suggested_type = "tablet"
+        elif "watch" in vn:
+            suggested_type = "smartwatch"
+        return suggested_mfr, suggested_type
+
+    @action(detail=False, methods=["post"])
+    def add_device(self, request):
+        """Create a new device in the catalog and auto-match products."""
+        self._require_admin(request)
+        vendor_device_name = request.data.get("vendor_device_name", "").strip()
+        manufacturer_id = request.data.get("manufacturer_id")
+        device_name = request.data.get("device_name", "").strip()
+        device_type_code = request.data.get("device_type_code", "phone")
+
+        if not vendor_device_name or not manufacturer_id or not device_name:
+            return Response(
+                {"error": "vendor_device_name, manufacturer_id, and device_name are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.devices.models import Device, Manufacturer, DeviceType
+
+        try:
+            manufacturer = Manufacturer.objects.get(pk=manufacturer_id, is_active=True)
+        except Manufacturer.DoesNotExist:
+            return Response({"error": "Manufacturer not found."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            device_type = DeviceType.objects.get(code=device_type_code, is_active=True)
+        except DeviceType.DoesNotExist:
+            return Response({"error": f"Device type '{device_type_code}' not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing = Device.objects.filter(manufacturer=manufacturer, name__iexact=device_name).first()
+        if existing:
+            device = existing
+            created_device = False
+        else:
+            device = Device(
+                manufacturer=manufacturer,
+                device_type=device_type,
+                name=device_name,
+                lifecycle_status="available",
+                imported_by=request.user.id,
+            )
+            device.save()
+            created_device = True
+
+        matched_count = self._auto_match_products(device, vendor_device_name, request.user)
+
+        from apps.audit.models import AuditRecord
+        AuditRecord.objects.create(
+            event_code="catalog.missing_device.resolved",
+            event_description=f"Admin added device '{manufacturer.name} {device_name}' to resolve vendor reference '{vendor_device_name}'. {matched_count} products matched.",
+            status="completed",
+            actor_reference=request.user.id,
+            service_trigger_reference="admin_missing_device_panel",
+            source_module="catalog",
+            company_scope_reference=request.user.entity.company_id if hasattr(request.user, 'entity') and request.user.entity else request.user.id,
+        )
+
+        return Response({
+            "device_id": str(device.id),
+            "device_name": f"{manufacturer.name} {device_name}",
+            "created": created_device,
+            "products_matched": matched_count,
+        }, status=status.HTTP_201_CREATED if created_device else status.HTTP_200_OK)
+
+    def _auto_match_products(self, device, vendor_device_name, actor):
+        """Find products referencing this vendor_device_name and create assertions."""
+        import json
+        import re
+        from apps.integration.models import VendorCatalogItem
+
+        vcis = VendorCatalogItem.objects.filter(
+            payload__icontains=vendor_device_name,
+        ).select_related("product")[:2000]
+
+        to_create = []
+        matched_product_ids = set()
+        for vci in vcis:
+            if not vci.product_id:
+                continue
+            payload = json.loads(vci.payload) if isinstance(vci.payload, str) else (vci.payload or {})
+            compat = payload.get("compatible_devices", [])
+            if not compat:
+                continue
+            device_names = []
+            if isinstance(compat, list):
+                for entry in compat:
+                    if isinstance(entry, dict):
+                        name = entry.get("name", "") or entry.get("device_name", "")
+                    else:
+                        name = str(entry)
+                    if name.strip():
+                        device_names.append(name.strip())
+            elif isinstance(compat, str):
+                device_names = [n.strip() for n in re.split(r"[;,]", compat) if n.strip()]
+
+            for dn in device_names:
+                if dn.strip().lower() == vendor_device_name.strip().lower():
+                    if vci.product_id not in matched_product_ids:
+                        to_create.append(ProductCompatibilityAssertion(
+                            product_id=vci.product_id,
+                            device_reference=device.id,
+                            is_compatible=True,
+                            is_excluded=False,
+                            compatibility_basis="vendor_declaration",
+                            notes=f"Resolved from vendor: {vendor_device_name}",
+                        ))
+                        matched_product_ids.add(vci.product_id)
+                    break
+
+        if to_create:
+            ProductCompatibilityAssertion.objects.bulk_create(
+                to_create, ignore_conflicts=True, batch_size=500,
+            )
+        return len(to_create)
+
+    @action(detail=False, methods=["post"])
+    def dismiss_device(self, request):
+        """Remove a device name from the missing devices list."""
+        self._require_admin(request)
+        vendor_device_name = request.data.get("vendor_device_name", "").strip()
+        if not vendor_device_name:
+            return Response({"error": "vendor_device_name required."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from apps.notification.models import NotificationRequest
+            for alert in NotificationRequest.objects.filter(event_type="catalog.missing_device_reference"):
+                payload = alert.safe_payload_summary or {}
+                devices = payload.get("missing_devices", [])
+                if vendor_device_name in devices:
+                    devices = [d for d in devices if d != vendor_device_name]
+                    if not devices:
+                        alert.delete()
+                    else:
+                        payload["missing_devices"] = devices
+                        payload["count"] = len(devices)
+                        alert.safe_payload_summary = payload
+                        alert.save(update_fields=["safe_payload_summary"])
+        except Exception:
+            pass
+        return Response({"dismissed": True})
+
+
 # ─── URLs ─────────────────────────────────────────────────────────────────────
 
 router = DefaultRouter()
@@ -4269,5 +4500,6 @@ router.register("dropdown-configs", DynamicDropdownConfigViewSet, basename="drop
 router.register("vendor-category-mappings", VendorCategoryMappingViewSet, basename="vendor-category-mapping")
 router.register("vendor-color-mappings", VendorColorMappingViewSet, basename="vendor-color-mapping")
 router.register("import-alerts", ImportAlertViewSet, basename="import-alert")
+router.register("missing-devices", MissingDeviceViewSet, basename="missing-device")
 
 urlpatterns = [path("", include(router.urls))]

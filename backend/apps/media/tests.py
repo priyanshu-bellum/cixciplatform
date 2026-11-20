@@ -121,3 +121,54 @@ class ValidateImageBytesTest(TestCase):
         result = validate_image_bytes(data, "product.jpg", check_duplicates=False)
         self.assertTrue(result.ok)
         self.assertFalse(result.has_transparency)
+
+
+class MediaShortUrlTest(TestCase):
+    @override_settings(MEDIA_BASE_URL="")
+    def test_always_returns_proxy_path(self):
+        import uuid
+        from apps.media.utils import media_short_url, uuid_to_b62
+        asset_id = uuid.uuid4()
+        url = media_short_url(asset_id)
+        self.assertTrue(url.startswith("/api/img/"))
+        self.assertEqual(url, f"/api/img/{uuid_to_b62(asset_id)}")
+
+    @override_settings(MEDIA_BASE_URL="https://cdn.example.com")
+    def test_absolute_url_with_base(self):
+        import uuid
+        from apps.media.utils import media_short_url, uuid_to_b62
+        asset_id = uuid.uuid4()
+        url = media_short_url(asset_id)
+        self.assertTrue(url.startswith("https://cdn.example.com/api/img/"))
+
+
+class KeywordCategoryRefinementTest(TestCase):
+    def test_wearable_keyword(self):
+        from apps.integration.catalog_import import _keyword_refine_category
+        result = _keyword_refine_category("Phone Attachments", "Samsung Galaxy Watch 5 Band", "Phone Attachments")
+        self.assertEqual(result, "Wearable Tech")
+
+    def test_headphone_keyword(self):
+        from apps.integration.catalog_import import _keyword_refine_category
+        result = _keyword_refine_category("Phone Attachments", "JBL True Wireless Earbuds", "Phone Attachments")
+        self.assertEqual(result, "Headphones")
+
+    def test_speaker_keyword(self):
+        from apps.integration.catalog_import import _keyword_refine_category
+        result = _keyword_refine_category("Phone Attachments", "Bluetooth Speaker Portable", "Phone Attachments")
+        self.assertEqual(result, "Speakers")
+
+    def test_charger_keyword(self):
+        from apps.integration.catalog_import import _keyword_refine_category
+        result = _keyword_refine_category("Phone Attachments", "USB-C Fast Charger 20W", "Phone Attachments")
+        self.assertEqual(result, "Chargers and Cables")
+
+    def test_no_match_keeps_default(self):
+        from apps.integration.catalog_import import _keyword_refine_category
+        result = _keyword_refine_category("Phone Attachments", "Phone Grip Stand Mount", "Phone Attachments")
+        self.assertEqual(result, "Phone Attachments")
+
+    def test_non_default_category_unchanged(self):
+        from apps.integration.catalog_import import _keyword_refine_category
+        result = _keyword_refine_category("Cases", "Samsung Galaxy Watch Band", "Phone Attachments")
+        self.assertEqual(result, "Cases")

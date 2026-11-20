@@ -151,6 +151,19 @@ _WARRANTY_SENTENCE = re.compile(
     r"[^\n.]*[.\n]?",
     re.IGNORECASE,
 )
+# Broad warranty statement: "Brand Limited Lifetime Warranty" standalone or as sentence
+_WARRANTY_STATEMENT = re.compile(
+    r"[^\n.]*(?:limited\s+)?(?:lifetime\s+)?(?:warranty|guarantee)"
+    r"(?:\s+(?:is\s+)?(?:included|provided|offered|covers?|applies|valid|available))?[^\n.]*[.\n]?",
+    re.IGNORECASE,
+)
+# Vendor policy paragraphs (returns, exchanges, shipping policy, etc.)
+_VENDOR_POLICY_PATTERN = re.compile(
+    r"[^\n.]*(?:return\s+policy|exchange\s+policy|shipping\s+policy|refund\s+policy|"
+    r"satisfaction\s+guarantee|money[\s-]back\s+guarantee|"
+    r"(?:all|any)\s+(?:returns?|exchanges?|claims?)\s+(?:must|should|will|can)\b)[^\n.]*[.\n]?",
+    re.IGNORECASE,
+)
 
 
 def normalize_description(description: Optional[str]) -> tuple[Optional[str], list]:
@@ -160,9 +173,11 @@ def normalize_description(description: Optional[str]) -> tuple[Optional[str], li
     text = clean_text(description)
     cleaned = _WARRANTY_BULLET_LINE.sub("", text)
     cleaned = _WARRANTY_SENTENCE.sub("", cleaned)
+    cleaned = _WARRANTY_STATEMENT.sub("", cleaned)
     cleaned = _VENDOR_URL_PATTERN.sub("", cleaned)
     cleaned = _VENDOR_CTA_PATTERN.sub("", cleaned)
     cleaned = _VENDOR_RETURN_PATTERN.sub("", cleaned)
+    cleaned = _VENDOR_POLICY_PATTERN.sub("", cleaned)
     if cleaned != text:
         codes.append("CHANNEL_SPECIFIC_VENDOR_CONTENT_REMOVED")
     cleaned = re.sub(r"[•\-]\s*\n", "", cleaned)
@@ -187,6 +202,8 @@ def normalize_warranty_in_description(description: str) -> tuple[str, list]:
     cleaned = _WARRANTY_VENDOR_CHANNEL.sub("", description)
     cleaned = _WARRANTY_BULLET_LINE.sub("", cleaned)
     cleaned = _WARRANTY_SENTENCE.sub("", cleaned)
+    cleaned = _WARRANTY_STATEMENT.sub("", cleaned)
+    cleaned = _VENDOR_POLICY_PATTERN.sub("", cleaned)
     if cleaned != description:
         codes.append("CHANNEL_SPECIFIC_VENDOR_CONTENT_REMOVED")
     return cleaned.strip(), codes
