@@ -328,7 +328,7 @@ def ingest_rows(connection, run, items, actor):
                             missing_device_names.add(_dn)
         attrs.update(vendor_company_reference=connection.vendor_company_id)
         if not product:
-            attrs.update(company_scope_reference=connection.vendor_company_id, product_type="accessory", status="draft", selling_status="not_for_sale")
+            attrs.update(company_scope_reference=connection.vendor_company_id, product_type="accessory", status="active", selling_status="for_sale")
         # Vendor APIs return null for absent text fields; DRF CharFields reject None.
         for _key in list(attrs):
             if attrs[_key] is None and _key in _NULLABLE_TEXT_FIELDS:

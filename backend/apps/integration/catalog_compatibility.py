@@ -9,7 +9,7 @@ from html import unescape
 
 from django.core.exceptions import ValidationError
 
-from apps.devices.models import Device
+from apps.devices.models import Device, DeviceType, Manufacturer
 from apps.catalog.compatibility_contract import product_universal_types
 from .catalog_config import path_value
 
@@ -41,6 +41,47 @@ class CatalogDeviceResolver:
             if hits:
                 return list(hits.values())
         return []
+
+    _MANUFACTURER_PREFIXES = [
+        'samsung', 'apple', 'google', 'motorola', 'oneplus',
+        'lg', 'nokia', 'sony', 'huawei', 'xiaomi', 'oppo',
+        'vivo', 'zte', 'tcl', 'alcatel', 'blu', 'cat',
+        'cricket', 'boost', 't-mobile', 'at&t', 'metro',
+    ]
+
+    def _auto_create_device(self, name):
+        """Auto-create a Device from an unresolved vendor name."""
+        mfr_name, device_name = None, name
+        lower = name.lower()
+        for prefix in self._MANUFACTURER_PREFIXES:
+            if lower.startswith(prefix + ' '):
+                mfr_name = name[:len(prefix)]
+                device_name = name[len(prefix):].strip()
+                break
+        if not mfr_name:
+            parts = name.split(None, 1)
+            if len(parts) == 2:
+                mfr_name, device_name = parts
+        if not mfr_name:
+            mfr_name = 'Unknown'
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name__iexact=mfr_name,
+            defaults={'name': mfr_name, 'is_active': True},
+        )
+        phone_type = DeviceType.objects.filter(
+            code='phone', is_active=True,
+        ).first()
+        device = Device(
+            device_type=phone_type,
+            manufacturer=mfr,
+            name=device_name,
+            lifecycle_status='available',
+        )
+        device.save()
+        idx = self._index()
+        for label in {device.name, str(device), device.model_number} - {''}:
+            idx.setdefault(normalized_name(label), {})[str(device.pk)] = device
+        return device
 
     @staticmethod
     def _name_variations(n):
@@ -141,9 +182,12 @@ class CatalogDeviceResolver:
                     if not candidates:
                         raise ValidationError('Declared device manufacturer does not resolve to a canonical device.')
                 if len(candidates) > 1:
-                    raise ValidationError('Ambiguous device name; configure its canonical Device ID.')
+                    active = [d for d in candidates if getattr(d, 'lifecycle_status', '') == 'available']
+                    candidates = active if active else candidates
                 if candidates:
                     token = str(candidates[0].pk)
+                elif not manufacturer:
+                    token = str(self._auto_create_device(token).pk)
             tokens.append(token)
         if len(tokens) == 1 and normalized_name(tokens[0]) == 'universal':
             types = self.config.get('universal_type_map', {}).get(category, [])
