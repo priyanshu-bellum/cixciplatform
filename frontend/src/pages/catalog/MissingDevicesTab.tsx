@@ -185,7 +185,7 @@ export default function MissingDevicesTab() {
               {filtered.map(d => (
                 <TableRow key={d.vendor_device_name} hover>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={500}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {d.vendor_device_name}
                     </Typography>
                   </TableCell>
