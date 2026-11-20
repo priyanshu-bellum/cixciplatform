@@ -350,9 +350,11 @@ def ingest_rows(connection, run, items, actor):
         new_product = False
         identity_fatal = {"OFFER_ALREADY_MANAGED", "REQUIRED_FIELD", "REMOTE_ID_REQUIRED", "CONFLICTING_DUPLICATE", "CONFLICTING_SKU_IDENTITY", "SKU_CHANGE_REQUIRES_REVIEW", "BRAND_CHANGE_REQUIRES_REVIEW", "CATEGORY_MAPPING_CONFLICT"}
         compat_fatal = {"COMPATIBILITY_REVIEW_REQUIRED"}
+        informational = {"MEDIA_REVIEW_REQUIRED", "SENSITIVE_DATA_REMOVED", "SEO_PRODUCT_FACT_CONFLICT"}
         error_codes = {error["code"] for error in errors}
         fatal = bool(error_codes & identity_fatal)
         compat_only = not fatal and bool(error_codes & compat_fatal)
+        blocking_errors = [e for e in errors if e["code"] not in informational]
         if compat_only and product and product.status == "active" and valid and serializer is not None:
             compat_fields = {"device_ids", "compatibility_update_type", "compatibility_declaration"}
             for field in compat_fields:
@@ -361,7 +363,7 @@ def ingest_rows(connection, run, items, actor):
         # an unresolved or conflicting source declaration. Keep its raw source
         # staged for review; existing approved history remains intact.
         allow_save = (valid and not fatal and not (product is None and compat_only)
-            and not (product and product.status == "active" and errors and not compat_only))
+            and not (product and product.status == "active" and blocking_errors and not compat_only))
         if allow_save:
             try:
                 with transaction.atomic():
