@@ -41,8 +41,7 @@ def parse_compatibility_row(row, config):
             raise ValidationError("Use one Universal declaration, without individual models or another type declaration.")
         type_values, parts = parts[1:], []
         if not type_values:
-            from .compatibility_contract import CURRENT_DEVICE_TYPE_CODES
-            type_values = list(CURRENT_DEVICE_TYPE_CODES)
+            raise ValidationError('Universal requires explicit approved Device Types; it cannot imply every type.')
     for part in parts:
         try:
             identifier = uuid.UUID(part)

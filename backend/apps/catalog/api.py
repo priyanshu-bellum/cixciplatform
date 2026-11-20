@@ -1014,7 +1014,7 @@ class ProductFilterSet(django_filters.FilterSet):
     list can be paginated server-side without the client needing every row.
     """
     product_category = CSVInFilter(field_name="product_category", lookup_expr="in")
-    brand = CSVInFilter(field_name="brand", lookup_expr="in")
+    brand = CSVInFilter(method="filter_brand")
     color = CSVInFilter(method="filter_color")
     msrp_range = CSVInFilter(method="filter_msrp_range")
     projection_scope = django_filters.BooleanFilter(method="filter_projection_scope")
@@ -1082,6 +1082,15 @@ class ProductFilterSet(django_filters.FilterSet):
 
         if not matched:
             return queryset
+        return queryset.filter(query)
+
+    def filter_brand(self, queryset, name, value):
+        values = [item.strip() for item in value if item and item.strip()]
+        if not values:
+            return queryset
+        query = Q(brand_reference__canonical_key__in=[' '.join(item.split()).casefold() for item in values])
+        for item in values:
+            query |= Q(brand__iexact=item)
         return queryset.filter(query)
 
     def filter_product_ids(self, queryset, name, value):
@@ -1185,6 +1194,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     action_capability_map = {
         "list": "catalog.product.list",
         "matching_ids": "catalog.product.list",
+        "filter_options": "catalog.product.list",
         "retrieve": "catalog.product.read",
         "create": "catalog.product.create",
         "update": "catalog.product.update",
@@ -1560,6 +1570,13 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             qs = qs.exclude(id__in=excluded_product_ids)
 
         return qs
+
+    @action(detail=False, methods=['get'], url_path='filter-options')
+    def filter_options(self, request):
+        """Facet values from exactly the caller's current authorized catalog."""
+        products = self.filter_queryset(self.get_queryset())
+        brands = products.exclude(brand='').order_by('brand').values_list('brand', flat=True).distinct()
+        return Response({'brands': list(brands)})
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

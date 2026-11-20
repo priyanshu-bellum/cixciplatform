@@ -114,6 +114,20 @@ export default function VendorCatalogConfigEditor({ value, onChange, disabled, s
           }}>Add category mapping</Button>
         </Box>
       </Paper>
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Device reference mapping</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Structured source devices resolve to existing CIXCI devices. Unknown or ambiguous models stay in review.
+          Universal never implies every device type. Advanced JSON supports connection-scoped device_map aliases
+          (id:source-id, slug:source-slug, or an exact name → CIXCI Device UUID) and universal_type_map
+          (CIXCI category → approved Device Type IDs/codes).
+        </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+          {(['name', 'id', 'slug', 'manufacturer'] as const).map(field => <TextField key={field} size="small"
+            label={`Source device ${field} path`} disabled={disabled} value={parsed.compatibility?.[`${field}_path`] ?? field}
+            onChange={event => update({ compatibility: { ...parsed.compatibility, [`${field}_path`]: event.target.value } })}/>) }
+        </Box>
+      </Paper>
       <Accordion variant="outlined" disableGutters>
         <AccordionSummary><Typography sx={{ fontWeight: 600 }}>Request limits & budget</Typography></AccordionSummary>
         <AccordionDetails><Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>

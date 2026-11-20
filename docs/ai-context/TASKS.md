@@ -3,6 +3,36 @@
 Active implementation: TASK-009 (production bugfixes), TASK-010 (client issues).
 TASK-002–008 record earlier discoveries. IDs are permanent.
 
+## TASK-014 — Repair Balaji buyer brand/category/device mapping
+
+- Status: in_progress
+- Related features: CAT-001, CMP-001/002, INT-002, DEV-002, UI-001.
+- Acceptance: verify official provider docs and real read-only responses; reproduce
+  buyer brand results; map categories through approved configuration and device
+  compatibility through explicit evidence; no failed parse becomes Universal;
+  repair affected local imported records with audit and regression coverage.
+- Plan: inspect current Git/Claude changes → read provider contract and local data
+  → reproduce failures → targeted code/tests → preview audited local repair → verify
+  buyer API/UI and rebuild affected services → update memory.
+- Constraints: provider API is read-only; use configured encrypted credential without
+  displaying it; preserve tenant isolation, approved overrides/exclusions and history.
+  No production/server changes, migrations, new dependencies or commit/push implied.
+- Verification: Git clean at 1b443cf; local Docker services running. Found import
+  fallback inventing Universal scopes after compatibility parse failures. Further
+  source/response analysis pending; existing broader work stays preserved.
+- Remaining: provider contract, data reproduction, fix, tests and local verification.
+
+Checkpoint: official /integrations/api and OpenAPI downloaded; bounded authenticated
+catalog GET succeeded using configured encrypted credential. Actual devices are an
+array of id/name/slug objects. Local source: 1,794 rows, 1,704 review holds; buyer
+ZIZO/Nimbus9/CLICK results reproduced empty. Provider-neutral resolver and scoped
+brand facets implemented. New Telco/Kaseory test identities created per user request;
+passwords remain only in ignored private local file. 100-row replay preview rolled
+back successfully: 29 create, 68 update, 33 review, zero provider requests. Fourteen
+focused tests passed; expanded 129-test selection being checked after fixture-path
+alignment. Frontend TypeScript/Vite Docker build passed. No local source repair
+committed yet; apply only after regressions pass. Runtime metadata/UI checks remain.
+
 ## TASK-011 — Rebuild and restart the local backend/frontend
 
 - Status: completed

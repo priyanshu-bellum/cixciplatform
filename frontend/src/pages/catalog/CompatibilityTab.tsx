@@ -18,6 +18,7 @@ import api from '../../lib/apiClient'
 import { getImageUrl, formatCurrency } from '../../lib/formatters'
 import { SERVER_PAGE_SIZE } from './constants'
 import { useCatalogFilters } from './hooks/useCatalogFilters'
+import { useCatalogBrandOptions } from './hooks/useCatalogBrandOptions'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import ProductCard, { ProductCardSkeleton } from './ProductCard'
 import ProductFilterBar from './ProductFilterBar'
@@ -49,6 +50,7 @@ export default function CompatibilityTab({
 }: CompatibilityTabProps) {
   const navigate = useNavigate()
   const filters = useCatalogFilters('compat')
+  const scopedBrands = useCatalogBrandOptions(user, filters.filterDeviceId, true)
   const debouncedSearch = useDebouncedValue(filters.search, 400)
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
@@ -117,11 +119,12 @@ export default function CompatibilityTab({
   const totalPages = Math.max(1, Math.ceil(totalProducts / SERVER_PAGE_SIZE))
 
   const brandsList = useMemo(() => {
+    if (user?.company_type === 'buyer' && !user?.is_cixci_admin) return scopedBrands.data?.brands ?? []
     const unique = new Set<string>()
     allowedBrands.forEach(b => { if (b) unique.add(b) })
     products.forEach((p: any) => { if (p.brand) unique.add(p.brand) })
     return Array.from(unique).sort()
-  }, [allowedBrands, products])
+  }, [allowedBrands, products, user?.company_type, user?.is_cixci_admin, scopedBrands.data])
 
   const portfolioDeviceCount = useMemo(() => {
     if (!Array.isArray(portfolio)) return 0

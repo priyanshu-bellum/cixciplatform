@@ -14,6 +14,7 @@ import api from '../../lib/apiClient'
 import { getImageUrl, formatCurrency } from '../../lib/formatters'
 import { SERVER_PAGE_SIZE } from './constants'
 import { useCatalogFilters } from './hooks/useCatalogFilters'
+import { useCatalogBrandOptions } from './hooks/useCatalogBrandOptions'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import ProductCard, { ProductCardSkeleton } from './ProductCard'
 import ProductFilterBar from './ProductFilterBar'
@@ -45,6 +46,7 @@ export default function AllProductsTab({
   const isVendor = user?.company_type === 'vendor'
 
   const filters = useCatalogFilters('all')
+  const scopedBrands = useCatalogBrandOptions(user, filters.filterDeviceId)
   const debouncedSearch = useDebouncedValue(filters.search, 400)
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
@@ -110,11 +112,12 @@ export default function AllProductsTab({
   const totalPages = Math.max(1, Math.ceil(totalProducts / SERVER_PAGE_SIZE))
 
   const brandsList = useMemo(() => {
+    if (isBuyer) return scopedBrands.data?.brands ?? []
     const unique = new Set<string>()
     allowedBrands.forEach(b => { if (b) unique.add(b) })
     products.forEach((p: any) => { if (p.brand) unique.add(p.brand) })
     return Array.from(unique).sort()
-  }, [allowedBrands, products])
+  }, [allowedBrands, products, isBuyer, scopedBrands.data])
 
   const fetchMatchingIds = async (): Promise<string[]> => {
     try {

@@ -1,6 +1,11 @@
 # Current state
 
-Active task: TASK-012 — Balaji test server client issue fixes (in progress).
+Active task: TASK-014 — in_progress.
+
+2026-11-20 checkpoint: buyer Balaji brand results/category/device mapping under
+investigation on local Docker. Git clean at 1b443cf. Prior Claude implementation
+contains an import parse-failure → inferred Universal fallback; it must be verified
+against provider evidence and corrected without relaxing buyer visibility gates.
 
 Updated 2026-11-20 against `main` at `18a376b` plus local working-tree changes.
 Active work: Balaji Wireless test server — 6 client video issues being resolved.

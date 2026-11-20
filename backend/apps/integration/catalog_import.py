@@ -13,11 +13,10 @@ from apps.catalog.models import Product, DynamicDropdownConfig, VendorBrandRelat
 from apps.catalog.api import ProductDetailSerializer
 from apps.catalog.compatibility_import import parse_compatibility_row
 from apps.catalog.compatibility_contract import COMPATIBILITY_FIELDS
-from apps.catalog.compatibility_contract import sync_product_scope
-from apps.catalog.compatibility_engine import run_universal_device_type_mapping
 from .catalog_config import path_value
 from .catalog_secrets import redact, decrypt_credentials
 from .catalog_media import process_vendor_product_images
+from .catalog_compatibility import CatalogDeviceResolver
 from .models import VendorCatalogItem
 
 # CharField model fields that vendor APIs commonly return as null.
@@ -29,21 +28,6 @@ _NULLABLE_TEXT_FIELDS = frozenset({
 })
 
 logger = logging.getLogger(__name__)
-
-# Fallback: when vendor compatibility declaration cannot be parsed, assign
-# universal_device_type based on the product's resolved category so buyers
-# can still see the product.  Device-specific categories (Cases, Screen
-# Protection, Tablet Cases) are EXCLUDED — they need individual device
-# matching, not universal; leaving them out keeps them in review.
-_CATEGORY_DEVICE_TYPE_FALLBACK = {
-    "Headphones": ["phone"],
-    "Speakers": ["phone"],
-    "Chargers and Cables": ["phone"],
-    "Phone Attachments": ["phone"],
-    "Wearable Tech": ["smartwatch"],
-    "Memory": ["phone"],
-}
-
 
 def canonical_evidence(product):
     if product is None:
@@ -69,37 +53,6 @@ def source_observation(connection, run, actor, source, before, after, old_hash, 
         service_trigger_reference='Vendor API Sync', correlation_id=run.pk,
         company_scope_reference=connection.vendor_company_id, source_module='integration',
         source_record_type='VendorCatalogItem', source_record_id=source.pk)
-
-
-_KEYWORD_CATEGORY_RULES = (
-    ("Wearable Tech", (
-        "smartwatch", "smart watch", "watch band", "watch strap", "fitness band",
-        "fitness tracker", "wearable", "apple watch", "galaxy watch", "fitbit",
-    )),
-    ("Headphones", (
-        "headphone", "headset", "earbud", "earphone", "earpiece",
-        "tws", "true wireless", "airpod", "over-ear", "on-ear", "in-ear",
-    )),
-    ("Speakers", (
-        "speaker", "soundbar", "bluetooth speaker", "portable speaker",
-    )),
-    ("Chargers and Cables", (
-        "charger", "charging", "cable", "power bank", "power adapter",
-        "car charger", "wall charger", "usb-c", "lightning cable", "fast charge",
-        "wireless charger", "magsafe charger",
-    )),
-)
-
-
-def _keyword_refine_category(category, product_name, default_category):
-    """Refine catch-all categories using product name keywords."""
-    if category != default_category or not product_name:
-        return category
-    name_lower = product_name.lower()
-    for target_cat, keywords in _KEYWORD_CATEGORY_RULES:
-        if any(kw in name_lower for kw in keywords):
-            return target_cat
-    return category
 
 
 def resolved_category(raw, product, configured, approved, default):
@@ -182,10 +135,11 @@ def ingest_rows(connection, run, items, actor):
     # source rows here: Source -> Product -> foreign Source creates lock inversion.
     owners = {row.product_id: row for row in VendorCatalogItem.objects.filter(product_id__in=products_by_id).only(
         'id', 'product_id', 'connection_id', 'source_hash', 'review_required', 'review_errors')}
-    links = {}
+    links, brand_labels = {}, {}
     for link in VendorBrandRelationship.objects.filter(vendor_company_id=connection.vendor_company_id, is_active=True, brand__is_active=True).select_related("brand"):
         links[link.brand.canonical_key] = link.brand_id
         links[" ".join(link.brand.name.split()).casefold()] = link.brand_id
+        brand_labels[link.brand_id] = link.brand.name
     categories = {row.value: row for row in DynamicDropdownConfig.objects.filter(field_name="product_category", status="active")}
     category_keys = {record[2]['vendor_category'].strip().casefold() for record in prepared.values()
                      if isinstance(record[2].get('vendor_category'), str) and record[2]['vendor_category'].strip()}
@@ -205,6 +159,7 @@ def ingest_rows(connection, run, items, actor):
         color_mappings[vc.strip().casefold()] = sc
 
     counts = {"created_count": 0, "updated_count": 0, "unchanged_count": 0, "review_count": 0, "error_count": 0}
+    device_resolver = CatalogDeviceResolver(connection.config)
     unchanged, observations, deferred_images = [], [], []
     resolved_brand_names = set()
     unresolved_colors = set()
@@ -223,8 +178,7 @@ def ingest_rows(connection, run, items, actor):
         old_review = (source.review_required, deepcopy(source.review_errors)) if source else None
         category, category_errors = resolved_category(fields.get('vendor_category'), cached_product or products.get(safe_sku),
             configured_categories, approved_categories, connection.config.get('default_category'))
-        category = _keyword_refine_category(category, fields.get('name', ''), connection.config.get('default_category'))
-        if (source and source.source_hash == digest and not source.review_required
+        if (run.trigger != 'review' and source and source.source_hash == digest and not source.review_required
                 and source.applied_config_version == connection.config_version
                 and safe_sku not in conflicting_skus and identifier not in duplicates
                 and cached_product and cached_product.brand_reference_id in approved_brands
@@ -318,6 +272,7 @@ def ingest_rows(connection, run, items, actor):
         brand_id = links.get(" ".join(str(brand).split()).casefold())
         if brand_id:
             attrs["brand_reference"] = str(brand_id)
+            attrs['brand'] = brand_labels[brand_id]
             if brand.strip():
                 resolved_brand_names.add(brand.strip())
         else:
@@ -346,11 +301,7 @@ def ingest_rows(connection, run, items, actor):
         if config:
             try:
                 compat_raw = fields.get('compatibility_declaration', '')
-                if isinstance(compat_raw, list):
-                    compat_raw = '; '.join(
-                        entry.get('name', '') if isinstance(entry, dict) else str(entry)
-                        for entry in compat_raw if entry
-                    )
+                compat_raw = device_resolver.declaration(compat_raw, category=category, product=product)
                 compatibility_input = {'devicecompatibility': compat_raw or ''}
                 compatibility_input.update({field.replace('_', ''): fields[field] for field in COMPATIBILITY_FIELDS if field in fields})
                 values, types, devices = parse_compatibility_row(compatibility_input, config)
@@ -358,7 +309,8 @@ def ingest_rows(connection, run, items, actor):
                 if types:
                     attrs.update(compatibility_mode="universal_device_type", compatible_device_types=types)
                 if devices:
-                    attrs.update(device_ids=devices, compatibility_update_type="add")
+                    attrs.update(device_ids=devices, compatibility_update_type="add",
+                        compatibility_mode='direct_device', compatible_device_types=[])
                 # Track device references for missing-device notification
                 if compat_raw and isinstance(compat_raw, str) and compat_raw.strip() and not devices and not types:
                     for device_name in compat_raw.split(';'):
@@ -405,16 +357,11 @@ def ingest_rows(connection, run, items, actor):
             compat_fields = {"device_ids", "compatibility_update_type", "compatibility_declaration"}
             for field in compat_fields:
                 serializer.validated_data.pop(field, None)
-        allow_save = valid and not fatal and not (product and product.status == "active" and errors and not compat_only)
-        if not allow_save and not fatal and product is None and serializer is not None and not valid:
-            _essential = {"sku", "name", "vendor_company_reference", "company_scope_reference", "product_type", "status", "selling_status"}
-            failing = set(serializer.errors.keys())
-            if failing and not (failing & _essential):
-                stripped = {k: v for k, v in attrs.items() if k not in failing}
-                serializer = ProductDetailSerializer(None, data=stripped, partial=False, context={
-                    'request': SimpleNamespace(user=actor), 'update_source': 'Vendor API Sync', 'source_run_reference': run.pk})
-                if serializer.is_valid():
-                    allow_save = True
+        # A new canonical row must not manufacture feature/default matches from
+        # an unresolved or conflicting source declaration. Keep its raw source
+        # staged for review; existing approved history remains intact.
+        allow_save = (valid and not fatal and not (product is None and compat_only)
+            and not (product and product.status == "active" and errors and not compat_only))
         if allow_save:
             try:
                 with transaction.atomic():
@@ -437,23 +384,6 @@ def ingest_rows(connection, run, items, actor):
                 canonical = Product.objects.get(pk=product.pk) if product else None
         elif product:
             counts["unchanged_count"] += 1
-        # Fallback: if product exists but has no compatibility assertions and
-        # compatibility declaration parsing failed, assign universal_device_type
-        # based on category so the product can appear in buyer catalogs.
-        if canonical and new_product and "COMPATIBILITY_REVIEW_REQUIRED" in error_codes:
-            try:
-                from apps.devices.models import DeviceType
-                cat = canonical.product_category or ''
-                type_codes = _CATEGORY_DEVICE_TYPE_FALLBACK.get(cat, ["phone"])
-                target_types = list(DeviceType.objects.filter(code__in=type_codes, is_active=True))
-                if target_types and canonical.compatibility_mode != "universal_device_type":
-                    Product.objects.filter(pk=canonical.pk).update(compatibility_mode="universal_device_type")
-                    canonical.refresh_from_db()
-                if target_types:
-                    sync_product_scope(canonical, target_types, actor_id=getattr(actor, "id", None))
-                    run_universal_device_type_mapping(canonical, actor_id=getattr(actor, "id", None))
-            except Exception:
-                logger.debug("Fallback compatibility setup failed for %s", canonical.sku, exc_info=True)
         if canonical and not canonical.primary_image_reference:
             image_urls = fields.get("images")
             if image_urls and isinstance(image_urls, list):

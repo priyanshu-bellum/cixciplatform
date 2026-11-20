@@ -2,6 +2,7 @@
 from copy import deepcopy
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+import uuid
 from django.core.exceptions import ValidationError
 
 BALAJI_CONFIG = {
@@ -54,6 +55,7 @@ GENERIC_CONFIG = {
     **deepcopy(BALAJI_CONFIG),
     'items_path': 'items', 'next_cursor_path': 'next_cursor',
     'success_path': '', 'watermark_path': '', 'budget_timezone': 'UTC',
+    'category_map': {}, 'default_category': '',
     'fields': {field: {'path': path} for field, path in {
         'external_id': 'id', 'sku': 'sku', 'name': 'name', 'brand': 'brand',
         'vendor_category': 'category', 'upc': 'upc', 'msrp': 'msrp',
@@ -92,7 +94,7 @@ def path_value(data, path, default=None):
 
 
 def validate_config(value):
-    if not isinstance(value, dict) or set(value) - set(BALAJI_CONFIG) - {"page_param", "offset_param", "has_more_path", "updated_since_param"}:
+    if not isinstance(value, dict) or set(value) - set(BALAJI_CONFIG) - {"page_param", "offset_param", "has_more_path", "updated_since_param", "compatibility"}:
         raise ValidationError("Use the supported catalog configuration fields.")
     config = deepcopy(value)
     if config.get("version") != 1 or config.get("pagination") not in ("cursor", "page", "offset", "none"):
@@ -133,4 +135,23 @@ def validate_config(value):
         raise ValidationError("Category mappings must associate source labels with approved CIXCI category labels.")
     if not isinstance(config.get("default_category", ""), str):
         raise ValidationError("Default category must be an explicit approved category label.")
+    compatibility = config.get('compatibility', {})
+    if not isinstance(compatibility, dict) or set(compatibility) - {'name_path', 'id_path', 'slug_path', 'manufacturer_path', 'device_map', 'universal_type_map'}:
+        raise ValidationError('Use supported device-reference paths and explicit canonical mappings.')
+    for key in ('name_path', 'id_path', 'slug_path', 'manufacturer_path'):
+        if key in compatibility and (not isinstance(compatibility[key], str) or not PATH.fullmatch(compatibility[key])):
+            raise ValidationError(f'Invalid device-reference path: {key}.')
+    device_map = compatibility.get('device_map', {})
+    if not isinstance(device_map, dict) or len(device_map) > 5000:
+        raise ValidationError('Device mappings must be a bounded object of source reference to canonical Device ID.')
+    for key, identifier in device_map.items():
+        try:
+            if not isinstance(key, str) or not key.strip() or not isinstance(identifier, str):
+                raise ValueError()
+            uuid.UUID(identifier)
+        except (ValueError, TypeError, AttributeError):
+            raise ValidationError('Each device mapping needs a non-empty source reference and canonical Device UUID.') from None
+    universal_map = compatibility.get('universal_type_map', {})
+    if not isinstance(universal_map, dict) or any(not isinstance(key, str) or not isinstance(values, list) or not values or any(not isinstance(v, str) or not v.strip() for v in values) for key, values in universal_map.items()):
+        raise ValidationError('Universal scopes must map category labels to explicit Device Type ID/code lists.')
     return config

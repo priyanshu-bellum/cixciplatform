@@ -26,6 +26,9 @@ def feed(settings, vendor_company, admin_user, monkeypatch):
     monkeypatch.setattr("apps.integration.catalog_sync.publish_job", lambda *args, **kwargs: None)
     config = copy.deepcopy(BALAJI_CONFIG)
     config['fields']['launch_date'] = {'path': 'launch_date'}
+    # This synthetic provider fixture declares compatibility in its legacy
+    # `device` field; the Balaji preset correctly uses structured compatible_devices.
+    config['fields']['compatibility_declaration'] = {'path': 'device'}
     return VendorCatalogConnection.objects.create(vendor_company=vendor_company, label="Test supplier feed",
         endpoint_url="https://supplier.example/api/catalog", auth_type="none", config=config,
         created_by=admin_user, updated_by=admin_user)
@@ -33,7 +36,7 @@ def feed(settings, vendor_company, admin_user, monkeypatch):
 
 def row(sku="REMOTE-1", **changes):
     return {"sku": sku, "upc": "123456789012", "name": "Supplier accessory", "brand": "Source Brand",
-        "unit_price_cents": 731, "currency": "USD", "quantity_available": 12, "device": "Universal", "launch_date": "2026-01-01", **changes}
+        "unit_price_cents": 731, "currency": "USD", "quantity_available": 12, "device": "", "launch_date": "2026-01-01", **changes}
 
 
 def page(items, cursor=None, watermark="2026-11-12T00:00:00Z"):

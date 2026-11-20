@@ -1,6 +1,24 @@
 # Session handoff
 
-Active task: TASK-012 — Balaji test server client issue fixes (in progress).
+Active task: TASK-014 — in_progress.
+
+Local buyer mapping investigation (2026-11-20): user reports Balaji brand filters
+empty and device-specific products showing Universal. Official docs downloaded to
+ignored .local-copy/balaji-buyer-fix/api-docs.html from /integrations/api; do not
+expose configured API key. Local Docker up; Git clean at 1b443cf. Inspect provider
+contract/local source payloads and BR buyer results before targeted fix. Import
+currently infers Universal after parse failure, and bare Universal expands all
+device types; approved scopes/exclusions must be preserved. TASK-014 records plan.
+
+TASK-014 implementation checkpoint: user confirmed Telco/Kaseory and authorized
+creating buyer test identities. Provider-neutral CatalogDeviceResolver added with
+configurable paths, scoped device aliases and explicit Universal type maps. Removed
+category/name guesses, automatic Universal fallback and validation-field stripping.
+Added buyer-scoped filter-options action/shared frontend hook; brand filtering uses
+canonical identity. Fourteen focused tests passed; broader regression/build running.
+Saved source replay command defaults to rollback preview, audits applied replay,
+keeps source listings/history and defers image processing. Inspect current Git diff
+and .local-copy/balaji-buyer-fix/ logs before resuming. No provider writes authorized.
 
 Checkpoint: 2026-11-20, Balaji client video issue fixes.
 
