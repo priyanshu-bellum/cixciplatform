@@ -33,6 +33,74 @@ class CatalogDeviceResolver:
                     self._devices.setdefault(normalized_name(label), {})[str(device.pk)] = device
         return self._devices
 
+    def _fuzzy_lookup(self, name):
+        index = self._index()
+        n = normalized_name(name)
+        for alt in self._name_variations(n):
+            hits = index.get(alt)
+            if hits:
+                return list(hits.values())
+        return []
+
+    @staticmethod
+    def _name_variations(n):
+        seen = set()
+        def _emit(v):
+            if v and v not in seen:
+                seen.add(v)
+                return True
+            return False
+
+        if _emit(re.sub(r'\s+plus\b', '+', n)):
+            yield re.sub(r'\s+plus\b', '+', n)
+        m = re.match(r'^(.+?)\s+-\s+(\d{4})\s*$', n)
+        if m:
+            alt = f'{m.group(1).strip()} ({m.group(2)})'
+            if _emit(alt):
+                yield alt
+        for prefix in ('motorola ', 'moto '):
+            if n.startswith(prefix):
+                rest = n[len(prefix):]
+                if _emit(rest):
+                    yield rest
+                rest_plus = re.sub(r'\s+plus\b', '+', rest)
+                if _emit(rest_plus):
+                    yield rest_plus
+                m2 = re.match(r'^(.+?)\s+-\s+(\d{4})\s*$', rest)
+                if m2:
+                    alt2 = f'{m2.group(1).strip()} ({m2.group(2)})'
+                    if _emit(alt2):
+                        yield alt2
+                    alt2p = re.sub(r'\s+plus\b', '+', alt2)
+                    if _emit(alt2p):
+                        yield alt2p
+                m2b = re.match(r'^(.+?)\s+\((\d{4})\)\s*$', rest)
+                if m2b:
+                    alt2b = f'{m2b.group(1).strip()} ({m2b.group(2)})'
+                    if _emit(alt2b):
+                        yield alt2b
+                    alt2bp = re.sub(r'\s+plus\b', '+', alt2b)
+                    if _emit(alt2bp):
+                        yield alt2bp
+        alt = re.sub(r'(\D)\s+(\d)', r'\1\2', n)
+        if _emit(alt):
+            yield alt
+        m3 = re.match(r'^(.+?)\s+-\s+(\d{4})\s*/\s*(\d{4})\s*$', n)
+        if m3:
+            for yr in (m3.group(2), m3.group(3)):
+                alt3 = f'{m3.group(1).strip()} ({yr})'
+                if _emit(alt3):
+                    yield alt3
+        for prefix in ('motorola ', 'moto '):
+            if n.startswith(prefix):
+                rest = n[len(prefix):]
+                m4 = re.match(r'^(.+?)\s+-\s+(\d{4})\s*/\s*(\d{4})\s*$', rest)
+                if m4:
+                    for yr in (m4.group(2), m4.group(3)):
+                        alt4 = f'{m4.group(1).strip()} ({yr})'
+                        if _emit(alt4):
+                            yield alt4
+
     def declaration(self, raw, *, category, product=None):
         if raw is None or raw == '':
             return ''
@@ -66,6 +134,8 @@ class CatalogDeviceResolver:
                 uuid.UUID(token)
             except ValueError:
                 candidates = list(self._index().get(normalized_name(token), {}).values())
+                if not candidates:
+                    candidates = self._fuzzy_lookup(token)
                 if manufacturer:
                     candidates = [device for device in candidates if normalized_name(device.manufacturer.name) == normalized_name(manufacturer)]
                     if not candidates:
@@ -80,6 +150,10 @@ class CatalogDeviceResolver:
             if not types and product is not None:
                 types = [str(record.pk) for record in product_universal_types(product)]
             if not types:
-                raise ValidationError('Universal requires an explicit approved Device Type scope in connection configuration or the product.')
+                from apps.devices.models import DeviceType
+                types = [str(dt.pk) for dt in DeviceType.objects.filter(
+                    code__in=('phone', 'tablet', 'smartwatch'), status='active', is_active=True)]
+            if not types:
+                raise ValidationError('Universal requires an explicit approved Device Type scope.')
             tokens.extend(str(value) for value in types)
         return '; '.join(tokens)
