@@ -298,30 +298,39 @@ def ingest_rows(connection, run, items, actor):
             errors.append({"code": "MEDIA_REVIEW_REQUIRED", "field": "images"})
         if "[REDACTED]" in json.dumps(payload):
             errors.append({"code": "SENSITIVE_DATA_REMOVED", "field": "source"})
-        if config:
+        compat_raw = fields.get('compatibility_declaration', '')
+        if compat_raw:
             try:
-                compat_raw = fields.get('compatibility_declaration', '')
                 compat_raw = device_resolver.declaration(compat_raw, category=category, product=product)
-                compatibility_input = {'devicecompatibility': compat_raw or ''}
-                compatibility_input.update({field.replace('_', ''): fields[field] for field in COMPATIBILITY_FIELDS if field in fields})
+            except (ValidationError, TypeError, AttributeError):
+                errors.append({"code": "COMPATIBILITY_REVIEW_REQUIRED", "field": "compatibility_declaration"})
+                if isinstance(compat_raw, str):
+                    for _dn in compat_raw.split(';'):
+                        _dn = _dn.strip()
+                        if _dn and _dn.casefold() != 'universal':
+                            missing_device_names.add(_dn)
+                compat_raw = ''
+        if compat_raw:
+            try:
+                compatibility_input = {'devicecompatibility': compat_raw}
+                if config:
+                    compatibility_input.update({field.replace('_', ''): fields[field] for field in COMPATIBILITY_FIELDS if field in fields})
                 values, types, devices = parse_compatibility_row(compatibility_input, config)
-                attrs.update(values)
+                if config:
+                    attrs.update(values)
                 if types:
                     attrs.update(compatibility_mode="universal_device_type", compatible_device_types=types)
                 if devices:
                     attrs.update(device_ids=devices, compatibility_update_type="replace",
                         compatibility_mode='direct_device', compatible_device_types=[])
-                # Track device references for missing-device notification
-                if compat_raw and isinstance(compat_raw, str) and compat_raw.strip() and not devices and not types:
+                if not devices and not types:
                     for device_name in compat_raw.split(';'):
                         device_name = device_name.strip()
                         if device_name:
                             missing_device_names.add(device_name)
             except (ValidationError, TypeError, AttributeError):
                 errors.append({"code": "COMPATIBILITY_REVIEW_REQUIRED", "field": "compatibility_declaration"})
-                # Track unmatched device names even when parsing fails, so
-                # admins see which devices need adding to the Device Catalog.
-                if compat_raw and isinstance(compat_raw, str):
+                if isinstance(compat_raw, str):
                     for _dn in compat_raw.split(';'):
                         _dn = _dn.strip()
                         if _dn and _dn.casefold() != 'universal':
