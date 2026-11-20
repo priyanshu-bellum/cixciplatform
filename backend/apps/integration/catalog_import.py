@@ -309,7 +309,7 @@ def ingest_rows(connection, run, items, actor):
                 if types:
                     attrs.update(compatibility_mode="universal_device_type", compatible_device_types=types)
                 if devices:
-                    attrs.update(device_ids=devices, compatibility_update_type="add",
+                    attrs.update(device_ids=devices, compatibility_update_type="replace",
                         compatibility_mode='direct_device', compatible_device_types=[])
                 # Track device references for missing-device notification
                 if compat_raw and isinstance(compat_raw, str) and compat_raw.strip() and not devices and not types:
