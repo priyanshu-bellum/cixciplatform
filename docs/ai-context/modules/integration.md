@@ -4,6 +4,16 @@ Purpose: company B2B credentials/storefront identity, generic connection records
 durable supplier catalog synchronization, commerce dispatch/polling and signed
 webhooks/finance mirrors. Features INT-001/002/003/004 and EXP-002.
 
+TASK-015 phase 1 (2026-11-21): [catalog_onboarding](../../../backend/apps/integration/catalog_onboarding.py)
+shares audited activation/brand fallback across API/import/sync. Connection creation
+activates draft/pending_setup; sync only draft after admin validation. Missing active
+brands get authorized_distributor links; inactive decisions are preserved (BR-INT-002).
+Brand keys follow existing whitespace/case normalization. Balaji template now uses
+200 rows/page and 100,000 rows/day; validation ceilings 500/100,000 do not override
+provider-enforced quotas. Existing saved configs are not rewritten automatically.
+Vendor declaration parsing receives None; canonical product/mapping validation still
+runs. [Phase 1 tests](../../../backend/tests/test_vendor_import_phase1.py) use Django TestCase.
+
 ## Entry points and files
 
 [urls](../../../backend/apps/integration/urls.py), [models](../../../backend/apps/integration/models.py),

@@ -220,6 +220,8 @@ def process_sync_page(run_id):
         actor = run.requested_by or connection.updated_by
         if not actor or not actor.is_active or not actor.is_cixci_admin:
             raise CatalogTransportError("CONFIGURING_ADMIN_REQUIRED")
+        from .catalog_onboarding import activate_catalog_vendor
+        activate_catalog_vendor(connection, actor, statuses=('draft',))
         items, next_cursor, watermark = _page(connection, run)
         if next_cursor is not None:
             cursor_hash = sha256(str(next_cursor).encode()).hexdigest()

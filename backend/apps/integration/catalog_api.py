@@ -162,6 +162,9 @@ class VendorCatalogConnectionViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def perform_create(self, serializer):
         connection = serializer.save()
+        from .catalog_onboarding import activate_catalog_vendor
+        # The model calls its pending state pending_setup.
+        activate_catalog_vendor(connection, self.request.user, statuses=('draft', 'pending_setup', 'pending'))
         audit('configured', connection, self.request.user, before=None, after=connection_snapshot(connection),
               changed_fields=sorted(set(serializer.validated_data) - {'encrypted_credentials'}), credentials_changed=True)
 

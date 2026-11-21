@@ -8,8 +8,8 @@ from django.core.exceptions import ValidationError
 BALAJI_CONFIG = {
     "version": 1,
     "items_path": "data.items", "next_cursor_path": "data.next_cursor", "watermark_path": "data.next_updated_since",
-    "success_path": "success", "pagination": "cursor", "cursor_param": "cursor", "limit_param": "limit", "updated_since_param": "updated_since", "page_size": 100,
-    "daily_row_limit": 50000, "daily_request_limit": 50000, "requests_per_minute": 120, "budget_timezone": "America/Los_Angeles",
+    "success_path": "success", "pagination": "cursor", "cursor_param": "cursor", "limit_param": "limit", "updated_since_param": "updated_since", "page_size": 200,
+    "daily_row_limit": 100000, "daily_request_limit": 50000, "requests_per_minute": 120, "budget_timezone": "America/Los_Angeles",
     "fields": {"external_id": {"path": "sku"}, "sku": {"path": "sku"}, "name": {"path": "name"}, "series": {"path": "series"},
         "brand": {"path": "brand"}, "upc": {"path": "upc"}, "description": {"path": "description"}, "description_features": {"path": "features"},
         "vendor_category": {"path": "category"}, "color": {"path": "color"},
@@ -110,7 +110,7 @@ def validate_config(value):
     for key in ("cursor_param", "limit_param", "page_param", "offset_param", "updated_since_param"):
         if key in config and (not isinstance(config[key], str) or not PARAM.fullmatch(config[key])):
             raise ValidationError(f"Invalid query parameter: {key}.")
-    for key, ceiling in (("page_size", 200), ("daily_row_limit", 50000), ("daily_request_limit", 50000), ("requests_per_minute", 120)):
+    for key, ceiling in (("page_size", 500), ("daily_row_limit", 100000), ("daily_request_limit", 50000), ("requests_per_minute", 120)):
         number = config.get(key)
         if type(number) is not int or not 1 <= number <= ceiling:
             raise ValidationError(f"{key} must be between 1 and {ceiling}.")

@@ -1,7 +1,36 @@
 # Persistent tasks
 
-Active implementation: TASK-009 (production bugfixes), TASK-010 (client issues).
+Active implementation: TASK-015 (vendor product audit, three local phase commits).
 TASK-002–008 record earlier discoveries. IDs are permanent.
+
+## TASK-015 — Vendor product audit and onboarding
+
+- Status: in_progress
+- Related features: INT-002, CAT-001, CMP-001, CMP-002, NTF-001, UI-001.
+- Acceptance: three separate local commits matching the user's phase specification;
+  vendor activation, distributor brand fallback, higher configurable sync limits;
+  admin-only paginated audit/mapping/review APIs and notifications; responsive audit
+  tab with source/system comparison and bulk actions; tests and memory updated.
+- Plan: inspect models/callers → phase 1 code/tests/commit → phase 2 APIs/security/
+  tests/commit → phase 3 UI/tests/build/commit → local sync/image and buyer checks.
+- Approved policy: new feed relationships use authorized_distributor (explicit user
+  response); do not reactivate suspended vendors or inactive brand approvals.
+- Constraints: no push, no live server access, no new dependencies without approval.
+  Use real field names/canonical brand normalization and existing mapping commands.
+  Apply audit filters before pagination; keep error details and audit history.
+- Verification: startup/source inspected at c6031c3; pre-existing one-line importer
+  change passes None to parse_compatibility_row and belongs to requested phase 1.
+  Local Docker restarted using existing images. New phase tests not yet run.
+- Remaining: implement/verify all phases; preserve TASK-014 image/server follow-up.
+
+Phase 1 checkpoint: seven requested Django tests pass (including suspended/inactive
+approval regressions). Broader 109-test run: 94 passed/15 failed; starting commit
+c6031c3 isolated with network disabled: 88 passed/14 failed. Those same 14 existing
+failures are ISSUE-013. Historical brand-migration fixture was adapted to direct
+legacy-row creation because ingestion now intentionally creates distributor links;
+the focused recheck passed 8/8 (seven new tests plus historical backfill).
+Memory validator passes without fresh inventory. Phase 1 ready for local commit;
+phase 2 and 3 remain in progress under TASK-015.
 
 ## TASK-014 — Repair Balaji buyer brand/category/device mapping
 
@@ -16,7 +45,8 @@ TASK-002–008 record earlier discoveries. IDs are permanent.
   buyer API/UI and rebuild affected services → update memory.
 - Constraints: provider API is read-only; use configured encrypted credential without
   displaying it; preserve tenant isolation, approved overrides/exclusions and history.
-  No production/server changes, migrations, new dependencies or commit/push implied.
+  Later user instruction authorizes test-only diagnosis/repair; never touch live. No
+  migrations/new dependencies/push authorized. TASK-015 separately authorizes commits.
 - Verification: Git clean at 1b443cf; local Docker services running. Found import
   fallback inventing Universal scopes after compatibility parse failures. Further
   source/response analysis pending; existing broader work stays preserved.
@@ -163,7 +193,7 @@ committed yet; apply only after regressions pass. Runtime metadata/UI checks rem
 
 ## TASK-010 — Client issue backlog (Nov 2026 video feedback)
 
-- Status: in-progress
+- Status: in_progress
 - Related: memory `project_client-issues-nov2026.md`
 - Reference docs: `docs/CIXCI_Product_Data_Normalization_*.docx`,
   `docs/CIXCI_Category_Governance_*.docx`
@@ -184,7 +214,7 @@ committed yet; apply only after regressions pass. Runtime metadata/UI checks rem
 
 ## TASK-012 — Balaji test server: client video issue fixes
 
-- Status: in-progress
+- Status: in_progress
 - Related: TASK-010
 - Modules: catalog_import.py, catalog_config.py, media/views.py, media/utils.py,
   compatibility_import.py, catalog/api.py, batch_activate_products.py

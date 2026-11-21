@@ -4,6 +4,25 @@ Historical implementation changes belong in Git history and existing release gui
 they are not reconstructed as newly verified facts here. Add meaningful entries
 chronologically with task, reason, files/features/contracts, verification and risk.
 
+## 2026-11-21 — TASK-015 — Phase 1 vendor onboarding
+
+- Reason: explicit Vendor Product Audit specification; new distributor fallback
+  type separately confirmed by user. Draft/pending_setup vendors activate on admin
+  connection create, draft vendors during authorized sync. Inactive decisions persist.
+- Files: integration/catalog_onboarding.py (shared audit policy), catalog_api.py,
+  catalog_sync.py, catalog_import.py, catalog_config.py; test_vendor_import_phase1.py;
+  historical brand migration test now builds a legacy product rather than ingesting
+  through the deliberately changed onboarding path. Source parser receives None.
+- Features: INT-002, CAT-001, CMP-002; BR-INT-002. Template 200 rows/page, 100,000/day;
+  configurable ceiling 500 rows/page. No schema/new dependency/public route change.
+- Verification: requested manage.py test: 7/7 passed, Django check clean. Broader
+  run: 94 passed/15 failed; isolated starting commit: 88 passed/14 failed. The one
+  new failure was a historical fixture relying on no auto-link, updated as above.
+  Recheck result recorded in TASKS. The other 14 are pre-existing ISSUE-013.
+  Memory validator: no errors, fresh-inventory warning; git diff --check passed.
+- Startup snapshots compacted; old claims retained as clearly historical notes.
+  No test/live server changes or push. TASK-014 image/server follow-up remains.
+
 ## 2026-11-19 — TASK-001 — Repository memory initialization
 
 - Reason: agents need persistent source-backed context across independent/reset sessions.

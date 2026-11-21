@@ -270,6 +270,13 @@ def ingest_rows(connection, run, items, actor):
             errors.append({"code": "MSRP_REQUIRED", "field": "msrp"})
         brand = fields.get("brand", product.brand if product else "") or ""
         brand_id = links.get(" ".join(str(brand).split()).casefold())
+        if not brand_id:
+            from .catalog_onboarding import resolve_import_brand
+            resolved_brand = resolve_import_brand(connection, brand, actor)
+            if resolved_brand is not None:
+                brand_id = resolved_brand.pk
+                links[' '.join(brand.split()).casefold()] = brand_id
+                brand_labels[brand_id] = resolved_brand.name
         if brand_id:
             attrs["brand_reference"] = str(brand_id)
             attrs['brand'] = brand_labels[brand_id]
@@ -315,7 +322,7 @@ def ingest_rows(connection, run, items, actor):
                 compatibility_input = {'devicecompatibility': compat_raw}
                 if config:
                     compatibility_input.update({field.replace('_', ''): fields[field] for field in COMPATIBILITY_FIELDS if field in fields})
-                values, types, devices = parse_compatibility_row(compatibility_input, config)
+                values, types, devices = parse_compatibility_row(compatibility_input, None)
                 if config:
                     attrs.update(values)
                 if types:

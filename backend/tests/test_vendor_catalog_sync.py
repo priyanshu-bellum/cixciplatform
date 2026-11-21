@@ -271,12 +271,16 @@ def test_brand_is_reusable_across_confirmed_supplier_relationships(admin_client,
 
 
 def test_approved_brand_backfill_preserves_product_identity_and_never_infers_relationships(feed, monkeypatch):
-    remote(monkeypatch, [page([row()])])
-    run = request_sync(feed, feed.created_by); process_sync_page(run.id)
     from django.apps import apps
     from importlib import import_module
     from apps.catalog.models import DynamicDropdownConfig, VendorBrandRelationship
-    product = Product.objects.get(); original_id = product.id
+    # This is a historical migration test. Build a legacy row directly: current
+    # API ingestion intentionally creates approved distributor links (TASK-015).
+    product = Product.objects.create(name='Legacy accessory', sku='LEGACY-BRAND',
+        brand='Source Brand', product_type='accessory', status='draft',
+        launch_date='2026-01-01', vendor_company_reference=feed.vendor_company_id,
+        company_scope_reference=feed.vendor_company_id)
+    original_id = product.id
     DynamicDropdownConfig.objects.create(field_name='brand', value='Source Brand', display_name='Source Brand', status='active')
     migration = import_module('apps.catalog.migrations.0035_backfill_approved_brands')
     migration.forwards(apps, None); migration.forwards(apps, None)

@@ -358,14 +358,14 @@ known_issues: ["ISSUE-007", "ISSUE-008", "ISSUE-009"]
 feature_id: INT-002
 feature_name: Durable vendor catalog synchronization
 status: implemented
-description: Admin-configured vendor adapters, approved brands, encrypted credentials, budgeted page sync and canonical product/media ingestion.
+description: Admin-configured vendor adapters, audited draft activation and distributor-brand onboarding, encrypted credentials, budgeted page sync and canonical product/media ingestion.
 frontend_files: ["frontend/src/pages/VendorCatalogPage.tsx", "frontend/src/components/VendorCatalogConsole.tsx", "frontend/src/components/VendorCatalogConfigEditor.tsx"]
 backend_files: ["backend/apps/integration/catalog_api.py", "backend/apps/integration/catalog_sync.py", "backend/apps/integration/catalog_import.py", "backend/apps/integration/catalog_transport.py", "backend/apps/integration/catalog_secrets.py", "backend/apps/integration/catalog_media.py"]
 database_entities: ["integration.VendorCatalogConnection", "integration.VendorCatalogSyncRun", "integration.VendorCatalogItem", "integration.VendorCatalogBudget"]
 api_endpoints: ["GET /api/v1/integration/vendor-catalog-connections/", "POST /api/v1/integration/vendor-catalog-connections/{pk}/sync/"]
 dependencies: ["CAT-001", "CMP-002", "MED-001", "TEN-001", "AUD-001"]
-business_rules: ["BR-INT-001", "BR-SRC-001", "BR-MED-001"]
-related_tests: ["backend/tests/test_vendor_catalog_sync.py", "backend/tests/test_vendor_catalog_media.py", "backend/tests/test_vendor_manual_import_regressions.py"]
+business_rules: ["BR-INT-001", "BR-INT-002", "BR-SRC-001", "BR-MED-001"]
+related_tests: ["backend/tests/test_vendor_catalog_sync.py", "backend/tests/test_vendor_catalog_media.py", "backend/tests/test_vendor_manual_import_regressions.py", "backend/tests/test_vendor_import_phase1.py"]
 known_issues: ["ISSUE-011"]
 ```
 
