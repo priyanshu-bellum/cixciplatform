@@ -163,14 +163,14 @@ known_issues: ["ISSUE-012"]
 feature_id: CAT-002
 feature_name: Vendor product audit and manual review
 status: implemented
-description: Admin source/system comparison, filtered paginated diagnostics, audited single/bulk device mapping and explicit review resolution; phase 3 UI pending.
-frontend_files: []
+description: Admin source/system comparison, filtered paginated diagnostics, audited single/bulk device mapping and explicit review resolution with responsive catalog UI and notification deep links.
+frontend_files: ["frontend/src/pages/catalog/VendorAuditTab.tsx", "frontend/src/pages/catalog/VendorAuditCategoryDrawer.tsx", "frontend/src/pages/catalog/VendorAuditDevicePicker.tsx", "frontend/src/pages/catalog/vendorAuditData.ts", "frontend/src/pages/catalog/CatalogPage.tsx"]
 backend_files: ["backend/apps/catalog/api.py", "backend/apps/catalog/vendor_audit.py", "backend/apps/integration/catalog_notifications.py"]
 database_entities: ["catalog.Product", "catalog.ProductCompatibilityAssertion", "integration.VendorCatalogItem", "notification.InAppNotification", "audit.AuditRecord"]
 api_endpoints: ["GET /api/v1/catalog/products/vendor-audit/", "GET /api/v1/catalog/products/vendor-audit-stats/", "POST /api/v1/catalog/products/{pk}/map-devices/", "POST /api/v1/catalog/products/{pk}/resolve-review/", "POST /api/v1/catalog/products/bulk-map-devices/", "POST /api/v1/catalog/products/bulk-resolve-review/"]
 dependencies: ["CAT-001", "CMP-001", "INT-002", "NTF-001", "AUD-001", "AUTH-001"]
-business_rules: ["BR-CAT-002", "BR-TEN-001", "BR-AUD-001", "BR-SRC-001"]
-related_tests: ["backend/tests/test_vendor_audit_api.py"]
+business_rules: ["BR-CAT-002", "BR-CAT-003", "BR-TEN-001", "BR-AUD-001", "BR-SRC-001"]
+related_tests: ["backend/tests/test_vendor_audit_api.py", "frontend/src/pages/catalog/__tests__/VendorAuditTab.test.tsx", "scripts/run-vendor-audit-tests.mjs"]
 known_issues: ["ISSUE-013"]
 ```
 

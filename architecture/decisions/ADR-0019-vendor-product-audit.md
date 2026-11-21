@@ -23,3 +23,15 @@
   badges check stored primary reference, not a network/storage health probe.
 - Affected modules: catalog, integration, notification, frontend catalog, audit;
   CAT-002, INT-002, CMP-001/002. No database schema changes or dependencies.
+
+## 2026-11-22 — Clarification adopted before phase 3 completion
+
+The user explicitly chose Hybrid configuration for Feature Based manual mapping,
+and requested per-product Universal controls. Audit writes now use ordinary
+canonical command validation rather than vendor-import bypass. Category selection
+opens a side panel with configured required answers and explicit scope selection;
+rule adjustment opens the existing audited global category editor. No automatic
+global mode change or per-product explicit override was introduced. Product-level
+Universal remains independent of category with deliberately selected approved
+types. Future pending selections are distinguished from protected exclusions/locks;
+other ineffective selections roll back and return a meaningful validation error.

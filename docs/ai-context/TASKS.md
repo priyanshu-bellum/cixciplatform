@@ -1,77 +1,58 @@
 # Persistent tasks
 
-Active implementation: TASK-015 (vendor product audit, three local phase commits).
+Latest completion: TASK-015 (vendor product audit, three local phase commits).
+Open follow-up: TASK-014 (provider mappings/images and remote test diagnostics).
 TASK-002–008 record earlier discoveries. IDs are permanent.
 
 ## TASK-015 — Vendor product audit and onboarding
 
-- Status: in_progress
-- Related features: INT-002, CAT-001, CMP-001, CMP-002, NTF-001, UI-001.
-- Acceptance: three separate local commits matching the user's phase specification;
-  vendor activation, distributor brand fallback, higher configurable sync limits;
-  admin-only paginated audit/mapping/review APIs and notifications; responsive audit
-  tab with source/system comparison and bulk actions; tests and memory updated.
-- Plan: inspect models/callers → phase 1 code/tests/commit → phase 2 APIs/security/
-  tests/commit → phase 3 UI/tests/build/commit → local sync/image and buyer checks.
-- Approved policy: new feed relationships use authorized_distributor (explicit user
-  response); do not reactivate suspended vendors or inactive brand approvals.
-- Constraints: no push, no live server access, no new dependencies without approval.
-  Use real field names/canonical brand normalization and existing mapping commands.
-  Apply audit filters before pagination; keep error details and audit history.
-- Verification: startup/source inspected at c6031c3; pre-existing one-line importer
-  change passes None to parse_compatibility_row and belongs to requested phase 1.
-  Local Docker restarted using existing images. New phase tests not yet run.
-- Remaining: implement/verify all phases; preserve TASK-014 image/server follow-up.
-
-Phase 1 checkpoint: seven requested Django tests pass (including suspended/inactive
-approval regressions). Broader 109-test run: 94 passed/15 failed; starting commit
-c6031c3 isolated with network disabled: 88 passed/14 failed. Those same 14 existing
-failures are ISSUE-013. Historical brand-migration fixture was adapted to direct
-legacy-row creation because ingestion now intentionally creates distributor links;
-the focused recheck passed 8/8 (seven new tests plus historical backfill).
-Memory validator passes without fresh inventory. Phase 1 ready for local commit;
-phase 2 and 3 remain in progress under TASK-015.
-
-Phase 2 checkpoint: six admin audit actions, canonical mapping/review service,
-config-derived/redacted source comparison and after-commit admin messages added.
-Twenty Django tests pass (13 audit API + seven onboarding), including nonadmins
-with product capabilities, vendor isolation, status-before-pagination, exclusions,
-UUID/size bounds, explicit bulk failures and retained review-error audit evidence.
-Dedicated PostgreSQL selection passed 20/20, including final Source → Product lock
-ordering aligned with importer. Fresh SQL-blocked inventory validation passes with
-0 errors/warnings after catalog and notification reference refresh. Phase 2 ready
-for local commit; UI remains. No schema migrations or remote deployment.
+- Status: completed
+- Related features: INT-002, CAT-001/002, CMP-001/002, NTF-001, UI-001.
+- Acceptance: three separate local phase commits with specified titles/trailers,
+  no push; audited vendor activation/distributor fallback; admin audit APIs,
+  notifications, responsive comparison and mapping/review UI with tests.
+- Approved clarifications: new brand links are authorized_distributor; inactive
+  approvals/suspended vendors remain inactive. Feature Based manual mapping requires
+  explicitly configured Hybrid, not per-product override. Universal product option
+  uses explicit approved types and does not change business category.
+- Implementation: phase 1 commit 86cd89d; phase 2 commit 5e1d544; phase 3 adds
+  VendorAuditTab/category drawer/shared picker, governed rule editor entry, explicit
+  Universal controls and normal canonical mapping validation. Category fields/scope
+  save in one PATCH; invalid mapping requests roll back. Locks/exclusions/history
+  remain authoritative; future pending selections have a separate response.
+- Verification: 26/26 manage.py test (SQLite), 26/26 dedicated PostgreSQL, 11/11
+  npm test browser cases; targeted new-UI lint and production frontend builds pass.
+  Real local admin audit list/stats 200 and scoped Telco/Kaseory brand API/UI pass.
+  No dependencies, migrations, provider jobs or remote deployments introduced.
+- Limitations: pre-existing 14 import regressions (ISSUE-013); image/source gaps
+  (ISSUE-014) and remote test access remain TASK-014, not hidden completion claims.
+- Remaining: none for the audit feature; optional user review and TASK-014 follow-up.
 
 ## TASK-014 — Repair Balaji buyer brand/category/device mapping
 
 - Status: in_progress
-- Related features: CAT-001, CMP-001/002, INT-002, DEV-002, UI-001.
-- Acceptance: verify official provider docs and real read-only responses; reproduce
-  buyer brand results; map categories through approved configuration and device
-  compatibility through explicit evidence; no failed parse becomes Universal;
-  repair affected local imported records with audit and regression coverage.
-- Plan: inspect current Git/Claude changes → read provider contract and local data
-  → reproduce failures → targeted code/tests → preview audited local repair → verify
-  buyer API/UI and rebuild affected services → update memory.
-- Constraints: provider API is read-only; use configured encrypted credential without
-  displaying it; preserve tenant isolation, approved overrides/exclusions and history.
-  Later user instruction authorizes test-only diagnosis/repair; never touch live. No
-  migrations/new dependencies/push authorized. TASK-015 separately authorizes commits.
-- Verification: Git clean at 1b443cf; local Docker services running. Found import
-  fallback inventing Universal scopes after compatibility parse failures. Further
-  source/response analysis pending; existing broader work stays preserved.
-- Remaining: provider contract, data reproduction, fix, tests and local verification.
-
-Checkpoint: official /integrations/api and OpenAPI downloaded; bounded authenticated
-catalog GET succeeded using configured encrypted credential. Actual devices are an
-array of id/name/slug objects. Local source: 1,794 rows, 1,704 review holds; buyer
-ZIZO/Nimbus9/CLICK results reproduced empty. Provider-neutral resolver and scoped
-brand facets implemented. New Telco/Kaseory test identities created per user request;
-passwords remain only in ignored private local file. 100-row replay preview rolled
-back successfully: 29 create, 68 update, 33 review, zero provider requests. Fourteen
-focused tests passed; expanded 129-test selection being checked after fixture-path
-alignment. Frontend TypeScript/Vite Docker build passed. No local source repair
-committed yet; apply only after regressions pass. Runtime metadata/UI checks remain.
+- Related features: CAT-001/002, CMP-001/002, INT-002, DEV-002, MED-001, UI-001.
+- Acceptance: source-backed provider mappings, scoped buyer results, accurate device
+  compatibility/images and audited repair; no invented universal scope or relaxed gates.
+- Evidence: official docs/OpenAPI plus bounded authenticated read succeeded. Early
+  replay applied 1,794 saved rows; subsequent source/database changes came from later
+  commits. Latest local read-only audit: 1,220 products, 1,201 primaries with zero
+  missing local files, 19 no primary, 574 unlinked source rows, 657 source reviews;
+  1,774 source snapshots contain image URLs. See ISSUE-013/014 before a new sync.
+- Buyer verification: Telco ZIZO/Nimbus9/CLICK 77/40/4; Kaseory 122/146/181. Both
+  scoped dropdown selections show results in real local browser checks. This does
+  not certify every mapping against provider truth.
+- Existing concerns: current resolver can create guessed devices/Universal records
+  and pick ambiguous matches; baseline 88 passed/14 failed at c6031c3. Media storage
+  persistence/retry gaps are source-verified. Do not silently change these policies.
+- Target restriction: local plus explicitly authorized test environment only. Never
+  touch live. Direct SSH failed publickey; user has GCP browser SSH, not connected
+  here. Guarded read-only test diagnostic script prepared and syntax-checked only.
+- Remaining: obtain test diagnostic output; resolve import/device provenance and
+  media persistence/retry issues with regressions, then run a controlled local
+  provider resync and verify images/buyer results. Never start restored global jobs.
+- Recovery: private artifacts under .local-copy/balaji-buyer-fix; credentials must
+  stay ignored. Earlier long notes are archived in history/TASK-014-prior-session.md.
 
 ## TASK-011 — Rebuild and restart the local backend/frontend
 

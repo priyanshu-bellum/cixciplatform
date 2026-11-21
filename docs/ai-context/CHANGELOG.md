@@ -43,6 +43,31 @@ chronologically with task, reason, files/features/contracts, verification and ri
   validates with 0 errors/warnings. Prior catalog schema metadata drift refreshed,
   including already-existing VendorColorMapping/Product fields. ISSUE-013 persists.
 
+## 2026-11-21/22 — TASK-015 — Phase 3 vendor audit UI and editing fixes
+
+- Trigger: admin category quick edits failed required compatibility validation;
+  Feature Based manual model writes could save ineffective evidence. The user
+  explicitly chose governed Hybrid configuration and requested Universal controls.
+- Result: admin-only Vendor Audit tab/deep links, vendor/brand/search/status filters,
+  comparison/stats, single/bulk mapping/review and category/color actions. Category
+  selection opens a side panel collecting required/conditional answers and explicit
+  scope before one validated PATCH. The existing rule editor opens the target
+  category. No automatic global rule change or per-product manual override.
+- Product Universal is available independently of category, requires deliberate
+  approved type selection and does not create an unrelated category override.
+  Audit mappings use ordinary canonical validation; invalid type/lifecycle choices
+  roll back. Pending future and protected mapping results are distinguished.
+- Files: VendorAuditTab/CategoryDrawer/DevicePicker/vendorAuditData, CatalogPage/index,
+  DropdownManagerDialog, frontend package test script/fixture harness, Node/CDP test
+  tools; small audit DTO/service/test extensions. Memory/ADR-0019/BR-CAT-003 updated.
+  Test-only read-only VM diagnostic script and LF attribute added; not run remotely.
+- Verification: final backend Django runner 26/26, dedicated PostgreSQL 26/26,
+  browser UI 11/11, targeted new-UI lint, TypeScript/Vite/Docker build and memory
+  checks. Local admin GET audit/stats 200; real Telco/Kaseory scoped brand API/UI
+  passed. Exact results/limits in VERIFICATION.md. No dependencies or migrations.
+- Remaining: ISSUE-013/014 and TASK-014 import/image/server follow-up. No push or
+  test/live deployment; no claim that the full pre-existing suite is green.
+
 ## 2026-11-19 — TASK-001 — Repository memory initialization
 
 - Reason: agents need persistent source-backed context across independent/reset sessions.

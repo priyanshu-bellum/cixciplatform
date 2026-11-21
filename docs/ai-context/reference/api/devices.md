@@ -174,7 +174,7 @@ Request/response key extraction is static and partial; inherited CRUD uses the
 serializer above. Action-specific serializers, nested schemas, validations,
 service calls and conditional response redaction must be read in source.
 
-Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/pages/catalog/AllProductsTab.tsx](../../../../frontend/src/pages/catalog/AllProductsTab.tsx), [frontend/src/pages/catalog/CatalogPage.tsx](../../../../frontend/src/pages/catalog/CatalogPage.tsx), [frontend/src/pages/DashboardPage.tsx](../../../../frontend/src/pages/DashboardPage.tsx), [frontend/src/pages/DevicesPage.tsx](../../../../frontend/src/pages/DevicesPage.tsx).
+Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/pages/catalog/AllProductsTab.tsx](../../../../frontend/src/pages/catalog/AllProductsTab.tsx), [frontend/src/pages/catalog/CatalogPage.tsx](../../../../frontend/src/pages/catalog/CatalogPage.tsx), [frontend/src/pages/catalog/VendorAuditDevicePicker.tsx](../../../../frontend/src/pages/catalog/VendorAuditDevicePicker.tsx), [frontend/src/pages/DashboardPage.tsx](../../../../frontend/src/pages/DashboardPage.tsx), [frontend/src/pages/DevicesPage.tsx](../../../../frontend/src/pages/DevicesPage.tsx).
 
 ## apps.devices.views.FeatureGroupViewSet
 

@@ -1,5 +1,75 @@
 # Memory verification and maintenance
 
+## TASK-015 final audit feature verification — 2026-11-22
+
+Phase 1 local commit 86cd89d; phase 2 5e1d544. Phase 3 follows with the requested
+title and co-author trailer. No push, schema migration, dependency installation or
+test/live VM operation. New category/Universal behavior is BR-CAT-003 / ADR-0019.
+
+Executed in the existing local backend container, using isolated test databases:
+
+```text
+DJANGO_SETTINGS_MODULE=config.test_settings python manage.py test tests.test_vendor_audit_api tests.test_vendor_import_phase1 --noinput --verbosity 1
+python -m pytest tests/test_vendor_audit_api.py tests/test_vendor_import_phase1.py --ds=config.compatibility_test_settings -o addopts= -q
+```
+
+Results: **26/26 Django tests**, **26/26 dedicated PostgreSQL tests**. Covers all
+six admin audit actions, nonadmins with ordinary capabilities, vendor filtering,
+pre-pagination status filtering, UUID/batch bounds, audit history, exclusions/locks,
+explicit Hybrid requirement, category required answers/Universal scope, rollback
+for invalid selections and pending future devices. Postgres target is the separate
+test_cixci_compatibility database, not restored catalog data.
+
+Frontend executed from frontend with existing Node/Chromium, no added packages:
+
+```text
+npm test
+npm run build
+node node_modules/eslint/bin/eslint.js src/pages/catalog/VendorAuditTab.tsx src/pages/catalog/VendorAuditCategoryDrawer.tsx src/pages/catalog/VendorAuditDevicePicker.tsx src/pages/catalog/vendorAuditData.ts src/pages/catalog/__tests__/VendorAuditTab.test.tsx
+docker compose -f docker-compose.local-copy.yml build frontend
+```
+
+**11/11 browser tests** pass. The runner requires CIXCI_QA_CHROME, builds the TSX
+test with installed TypeScript, drives real Chromium through CDP and fulfills API
+requests with fixtures. Covers selection/comparison, add/remove/bulk mapping,
+review/error handling, category/color save, required Speakers values, independent
+Universal, explicit Hybrid rule editing, buyer guard and narrow dark layout.
+Initial cold Vite startup and control-loading races were addressed by a dedicated
+test entry/cache and selector readiness checks; failed attempts are retained in
+ignored logs, not counted as passing. Targeted new-UI lint and frontend builds pass.
+Pre-existing large-bundle warning remains nonblocking. Repository-wide lint/full
+frontend/backend suites were not claimed as passing.
+
+Final local frontend image 2a0c8685d5d2 is running after force-recreate; frontend
+GET and backend login OPTIONS return 200. Local DB/Redis are healthy; backend uses
+the current source bind. No worker/periodic provider jobs were started.
+
+Read-only restored-local checks: admin audit list/stats HTTP 200 and all extended
+DTO fields present; real buyer API/UI brand selections pass for Telco and Kaseory.
+ZIZO/Nimbus9/CLICK counts respectively 77/40/4 and 122/146/181. Buyer admin tabs stay
+hidden. These checks do not certify every mapping against supplier truth.
+
+Local source/image diagnostics: 1,220 canonical products, 1,201 primary assets,
+zero missing local primary files, 19 no primary, 574 unlinked source snapshots,
+657 reviews; 1,774 source rows have image URLs. No fresh provider sync was run in
+TASK-015. ISSUE-014 remains open. Test-only diagnostic script passes bash -n and
+refuses an unexpected test bind/database; remote execution remains unverified.
+
+Baseline comparison: read-only snapshot c6031c3 with networking disabled produced
+88 passed/14 failed across older import/sync/mapping suites (ISSUE-013). Phase 1
+broader run had 94 passed/15 failed; its one new failure was the historical brand
+backfill fixture relying on the old no-auto-link ingestion path. Updated that
+fixture to construct a legacy row directly; focused recheck 8/8 passed. The other
+14 pre-existing failures are not hidden by new passing tests.
+
+Memory: fresh SQL-blocked inventory refreshed affected catalog/devices/tenant/
+notification references; validator and git diff --check pass. Eight memory-tool
+tests passed. Ignored evidence: .local-copy/balaji-buyer-fix/phase3-*.log,
+inventory-final.json and .local-copy/vendor-audit-ui/ screenshots/fixtures. Secrets
+remain only in private ignored QA artifacts, never in this document.
+
+The original initialization verification below is historical, not current counts.
+
 This is the reproducible verification record for TASK-001 (2026-11-19), not a claim
 of release readiness. Source baseline `main` / `0c5e2a5`; local catalog adapter WIP
 was present before the task. No behavior, dependency, schema or deployment changed.

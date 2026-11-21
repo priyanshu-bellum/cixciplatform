@@ -15,6 +15,14 @@ source review totals can include unlinked observations. See [API contracts](../A
 Review clears retain prior errors in audit and do not bypass other buyer gates.
 [Tests](../../../backend/tests/test_vendor_audit_api.py) cover admin-only access,
 cross-vendor reads, pagination/status, UUID/size bounds, exclusions and audit history.
+Phase 3 adds vendor_values (mapped canonical names/units) for the comparison UI;
+raw provider payload remains separately available/redacted. The No Image badge
+checks primary reference presence; storage/network availability is a separate check.
+2026-11-22 user clarification: audit writes use ordinary command validation, not
+vendor-import bypass. Feature Based requires explicitly configured Hybrid before
+manual models; invalid type/lifecycle requests roll back. Future Pending selections
+and protected exclusions/locks are returned separately. Category/Universal edits
+use existing full-product validation through the side-panel form (BR-CAT-003).
 
 ## Entry points and files
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
@@ -35,6 +35,7 @@ import BulkUploadDialog from './dialogs/BulkUploadDialog'
 import DropdownManagerDialog from './dialogs/DropdownManagerDialog'
 import BatchRevalidateDialog from './dialogs/BatchRevalidateDialog'
 import MissingDevicesTab from './MissingDevicesTab'
+import VendorAuditTab from './VendorAuditTab'
 
 export default function CatalogPage() {
   const queryClient = useQueryClient()
@@ -70,10 +71,14 @@ export default function CatalogPage() {
     const t = searchParams.get('tab')
     if (t === 'my-compatibility' || t === 'projection') return 'projection'
     if (t === 'api-imports' && isCixciAdmin) return 'api-imports'
+    if (t === 'vendor-audit' && user?.is_cixci_admin) return 'vendor-audit'
     if (t === 'missing-devices' && isCixciAdmin) return 'missing-devices'
     return 'products'
   })()
   const [tab, setTab] = useState<string>(initialTab)
+  useEffect(() => {
+    if (searchParams.get('tab') === 'vendor-audit' && user?.is_cixci_admin) setTab('vendor-audit')
+  }, [searchParams, user?.is_cixci_admin])
 
   // Modal orchestration
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -292,11 +297,15 @@ export default function CatalogPage() {
 
       <Tabs
         value={tab}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
         onChange={(_, v) => setTab(v)}
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
         <Tab label="All Products" value="products" />
         {isCixciAdmin && <Tab label="API Import Review" value="api-imports" />}
+        {user?.is_cixci_admin && <Tab label="Vendor Audit" value="vendor-audit" />}
         {isCixciAdmin && <Tab label="Missing Devices" value="missing-devices" />}
         {isBuyer && <Tab label="My Compatibility" value="projection" />}
         {isBuyer && <Tab label="Added Products" value="export_jobs" />}
@@ -305,6 +314,7 @@ export default function CatalogPage() {
       {tab === 'api-imports' && isCixciAdmin && <VendorImportReviewTab initialConnection={searchParams.get('connection') || ''} onEditProduct={handleEditProduct}/>}
 
       {tab === 'missing-devices' && isCixciAdmin && <MissingDevicesTab />}
+      {tab === 'vendor-audit' && user?.is_cixci_admin && <VendorAuditTab user={user} dropdownConfigs={dropdownConfigs} />}
 
       {tab === 'products' && (
         <AllProductsTab

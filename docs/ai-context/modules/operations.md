@@ -3,6 +3,23 @@
 Purpose: process entry/configuration, storage/cache/queue topology and safe local
 verification. Related features UI-001, INT-002/003/004, MED-001, MEM-001.
 
+TASK-015 local verification (2026-11-22): existing local-copy stack started with
+up --no-build, then frontend rebuilt and force-recreated alone. Active frontend
+image 2a0c8685d5d2 includes the final category/Universal panel and responsive tabs;
+backend uses its source bind. Frontend GET/backend OPTIONS HTTP 200, DB/Redis
+healthy. Admin audit list/stats HTTP 200,
+real Telco/Kaseory buyer brand APIs/UI passed; no migrations or provider jobs started
+by the new audit implementation. Browser harness APIs are fixture-only.
+
+Remote user uses GCP browser SSH; this agent's direct app-dev SSH failed publickey.
+[diagnose-test-vendor-catalog.sh](../../../scripts/diagnose-test-vendor-catalog.sh)
+is an uploadable read-only diagnostic: requires real /srv/cixci/test and backend
+paths plus test container bind, refuses database names without test or with live/
+prod, then sets PostgreSQL session read-only. It reports aggregate source/image/
+buyer counts and backend/worker storage flags, never credentials or row payloads.
+Run only in the user's browser SSH after uploading: `sudo bash ~/diagnose-test-vendor-catalog.sh`.
+It was syntax-checked locally, not run on the VM. No test/live deployment performed.
+
 ## Entry points and files
 
 [manage.py](../../../backend/manage.py), [WSGI](../../../backend/config/wsgi.py),

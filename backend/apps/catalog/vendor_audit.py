@@ -1,6 +1,8 @@
 """Admin audit queries and mutations; canonical commands own compatibility rules."""
 import json
 
+from django.core.exceptions import ValidationError
+
 from django.db import transaction
 from django.db.models import Case, CharField, Exists, OuterRef, Q, Value, When
 from rest_framework import serializers
@@ -117,13 +119,23 @@ def map_product_devices(product, actor, data):
         items = [{'device_id':identifier,'exclusion_reason':data.get('exclusion_reason'),
             'notes':data.get('notes','')} for identifier in items]
     update_explicit_selections(product, items, actor, update_type=data['update_type'],
-        vendor_import=True, change_source='Vendor Audit')
-    after = list(product.compatibility_assertions.filter(is_compatible=True,is_excluded=False).values_list('device_reference',flat=True))
+        vendor_import=False, change_source='Vendor Audit')
+    assertions = list(product.compatibility_assertions.all())
+    after = [row.device_reference for row in assertions if row.is_compatible and not row.is_excluded]
+    pending = [row.device_reference for row in assertions if row.device_reference in data['device_ids']
+        and row.match_status == 'Pending' and not row.is_excluded and not row.is_locked]
+    protected = [row.device_reference for row in assertions if row.device_reference in data['device_ids']
+        and row.device_reference not in after and (row.is_excluded or row.is_locked)]
+    if data['update_type']=='remove':
+        pending, protected = [], []
+    unapplied = [str(value) for value in data['device_ids'] if value not in after] if data['update_type']!='remove' else []
+    if data['update_type']!='remove' and any(value not in after+pending+protected for value in data['device_ids']):
+        raise ValidationError({'device_ids':'A selected model is not eligible under the current category or device lifecycle. Review its Device Catalog setup.'})
     record_action(product,actor,'devices_mapped',update_type=data['update_type'],before=before,after=after,
         requested_device_ids=data['device_ids'])
-    unapplied = [str(value) for value in data['device_ids'] if value not in after] if data['update_type']!='remove' else []
     return {'status':'ok','device_count':len(after),'requested_count':len(data['device_ids']),
-        'unapplied_device_ids':unapplied}
+        'unapplied_device_ids':unapplied,'pending_device_ids':[str(value) for value in pending],
+        'protected_device_ids':[str(value) for value in protected]}
 
 
 @transaction.atomic

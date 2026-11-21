@@ -8,7 +8,7 @@ original initialization paragraph below describe that earlier snapshot.
 |---|---|
 | `GET vendor-audit/` | vendor UUID required; optional brand UUID, search, audit_status (review/no_devices/no_image/ok), page/page_size. Product-list capability plus is_cixci_admin. Numbered pagination always enabled, maximum 200. Status precedence review → no_devices → no_image → ok, filtered in SQL before pagination. Extended ProductList payload includes redacted vendor_payload, review_errors, current device_assertions and config-derived payload_devices/images/category. |
 | `GET vendor-audit-stats/` | vendor UUID required. total/active/with_image/no_image, mapped/unmapped direct-device products, review_products, review_required source rows (including unlinked), unlinked_review_required, vendor product brands. Mapping counts only current compatible nonexcluded assertions with existing devices. |
-| `POST {pk}/map-devices/` | device_ids UUID list (max 500); update_type replace/add/remove. Product-update capability plus admin. Calls existing canonical command with vendor_import=True; exclusions/locks/category eligibility still affect effective result. Remove requires existing exclusion_reason/notes policy. Returns effective device_count, requested_count and unapplied_device_ids. |
+| `POST {pk}/map-devices/` | device_ids UUID list (max 500); update_type replace/add/remove. Product-update capability plus admin. Calls existing canonical command with normal category/type validation (vendor_import=False, user clarification 2026-11-22). Feature Based requires explicit Hybrid configuration before manual mapping. Remove requires existing exclusion_reason/notes policy. Returns effective device_count, requested_count, unapplied_device_ids, pending_device_ids and protected_device_ids. Ineligible selections roll back instead of saving ineffective evidence. |
 | `POST bulk-map-devices/` | product_ids (1–50), device_ids, add/replace. Validates before work; per-product savepoints, explicit failures/results and partial status, never silent truncation. Unknown product IDs reported. |
 | `POST {pk}/resolve-review/` | Admin clears linked source holds; records previous errors in append-only audit and invalidates current projections. Other media/MAP/region/lifecycle gates continue to apply. Returns cleared count. |
 | `POST bulk-resolve-review/` | product_ids (1–200); validates existence before any clears; one atomic transaction, per-product evidence and cleared count. |
@@ -18,6 +18,18 @@ Base: `/api/v1/catalog/products/`. Handler/serializer:
 request serializers: [vendor_audit.py](../../backend/apps/catalog/vendor_audit.py).
 Malformed UUIDs/limits/mapping validation return 400, nonadmins 403, scoped missing
 objects 404. Frontend consumer is added in phase 3. No schema migration required.
+
+Phase 3 consumer: [VendorAuditTab](../../frontend/src/pages/catalog/VendorAuditTab.tsx).
+`vendor_values` contains canonical field names/units produced by each connection's
+configured mapping, alongside unchanged/redacted `vendor_payload`. The UI uses
+vendor_values for monetary/name/color/stock comparison rather than assuming Balaji
+JSON keys; payload_devices/images/category remain explicit source evidence.
+
+Category/Universal setup uses existing `GET, PATCH products/{pk}/`: fetch full
+compatibility fields, submit product_category + product_category_override, declared
+configured field values, compatibility_mode, compatible_device_types; direct model
+selection also sends device_ids/compatibility_update_type. Existing validation,
+media/lifecycle gates and audited category configuration remain authoritative.
 
 Verified 2026-11-19 from `config/urls.py`'s active resolver: **310 owned API route
 patterns**, including explicit schema/docs version aliases, excluding format-suffix

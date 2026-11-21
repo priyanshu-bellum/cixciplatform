@@ -426,6 +426,7 @@ class ProductListSerializer(ProductSerializerBase):
 class VendorAuditProductSerializer(ProductListSerializer):
     """Admin comparison of redacted vendor observations and canonical state."""
     vendor_payload = serializers.SerializerMethodField()
+    vendor_values = serializers.SerializerMethodField()
     audit_status = serializers.SerializerMethodField()
     review_errors = serializers.SerializerMethodField()
     device_assertions = serializers.SerializerMethodField()
@@ -434,7 +435,7 @@ class VendorAuditProductSerializer(ProductListSerializer):
     payload_category = serializers.SerializerMethodField()
 
     class Meta(ProductListSerializer.Meta):
-        fields = ProductListSerializer.Meta.fields + ['vendor_payload','audit_status','review_errors',
+        fields = ProductListSerializer.Meta.fields + ['vendor_payload','vendor_values','audit_status','review_errors',
             'device_assertions','payload_devices','payload_images','payload_category']
 
     def _source(self, obj):
@@ -442,6 +443,9 @@ class VendorAuditProductSerializer(ProductListSerializer):
 
     def get_vendor_payload(self, obj):
         return self._source(obj).get('payload',{})
+
+    def get_vendor_values(self, obj):
+        return self._source(obj).get('mapped_fields',{})
 
     def get_audit_status(self, obj):
         return obj._audit_status

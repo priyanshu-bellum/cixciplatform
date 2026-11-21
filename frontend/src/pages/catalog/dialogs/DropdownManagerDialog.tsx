@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -33,6 +33,7 @@ interface DropdownManagerDialogProps {
   onClose: () => void
   dropdownConfigs: any[]
   onConfigChanged: () => void
+  initialCategoryValue?: string
 }
 
 type ManageFieldType = 'product_category' | 'system_color'
@@ -74,6 +75,7 @@ export default function DropdownManagerDialog({
   onClose,
   dropdownConfigs,
   onConfigChanged,
+  initialCategoryValue,
 }: DropdownManagerDialogProps) {
   // Dropdown list management state
   const [manageField, setManageField] = useState<ManageFieldType>('product_category')
@@ -100,7 +102,7 @@ export default function DropdownManagerDialog({
   }, [categoryConfigRules])
 
   // When editingCategoryConfig is set, populate all the config fields
-  const handleStartEditConfig = (item: any) => {
+  const handleStartEditConfig = useCallback((item: any) => {
     setEditingCategoryConfig(item)
     setCategoryConfigMode(item.compatibility_mode === 'explicit' ? 'device_specific' : item.compatibility_mode || 'device_specific')
     setCategoryConfigStatus(item.status || 'active')
@@ -109,7 +111,18 @@ export default function DropdownManagerDialog({
     setCategoryConfigAccessoryFields(item.accessory_fields || [])
     setCategoryConfigRules(normalizedRules(item.compatibility_rules || {}))
     setDropdownError(null)
-  }
+  }, [compatibilityOptions])
+
+  const openedCategory = useRef<string | null>(null)
+  useEffect(() => {
+    if (!open) { openedCategory.current = null; return }
+    if (!initialCategoryValue || !compatibilityOptions || openedCategory.current === initialCategoryValue) return
+    const category = dropdownConfigs.find(item => item.field_name === 'product_category' && item.value === initialCategoryValue)
+    if (category) {
+      handleStartEditConfig(category)
+      openedCategory.current = initialCategoryValue
+    }
+  }, [open, initialCategoryValue, compatibilityOptions, dropdownConfigs, handleStartEditConfig])
 
   const handleCancelEditConfig = () => {
     setEditingCategoryConfig(null)

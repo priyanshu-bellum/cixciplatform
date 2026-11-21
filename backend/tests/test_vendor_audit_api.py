@@ -1,12 +1,13 @@
 """Vendor audit authorization, pagination, canonical mutations and audit evidence."""
 from copy import deepcopy
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 import json
 import uuid
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.audit.models import AuditRecord
@@ -86,6 +87,7 @@ class VendorAuditAPITests(TestCase):
         row = response.data['results'][0]
         self.assertEqual(row['vendor_payload']['name'],'Provider item')
         self.assertEqual(row['vendor_payload']['api_key'],'[REDACTED]')
+        self.assertEqual(row['vendor_values']['vendor_category'],'Phone Cases')
         self.assertEqual(row['payload_category'],'Phone Cases')
         self.assertEqual(row['payload_devices'][0]['name'],self.device.name)
         self.assertEqual(row['payload_images'],['https://supplier.example/product.jpg'])
@@ -193,6 +195,83 @@ class VendorAuditAPITests(TestCase):
         self.assertEqual(response.data['unapplied_device_ids'],[str(self.device.pk)])
         row = product.compatibility_assertions.get()
         self.assertTrue(row.is_excluded and row.is_locked)
+
+    def test_feature_based_manual_mapping_requires_explicit_hybrid_configuration(self):
+        config = DynamicDropdownConfig.objects.get(field_name='product_category',value='Cases')
+        config.compatibility_mode='feature_based'
+        config.save()
+        product = self.product()
+        url = self.base+str(product.pk)+'/map-devices/'
+        response = self.client.post(url,{'device_ids':[str(self.device.pk)]},format='json')
+        self.assertEqual(response.status_code,400,response.data)
+        self.assertFalse(product.compatibility_assertions.exists())
+        config.compatibility_mode='hybrid'
+        config.save()
+        response = self.client.post(url,{'device_ids':[str(self.device.pk)]},format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual(response.data['device_count'],1)
+        self.assertEqual(response.data['unapplied_device_ids'],[])
+
+    def test_category_change_requires_answers_and_explicit_universal_scope(self):
+        DynamicDropdownConfig.objects.get_or_create(field_name='compatible_charging_interface',value='USB-C',defaults={'status':'active'})
+        DynamicDropdownConfig.objects.update_or_create(field_name='product_category',value='Speakers',defaults={
+            'status':'active','compatibility_mode':'universal','eligible_device_types':[str(self.device.device_type_id)],
+            'accessory_fields':['compatible_charging_interface','bluetooth_compatibility'],
+            'compatibility_rules':{'compatible_charging_interface':{'mode':'required','comparison':'informational'},
+                'bluetooth_compatibility':{'mode':'required','comparison':'informational'}}})
+        product = self.product()
+        url = self.base+str(product.pk)+'/'
+        # Imported legacy rows may not yet contain a declared answer. Hidden
+        # fields on freshly saved manual products otherwise normalize to No/Not
+        # Compatible, which are valid answers and must not be rejected.
+        Product.objects.filter(pk=product.pk).update(compatible_charging_interface='',bluetooth_compatibility='')
+        body={'product_category':'Speakers','product_category_override':'Speakers',
+            'compatibility_mode':'universal_device_type','compatible_device_types':[str(self.device.device_type_id)]}
+        response = self.client.patch(url,body,format='json')
+        self.assertEqual(response.status_code,400,response.data)
+        product.refresh_from_db();self.assertEqual(product.product_category,'Cases')
+        response = self.client.patch(url,{**body,'compatible_charging_interface':'USB-C','bluetooth_compatibility':'No'},format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        product.refresh_from_db()
+        self.assertEqual(product.product_category,'Speakers')
+        self.assertEqual(product.compatibility_mode,'universal_device_type')
+        self.assertEqual(product.bluetooth_compatibility,'No')
+        self.assertTrue(product.universal_type_scopes.filter(device_type_id=self.device.device_type_id,is_active=True).exists())
+
+    def test_product_can_be_explicitly_made_universal_without_changing_category(self):
+        product=self.product()
+        response=self.client.patch(self.base+str(product.pk)+'/',{'compatibility_mode':'universal_device_type',
+            'compatible_device_types':[str(self.device.device_type_id)]},format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        product.refresh_from_db()
+        self.assertEqual(product.product_category,'Cases')
+        self.assertEqual(product.compatibility_mode,'universal_device_type')
+        self.assertTrue(product.compatibility_assertions.filter(device_reference=self.device.pk,is_compatible=True).exists())
+
+    def test_manual_mapping_rejects_ineligible_types_without_saving_ineffective_evidence(self):
+        kind=DeviceType.objects.create(name='Audit Tablet',code='tablet',status='active')
+        other=Device.objects.create(name='Audit Tablet Model',manufacturer=self.device.manufacturer,
+            device_type=kind,lifecycle_status='available',launch_date=date(2026,1,1))
+        product=self.product()
+        response=self.client.post(self.base+str(product.pk)+'/map-devices/',{'device_ids':[str(other.pk)]},format='json')
+        self.assertEqual(response.status_code,400,response.data)
+        self.assertFalse(product.compatibility_assertions.exists())
+
+    def test_future_selection_is_reported_pending_rather_than_protected_or_unavailable(self):
+        future=Device.objects.create(name='Future Audit Model',manufacturer=self.device.manufacturer,
+            device_type=self.device.device_type,lifecycle_status='announced',launch_date=timezone.localdate()+timedelta(days=30))
+        product=self.product()
+        response=self.client.post(self.base+str(product.pk)+'/map-devices/',{'device_ids':[str(future.pk)]},format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual(response.data['pending_device_ids'],[str(future.pk)])
+        self.assertEqual(response.data['protected_device_ids'],[])
+
+    def test_archived_selection_rolls_back_instead_of_claiming_a_mapping_was_saved(self):
+        self.device.lifecycle_status='archived';self.device.save()
+        product=self.product()
+        response=self.client.post(self.base+str(product.pk)+'/map-devices/',{'device_ids':[str(self.device.pk)]},format='json')
+        self.assertEqual(response.status_code,400,response.data)
+        self.assertFalse(product.compatibility_assertions.exists())
 
     @patch('apps.integration.catalog_sync.publish_job')
     @patch('apps.integration.catalog_sync.fetch_json')
