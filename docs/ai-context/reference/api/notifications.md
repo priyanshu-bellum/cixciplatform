@@ -114,7 +114,7 @@ Request/response key extraction is static and partial; inherited CRUD uses the
 serializer above. Action-specific serializers, nested schemas, validations,
 service calls and conditional response redaction must be read in source.
 
-Frontend consumers (resource-path text matches; confirm action callers): no direct resource-path match; may be indirect or external.
+Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/components/NotificationBell.tsx](../../../../frontend/src/components/NotificationBell.tsx).
 
 ## apps.notification.api.NotificationPreferenceViewSet
 

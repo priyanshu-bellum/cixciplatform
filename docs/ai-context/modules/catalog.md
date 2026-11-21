@@ -4,6 +4,18 @@ Purpose: supplier Product truth, governed compatibility evidence, current buyer
 discovery/projections and historical export/supplier-selection evidence. Features
 CAT-001, CMP-001/002, EXP-001/002.
 
+Vendor Audit (CAT-002, TASK-015): six admin-only actions under products provide
+bounded source/system comparison, stats, single/bulk model mapping and explicit
+review resolution. [vendor_audit](../../../backend/apps/catalog/vendor_audit.py)
+owns request serializers, SQL status annotation/filtering and audited mutations;
+api.py delegates to it and builds existing bulk serializer context. Source fields
+derive from each connection's mappings, with legacy payload fallbacks. Raw credential
+keys are redacted again at read. Counts use active, nonexcluded canonical matches;
+source review totals can include unlinked observations. See [API contracts](../API_REGISTRY.md).
+Review clears retain prior errors in audit and do not bypass other buyer gates.
+[Tests](../../../backend/tests/test_vendor_audit_api.py) cover admin-only access,
+cross-vendor reads, pagination/status, UUID/size bounds, exclusions and audit history.
+
 ## Entry points and files
 
 [api](../../../backend/apps/catalog/api.py), [models](../../../backend/apps/catalog/models.py),

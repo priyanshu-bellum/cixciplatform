@@ -14,6 +14,13 @@ provider-enforced quotas. Existing saved configs are not rewritten automatically
 Vendor declaration parsing receives None; canonical product/mapping validation still
 runs. [Phase 1 tests](../../../backend/tests/test_vendor_import_phase1.py) use Django TestCase.
 
+TASK-015 phase 2: [catalog_notifications](../../../backend/apps/integration/catalog_notifications.py)
+creates in-app review messages only for active CIXCI admins when a page commits
+review rows. Actual model fields are event_type/link/source_record_id/audit_reference
+(not notification_type/action_url). WebSocket notification is published after commit.
+Links target `/catalog?tab=vendor-audit&vendor=<uuid>`; retries of completed pages do
+not send duplicate messages. No buyer notification or email is sent by this helper.
+
 ## Entry points and files
 
 [urls](../../../backend/apps/integration/urls.py), [models](../../../backend/apps/integration/models.py),

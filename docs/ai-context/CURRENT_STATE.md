@@ -6,7 +6,10 @@ Updated 2026-11-21 at main/c6031c3 plus task changes. The user requested a vendo
 product audit in three separately committed phases, with no push. Phase 1 adds
 audited vendor activation and distributor-brand onboarding, raises configurable
 limits and retains the explicitly requested vendor declaration parsing behavior.
-Phase 2 audit APIs and phase 3 responsive admin UI follow. No schema additions planned.
+Phase 1 committed locally as 86cd89d. Phase 2 admin audit APIs/notifications are
+implemented, with 20/20 Django tests and 20/20 dedicated PostgreSQL tests passing;
+fresh inventory validation passes with 0 errors/warnings. Phase 3 responsive admin
+UI follows. No schema additions or dependencies.
 
 Local-copy Docker is running. This environment is separate from test/live. The user
 prohibited touching live. Direct SSH to the supplied VM failed publickey auth;

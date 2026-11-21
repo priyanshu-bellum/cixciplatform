@@ -221,6 +221,7 @@ Table: `catalog_product`. Source: [backend/apps/catalog/models.py](../../../../b
 | `eol_date` / `eol_date` | `DateField` | `NULL; blank allowed; default="<not set>"` | `—` |
 | `color` / `color` | `CharField` | `NULL; blank allowed; length=100; default="<not set>"` | `—` |
 | `system_color` / `system_color` | `CharField` | `NULL; blank allowed; length=100; default="<not set>"` | `—` |
+| `system_colors` / `system_colors` | `JSONField` | `NOT NULL; blank allowed; default="builtins.list (callable; not evaluated)"` | `—` |
 | `msrp` / `msrp` | `DecimalField` | `NULL; blank allowed; precision=12, scale=4; default="<not set>"` | `—` |
 | `map_price` / `map_price` | `DecimalField` | `NULL; blank allowed; precision=12, scale=4; default="<not set>"` | `—` |
 | `sale_price` / `sale_price` | `DecimalField` | `NULL; blank allowed; precision=12, scale=4; default="<not set>"` | `—` |
@@ -231,12 +232,18 @@ Table: `catalog_product`. Source: [backend/apps/catalog/models.py](../../../../b
 | `width` / `width` | `DecimalField` | `NULL; blank allowed; precision=8, scale=3; default="<not set>"` | `—` |
 | `height` / `height` | `DecimalField` | `NULL; blank allowed; precision=8, scale=3; default="<not set>"` | `—` |
 | `weight` / `weight` | `DecimalField` | `NULL; blank allowed; precision=8, scale=3; default="<not set>"` | `—` |
+| `weight_unit` / `weight_unit` | `CharField` | `NOT NULL; blank allowed; length=10; default="oz"` | `—` |
 | `warranty` / `warranty` | `CharField` | `NULL; blank allowed; length=200; default="<not set>"` | `—` |
 | `short_description` / `short_description` | `TextField` | `NULL; blank allowed; default="<not set>"` | `—` |
 | `promo_information` / `promo_information` | `TextField` | `NULL; blank allowed; default="<not set>"` | `—` |
 | `meta_title` / `meta_title` | `CharField` | `NULL; blank allowed; length=500; default="<not set>"` | `—` |
 | `meta_description` / `meta_description` | `TextField` | `NULL; blank allowed; default="<not set>"` | `—` |
 | `deactivation_reason` / `deactivation_reason` | `CharField` | `NULL; blank allowed; length=200; default="<not set>"` | `—` |
+| `is_clearance` / `is_clearance` | `BooleanField` | `NOT NULL; default=false` | `—` |
+| `clearance_type` / `clearance_type` | `CharField` | `NOT NULL; blank allowed; length=30; default=""` | `—` |
+| `clearance_end_date` / `clearance_end_date` | `DateField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `needs_buyer_sync` / `needs_buyer_sync` | `BooleanField` | `NOT NULL; default=false` | `—` |
+| `vendor_original_data` / `vendor_original_data` | `JSONField` | `NOT NULL; blank allowed; default="builtins.dict (callable; not evaluated)"` | `—` |
 | `headphone_jack_compatibility` / `headphone_jack_compatibility` | `CharField` | `NOT NULL; blank allowed; length=50; default=""` | `—` |
 | `bluetooth_compatibility` / `bluetooth_compatibility` | `CharField` | `NOT NULL; blank allowed; length=50; default=""` | `—` |
 | `compatible_charging_interface` / `compatible_charging_interface` | `CharField` | `NOT NULL; blank allowed; length=50; default=""` | `—` |
@@ -256,6 +263,7 @@ Choices (stored value → display label):
 - `category_validation_status`: `[["pending","Pending"],["mapping_required","Category Mapping Required"],["resolved","Resolved via Mapping"],["override_applied","Override Applied by Admin"]]`
 - `status`: `[["draft","Draft"],["pending_review","Pending Review"],["active","Active"],["inactive","Inactive"],["archived","Archived"],["eol","EOL"],["out_of_stock","Out of Stock"]]`
 - `selling_status`: `[["not_for_sale","Not For Sale"],["for_sale","For Sale"],["stop_selling","Stop Selling"]]`
+- `clearance_type`: `[["","None"],["end_date","End Date Based"],["inventory","Inventory Based"]]`
 - `compatibility_mode`: `[["direct_device","Direct Device"],["universal_device_type","Universal Device Type"]]`
 
 Indexes: `[["django.db.models.Index",[],{"name":"catalog_pro_product_a3cbc0_idx","fields":["product_type","status","selling_status"]}],["django.db.models.Index",[],{"name":"catalog_pro_vendor__d7013f_idx","fields":["vendor_company_reference","status"]}],["django.db.models.Index",[],{"name":"catalog_vendor_sku_idx","fields":["vendor_company_reference","sku"]}],["django.db.models.Index",[],{"name":"catalog_pro_sku_2c4c34_idx","fields":["sku"]}]]`.
@@ -381,6 +389,31 @@ Constraints: `[]`.
 
 Unique together: `[["vendor_company_reference","vendor_category"]]`. Ordering: `[]`.
 
+## catalog.VendorColorMapping
+
+Table: `catalog_vendor_color_mapping`. Source: [backend/apps/catalog/models.py](../../../../backend/apps/catalog/models.py).
+
+| Field / column | Django type | Constraints / defaults | Relationship |
+|---|---|---|---|
+| `id` / `id` | `UUIDField` | `PK; unique; NOT NULL; length=32; default="uuid.uuid4 (callable; not evaluated)"` | `—` |
+| `vendor_company_reference` / `vendor_company_reference` | `UUIDField` | `indexed; NOT NULL; length=32; default="<not set>"` | `—` |
+| `vendor_color` / `vendor_color` | `CharField` | `NOT NULL; length=100; default="<not set>"` | `—` |
+| `system_color` / `system_color` | `CharField` | `NOT NULL; length=100; default="<not set>"` | `—` |
+| `status` / `status` | `CharField` | `NOT NULL; length=20; default="active"` | `—` |
+| `created_at` / `created_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
+| `updated_at` / `updated_at` | `DateTimeField` | `NOT NULL; blank allowed; auto_now; default="<not set>"` | `—` |
+| `created_by` / `created_by` | `UUIDField` | `NULL; blank allowed; length=32; default="<not set>"` | `—` |
+
+Choices (stored value → display label):
+
+- `status`: `[["active","Active"],["inactive","Inactive"],["review_required","Review Required"]]`
+
+Indexes: `[["django.db.models.Index",[],{"name":"catalog_ven_vendor__d00bff_idx","fields":["vendor_company_reference","vendor_color","status"]}]]`.
+
+Constraints: `[]`.
+
+Unique together: `[["vendor_company_reference","vendor_color"]]`. Ordering: `[]`.
+
 ## Migrations
 
 - [backend/apps/catalog/migrations/0001_initial.py](../../../../backend/apps/catalog/migrations/0001_initial.py)
@@ -423,3 +456,8 @@ Unique together: `[["vendor_company_reference","vendor_category"]]`. Ordering: `
 - [backend/apps/catalog/migrations/0038_unique_external_listing_selection.py](../../../../backend/apps/catalog/migrations/0038_unique_external_listing_selection.py)
 - [backend/apps/catalog/migrations/0039_fix_universal_scope_cascade.py](../../../../backend/apps/catalog/migrations/0039_fix_universal_scope_cascade.py)
 - [backend/apps/catalog/migrations/0040_add_product_series.py](../../../../backend/apps/catalog/migrations/0040_add_product_series.py)
+- [backend/apps/catalog/migrations/0041_product_clearance_weight_unit_vendor_color_mapping.py](../../../../backend/apps/catalog/migrations/0041_product_clearance_weight_unit_vendor_color_mapping.py)
+- [backend/apps/catalog/migrations/0042_product_system_colors.py](../../../../backend/apps/catalog/migrations/0042_product_system_colors.py)
+- [backend/apps/catalog/migrations/0043_product_needs_buyer_sync.py](../../../../backend/apps/catalog/migrations/0043_product_needs_buyer_sync.py)
+- [backend/apps/catalog/migrations/0044_normalize_balaji_products.py](../../../../backend/apps/catalog/migrations/0044_normalize_balaji_products.py)
+- [backend/apps/catalog/migrations/0045_product_vendor_original_data.py](../../../../backend/apps/catalog/migrations/0045_product_vendor_original_data.py)

@@ -6,15 +6,16 @@ Objective: implement the user's three-phase Vendor Product Audit spec, commit ea
 phase locally with the supplied message/trailer, never push. Read actual models;
 reuse canonical commands and preserve tenant isolation/audit/exclusion history.
 
-Checkpoint: phase 1 implementation and seven Django TestCase tests added. Models
+Checkpoint: phase 1 committed locally as 86cd89d; phase 2 code and tests implemented.
+Twenty Django TestCase tests pass (13 audit API + seven onboarding). Models
 call pending state pending_setup; brand canonical keys use normalized whitespace,
 not new underscore identities. User explicitly confirmed new relationship type
 authorized_distributor. Inactive brands/relationships and suspended vendors remain
 inactive. A pre-existing importer one-line None parser change is part of this spec.
 
-Next: finish phase 1 checks and local commit, then implement admin audit list/stats/
-single+bulk mapping/review endpoints and review notifications. Filter before
-pagination; validate all UUIDs/limits and record review clears with old errors.
+Next: phase 2 reviewed and ready for local commit. Dedicated PostgreSQL tests 20/20
+pass after final Source → Product lock order correction; fresh inventory valid,
+catalog/integration/notifications reference groups refreshed (0 errors/warnings).
 Then build Vendor Audit tab, tests and third commit. No frontend test runner currently
 exists (package has build/lint/dev/preview); no dependency installation authorized.
 
@@ -23,8 +24,9 @@ tests.test_vendor_import_phase1 with config.test_settings: 7 passed. Broad run
 94 passed/15 failed; read-only isolated starting commit 88 passed/14 failed.
 The one new failure was a historical migration fixture now fixed; focused recheck
 passed 8/8. The same 14 baseline failures are tracked ISSUE-013, not a green release.
-Memory validator passes without fresh inventory. Phase 1 ready for local commit;
-then implement phase 2. No push or server deployment.
+Memory validator passed without fresh inventory for phase 1; phase 2 fresh inventory
+passes. Prior notification metadata drift reconciled against actual source.
+No push or server deployment.
 
 Previous work: TASK-014 saved-source replay succeeded; new images resync and remote
 test diagnosis remain. SSH app-dev@VM failed publickey; user uses GCP browser SSH.

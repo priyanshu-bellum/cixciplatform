@@ -1,5 +1,24 @@
 # API registry
 
+TASK-015 adds six admin-only product audit actions (2026-11-21). The mechanical
+catalog reference was refreshed from a fresh SQL-blocked inventory; counts in the
+original initialization paragraph below describe that earlier snapshot.
+
+| Method / product-relative route | Request, scope and result |
+|---|---|
+| `GET vendor-audit/` | vendor UUID required; optional brand UUID, search, audit_status (review/no_devices/no_image/ok), page/page_size. Product-list capability plus is_cixci_admin. Numbered pagination always enabled, maximum 200. Status precedence review → no_devices → no_image → ok, filtered in SQL before pagination. Extended ProductList payload includes redacted vendor_payload, review_errors, current device_assertions and config-derived payload_devices/images/category. |
+| `GET vendor-audit-stats/` | vendor UUID required. total/active/with_image/no_image, mapped/unmapped direct-device products, review_products, review_required source rows (including unlinked), unlinked_review_required, vendor product brands. Mapping counts only current compatible nonexcluded assertions with existing devices. |
+| `POST {pk}/map-devices/` | device_ids UUID list (max 500); update_type replace/add/remove. Product-update capability plus admin. Calls existing canonical command with vendor_import=True; exclusions/locks/category eligibility still affect effective result. Remove requires existing exclusion_reason/notes policy. Returns effective device_count, requested_count and unapplied_device_ids. |
+| `POST bulk-map-devices/` | product_ids (1–50), device_ids, add/replace. Validates before work; per-product savepoints, explicit failures/results and partial status, never silent truncation. Unknown product IDs reported. |
+| `POST {pk}/resolve-review/` | Admin clears linked source holds; records previous errors in append-only audit and invalidates current projections. Other media/MAP/region/lifecycle gates continue to apply. Returns cleared count. |
+| `POST bulk-resolve-review/` | product_ids (1–200); validates existence before any clears; one atomic transaction, per-product evidence and cleared count. |
+
+Base: `/api/v1/catalog/products/`. Handler/serializer:
+[catalog/api.py](../../backend/apps/catalog/api.py); query/mutation helpers and
+request serializers: [vendor_audit.py](../../backend/apps/catalog/vendor_audit.py).
+Malformed UUIDs/limits/mapping validation return 400, nonadmins 403, scoped missing
+objects 404. Frontend consumer is added in phase 3. No schema migration required.
+
 Verified 2026-11-19 from `config/urls.py`'s active resolver: **310 owned API route
 patterns**, including explicit schema/docs version aliases, excluding format-suffix
 aliases, DRF router roots, HEAD/OPTIONS and Django admin internals. A route may

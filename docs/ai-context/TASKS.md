@@ -32,6 +32,16 @@ the focused recheck passed 8/8 (seven new tests plus historical backfill).
 Memory validator passes without fresh inventory. Phase 1 ready for local commit;
 phase 2 and 3 remain in progress under TASK-015.
 
+Phase 2 checkpoint: six admin audit actions, canonical mapping/review service,
+config-derived/redacted source comparison and after-commit admin messages added.
+Twenty Django tests pass (13 audit API + seven onboarding), including nonadmins
+with product capabilities, vendor isolation, status-before-pagination, exclusions,
+UUID/size bounds, explicit bulk failures and retained review-error audit evidence.
+Dedicated PostgreSQL selection passed 20/20, including final Source → Product lock
+ordering aligned with importer. Fresh SQL-blocked inventory validation passes with
+0 errors/warnings after catalog and notification reference refresh. Phase 2 ready
+for local commit; UI remains. No schema migrations or remote deployment.
+
 ## TASK-014 — Repair Balaji buyer brand/category/device mapping
 
 - Status: in_progress

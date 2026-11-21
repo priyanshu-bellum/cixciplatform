@@ -265,6 +265,8 @@ def process_sync_page(run_id):
                 audit("completed", current, actor, run_id=run.id, rows=run.rows_seen, created=run.created_count, updated=run.updated_count, review=run.review_count)
             run.save()
             # One bulk invalidation per page; source Product and completed history are untouched.
+            from .catalog_notifications import notify_catalog_review
+            notify_catalog_review(current,run,counts.get('review_count',0))
             from apps.catalog.models import BuyerScopedCompatibilityProjection
             BuyerScopedCompatibilityProjection.objects.exclude(status="review_required").update(status="review_required", review_required_reason="vendor_catalog_sync")
         if deferred_images:

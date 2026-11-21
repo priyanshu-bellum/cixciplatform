@@ -423,6 +423,50 @@ class ProductListSerializer(ProductSerializerBase):
 
 
 
+class VendorAuditProductSerializer(ProductListSerializer):
+    """Admin comparison of redacted vendor observations and canonical state."""
+    vendor_payload = serializers.SerializerMethodField()
+    audit_status = serializers.SerializerMethodField()
+    review_errors = serializers.SerializerMethodField()
+    device_assertions = serializers.SerializerMethodField()
+    payload_devices = serializers.SerializerMethodField()
+    payload_images = serializers.SerializerMethodField()
+    payload_category = serializers.SerializerMethodField()
+
+    class Meta(ProductListSerializer.Meta):
+        fields = ProductListSerializer.Meta.fields + ['vendor_payload','audit_status','review_errors',
+            'device_assertions','payload_devices','payload_images','payload_category']
+
+    def _source(self, obj):
+        return self.context.get('bulk_sources',{}).get(obj.pk,{})
+
+    def get_vendor_payload(self, obj):
+        return self._source(obj).get('payload',{})
+
+    def get_audit_status(self, obj):
+        return obj._audit_status
+
+    def get_review_errors(self, obj):
+        return self._source(obj).get('review_errors',[])
+
+    def get_device_assertions(self, obj):
+        return self.context.get('bulk_compatibility',{}).get(obj.pk,[])
+
+    def get_payload_devices(self, obj):
+        from .vendor_audit import declared_devices
+        return declared_devices(self._source(obj))
+
+    def get_payload_images(self, obj):
+        source = self._source(obj)
+        images = source.get('mapped_fields',{}).get('images',
+            source.get('payload',{}).get('image_urls',source.get('payload',{}).get('images',[])))
+        return images if isinstance(images,list) else []
+
+    def get_payload_category(self, obj):
+        source = self._source(obj)
+        return source.get('mapped_fields',{}).get('vendor_category',source.get('payload',{}).get('category',''))
+
+
 class ProductDetailSerializer(ProductSerializerBase):
     vendor_company_reference = serializers.UUIDField(required=False)
     device_ids = serializers.ListField(child=serializers.UUIDField(), required=False, write_only=True)
@@ -1208,6 +1252,12 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "recalculate_compatibility": "catalog.product.update",
         "recalculate_bulk_compatibility": "catalog.product.update",
         "audit_history": "catalog.product.read",
+        "vendor_audit": "catalog.product.list",
+        "vendor_audit_stats": "catalog.product.list",
+        "map_devices": "catalog.product.update",
+        "bulk_map_devices": "catalog.product.update",
+        "resolve_review": "catalog.product.update",
+        "bulk_resolve_review": "catalog.product.update",
     }
 
     def get_throttles(self):
@@ -1231,6 +1281,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         super().check_permissions(request)
+        if self.action in {'vendor_audit','vendor_audit_stats','map_devices',
+                'bulk_map_devices','resolve_review','bulk_resolve_review'} and not request.user.is_cixci_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Vendor product audit requires CIXCI System Admin authority.')
         if self.action in ["create", "update", "partial_update", "destroy", "bulk_upload"]:
             user = request.user
             if user and not getattr(user, "is_cixci_admin", False):
@@ -1579,6 +1633,97 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         products = self.filter_queryset(self.get_queryset())
         brands = products.exclude(brand='').order_by('brand').values_list('brand', flat=True).distinct()
         return Response({'brands': list(brands)})
+
+    @action(detail=False, methods=['get'], url_path='vendor-audit')
+    def vendor_audit(self, request):
+        from .vendor_audit import audit_products, source_context
+        _, products = audit_products(request.query_params)
+        # Always bounded, including when a caller supplies paginate=false.
+        paginator = ProductPagination()
+        rows = paginator.paginate_queryset(products,request,view=self)
+        self._bulk_ctx = self._build_bulk_context(rows)
+        self._bulk_ctx['bulk_sources'] = source_context(rows)
+        serializer = VendorAuditProductSerializer(rows,many=True,context=self.get_serializer_context())
+        return paginator.get_paginated_response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='vendor-audit-stats')
+    def vendor_audit_stats(self, request):
+        from .vendor_audit import audit_products
+        from apps.integration.models import VendorCatalogItem
+        from django.db.models import Count
+        vendor, products = audit_products({'vendor':request.query_params.get('vendor')})
+        stats = products.aggregate(total=Count('id'),active=Count('id',filter=Q(status='active')),
+            with_image=Count('id',filter=Q(primary_image_reference__isnull=False)),
+            no_image=Count('id',filter=Q(primary_image_reference__isnull=True)),
+            mapped=Count('id',filter=Q(compatibility_mode='direct_device',_audit_has_device=True)),
+            unmapped=Count('id',filter=Q(compatibility_mode='direct_device',_audit_has_device=False)),
+            review_products=Count('id',filter=Q(_audit_review=True)))
+        reviews = VendorCatalogItem.objects.filter(connection__vendor_company_id=vendor.pk,review_required=True)
+        stats['review_required'] = reviews.count()
+        stats['unlinked_review_required'] = reviews.filter(product_id__isnull=True).count()
+        stats['brands'] = list(products.exclude(brand_reference_id=None).order_by('brand_reference__name').values(
+            'brand_reference_id','brand_reference__name').distinct())
+        return Response(stats)
+
+    @action(detail=True, methods=['post'], url_path='map-devices')
+    def map_devices(self, request, pk=None):
+        from django.core.exceptions import ValidationError
+        from .vendor_audit import DeviceMappingSerializer, validated, map_product_devices
+        data = validated(DeviceMappingSerializer,request.data)
+        try:
+            result = map_product_devices(self.get_object(),request.user,data)
+        except ValidationError as error:
+            raise serializers.ValidationError(getattr(error,'message_dict',error.messages)) from error
+        return Response(result)
+
+    @action(detail=True, methods=['post'], url_path='resolve-review')
+    def resolve_review(self, request, pk=None):
+        from .vendor_audit import resolve_product_review
+        cleared = resolve_product_review(self.get_object(),request.user)
+        if cleared:
+            from .services import invalidate_buyer_projection_cache
+            invalidate_buyer_projection_cache('vendor_audit_review_resolved')
+        return Response({'status':'ok','cleared':cleared})
+
+    @action(detail=False, methods=['post'], url_path='bulk-map-devices')
+    @transaction.atomic
+    def bulk_map_devices(self, request):
+        from django.core.exceptions import ValidationError
+        from .vendor_audit import BulkDeviceMappingSerializer, validated, map_product_devices
+        data = validated(BulkDeviceMappingSerializer,request.data)
+        ids = list(dict.fromkeys(data['product_ids']))
+        products = {product.pk:product for product in self.get_queryset().filter(pk__in=ids)}
+        failures, results = [], []
+        from .services import defer_buyer_projection_refresh, invalidate_buyer_projection_cache
+        with defer_buyer_projection_refresh():
+            for identifier in sorted(ids,key=str):
+                product = products.get(identifier)
+                if product is None:
+                    failures.append({'product_id':str(identifier),'errors':['Product not found.']})
+                    continue
+                try:
+                    results.append({'product_id':str(identifier),**map_product_devices(product,request.user,data)})
+                except ValidationError as error:
+                    failures.append({'product_id':str(identifier),'errors':getattr(error,'message_dict',error.messages)})
+        if results:
+            invalidate_buyer_projection_cache('vendor_audit_bulk_mapping')
+        return Response({'status':'partial' if failures else 'ok','updated':len(results),
+            'total':len(ids),'results':results,'failures':failures})
+
+    @action(detail=False, methods=['post'], url_path='bulk-resolve-review')
+    @transaction.atomic
+    def bulk_resolve_review(self, request):
+        from .vendor_audit import BulkReviewSerializer, validated, resolve_product_review
+        ids = list(dict.fromkeys(validated(BulkReviewSerializer,request.data)['product_ids']))
+        products = {product.pk:product for product in self.get_queryset().filter(pk__in=ids)}
+        missing = [str(identifier) for identifier in ids if identifier not in products]
+        if missing:
+            raise serializers.ValidationError({'product_ids':'One or more products were not found.'})
+        cleared = sum(resolve_product_review(products[identifier],request.user) for identifier in sorted(ids,key=str))
+        if cleared:
+            from .services import invalidate_buyer_projection_cache
+            invalidate_buyer_projection_cache('vendor_audit_bulk_review_resolved')
+        return Response({'status':'ok','cleared':cleared})
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

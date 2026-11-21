@@ -6,6 +6,10 @@ not replace canonical ADRs or invent historical rationale.
 
 ## Existing architecture records
 
+TASK-015 adds [ADR-0019 — Vendor product audit](../../architecture/decisions/ADR-0019-vendor-product-audit.md)
+(2026-11-21, accepted by explicit user scope): provider-configured comparisons,
+admin-only actions, canonical command reuse and auditable explicit review resolution.
+
 | Decision | Canonical record | Affected area |
 |---|---|---|
 | ADR-0001 | [Record architecture decisions](../../architecture/decisions/ADR-0001-record-architecture-decisions.md) | All modules |

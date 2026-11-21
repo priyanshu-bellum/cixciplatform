@@ -23,6 +23,26 @@ chronologically with task, reason, files/features/contracts, verification and ri
 - Startup snapshots compacted; old claims retained as clearly historical notes.
   No test/live server changes or push. TASK-014 image/server follow-up remains.
 
+## 2026-11-21 — TASK-015 — Phase 2 vendor product audit APIs
+
+- Reason: admins need source/system comparison and deliberate mapping/review tools.
+- Files: catalog/api.py, new catalog/vendor_audit.py, new integration/
+  catalog_notifications.py and catalog_sync.py; test_vendor_audit_api.py; affected
+  catalog API/schema and notification API references and curated memory/ADR-0019.
+- Features: CAT-002, CMP-001/002, INT-002, NTF-001. Six product audit routes added;
+  no schema/dependency change. Source comparisons use connector field paths; read
+  payloads are redacted. Status filters run before bounded numbered pagination.
+- Single/bulk device changes use existing canonical command; UUID/limit validation,
+  explicit partial failure details, exclusion/lock preservation and audit evidence.
+  Explicit review clears retain old errors in audit and invalidate projections.
+  Active admins receive in-app review links; WebSocket push follows commit.
+- Verification: manage.py test tests.test_vendor_audit_api
+  tests.test_vendor_import_phase1 --noinput: 20/20 passed, system check clean.
+  Fixture setup explicitly approves type/category and uses real dates. Dedicated
+  PostgreSQL 20/20 passed after final lock ordering correction; fresh inventory
+  validates with 0 errors/warnings. Prior catalog schema metadata drift refreshed,
+  including already-existing VendorColorMapping/Product fields. ISSUE-013 persists.
+
 ## 2026-11-19 — TASK-001 — Repository memory initialization
 
 - Reason: agents need persistent source-backed context across independent/reset sessions.
