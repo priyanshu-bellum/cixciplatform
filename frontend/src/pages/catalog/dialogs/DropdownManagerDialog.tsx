@@ -261,7 +261,7 @@ export default function DropdownManagerDialog({
     >
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {editingCategoryConfig ? 'Configure Category Compatibility' : 'Manage Dropdown Values'}
-        <IconButton size="small" onClick={handleClose}>
+        <IconButton size="small" onClick={handleClose} aria-label={editingCategoryConfig ? 'Close category configuration' : 'Close dropdown manager'}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
@@ -282,6 +282,10 @@ export default function DropdownManagerDialog({
                 {editingCategoryConfig.value}
               </Typography>
             </Typography>
+
+            <Alert severity="info">
+              These rules apply to every product in {editingCategoryConfig.value}. Hybrid supports configured feature rules and manually selected models.
+            </Alert>
 
             {/* Compatibility Mode */}
             <FormControl fullWidth size="small">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { alpha } from '@mui/material/styles'
@@ -14,9 +14,10 @@ import { useSnackbar } from '../../components/feedback/SnackbarProvider'
 import StatusChip from '../../components/data-display/StatusChip'
 import DevicePicker from './VendorAuditDevicePicker'
 import VendorAuditCategoryDrawer from './VendorAuditCategoryDrawer'
+import DropdownManagerDialog from './dialogs/DropdownManagerDialog'
 import { auditColors, auditLabels, comparable, deviceId, responseRows } from './vendorAuditData'
 import type { AuditConfig, AuditDevice, AuditPage, AuditProduct, AuditStats, AuditStatus, AuditSubmit,
-  AuditUser, AuditVendor, AuditWriteBody, AuditWriteResult } from './vendorAuditData'
+  AuditUser, AuditVendor, AuditWriteBody, AuditWriteResult, LiveSearchResult } from './vendorAuditData'
 
 interface VendorAuditTabProps { user: AuditUser; dropdownConfigs: AuditConfig[] }
 const base = '/catalog/products/'
@@ -119,6 +120,7 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
       <TextField label="Search products" size="small" value={search} disabled={busy} sx={{ flex: 1 }}
         onChange={event => { setSearch(event.target.value); resetFilters() }} />
       <Button disabled={busy || products.isFetching} onClick={() => { void products.refetch(); void stats.refetch() }}>Refresh</Button>
+      <ForceSyncButton vendor={vendor} busy={busy} />
     </Stack>
     <Stack direction="row" spacing={1} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }}>
       {(['all', 'review', 'no_devices', 'no_image', 'ok'] as const).map(value => <Chip key={value}
@@ -134,6 +136,7 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
     {!!stats.data?.unlinked_review_required && <Alert severity="info" sx={{ mb: 2 }}>
       {stats.data.unlinked_review_required} source rows need review before a product can be created. Open API Import Review for those rows.
     </Alert>}
+    <LiveApiSearch vendor={vendor} />
     {[stats.error, products.error].filter(Boolean).map((error, index) => <Alert key={index} severity="error" sx={{ mb: 1 }}>{apiError(error)}</Alert>)}
     {bulkError && <Alert severity="warning" onClose={() => setBulkError('')} sx={{ mb: 1, overflowWrap: 'anywhere' }}>{bulkError}</Alert>}
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr)', lg: '300px minmax(0,1fr) 350px' }, gap: 2, alignItems: 'start' }}>
@@ -202,6 +205,7 @@ function Images({ urls }: { urls: string[] }) {
 }
 
 function Comparison({ product }: { product: AuditProduct }) {
+  const [showRaw, setShowRaw] = useState(false)
   const raw = product.vendor_values || {}
   const vendorModels = (product.payload_devices || []).map(device => String(device.name || ''))
   const systemModels = (product.device_assertions || []).map(device => device.name)
@@ -212,47 +216,84 @@ function Comparison({ product }: { product: AuditProduct }) {
     ['Images', product.payload_images, product.primary_image_url ? [product.primary_image_url] : []],
     ['Brand', raw.brand, product.brand], ['MSRP', money(raw.msrp), money(product.msrp)],
     ['Wholesale', money(raw.vendor_wholesale_price_amount), money(product.vendor_wholesale_price_amount)],
-    ['Inventory', raw.inventory_level, product.inventory_level], ['Status', null, product.status],
+    ['Inventory', raw.inventory_level, product.inventory_level],
+    ['Weight', raw.weight, null], ['Length', raw.length, null], ['Width', raw.width, null], ['Height', raw.height, null],
+    ['Status', null, product.status],
   ]
   const display = (value: unknown) => value === null || value === undefined || value === '' ? 'Not supplied' : String(value)
+  const payload = product.vendor_payload || {}
   return <Paper variant="outlined" sx={panel} data-testid="audit-comparison">
-    <Typography variant="h6" sx={{ mb: 2 }}>{product.name}</Typography>
+    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Typography variant="h6">{product.name}</Typography>
+      <Button size="small" onClick={() => setShowRaw(!showRaw)}>{showRaw ? 'Mapped View' : 'Full API Response'}</Button>
+    </Stack>
     {!!product.review_errors?.length && <Alert severity="error" sx={{ mb: 2 }}>{product.review_errors.map((error, i) =>
       <Typography key={i} variant="body2">{error.code}{error.field ? ` — ${error.field}` : ''}{error.message ? `: ${error.message}` : ''}</Typography>)}</Alert>}
-    <TableContainer><Table size="small" aria-label="Vendor and system comparison">
+    {showRaw ? <Box>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>Raw Vendor API Payload</Typography>
+      <TableContainer><Table size="small" aria-label="Full vendor API payload">
+        <TableHead><TableRow><TableCell>Key</TableCell><TableCell>Value</TableCell></TableRow></TableHead>
+        <TableBody>{Object.entries(payload).map(([key, value]) => <TableRow key={key}
+          sx={{ '& td': { verticalAlign: 'top', overflowWrap: 'anywhere' } }}>
+          <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace', fontSize: 12 }}>{key}</TableCell>
+          <TableCell>{key === 'image_urls' || key === 'images' ? (Array.isArray(value) ? <Images urls={value as string[]} />
+            : display(value)) : Array.isArray(value) ? value.map((item, i) => <Chip key={String(item) + i}
+              label={typeof item === 'object' ? JSON.stringify(item) : String(item)} size="small" sx={{ m: .25, maxWidth: '100%' }} />)
+            : typeof value === 'object' && value !== null
+              ? <Box component="pre" sx={{ fontSize: 11, m: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>{JSON.stringify(value, null, 2)}</Box>
+              : <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{display(value)}</Typography>}</TableCell>
+        </TableRow>)}</TableBody>
+      </Table></TableContainer>
+    </Box> : <TableContainer><Table size="small" aria-label="Vendor and system comparison">
       <TableHead><TableRow><TableCell>Field</TableCell><TableCell>Vendor API</TableCell><TableCell>CIXCI System</TableCell></TableRow></TableHead>
-      <TableBody>{fields.map(([label, original, current]) => <TableRow key={label}
-        sx={theme => ({ bgcolor: label !== 'Status' && comparable(original) !== comparable(current) ? alpha(theme.palette.warning.main, .12) : undefined,
+      <TableBody>{fields.map(([label, original, current]) => <TableRow key={label as string}
+        sx={theme => ({ bgcolor: label !== 'Status' && original !== null && current !== null && comparable(original) !== comparable(current) ? alpha(theme.palette.warning.main, .12) : undefined,
           '& td': { verticalAlign: 'top', overflowWrap: 'anywhere' } })}>
-        <TableCell>{label}</TableCell>
+        <TableCell>{label as string}</TableCell>
         <TableCell>{label === 'Images' ? <Images urls={product.payload_images || []} /> : label === 'Devices'
           ? vendorModels.map((name, i) => <Chip key={name + i} label={name} size="small" sx={{ m: .25 }} />) : display(original)}
           {label === 'Category' && <Typography variant="caption" sx={{ display: 'block' }}>Mapped category →</Typography>}</TableCell>
         <TableCell>{label === 'Images' ? <Images urls={product.primary_image_url ? [product.primary_image_url] : []} /> : label === 'Devices'
           ? systemModels.map((name, i) => <Chip key={name + i} label={name} size="small" sx={{ m: .25 }} />)
-          : label === 'Status' ? <StatusChip status={product.status} /> : display(current)}</TableCell>
+          : label === 'Status' ? <StatusChip status={product.status} /> : current === null ? <Typography variant="caption" color="text.secondary">N/A</Typography> : display(current)}</TableCell>
       </TableRow>)}</TableBody>
-    </Table></TableContainer>
+    </Table></TableContainer>}
   </Paper>
 }
 
 function ProductActions({ scope, product, configs, busy, submit }: { scope: string; product: AuditProduct; configs: AuditConfig[]; busy: boolean;
   submit: AuditSubmit }) {
+  const queryClient = useQueryClient()
+  const { showSnackbar } = useSnackbar()
   const [devices, setDevices] = useState<AuditDevice[]>(product.device_assertions || [])
   const [category, setCategory] = useState(product.product_category || '')
   const [color, setColor] = useState(product.system_color || '')
   const [setupOpen, setSetupOpen] = useState(false)
+  const [mappingRulesOpen, setMappingRulesOpen] = useState(false)
   const currentConfig = configs.find(item => item.field_name === 'product_category' && item.value === product.product_category)
   const manual = product.compatibility_mode === 'direct_device' && currentConfig?.status === 'active'
     && ['device_specific', 'explicit', 'hybrid'].includes(currentConfig.compatibility_mode || '')
   const approved = (field: string) => configs.filter(item => item.field_name === field && item.status === 'active').map(item => item.value as string)
   const categories = approved('product_category')
   const colors = approved('system_color')
+  const refreshRules = () => {
+    setMappingRulesOpen(false)
+    showSnackbar('Category rules saved. Device selection follows the updated configuration.', 'success')
+    void Promise.all(['dropdown-configs', 'compatibility-options', 'vendor-audit', 'vendor-audit-stats',
+      'vendor-audit-product-detail', 'products', 'compatibility', 'my-projection'].map(key =>
+      queryClient.invalidateQueries({ queryKey: [key] })))
+  }
   return <Paper variant="outlined" sx={{ ...panel, position: { lg: 'sticky' }, top: 16 }} data-testid="audit-actions">
     <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Device Mapping</Typography>
     {manual ? <DevicePicker scope={scope} value={devices} onChange={setDevices} disabled={busy} suggestions={product.payload_devices || []} />
       : <Alert severity="info">{product.compatibility_mode === 'universal_device_type' ? 'This product uses Universal Device Types. Edit its compatibility setup to adjust the scope.'
         : 'Exact model mapping requires Device Specific or Hybrid category rules. Open compatibility setup to review fields or adjust Category Rules.'}</Alert>}
+    {!manual && product.compatibility_mode === 'direct_device' && <Box sx={{ mt: 1 }}>
+      <Button fullWidth variant="contained" disabled={busy || !currentConfig} onClick={() => setMappingRulesOpen(true)}>Configure manual mapping</Button>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .5 }}>
+        Open {product.product_category} category rules and choose Hybrid to enable model selection. Rule changes apply to all products in this category.
+      </Typography>
+    </Box>}
     {manual && <Button fullWidth variant="contained" sx={{ mt: 2 }} disabled={busy} onClick={() => submit(base + product.id + '/map-devices/',
       { device_ids: devices.map(deviceId), update_type: 'replace' })}>Save device mapping</Button>
     }
@@ -281,5 +322,97 @@ function ProductActions({ scope, product, configs, busy, submit }: { scope: stri
     </Box>}
     {setupOpen && <VendorAuditCategoryDrawer product={product} category={category} configs={configs} scope={scope}
       onClose={() => { setSetupOpen(false); setCategory(product.product_category) }} />}
+    {mappingRulesOpen && <DropdownManagerDialog open onClose={() => setMappingRulesOpen(false)} dropdownConfigs={configs}
+      initialCategoryValue={product.product_category} onConfigChanged={refreshRules} />}
+  </Paper>
+}
+
+function ForceSyncButton({ vendor, busy }: { vendor: string; busy: boolean }) {
+  const queryClient = useQueryClient()
+  const { showSnackbar } = useSnackbar()
+  const sync = useMutation({
+    mutationFn: () => api.post(base + 'vendor-force-sync/', { vendor }),
+    onSuccess: (response) => {
+      showSnackbar(`Full sync started (run ${response.data.run_status}). Products will appear after sync completes.`, 'success')
+      void queryClient.invalidateQueries({ queryKey: ['vendor-audit'] })
+      void queryClient.invalidateQueries({ queryKey: ['vendor-audit-stats'] })
+    },
+    onError: error => showSnackbar(apiError(error), 'error'),
+  })
+  return <Button variant="outlined" color="warning" disabled={busy || sync.isPending}
+    onClick={() => sync.mutate()}>
+    {sync.isPending ? 'Syncing…' : '100% Sync'}
+  </Button>
+}
+
+function LiveApiSearch({ vendor }: { vendor: string }) {
+  const queryClient = useQueryClient()
+  const { showSnackbar } = useSnackbar()
+  const [query, setQuery] = useState('')
+  const [expanded, setExpanded] = useState(false)
+  const [results, setResults] = useState<LiveSearchResult[]>([])
+  const [searchMeta, setSearchMeta] = useState<{ query?: string; total_returned?: number; error?: string } | null>(null)
+  const [expandedPayload, setExpandedPayload] = useState<string | null>(null)
+  const search = useMutation({
+    mutationFn: (q: string) => api.get<{ results: LiveSearchResult[]; query: string; total_returned: number; error?: string }>(
+      base + 'vendor-live-search/', { params: { vendor, q } }),
+    onSuccess: (response) => { setResults(response.data.results || []); setSearchMeta(response.data) },
+    onError: error => { setResults([]); setSearchMeta({ error: apiError(error) }) },
+  })
+  const syncProduct = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => api.post(base + 'vendor-sync-product/', { vendor, payload }),
+    onSuccess: (response) => {
+      const d = response.data
+      showSnackbar(`Synced: ${d.created} created, ${d.updated} updated, ${d.review} review`, 'success')
+      void queryClient.invalidateQueries({ queryKey: ['vendor-audit'] })
+      void queryClient.invalidateQueries({ queryKey: ['vendor-audit-stats'] })
+      void queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+    onError: error => showSnackbar(apiError(error), 'error'),
+  })
+  const busy = search.isPending || syncProduct.isPending
+  return <Paper variant="outlined" sx={{ ...panel, mb: 2 }}>
+    <Button size="small" onClick={() => setExpanded(!expanded)} sx={{ mb: expanded ? 1 : 0 }}>
+      {expanded ? '▾ Live API Search' : '▸ Live API Search — search vendor API by SKU/UID'}
+    </Button>
+    {expanded && <Box>
+      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+        <TextField size="small" label="Search vendor API (SKU / UID / name)" value={query} sx={{ flex: 1 }}
+          disabled={busy} onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && query.trim()) search.mutate(query.trim()) }} />
+        <Button variant="contained" disabled={busy || !query.trim()} onClick={() => search.mutate(query.trim())}>
+          {search.isPending ? <CircularProgress size={20} /> : 'Search'}
+        </Button>
+      </Stack>
+      {searchMeta?.error && <Alert severity="error" sx={{ mb: 1 }}>{searchMeta.error}</Alert>}
+      {searchMeta && !searchMeta.error && <Typography variant="caption" sx={{ mb: 1, display: 'block' }}>
+        {results.length} results returned{searchMeta.total_returned !== undefined ? ` (of ${searchMeta.total_returned} from API)` : ''} for "{searchMeta.query}"
+      </Typography>}
+      {results.length > 0 && <TableContainer sx={{ maxHeight: 400 }}><Table size="small" stickyHeader>
+        <TableHead><TableRow>
+          <TableCell>SKU</TableCell><TableCell>Name</TableCell><TableCell>Brand</TableCell>
+          <TableCell>Category</TableCell><TableCell>In System</TableCell><TableCell>Actions</TableCell>
+        </TableRow></TableHead>
+        <TableBody>{results.map((item, i) => <Fragment key={item.sku + i}><TableRow
+          sx={{ bgcolor: item.in_system ? undefined : alpha('#eab308', .08) }}>
+          <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{item.sku || item.external_id}</TableCell>
+          <TableCell>{item.name}</TableCell><TableCell>{item.brand}</TableCell><TableCell>{item.category}</TableCell>
+          <TableCell>{item.in_system ? <Chip label="Yes" color="success" size="small" /> : <Chip label="Missing" color="warning" size="small" />}</TableCell>
+          <TableCell><Stack direction="row" spacing={.5}>
+            {!item.in_system && <Button size="small" variant="contained" disabled={syncProduct.isPending}
+              onClick={() => syncProduct.mutate(item.payload)}>Sync</Button>}
+            <Button size="small" onClick={() => setExpandedPayload(expandedPayload === item.sku ? null : item.sku)}>
+              {expandedPayload === item.sku ? 'Hide' : 'Payload'}</Button>
+          </Stack></TableCell>
+        </TableRow>
+        {expandedPayload === item.sku && <TableRow><TableCell colSpan={6}>
+          <Box component="pre" sx={{ fontSize: 11, m: 0, p: 1, maxHeight: 300, overflow: 'auto',
+            bgcolor: 'action.hover', borderRadius: 1, whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+            {JSON.stringify(item.payload, null, 2)}
+          </Box>
+        </TableCell></TableRow>}
+        </Fragment>)}</TableBody>
+      </Table></TableContainer>}
+    </Box>}
   </Paper>
 }

@@ -149,6 +149,48 @@ test('failed mutation shows error and keeps review unchanged', async () => {
   assert.equal(h.state.rows[0].review_errors.length, 1)
 })
 
+test('bundle mapping has a direct Hybrid setup action and saves a different canonical model', async () => {
+  await h.reset('?bundle=1')
+  await h.until('document.querySelectorAll(\'[data-testid="audit-product"]\').length===2')
+  await h.click(`[data-product-id="${h.productIds[0]}"]`)
+  await h.button('Configure manual mapping')
+  await h.until('document.body.innerText.includes("Configuring Category:")')
+  assert.equal(h.state.requests.filter(request=>request.method==='PATCH').length,0)
+  assert.equal(await h.evaluate('document.querySelector(\'[role="dialog"]\').innerText.includes("Feature Based")'),true)
+  assert.equal(await h.evaluate('document.querySelector(\'[role="dialog"]\').innerText.includes("every product in Phone Attachments")'),true)
+  await h.select('Compatibility Mode','hybrid')
+  await h.button('Save Configuration')
+  await h.until('!!document.querySelector(\'[data-testid="audit-actions"] input[role="combobox"]\')')
+  await h.chooseDevice('Galaxy Z Fold8','[data-testid="audit-actions"]')
+  await h.button('Save device mapping')
+  await h.until('document.body.innerText.includes("Changes saved.")')
+  const mapping=h.state.requests.find(request=>request.endpoint.endsWith('/map-devices/'))!
+  assert.deepEqual(mapping.body.device_ids,[h.devices[2].id])
+  assert.equal(h.state.rows[0].product_category,'Phone Attachments')
+  assert.deepEqual(h.state.rows[0].payload_devices,[{name:'Galaxy Z Flip8'}])
+  assert.deepEqual(h.state.rows[0].vendor_payload.compatible_devices,[{name:'Galaxy Z Flip8'}])
+  assert.equal(h.state.rows[0].device_assertions[0].device_id,h.devices[2].id)
+  await h.screenshot('vendor-audit-bundle-manual-mapping.png')
+})
+
+test('cancelled or rejected category configuration does not enable manual mapping', async () => {
+  await h.reset('?bundle=1')
+  await h.until('document.querySelectorAll(\'[data-testid="audit-product"]\').length===2')
+  await h.click(`[data-product-id="${h.productIds[0]}"]`)
+  await h.button('Configure manual mapping')
+  await h.until('document.body.innerText.includes("Configuring Category:")')
+  await h.click('[aria-label="Close category configuration"]')
+  await h.until('!document.querySelector(\'[role="dialog"]\')')
+  assert.equal(h.state.requests.filter(request=>request.method==='PATCH').length,0)
+  await h.button('Configure manual mapping')
+  await h.select('Compatibility Mode','hybrid')
+  h.state.failure={endpoint:'/api/v1/catalog/dropdown-configs/config-2/',code:400,data:{detail:'Category rule change rejected'}}
+  await h.button('Save Configuration')
+  await h.until('document.body.innerText.includes("Category rule change rejected")')
+  assert.equal(await h.evaluate('!!document.querySelector(\'[data-testid="audit-actions"] input[role="combobox"]\')'),false)
+  assert.equal(h.state.requests.filter(request=>request.endpoint.endsWith('/map-devices/')).length,0)
+})
+
 test('dark mode narrow layout and buyer guard', async () => {
   await h.reset('?dark=1')
   await h.until('document.querySelectorAll(\'[data-testid="audit-product"]\').length===2')

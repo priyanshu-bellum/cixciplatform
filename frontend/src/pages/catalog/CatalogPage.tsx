@@ -76,9 +76,10 @@ export default function CatalogPage() {
     return 'products'
   })()
   const [tab, setTab] = useState<string>(initialTab)
+  const tabParam = searchParams.get('tab')
   useEffect(() => {
-    if (searchParams.get('tab') === 'vendor-audit' && user?.is_cixci_admin) setTab('vendor-audit')
-  }, [searchParams, user?.is_cixci_admin])
+    if (tabParam === 'vendor-audit' && user?.is_cixci_admin) setTab('vendor-audit')
+  }, [tabParam, user?.is_cixci_admin])
 
   // Modal orchestration
   const [showAddDialog, setShowAddDialog] = useState(false)

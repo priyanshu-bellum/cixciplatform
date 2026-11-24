@@ -9,6 +9,7 @@ export const vendorId = '00000000-0000-4000-8000-000000000001'
 export const phoneTypeId = '00000000-0000-4000-8000-000000000006'
 export const productIds = [2, 3].map(n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`)
 export const devices = [4, 5].map((n, i) => ({ id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, name: 'Model ' + (i ? 'Beta' : 'Alpha'), manufacturer_name: 'Audit Maker', device_type: phoneTypeId }))
+  .concat([{ id: '00000000-0000-4000-8000-000000000007', name: 'Galaxy Z Fold8', manufacturer_name: 'Samsung', device_type: phoneTypeId }])
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const output = path.join(root, '.local-copy/vendor-audit-ui')
@@ -130,7 +131,12 @@ export async function createAuditBrowser() {
         accessory_fields:index===3?['compatible_charging_interface','bluetooth_compatibility']:[],
         compatibility_rules:index===3?{compatible_charging_interface:{mode:'required',comparison:'informational'},bluetooth_compatibility:{mode:'required',comparison:'informational'}}:{}
       })).concat([{id:'color-black',field_name:'system_color',value:'Black',status:'active'},{id:'color-blue',field_name:'system_color',value:'Blue',status:'active'}])
-      if(query.includes('feature=1')){state.rows[0].product_category='Phone Attachments';state.rows[0].review_errors=[]}
+      if(query.includes('feature=1') || query.includes('bundle=1')){state.rows[0].product_category='Phone Attachments';state.rows[0].review_errors=[]}
+      if(query.includes('bundle=1')){
+        state.rows[0].name='Nimbus9 Alto 2 + Power Bank Bundle for Galaxy Z Flip8'
+        state.rows[0].payload_devices=[{name:'Galaxy Z Flip8'}]
+        state.rows[0].vendor_payload.compatible_devices=[{name:'Galaxy Z Flip8'}]
+      }
       await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
       await call('Page.navigate', { url: `http://127.0.0.1:${port}/tests/vendor-audit.html${query}` })
       await until('!!document.querySelector(\'[data-testid="vendor-audit"]\') || document.body.innerText.includes("requires CIXCI")')
@@ -148,7 +154,9 @@ export async function createAuditBrowser() {
     }
     const fill = async (selector, value) => evaluate(`(()=>{const node=document.querySelector(${JSON.stringify(selector)});if(!node)throw new Error('Input not found');node.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(node,${JSON.stringify(value)});node.dispatchEvent(new Event('input',{bubbles:true}));return true})()`)
     const chooseDevice = async (name, scope = '') => {
-      await fill((scope ? scope + ' ' : '') + 'input[role="combobox"]', name)
+      const selector = (scope ? scope + ' ' : '') + 'input[role="combobox"]'
+      await until(`!!document.querySelector(${JSON.stringify(selector)})`)
+      await fill(selector, name)
       await until(`[...document.querySelectorAll('[role="option"]')].some(node=>node.textContent.includes(${JSON.stringify(name)}))`)
       await evaluate(`(()=>{[...document.querySelectorAll('[role="option"]')].find(node=>node.textContent.includes(${JSON.stringify(name)})).click();return true})()`)
     }

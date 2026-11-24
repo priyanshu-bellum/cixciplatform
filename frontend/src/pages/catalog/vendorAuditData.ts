@@ -16,6 +16,10 @@ export interface AuditWriteResult { device_count?: number; unapplied_device_ids?
   protected_device_ids?: string[]; failures?: { product_id: string; errors: unknown }[];
   results?: { product_id: string; unapplied_device_ids?: string[]; pending_device_ids?: string[]; protected_device_ids?: string[] }[] }
 export type AuditSubmit = (path: string, body: AuditWriteBody, method?: 'post' | 'patch') => void
+export interface LiveSearchResult {
+  sku: string; external_id: string; name: string; brand: string; category: string
+  in_system: boolean; payload: Record<string, unknown>
+}
 export interface AuditProduct {
   id: string; name: string; sku: string; brand: string; brand_reference?: string
   product_category: string; product_category_override?: string; system_color: string; status: string; compatibility_mode: string
