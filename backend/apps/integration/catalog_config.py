@@ -94,7 +94,7 @@ def path_value(data, path, default=None):
 
 
 def validate_config(value):
-    if not isinstance(value, dict) or set(value) - set(BALAJI_CONFIG) - {"page_param", "offset_param", "has_more_path", "updated_since_param", "compatibility"}:
+    if not isinstance(value, dict) or set(value) - set(BALAJI_CONFIG) - {"page_param", "offset_param", "has_more_path", "updated_since_param", "compatibility", "search_param"}:
         raise ValidationError("Use the supported catalog configuration fields.")
     config = deepcopy(value)
     if config.get("version") != 1 or config.get("pagination") not in ("cursor", "page", "offset", "none"):
@@ -107,7 +107,7 @@ def validate_config(value):
         raise ValidationError("Cursor pagination needs a next-cursor response path.")
     if config["pagination"] in ("page", "offset") and not config.get("has_more_path"):
         raise ValidationError("Page/offset pagination requires the provider's explicit has-more response field.")
-    for key in ("cursor_param", "limit_param", "page_param", "offset_param", "updated_since_param"):
+    for key in ("cursor_param", "limit_param", "page_param", "offset_param", "updated_since_param", "search_param"):
         if key in config and (not isinstance(config[key], str) or not PARAM.fullmatch(config[key])):
             raise ValidationError(f"Invalid query parameter: {key}.")
     for key, ceiling in (("page_size", 500), ("daily_row_limit", 100000), ("daily_request_limit", 50000), ("requests_per_minute", 120)):

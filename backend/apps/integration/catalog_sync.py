@@ -38,7 +38,7 @@ def _publish_after_commit(run_id, delay=0):
 
 
 @transaction.atomic
-def request_sync(connection, actor=None, trigger="manual"):
+def request_sync(connection, actor=None, trigger="manual", *, force_full=False):
     connection = VendorCatalogConnection.objects.select_for_update(of=("self",)).select_related("vendor_company").get(pk=connection.pk)
     if connection.is_retired or saved_integration_mode(connection.vendor_company) != "api":
         raise ValueError("Save the Vendor Company Profile in API Integration Mode before synchronizing.")
@@ -48,8 +48,11 @@ def request_sync(connection, actor=None, trigger="manual"):
     existing = connection.sync_runs.filter(status__in=ACTIVE).first()
     if existing:
         return existing
+    if force_full and connection.last_watermark:
+        connection.last_watermark = ""
+        connection.save(update_fields=["last_watermark", "updated_at"])
     run = VendorCatalogSyncRun.objects.create(connection=connection, requested_by=actor, trigger=trigger, config_version=connection.config_version)
-    audit("requested", connection, actor, run_id=run.id, trigger=trigger)
+    audit("requested", connection, actor, run_id=run.id, trigger=trigger, force_full=force_full)
     _publish_after_commit(run.id)
     return run
 

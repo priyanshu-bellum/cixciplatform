@@ -152,3 +152,75 @@ def resolve_product_review(product, actor):
     if sources:
         record_action(product,actor,'review_resolved',before=before,after={'review_required':False,'review_errors':[]})
     return len(sources)
+
+
+def live_api_search(connection, query, actor):
+    from apps.integration.catalog_config import validate_config, path_value
+    from apps.integration.catalog_transport import fetch_json
+    from apps.integration.catalog_import import mapped_values
+    from apps.integration.catalog_secrets import redact, decrypt_credentials
+    from apps.integration.catalog_sync import catalog_request_params, _reserve_request
+
+    config = validate_config(connection.config)
+    search_param = config.get('search_param', 'search')
+    params = catalog_request_params(config, limit=min(25, config['page_size']))
+    params[search_param] = query
+    _reserve_request(connection)
+    payload = fetch_json(connection, params)
+    if config.get('success_path') and path_value(payload, config['success_path']) is not True:
+        return {'results': [], 'error': 'Provider reported failure'}
+    items = path_value(payload, config['items_path'])
+    if not isinstance(items, list):
+        return {'results': [], 'error': 'Invalid response shape'}
+
+    credential = decrypt_credentials(connection) if connection.encrypted_credentials else {}
+    secrets = [str(v) for v in credential.values() if v]
+    results = []
+    existing_skus = set(Product.objects.filter(
+        vendor_company_reference=connection.vendor_company_id
+    ).values_list('sku', flat=True))
+    existing_sources = set(VendorCatalogItem.objects.filter(
+        connection=connection
+    ).values_list('external_id', flat=True))
+
+    for item in items[:25]:
+        safe = redact(item, secrets)
+        fields, _ = mapped_values(safe, config)
+        sku = str(fields.get('sku', ''))
+        ext_id = str(fields.get('external_id', ''))
+        in_system = sku in existing_skus or ext_id in existing_sources
+        results.append({
+            'sku': sku,
+            'external_id': ext_id,
+            'name': str(fields.get('name', '')),
+            'brand': str(fields.get('brand', '')),
+            'category': str(fields.get('vendor_category', '')),
+            'in_system': in_system,
+            'payload': safe,
+        })
+    return {'results': results, 'query': query, 'total_returned': len(items)}
+
+
+def sync_single_product(connection, payload, actor):
+    from apps.integration.catalog_import import ingest_rows
+    from apps.integration.models import VendorCatalogSyncRun
+
+    run = VendorCatalogSyncRun.objects.create(
+        connection=connection, requested_by=actor,
+        trigger='live_search', config_version=connection.config_version)
+    from apps.catalog.services import defer_buyer_projection_refresh
+    with defer_buyer_projection_refresh():
+        counts, deferred = ingest_rows(connection, run, [payload], actor)
+    run.rows_seen = 1
+    for name, value in counts.items():
+        setattr(run, name, value)
+    run.status = 'completed'
+    from django.utils import timezone as tz
+    run.completed_at = tz.now()
+    run.save()
+    if deferred:
+        from apps.integration.catalog_sync import _process_deferred_images
+        _process_deferred_images(deferred)
+    return {'status': 'ok', 'created': counts.get('created_count', 0),
+            'updated': counts.get('updated_count', 0),
+            'review': counts.get('review_count', 0)}

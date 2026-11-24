@@ -1262,6 +1262,9 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "bulk_map_devices": "catalog.product.update",
         "resolve_review": "catalog.product.update",
         "bulk_resolve_review": "catalog.product.update",
+        "vendor_live_search": "catalog.product.list",
+        "vendor_sync_product": "catalog.product.update",
+        "vendor_force_sync": "catalog.product.update",
     }
 
     def get_throttles(self):
@@ -1286,7 +1289,8 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     def check_permissions(self, request):
         super().check_permissions(request)
         if self.action in {'vendor_audit','vendor_audit_stats','map_devices',
-                'bulk_map_devices','resolve_review','bulk_resolve_review'} and not request.user.is_cixci_admin:
+                'bulk_map_devices','resolve_review','bulk_resolve_review',
+                'vendor_live_search','vendor_sync_product','vendor_force_sync'} and not request.user.is_cixci_admin:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Vendor product audit requires CIXCI System Admin authority.')
         if self.action in ["create", "update", "partial_update", "destroy", "bulk_upload"]:
@@ -1728,6 +1732,60 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             from .services import invalidate_buyer_projection_cache
             invalidate_buyer_projection_cache('vendor_audit_bulk_review_resolved')
         return Response({'status':'ok','cleared':cleared})
+
+    @action(detail=False, methods=['get'], url_path='vendor-live-search')
+    def vendor_live_search(self, request):
+        from apps.integration.models import VendorCatalogConnection
+        from .vendor_audit import live_api_search
+        from apps.integration.catalog_transport import CatalogTransportError
+        vendor_id = request.query_params.get('vendor')
+        query = request.query_params.get('q', '').strip()
+        if not vendor_id or not query:
+            return Response({'error': 'vendor and q parameters are required.'}, status=400)
+        connection = VendorCatalogConnection.objects.filter(
+            vendor_company_id=vendor_id, is_retired=False
+        ).select_related('vendor_company').order_by('-updated_at').first()
+        if not connection:
+            return Response({'error': 'No active API connection for this vendor.'}, status=404)
+        try:
+            result = live_api_search(connection, query, request.user)
+        except CatalogTransportError as error:
+            return Response({'error': f'Vendor API error: {error.code}', 'results': []}, status=502)
+        return Response(result)
+
+    @action(detail=False, methods=['post'], url_path='vendor-sync-product')
+    def vendor_sync_product(self, request):
+        from apps.integration.models import VendorCatalogConnection
+        from .vendor_audit import sync_single_product
+        vendor_id = request.data.get('vendor')
+        payload = request.data.get('payload')
+        if not vendor_id or not payload or not isinstance(payload, dict):
+            return Response({'error': 'vendor and payload are required.'}, status=400)
+        connection = VendorCatalogConnection.objects.filter(
+            vendor_company_id=vendor_id, is_retired=False
+        ).select_related('vendor_company').order_by('-updated_at').first()
+        if not connection:
+            return Response({'error': 'No active API connection for this vendor.'}, status=404)
+        result = sync_single_product(connection, payload, request.user)
+        return Response(result)
+
+    @action(detail=False, methods=['post'], url_path='vendor-force-sync')
+    def vendor_force_sync(self, request):
+        from apps.integration.models import VendorCatalogConnection
+        from apps.integration.catalog_sync import request_sync
+        vendor_id = request.data.get('vendor')
+        if not vendor_id:
+            return Response({'error': 'vendor is required.'}, status=400)
+        connection = VendorCatalogConnection.objects.filter(
+            vendor_company_id=vendor_id, is_retired=False
+        ).select_related('vendor_company').order_by('-updated_at').first()
+        if not connection:
+            return Response({'error': 'No active API connection for this vendor.'}, status=404)
+        try:
+            run = request_sync(connection, request.user, trigger='manual', force_full=True)
+        except (ValueError, Exception) as error:
+            return Response({'error': str(error)}, status=400)
+        return Response({'status': 'ok', 'run_id': str(run.pk), 'run_status': run.status})
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
