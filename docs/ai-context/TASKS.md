@@ -1,8 +1,40 @@
 # Persistent tasks
 
-Latest completion: TASK-015 (vendor product audit, three local phase commits).
+Latest completion: TASK-016 (direct governed manual device mapping setup).
 Open follow-up: TASK-014 (provider mappings/images and remote test diagnostics).
 TASK-002–008 record earlier discoveries. IDs are permanent.
+
+## TASK-016 — Make governed manual device mapping discoverable
+
+- Status: completed
+- Related features: CAT-002, CMP-001/002, UI-001; BR-CAT-003.
+- Trigger: Nimbus9 bundle in Phone Attachments has an archived vendor model
+  assertion and Feature Based category; the audit panel hides the model selector
+  behind a nested setup/rules path, making the supported Hybrid workflow unclear.
+- Acceptance: direct mapping-section entry to the existing category rule editor;
+  no automatic global rule changes. Explicit Hybrid save reveals the searchable
+  canonical picker immediately; selecting a different model saves its UUID while
+  preserving raw vendor observations, exclusions and locks. Cancel/failure does
+  not pretend mapping is enabled. Existing Universal/category flows remain valid.
+- Plan: inspect product/config and callers → direct rule-editor action + scoped
+  cache refresh → browser regression including cancel and different model → local
+  frontend build/restart and memory validation. No dependencies or API/schema changes.
+- Verified discovery: local Phone Attachments is active/feature_based with phone
+  and smartwatch eligibility; the reported Flip8 bundle has an Archived assertion,
+  not an exclusion/lock. Canonical Galaxy Z Fold8 is available. Reads only so far;
+  physical Fold compatibility is the admin's assertion, not inferred from its name.
+- Implementation: direct category-editor action, shared-rule scope notice and cache
+  refresh; no bypass or automatic business configuration changes. Two new browser
+  cases exercise different-device selection and safe cancelled/rejected edits.
+- Verification: 13/13 browser tests, 19/19 isolated SQLite audit API tests, targeted
+  audit UI/test lint and TypeScript/Vite/Docker builds pass. Initial run exposed a
+  form-loading race in the test helper; fixed readiness check, full rerun passed.
+  Local frontend image 400041945104 active, frontend/backend HTTP 200, DB/Redis
+  healthy. Fresh inventory/memory check 0 errors/warnings; final diff reviewed.
+- Remaining: none for the UI fix. Admin must explicitly save the shared category
+  configuration and assert the desired canonical model; no automatic remap was
+  performed. Follow-up changes are uncommitted; no push/live operations. TASK-014
+  data repair and test VM verification remain separate and open.
 
 ## TASK-015 — Vendor product audit and onboarding
 

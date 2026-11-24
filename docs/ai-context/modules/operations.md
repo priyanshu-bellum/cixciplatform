@@ -3,6 +3,12 @@
 Purpose: process entry/configuration, storage/cache/queue topology and safe local
 verification. Related features UI-001, INT-002/003/004, MED-001, MEM-001.
 
+Latest local operation (TASK-016, 2026-11-22): frontend rebuilt and recreated alone;
+active image 400041945104 includes direct manual-mapping setup. Frontend GET and
+backend login OPTIONS 200; DB/Redis healthy. Backend source unchanged. Product and
+category diagnosis used read-only SQL; no actual catalog remap/config update, jobs
+or remote deployment. Browser mapping mutations were fixture-only.
+
 TASK-015 local verification (2026-11-22): existing local-copy stack started with
 up --no-build, then frontend rebuilt and force-recreated alone. Active frontend
 image 2a0c8685d5d2 includes the final category/Universal panel and responsive tabs;

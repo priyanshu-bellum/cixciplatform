@@ -1,5 +1,32 @@
 # Memory verification and maintenance
 
+## TASK-016 — Direct manual mapping setup — 2026-11-22
+
+- Local read-only diagnosis confirmed Phone Attachments/Feature Based with an
+  Archived, unlocked/nonexcluded imported assertion on the reported Nimbus9 bundle;
+  Galaxy Z Fold8 exists/available in the canonical Device Catalog. No physical fit
+  inferred, no real category setting or product mapping was changed by the agent.
+- `npm test` with existing CIXCI_QA_CHROME: 13/13 pass, 55.30s. Two new cases cover
+  direct category editing → explicit Hybrid → a different canonical Fold8 model,
+  source payload preservation, cancel and rejected configuration save. Initial
+  12/13 run exposed test helper input-loading race; added selector readiness and
+  reran the full UI suite. Logs task016-ui.log and task016-ui-final.log are ignored.
+- `DJANGO_SETTINGS_MODULE=config.test_settings python manage.py test tests.test_vendor_audit_api --noinput --verbosity 1`:
+  19/19 pass, 6.49s. Existing API consumer regressions, no backend source changes.
+- Targeted eslint on VendorAuditTab.tsx and its TSX test: exit 0. `npm run build`
+  and local-copy frontend Docker build pass. Existing bundle/performance warnings
+  are nonblocking; no full-repository lint or full release-suite claim.
+- Only local frontend recreated; active image 400041945104, frontend GET/backend
+  login OPTIONS 200, DB/Redis healthy. Served bundle includes direct mapping CTA.
+- Fresh SQL-blocked inventory collected in inventory-task016.json. Initial memory
+  gate detected catalog consumer metadata drift from the new test endpoint text;
+  refreshed only catalog reference, reviewed diff, then 0 errors/warnings. No route,
+  model or schema changed. Diff check passes. Scratch/logs/screenshots stay ignored.
+- Scope: UI behavior tested with fixture-backed browser API; real data diagnosis
+  read-only. Admin must explicitly save category rules before model selection.
+  Source/tests/docs remain uncommitted follow-up changes; no push/live/test VM work.
+  TASK-014 and ISSUE-013/014 are still open; do not claim all catalog data repaired.
+
 ## TASK-015 final audit feature verification — 2026-11-22
 
 Phase 1 local commit 86cd89d; phase 2 5e1d544. Phase 3 follows with the requested

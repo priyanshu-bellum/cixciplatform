@@ -1,6 +1,20 @@
 # Session handoff
 
-Active task: TASK-015 — completed.
+Active task: TASK-016 — in_progress.
+
+Current objective: direct "Configure manual mapping" action in Vendor Audit's
+mapping panel, using the existing category editor. Phone Attachments is Feature
+Based; reported bundle's imported model is Archived, not protected. Canonical
+Galaxy Z Fold8 exists/available. Only local read-only diagnosis so far; do not infer
+physical fit or silently change the shared category. Previous user policy requires
+explicit Hybrid before manual models (BR-CAT-003).
+
+Next: targeted frontend action + category/cache refresh; regression opens direct
+editor, verifies cancel/no writes, explicitly selects Hybrid then different device
+and saves canonical UUID. Build/recreate only local frontend; preserve no-push/live
+constraints. See TASK-016; private diagnostic inspect-manual-mapping.py is ignored.
+
+Prior completed work and verification (TASK-015):
 
 Objective: three local audit feature commits with supplied titles and
 Co-Authored-By trailer, never push. Phase 1 86cd89d; phase 2 5e1d544; identify phase

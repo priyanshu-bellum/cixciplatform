@@ -224,3 +224,5 @@ backend/media/
 
 # Private local database copies, dump files, and local PostgreSQL credentials
 /.local-copy/
+docker-compose.override.yml
+docker-compose.dev.yml

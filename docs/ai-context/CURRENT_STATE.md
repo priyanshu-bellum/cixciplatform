@@ -1,13 +1,23 @@
 # Current state
 
-Active task: TASK-015 — completed.
+Active task: TASK-016 — completed.
+
+Latest fix (2026-11-22): Vendor Audit's mapping panel now has a direct Configure
+manual mapping action into the shared category editor. The reported Nimbus9 bundle
+is Phone Attachments/Feature Based with archived imported evidence. Explicit Hybrid
+save reveals the canonical picker immediately; source payloads remain separate.
+Preserves BR-CAT-003; no automatic global rule change or actual local product remap.
+Checks: 13/13 browser tests, 19/19 audit API tests, targeted UI/test lint and frontend
+TypeScript/Vite/Docker builds pass. Fresh inventory memory check: 0 errors/warnings.
+Local frontend image 400041945104 is running; frontend/backend HTTP 200, DB/Redis
+healthy. Follow-up source/tests/docs are uncommitted; no push or remote operation.
 
 Updated 2026-11-22. Vendor Product Audit phases 1/2 are local commits 86cd89d and
 5e1d544; phase 3 implements the admin tab, category/rule side panel, manual Hybrid
 mapping and explicit per-product Universal controls. No push or VM deployment.
 Use /catalog?tab=vendor-audit on local admin login; buyer roles remain excluded.
 
-Current verification: 26 Django/SQLite + 26 isolated PostgreSQL + 11 browser tests
+Earlier TASK-015 verification: 26 Django/SQLite + 26 isolated PostgreSQL + 11 browser tests
 pass; targeted new-UI lint and frontend builds pass. Real local admin audit APIs
 and Telco/Kaseory buyer API/UI pass. Fresh inventory/memory final gate is recorded
 in VERIFICATION.md. No schema/dependency additions. Full suite is not green:

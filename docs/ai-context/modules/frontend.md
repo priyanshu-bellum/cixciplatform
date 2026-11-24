@@ -17,7 +17,7 @@ bulk failures stay selected for retry; errors/protected mappings are reported.
 Category saves set the existing admin override so a later supplier sync respects it;
 colors use approved active dropdowns. Breakpoints stack columns on small screens.
 
-`npm test` now runs eleven real Chromium tests from
+`npm test` now runs 13 real Chromium tests from
 [VendorAuditTab.test.tsx](../../../frontend/src/pages/catalog/__tests__/VendorAuditTab.test.tsx).
 Set CIXCI_QA_CHROME to an installed browser executable. The dependency-free
 [runner](../../../scripts/run-vendor-audit-tests.mjs) uses installed TypeScript and
@@ -37,6 +37,18 @@ to open the audited rule editor directly. User confirmation requires Hybrid for
 Feature Based manual mapping; no per-product override or automatic global change.
 Shared [device picker](../../../frontend/src/pages/catalog/VendorAuditDevicePicker.tsx)
 filters by eligible type when provided. Catalog tabs scroll on narrow screens.
+
+TASK-016 adds a direct **Configure manual mapping** action when a direct-device
+product's category currently blocks model selection. It opens the existing
+DropdownManagerDialog on that category; its existing mode is retained until the
+admin explicitly saves a change. The panel/editor disclose that category rules
+apply to every product in that category. After a successful save, dropdown options,
+audit list/stats/detail and compatibility/catalog queries are invalidated so the
+canonical picker appears immediately for Device Specific/Hybrid. Cancel and API
+failure retain the prior gating. No product/category records are changed merely
+by opening the editor. Source payloads remain separate from admin model choices.
+The UI suite now contains 13 cases including the reported Flip8 bundle → Fold8
+choice, cancel and rejected configuration save. No new dependencies or API/schema.
 
 ## Entry points, workflow and files
 

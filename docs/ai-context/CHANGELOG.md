@@ -68,6 +68,30 @@ chronologically with task, reason, files/features/contracts, verification and ri
 - Remaining: ISSUE-013/014 and TASK-014 import/image/server follow-up. No push or
   test/live deployment; no claim that the full pre-existing suite is green.
 
+## 2026-11-22 — TASK-016 — Direct manual model mapping setup
+
+- Trigger/root cause: Phone Attachments is Feature Based; imported explicit model
+  evidence is Archived under that rule. The audit picker was gated correctly but
+  its category/rules editing path was too indirect for the reported Nimbus9 bundle.
+- Change: mapping section opens the existing category editor directly. Explicit
+  Device Specific/Hybrid save refreshes config/audit/compatibility consumers and
+  reveals the canonical picker; shared rule scope is disclosed in both places.
+  No automatic category-mode change, per-product bypass or guessed device match.
+- Files: VendorAuditTab.tsx, DropdownManagerDialog.tsx, VendorAuditTab.test.tsx,
+  vendor-audit-browser.mjs; affected feature/module/map/state/handoff/verification
+  records. Mechanical catalog consumer reference refreshed for the new test caller.
+- APIs/database: unchanged contracts/schema; no actual source/product/category
+  mutations during diagnosis or tests. Manual choices retain raw source payload.
+- Verification: 13/13 browser tests including different Fold8 model, cancellation
+  and rejected rule save; 19/19 audit API tests in SQLite. Targeted UI/test lint,
+  TypeScript/Vite/Docker builds, fresh inventory memory validation and diff check
+  pass. Initial UI run was 12/13 due to test-input readiness, corrected and rerun.
+- Local frontend image 400041945104 active; frontend/backend HTTP 200, DB/Redis
+  healthy. No new dependency, commit, push or remote deployment in this follow-up.
+- Risks/remaining: global rule edits affect all products in that category; admin
+  must deliberately save Hybrid and confirm physical model compatibility. TASK-014
+  import/media issues and remote verification remain open.
+
 ## 2026-11-19 — TASK-001 — Repository memory initialization
 
 - Reason: agents need persistent source-backed context across independent/reset sessions.
