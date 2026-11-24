@@ -13,7 +13,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: cixci_backend_${ENV_NAME}
-    command: daphne -b 0.0.0.0 -p 8000 config.asgi:application
+    command: daphne -b 0.0.0.0 -p 8000 --proxy-headers -t 60 config.asgi:application
     volumes:
       - ./backend:/app
     ports:
@@ -38,6 +38,12 @@ services:
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@cixci.com}
       - VENDOR_CATALOG_ENCRYPTION_KEYS=${VENDOR_CATALOG_ENCRYPTION_KEYS:-}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       - redis
     restart: always

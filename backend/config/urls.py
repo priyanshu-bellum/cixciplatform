@@ -3,7 +3,17 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
+from django.db import connection
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+
+
+def health_check(request):
+    try:
+        connection.ensure_connection()
+        return JsonResponse({"status": "ok"})
+    except Exception:
+        return JsonResponse({"status": "error", "detail": "db unavailable"}, status=503)
 
 # Phase 1 — Foundation
 from apps.tenant.urls.auth import urlpatterns as auth_urls
@@ -758,6 +768,7 @@ class BuyerSchemaView(APIView):
 from apps.media.views import MediaProxyView
 
 urlpatterns = [
+    path("health/",         health_check, name="health-check"),
     path("admin/",          admin.site.urls),
     path("api/v1/",         include(api_v1)),
     path("api/img/<str:code>", MediaProxyView.as_view(), name="media-short-url"),
