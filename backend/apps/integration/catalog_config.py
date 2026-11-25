@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 BALAJI_CONFIG = {
     "version": 1,
     "items_path": "data.items", "next_cursor_path": "data.next_cursor", "watermark_path": "data.next_updated_since",
-    "success_path": "success", "pagination": "cursor", "cursor_param": "cursor", "limit_param": "limit", "updated_since_param": "updated_since", "page_size": 200,
+    "success_path": "success", "pagination": "cursor", "cursor_param": "cursor", "limit_param": "limit", "updated_since_param": "updated_since", "search_param": "sku", "page_size": 200,
     "daily_row_limit": 100000, "daily_request_limit": 50000, "requests_per_minute": 120, "budget_timezone": "America/Los_Angeles",
     "fields": {"external_id": {"path": "sku"}, "sku": {"path": "sku"}, "name": {"path": "name"}, "series": {"path": "series"},
         "brand": {"path": "brand"}, "upc": {"path": "upc"}, "description": {"path": "description"}, "description_features": {"path": "features"},

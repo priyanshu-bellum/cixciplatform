@@ -162,6 +162,11 @@ def live_api_search(connection, query, actor):
     from apps.integration.catalog_sync import catalog_request_params, _reserve_request
 
     config = validate_config(connection.config)
+    if 'search_param' not in config:
+        from apps.integration.catalog_config import BALAJI_CONFIG
+        from urllib.parse import urlsplit
+        if urlsplit(connection.endpoint_url).hostname == 'shop.balajibrands.com':
+            config['search_param'] = BALAJI_CONFIG.get('search_param', 'sku')
     search_param = config.get('search_param', 'search')
     params = catalog_request_params(config, limit=min(25, config['page_size']))
     params[search_param] = query

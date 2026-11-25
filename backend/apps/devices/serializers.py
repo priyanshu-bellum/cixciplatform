@@ -42,10 +42,6 @@ class DeviceTypeSerializer(serializers.ModelSerializer):
                 duplicates = duplicates.exclude(pk=self.instance.pk)
             if duplicates.exists():
                 raise serializers.ValidationError({"code": "This canonical Device Type code already exists."})
-            from apps.catalog.compatibility_contract import CURRENT_DEVICE_TYPE_CODES
-            code = data.get("code", self.instance.code if self.instance else "")
-            if code not in CURRENT_DEVICE_TYPE_CODES and (self.instance is None or data.get("status", self.instance.status) == "active"):
-                raise serializers.ValidationError({"code": "Current eligible types are Phone, Tablet and Smartwatch. Preserve other historical types as inactive."})
 
         from apps.catalog.compatibility_contract import normalized_rules, COMPATIBILITY_FIELDS, ENTRY_MODES, canonical_field
         from apps.catalog.compatibility_values import normalized_value, normalized_wireless
@@ -198,10 +194,7 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"device_type": f"Device Type '{device_type.name}' is not Active."})
 
         from django.core.exceptions import ValidationError as CompatibilityValidationError
-        from apps.catalog.compatibility_contract import CURRENT_DEVICE_TYPE_CODES
         from apps.catalog.compatibility_values import validate_compatibility_values
-        if device_type.code not in CURRENT_DEVICE_TYPE_CODES:
-            raise serializers.ValidationError({'device_type': 'Select Phone, Tablet or Smartwatch for current device entry.'})
         try:
             validate_compatibility_values(attrs, instance=self.instance, rules=device_type.compatibility_rules, device_type=device_type)
         except CompatibilityValidationError as error:

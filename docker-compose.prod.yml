@@ -13,7 +13,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: cixci_backend_${ENV_NAME}
-    command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --timeout-keep-alive 65
+    command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 6 --proxy-headers --timeout-keep-alive 65 --limit-concurrency 100
     volumes:
       - ./backend:/app
     ports:

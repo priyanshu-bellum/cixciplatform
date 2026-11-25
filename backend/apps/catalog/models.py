@@ -173,7 +173,7 @@ class Product(models.Model):
     vendor_wholesale_price_currency = models.CharField(max_length=3, default="USD")
 
     # Media references (Media module owns actual assets)
-    primary_image_reference = models.UUIDField(null=True, blank=True)
+    primary_image_reference = models.UUIDField(null=True, blank=True, db_index=True)
     media_references = models.JSONField(default=list)
 
     # Extended attributes from XLSX templates
@@ -955,6 +955,9 @@ class ProductCompatibilityAssertion(models.Model):
     class Meta:
         db_table = "catalog_product_compatibility"
         unique_together = [("product", "device_reference")]
+        indexes = [
+            models.Index(fields=["device_reference", "is_compatible", "is_excluded", "product"], name="compat_device_lookup_idx"),
+        ]
 
 
 

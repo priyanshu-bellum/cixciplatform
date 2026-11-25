@@ -1540,7 +1540,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 mime_type__in=["image/png", "image/jpeg"],
                 review_status="approved",
             ).values_list("id", flat=True)
-            qs = qs.filter(primary_image_reference__in=list(ready_asset_ids))
+            qs = qs.filter(primary_image_reference__in=ready_asset_ids)
 
         if company.company_type == "buyer":
             from apps.integration.models import CompanyAPIKey
@@ -3260,14 +3260,15 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                         product.selling_status = "for_sale" if final_status == "active" else "not_for_sale"
                 
                 try:
-                    from apps.catalog.compatibility_import import apply_import_values
-                    apply_import_values(product, row_compatibility_values, row_universal_device_types, cat_cfg, compatibility_update_type)
-                    product.save(actor_id=request.user.id)
-                    if row_device_ids:
-                        from apps.catalog.compatibility_commands import update_explicit_selections
-                        selections = [{"device_id": identifier, "exclusion_reason": row.get("exclusionreason"), "notes": row.get("exclusionnotes", "")} for identifier in row_device_ids] if compatibility_update_type == "remove" else row_device_ids
-                        update_explicit_selections(product, selections, request.user,
-                            update_type=compatibility_update_type, basis="imported", change_source="Bulk Import")
+                    with transaction.atomic():
+                        from apps.catalog.compatibility_import import apply_import_values
+                        apply_import_values(product, row_compatibility_values, row_universal_device_types, cat_cfg, compatibility_update_type)
+                        product.save(actor_id=request.user.id)
+                        if row_device_ids:
+                            from apps.catalog.compatibility_commands import update_explicit_selections
+                            selections = [{"device_id": identifier, "exclusion_reason": row.get("exclusionreason"), "notes": row.get("exclusionnotes", "")} for identifier in row_device_ids] if compatibility_update_type == "remove" else row_device_ids
+                            update_explicit_selections(product, selections, request.user,
+                                update_type=compatibility_update_type, basis="imported", change_source="Bulk Import")
                 except Exception as ve:
                     from django.core.exceptions import ValidationError as DjangoValidationError
                     if "ValidationError" in ve.__class__.__name__ or isinstance(ve, DjangoValidationError):

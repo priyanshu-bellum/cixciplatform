@@ -599,14 +599,11 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 t_lower = t_val.lower()
                 if t_lower == 'smartphone':
                     t_lower = 'phone'
-                if t_lower not in ['phone', 'tablet', 'smartwatch', 'laptop', 'watch']:
-                    row_errors["Device Type"] = "Device Type must be Phone, Tablet, Smartwatch or Laptop."
-                else:
-                    t_obj = device_types_by_name.get(t_lower)
-                    if not t_obj:
-                        row_errors["Device Type"] = f"Device Type '{t_val}' does not exist."
-                    elif not t_obj.is_active or t_obj.status != 'active':
-                        row_errors["Device Type"] = f"Device Type '{t_val}' is in {t_obj.status} status and must be configured/Active before it can be used."
+                t_obj = device_types_by_name.get(t_lower)
+                if not t_obj:
+                    row_errors["Device Type"] = f"Device Type '{t_val}' does not exist. Create it first in Device Types management."
+                elif not t_obj.is_active or t_obj.status != 'active':
+                    row_errors["Device Type"] = f"Device Type '{t_val}' is in {t_obj.status} status and must be configured/Active before it can be used."
 
             if not name_val:
                 row_errors["Device Name"] = "Device Name is required."
