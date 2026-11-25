@@ -17,7 +17,7 @@ import VendorAuditCategoryDrawer from './VendorAuditCategoryDrawer'
 import DropdownManagerDialog from './dialogs/DropdownManagerDialog'
 import { auditColors, auditLabels, comparable, deviceId, responseRows } from './vendorAuditData'
 import type { AuditConfig, AuditDevice, AuditPage, AuditProduct, AuditStats, AuditStatus, AuditSubmit,
-  AuditUser, AuditVendor, AuditWriteBody, AuditWriteResult, LiveSearchResult } from './vendorAuditData'
+  AuditUser, AuditVendor, AuditWriteBody, AuditWriteResult, LastSyncInfo, LiveSearchResult } from './vendorAuditData'
 
 interface VendorAuditTabProps { user: AuditUser; dropdownConfigs: AuditConfig[] }
 const base = '/catalog/products/'
@@ -133,20 +133,24 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
       <ExportCsvButton rows={rows} disabled={busy} />
     </Stack>
     <Stack direction="row" spacing={1} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }}>
-      {(['all', 'review', 'no_devices', 'no_image', 'ok'] as const).map(value => <Chip key={value}
-        label={value === 'all' ? 'All' : auditLabels[value]} color={value === 'all' ? 'default' : auditColors[value]}
+      {(['all', 'new', 'review', 'no_devices', 'no_image', 'ok'] as const).map(value => <Chip key={value}
+        label={value === 'all' ? 'All' : value === 'new' ? `New${stats.data?.new_count ? ` (${stats.data.new_count})` : ''}` : auditLabels[value]}
+        color={value === 'all' ? 'default' : auditColors[value]}
         variant={auditFilter === value ? 'filled' : 'outlined'} disabled={busy}
         onClick={() => { setAuditFilter(value); resetFilters() }} />)}
     </Stack>
     {stats.data && <Paper variant="outlined" sx={{ p: 2, mb: 2 }} data-testid="audit-stats">
-      <Stack direction="row" spacing={3} useFlexGap sx={{ flexWrap: 'wrap', mb: stats.data.categories?.length ? 2 : 0 }}>
-        {([['Total', stats.data.total, 'default'], ['Active', stats.data.active, 'success'], ['Mapped', stats.data.mapped, 'success'],
+      <Stack direction="row" spacing={3} useFlexGap sx={{ flexWrap: 'wrap', mb: stats.data.categories?.length || stats.data.last_sync ? 2 : 0 }}>
+        {([['Total', stats.data.total, 'default'], ['New', stats.data.new_count || 0, 'info'], ['Active', stats.data.active, 'success'], ['Mapped', stats.data.mapped, 'success'],
           ['Unmapped', stats.data.unmapped, 'warning'], ['Review', stats.data.review_products, 'error'], ['No image', stats.data.no_image, 'warning']] as const).map(([label, value, color]) =>
-          <Box key={label} sx={{ textAlign: 'center', minWidth: 64 }}>
+          <Box key={label} sx={{ textAlign: 'center', minWidth: 64, cursor: label === 'New' && value ? 'pointer' : undefined,
+            borderRadius: 1, p: .5, '&:hover': label === 'New' && value ? { bgcolor: 'action.hover' } : undefined }}
+            onClick={() => { if (label === 'New' && value) { setAuditFilter('new'); resetFilters() } }}>
             <Typography variant="h5" color={color === 'default' ? 'text.primary' : `${color}.main`} sx={{ fontWeight: 700 }}>{value}</Typography>
             <Typography variant="caption" color="text.secondary">{label}</Typography>
           </Box>)}
       </Stack>
+      {stats.data.last_sync && <LastSyncSummary lastSync={stats.data.last_sync} />}
       {!!stats.data.category_counts?.length && <Box>
         <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Products by Category</Typography>
         <CategoryBreakdown categoryCounts={stats.data.category_counts} total={stats.data.total} />
@@ -197,6 +201,7 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
                 <Typography noWrap variant="caption" sx={{ fontFamily: 'monospace', display: 'block' }}>{product.sku}</Typography>
                 <Stack direction="row" spacing={.5} sx={{ mt: .5, flexWrap: 'wrap', gap: .5 }}>
                   <Chip size="small" label={auditLabels[product.audit_status]} color={auditColors[product.audit_status]} />
+                  {isNewProduct(product) && <Chip size="small" label="NEW" color="info" sx={{ fontWeight: 700, fontSize: 10 }} />}
                   {product.product_category && <Chip size="small" label={product.product_category} variant="outlined" sx={{ maxWidth: 120 }} />}
                 </Stack>
               </Box>
@@ -275,7 +280,10 @@ function Comparison({ product }: { product: AuditProduct }) {
   return <Paper variant="outlined" sx={panel} data-testid="audit-comparison">
     <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
       <Box>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>{product.name}</Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>{product.name}</Typography>
+          {isNewProduct(product) && <Chip size="small" label="NEW" color="info" sx={{ fontWeight: 700, fontSize: 10 }} />}
+        </Stack>
         <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{product.sku}</Typography>
       </Box>
       <Stack direction="row" spacing={1}>
@@ -403,12 +411,42 @@ function CategoryBreakdown({ categoryCounts, total }: { categoryCounts: { name: 
   </Stack>
 }
 
+const NEW_PRODUCT_DAYS = 7
+function isNewProduct(product: AuditProduct): boolean {
+  if (!product.created_at) return false
+  const created = new Date(product.created_at).getTime()
+  return Date.now() - created < NEW_PRODUCT_DAYS * 86_400_000
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+function LastSyncSummary({ lastSync }: { lastSync: LastSyncInfo }) {
+  if (!lastSync.completed_at) return null
+  return <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', pt: 1, borderTop: 1, borderColor: 'divider' }}>
+    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Last Sync:</Typography>
+    <Chip size="small" label={`${lastSync.created_count} new`} color={lastSync.created_count > 0 ? 'info' : 'default'} variant="outlined" />
+    <Chip size="small" label={`${lastSync.updated_count} updated`} variant="outlined" />
+    <Chip size="small" label={`${lastSync.review_count} review`} color={lastSync.review_count > 0 ? 'warning' : 'default'} variant="outlined" />
+    <Chip size="small" label={`${lastSync.rows_seen} rows`} variant="outlined" />
+    <Typography variant="caption" color="text.secondary">{timeAgo(lastSync.completed_at)}</Typography>
+  </Box>
+}
+
 function ExportCsvButton({ rows, disabled }: { rows: AuditProduct[]; disabled: boolean }) {
   const exportCsv = () => {
     if (!rows.length) return
-    const headers = ['SKU', 'Name', 'Brand', 'Category', 'Status', 'Audit Status', 'Devices', 'MSRP', 'Wholesale']
+    const headers = ['SKU', 'Name', 'Brand', 'Category', 'Status', 'Audit Status', 'New', 'Devices', 'MSRP', 'Wholesale', 'Created']
     const csvRows = rows.map(p => [p.sku, p.name, p.brand, p.product_category, p.status, p.audit_status,
-      (p.device_assertions || []).map(d => d.name).join('; '), p.msrp, p.vendor_wholesale_price_amount])
+      isNewProduct(p) ? 'Yes' : '', (p.device_assertions || []).map(d => d.name).join('; '), p.msrp, p.vendor_wholesale_price_amount,
+      p.created_at ? new Date(p.created_at).toLocaleDateString() : ''])
     const csv = [headers, ...csvRows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob)

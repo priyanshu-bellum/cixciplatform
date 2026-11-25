@@ -436,7 +436,7 @@ class VendorAuditProductSerializer(ProductListSerializer):
 
     class Meta(ProductListSerializer.Meta):
         fields = ProductListSerializer.Meta.fields + ['vendor_payload','vendor_values','audit_status','review_errors',
-            'device_assertions','payload_devices','payload_images','payload_category']
+            'device_assertions','payload_devices','payload_images','payload_category','created_at']
 
     def _source(self, obj):
         return self.context.get('bulk_sources',{}).get(obj.pk,{})
@@ -1656,16 +1656,20 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='vendor-audit-stats')
     def vendor_audit_stats(self, request):
-        from .vendor_audit import audit_products
-        from apps.integration.models import VendorCatalogItem
+        from .vendor_audit import audit_products, NEW_PRODUCT_DAYS
+        from apps.integration.models import VendorCatalogItem, VendorCatalogSyncRun
         from django.db.models import Count
+        from datetime import timedelta
+        from django.utils import timezone as tz
         vendor, products = audit_products({'vendor':request.query_params.get('vendor')})
+        new_cutoff = tz.now() - timedelta(days=NEW_PRODUCT_DAYS)
         stats = products.aggregate(total=Count('id'),active=Count('id',filter=Q(status='active')),
             with_image=Count('id',filter=Q(primary_image_reference__isnull=False)),
             no_image=Count('id',filter=Q(primary_image_reference__isnull=True)),
             mapped=Count('id',filter=Q(compatibility_mode='direct_device',_audit_has_device=True)),
             unmapped=Count('id',filter=Q(compatibility_mode='direct_device',_audit_has_device=False)),
-            review_products=Count('id',filter=Q(_audit_review=True)))
+            review_products=Count('id',filter=Q(_audit_review=True)),
+            new_count=Count('id',filter=Q(created_at__gte=new_cutoff)))
         reviews = VendorCatalogItem.objects.filter(connection__vendor_company_id=vendor.pk,review_required=True)
         stats['review_required'] = reviews.count()
         stats['unlinked_review_required'] = reviews.filter(product_id__isnull=True).count()
@@ -1675,6 +1679,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             count=Count('id')).order_by('-count')
         stats['category_counts'] = [{'name': row['product_category'], 'count': row['count']} for row in cat_qs]
         stats['categories'] = [row['name'] for row in stats['category_counts']]
+        last_run = VendorCatalogSyncRun.objects.filter(
+            connection__vendor_company_id=vendor.pk, status='completed'
+        ).order_by('-completed_at').values('completed_at','created_count','updated_count','review_count','rows_seen').first()
+        stats['last_sync'] = last_run
         return Response(stats)
 
     @action(detail=True, methods=['post'], url_path='map-devices')

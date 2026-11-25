@@ -1,7 +1,9 @@
 """Admin audit queries and mutations; canonical commands own compatibility rules."""
 import json
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError
+from django.utils import timezone as tz
 
 from django.db import transaction
 from django.db.models import Case, CharField, Exists, OuterRef, Q, Value, When
@@ -16,15 +18,16 @@ from apps.integration.models import VendorCatalogItem
 from apps.tenant.models import Company
 from .models import Product, ProductCompatibilityAssertion
 
+NEW_PRODUCT_DAYS = 7
 
-AUDIT_ORDERINGS = {'updated_at', '-updated_at', 'name', '-name', 'sku', '-sku', 'product_category', '-product_category'}
+AUDIT_ORDERINGS = {'updated_at', '-updated_at', 'name', '-name', 'sku', '-sku', 'product_category', '-product_category', 'created_at', '-created_at'}
 
 class AuditQuerySerializer(serializers.Serializer):
     vendor = serializers.UUIDField()
     brand = serializers.UUIDField(required=False)
     product_category = serializers.CharField(required=False, allow_blank=True, max_length=200)
     search = serializers.CharField(required=False, allow_blank=True, max_length=300)
-    audit_status = serializers.ChoiceField(choices=['review','no_devices','no_image','ok'], required=False)
+    audit_status = serializers.ChoiceField(choices=['review','no_devices','no_image','ok','new'], required=False)
     ordering = serializers.CharField(required=False, max_length=50)
 
 
@@ -74,7 +77,10 @@ def audit_products(params):
             When(primary_image_reference__isnull=True, then=Value('no_image')),
             default=Value('ok'), output_field=CharField()))
     if query.get('audit_status'):
-        qs = qs.filter(_audit_status=query['audit_status'])
+        if query['audit_status'] == 'new':
+            qs = qs.filter(created_at__gte=tz.now() - timedelta(days=NEW_PRODUCT_DAYS))
+        else:
+            qs = qs.filter(_audit_status=query['audit_status'])
     ordering = query.get('ordering', '-updated_at')
     if ordering not in AUDIT_ORDERINGS:
         ordering = '-updated_at'

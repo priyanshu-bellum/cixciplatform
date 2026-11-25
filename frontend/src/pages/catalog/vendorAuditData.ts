@@ -1,13 +1,19 @@
-export type AuditStatus = 'review' | 'no_devices' | 'no_image' | 'ok'
+export type AuditStatus = 'review' | 'no_devices' | 'no_image' | 'ok' | 'new'
 export interface AuditDevice { device_id?: string; id?: string; name: string; model_number?: string }
 export interface AuditUser { id: string; is_cixci_admin?: boolean }
 export interface AuditConfig { id?: string; field_name: string; value: string; status: string;
   compatibility_mode?: string; eligible_device_types?: string[]; accessory_fields?: string[]; compatibility_rules?: Record<string, unknown> }
 export interface AuditVendor { id: string; name: string; display_name?: string }
 export interface CatalogDevice { id: string; name: string; display_name?: string; manufacturer_name?: string; manufacturer?: string | { name: string }; device_type?: string }
+export interface LastSyncInfo {
+  completed_at: string | null; created_count: number; updated_count: number
+  review_count: number; rows_seen: number
+}
 export interface AuditStats {
   total: number; active: number; mapped: number; unmapped: number; review_products: number
   review_required: number; no_image: number; unlinked_review_required?: number
+  new_count?: number
+  last_sync?: LastSyncInfo | null
   brands: { brand_reference_id: string; brand_reference__name: string }[]
   categories?: string[]
   category_counts?: { name: string; count: number }[]
@@ -30,11 +36,12 @@ export interface AuditProduct {
   review_errors: { code?: string; field?: string; message?: string }[]
   device_assertions: AuditDevice[]; payload_devices: { name: string }[]; payload_images: string[]
   payload_category: string; msrp: string; vendor_wholesale_price_amount: string; inventory_level: number
+  created_at?: string
 }
 export const auditLabels: Record<AuditStatus, string> = {
-  review: 'Review Required', no_devices: 'No Devices', no_image: 'No Image', ok: 'OK',
+  review: 'Review Required', no_devices: 'No Devices', no_image: 'No Image', ok: 'OK', new: 'New',
 }
-export const auditColors = { review: 'error', no_devices: 'warning', no_image: 'warning', ok: 'success' } as const
+export const auditColors = { review: 'error', no_devices: 'warning', no_image: 'warning', ok: 'success', new: 'info' } as const
 export const deviceId = (device: AuditDevice) => device.device_id || device.id || ''
 export const normalizeLabel = (name: string) => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase()
 export const responseRows = <T,>(data: unknown): T[] => {
