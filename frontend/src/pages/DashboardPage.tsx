@@ -1272,7 +1272,7 @@ function AdminDashboard({ count, user }: any) {
 
   const { data: auditData } = useQuery({
     queryKey: ['admin-audit-trail'],
-    queryFn: () => api.get('/audit/records/', { params: { page_size: 20, paginate: 'false' } }).then(r => r.data),
+    queryFn: () => api.get('/audit/records/', { params: { page_size: 20 } }).then(r => r.data),
   })
   const auditRecords = Array.isArray(auditData) ? auditData : (auditData?.results ?? [])
   const timelineEvents = useMemo(() => auditRecords.slice(0, 20).map((r: any) => ({

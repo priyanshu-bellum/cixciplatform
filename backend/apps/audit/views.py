@@ -5,11 +5,22 @@ from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 from apps.audit.models import AuditRecord, FileTrackingRecord, FileDirection
 from apps.audit.serializers import AuditRecordSerializer, FileTrackingRecordSerializer
+from config.pagination import CixciCursorPagination
+
+
+class AuditPagination(CixciCursorPagination):
+    """Audit tables are large; never skip pagination."""
+    def paginate_queryset(self, queryset, request, view=None):
+        request.query_params._mutable = True
+        request.query_params.pop("paginate", None)
+        request.query_params._mutable = False
+        return super().paginate_queryset(queryset, request, view)
 
 
 class AuditRecordViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AuditRecord.objects.all().order_by("-created_at", "-id")
     serializer_class = AuditRecordSerializer
+    pagination_class = AuditPagination
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["source_module", "company_scope_reference", "actor_reference", "status", "source_record_type", "event_code"]
