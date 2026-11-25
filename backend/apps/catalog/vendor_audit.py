@@ -17,12 +17,15 @@ from apps.tenant.models import Company
 from .models import Product, ProductCompatibilityAssertion
 
 
+AUDIT_ORDERINGS = {'updated_at', '-updated_at', 'name', '-name', 'sku', '-sku', 'product_category', '-product_category'}
+
 class AuditQuerySerializer(serializers.Serializer):
     vendor = serializers.UUIDField()
     brand = serializers.UUIDField(required=False)
     product_category = serializers.CharField(required=False, allow_blank=True, max_length=200)
     search = serializers.CharField(required=False, allow_blank=True, max_length=300)
     audit_status = serializers.ChoiceField(choices=['review','no_devices','no_image','ok'], required=False)
+    ordering = serializers.CharField(required=False, max_length=50)
 
 
 class DeviceMappingSerializer(serializers.Serializer):
@@ -72,7 +75,10 @@ def audit_products(params):
             default=Value('ok'), output_field=CharField()))
     if query.get('audit_status'):
         qs = qs.filter(_audit_status=query['audit_status'])
-    return vendor, qs.order_by('-updated_at','id')
+    ordering = query.get('ordering', '-updated_at')
+    if ordering not in AUDIT_ORDERINGS:
+        ordering = '-updated_at'
+    return vendor, qs.order_by(ordering, 'id')
 
 
 def source_context(products):

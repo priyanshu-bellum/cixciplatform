@@ -1,11 +1,11 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { alpha } from '@mui/material/styles'
 import { Alert, Avatar, Box, Button, Checkbox, Chip, CircularProgress,
-  Dialog, DialogActions, DialogContent, DialogTitle, Divider, MenuItem, Pagination,
+  Dialog, DialogActions, DialogContent, DialogTitle, Divider, LinearProgress, MenuItem, Pagination,
   Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  TextField, Typography } from '@mui/material'
+  TextField, Tooltip, Typography } from '@mui/material'
 import api from '../../lib/apiClient'
 import { getImageUrl } from '../../lib/formatters'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
@@ -67,6 +67,8 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
   const debouncedSearch = useDebouncedValue(search, 400)
   const [auditFilter, setAuditFilter] = useState<AuditStatus | 'all'>('all')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+  const [sortBy, setSortBy] = useState('-updated_at')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -75,11 +77,11 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
   const resetFilters = () => { setPage(1); setSelectedId(null); setSelectedIds([]) }
   const stats = useQuery({ queryKey: ['vendor-audit-stats', user.id, vendor], queryFn: async () =>
     (await api.get<AuditStats>(base + 'vendor-audit-stats/', { params: { vendor } })).data })
-  const products = useQuery({ queryKey: ['vendor-audit', user.id, vendor, brand, category, debouncedSearch, auditFilter, page],
+  const products = useQuery({ queryKey: ['vendor-audit', user.id, vendor, brand, category, debouncedSearch, auditFilter, page, pageSize, sortBy],
     refetchOnWindowFocus: false,
     queryFn: async () => (await api.get<AuditPage>(base + 'vendor-audit/', { params: { vendor, brand: brand || undefined,
       product_category: category || undefined,
-      search: debouncedSearch || undefined, audit_status: auditFilter === 'all' ? undefined : auditFilter, page, page_size: 25 } })).data })
+      search: debouncedSearch || undefined, audit_status: auditFilter === 'all' ? undefined : auditFilter, page, page_size: pageSize, ordering: sortBy } })).data })
   const rows = responseRows<AuditProduct>(products.data)
   const selected = rows.find(product => product.id === selectedId)
   const mutation = useMutation({
@@ -128,6 +130,7 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
         onChange={event => { setSearch(event.target.value); resetFilters() }} />
       <Button disabled={busy || products.isFetching} onClick={() => { void products.refetch(); void stats.refetch() }}>Refresh</Button>
       <ForceSyncButton vendor={vendor} busy={busy} />
+      <ExportCsvButton rows={rows} disabled={busy} />
     </Stack>
     <Stack direction="row" spacing={1} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }}>
       {(['all', 'review', 'no_devices', 'no_image', 'ok'] as const).map(value => <Chip key={value}
@@ -135,11 +138,20 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
         variant={auditFilter === value ? 'filled' : 'outlined'} disabled={busy}
         onClick={() => { setAuditFilter(value); resetFilters() }} />)}
     </Stack>
-    {stats.data && <Stack direction="row" spacing={2} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }} data-testid="audit-stats">
-      {[['Total', stats.data.total], ['Active', stats.data.active], ['Mapped', stats.data.mapped],
-        ['Unmapped', stats.data.unmapped], ['Review', stats.data.review_products], ['No image', stats.data.no_image]].map(([label, value]) =>
-        <Typography key={label} variant="body2"><strong>{value}</strong> {label}</Typography>)}
-    </Stack>}
+    {stats.data && <Paper variant="outlined" sx={{ p: 2, mb: 2 }} data-testid="audit-stats">
+      <Stack direction="row" spacing={3} useFlexGap sx={{ flexWrap: 'wrap', mb: stats.data.categories?.length ? 2 : 0 }}>
+        {([['Total', stats.data.total, 'default'], ['Active', stats.data.active, 'success'], ['Mapped', stats.data.mapped, 'success'],
+          ['Unmapped', stats.data.unmapped, 'warning'], ['Review', stats.data.review_products, 'error'], ['No image', stats.data.no_image, 'warning']] as const).map(([label, value, color]) =>
+          <Box key={label} sx={{ textAlign: 'center', minWidth: 64 }}>
+            <Typography variant="h5" color={color === 'default' ? 'text.primary' : `${color}.main`} sx={{ fontWeight: 700 }}>{value}</Typography>
+            <Typography variant="caption" color="text.secondary">{label}</Typography>
+          </Box>)}
+      </Stack>
+      {!!stats.data.categories?.length && <Box>
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Products by Category</Typography>
+        <CategoryBreakdown products={rows} categories={stats.data.categories} total={stats.data.total} />
+      </Box>}
+    </Paper>}
     {!!stats.data?.unlinked_review_required && <Alert severity="info" sx={{ mb: 2 }}>
       {stats.data.unlinked_review_required} source rows need review before a product can be created. Open API Import Review for those rows.
     </Alert>}
@@ -148,11 +160,26 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
     {bulkError && <Alert severity="warning" onClose={() => setBulkError('')} sx={{ mb: 1, overflowWrap: 'anywhere' }}>{bulkError}</Alert>}
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr)', lg: '300px minmax(0,1fr) 350px' }, gap: 2, alignItems: 'start' }}>
       <Paper variant="outlined" sx={panel}>
-        <Stack direction="row" sx={{ alignItems: 'center' }}><Checkbox checked={allOnPage} disabled={busy || !rows.length}
+        <Stack direction="row" sx={{ alignItems: 'center', mb: 1 }}><Checkbox checked={allOnPage} disabled={busy || !rows.length}
           indeterminate={!allOnPage && rows.some(product => selectedIds.includes(product.id))}
           slotProps={{ input: { 'aria-label': 'Select all products on this page' } }} onChange={() => setSelectedIds(current => allOnPage
             ? current.filter(id => !rows.some(product => product.id === id)) : [...new Set([...current, ...rows.map(product => product.id)])])} />
-          <Typography variant="subtitle2">Products ({products.data?.count || 0})</Typography></Stack>
+          <Typography variant="subtitle2" sx={{ flex: 1 }}>Products ({products.data?.count || 0})</Typography></Stack>
+        <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+          <TextField select size="small" value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1) }} sx={{ flex: 1 }} label="Sort">
+            <MenuItem value="-updated_at">Newest</MenuItem>
+            <MenuItem value="updated_at">Oldest</MenuItem>
+            <MenuItem value="name">Name A-Z</MenuItem>
+            <MenuItem value="-name">Name Z-A</MenuItem>
+            <MenuItem value="sku">SKU A-Z</MenuItem>
+            <MenuItem value="product_category">Category</MenuItem>
+          </TextField>
+          <TextField select size="small" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }} sx={{ width: 72 }} label="Show">
+            <MenuItem value={25}>25</MenuItem>
+            <MenuItem value={50}>50</MenuItem>
+            <MenuItem value={100}>100</MenuItem>
+          </TextField>
+        </Stack>
         {products.isFetching && <CircularProgress size={20} />}
         <Box sx={{ maxHeight: { xs: 380, lg: '65vh' }, overflowY: 'auto' }}>
           {!products.isLoading && !products.error && !rows.length && <Typography sx={{ p: 2 }}>No products match these filters.</Typography>}
@@ -176,7 +203,7 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
             </Button>
           </Box>)}
         </Box>
-        <Pagination size="small" count={Math.max(1, Math.ceil((products.data?.count || 0) / 25))} page={page}
+        <Pagination size="small" count={Math.max(1, Math.ceil((products.data?.count || 0) / pageSize))} page={page}
           disabled={busy || products.isFetching} onChange={(_, next) => { setPage(next); setSelectedId(null) }} sx={{ mt: 2 }} />
         {!!selectedIds.length && <Stack spacing={1} sx={{ mt: 2 }}>
           <Typography variant="body2">{selectedIds.length} selected</Typography>
@@ -207,11 +234,20 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
   </Box>
 }
 
-function Images({ urls }: { urls: string[] }) {
+function Images({ urls, size = 80 }: { urls: string[]; size?: number }) {
   const valid = urls.map(imageUrl).filter(Boolean)
-  return valid.length ? <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>{valid.slice(0, 6).map((url, i) =>
-    <Box key={url + i} component="a" href={url} target="_blank" rel="noopener noreferrer"><Box component="img" src={url} loading="lazy"
-      alt={`Product image ${i + 1}`} sx={{ width: 64, height: 64, objectFit: 'contain', border: 1, borderColor: 'divider', borderRadius: 1 }} /></Box>)}</Box> : <>No image</>
+  const [zoomed, setZoomed] = useState<string | null>(null)
+  return valid.length ? <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+    {valid.slice(0, 6).map((url, i) =>
+      <Tooltip key={url + i} title="Click to enlarge">
+        <Box component="img" src={url} loading="lazy" onClick={() => setZoomed(zoomed === url ? null : url)}
+          alt={`Product image ${i + 1}`} sx={{ width: size, height: size, objectFit: 'contain', border: 1,
+            borderColor: 'divider', borderRadius: 1, cursor: 'pointer', transition: 'transform .2s', '&:hover': { transform: 'scale(1.1)' } }} />
+      </Tooltip>)}
+    {zoomed && <Dialog open onClose={() => setZoomed(null)} maxWidth="md">
+      <Box component="img" src={zoomed} sx={{ maxWidth: '90vw', maxHeight: '80vh', objectFit: 'contain', p: 2 }} />
+    </Dialog>}
+  </Box> : <Typography variant="caption" color="text.secondary">No image</Typography>
 }
 
 function Comparison({ product }: { product: AuditProduct }) {
@@ -231,11 +267,23 @@ function Comparison({ product }: { product: AuditProduct }) {
     ['Status', null, product.status],
   ]
   const display = (value: unknown) => value === null || value === undefined || value === '' ? 'Not supplied' : String(value)
+  const diffColor = (label: string, original: unknown, current: unknown) => {
+    if (label === 'Status' || original === null || current === null) return undefined
+    return comparable(original) === comparable(current) ? 'success' : 'error'
+  }
   const payload = product.vendor_payload || {}
   return <Paper variant="outlined" sx={panel} data-testid="audit-comparison">
-    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-      <Typography variant="h6">{product.name}</Typography>
-      <Button size="small" onClick={() => setShowRaw(!showRaw)}>{showRaw ? 'Mapped View' : 'Full API Response'}</Button>
+    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+      <Box>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>{product.name}</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{product.sku}</Typography>
+      </Box>
+      <Stack direction="row" spacing={1}>
+        <Chip size="small" label={product.product_category || 'No category'} variant="outlined" />
+        <Button size="small" variant={showRaw ? 'contained' : 'outlined'} onClick={() => setShowRaw(!showRaw)}>
+          {showRaw ? 'Mapped View' : 'Full API Response'}
+        </Button>
+      </Stack>
     </Stack>
     {!!product.review_errors?.length && <Alert severity="error" sx={{ mb: 2 }}>{product.review_errors.map((error, i) =>
       <Typography key={i} variant="body2">{error.code}{error.field ? ` — ${error.field}` : ''}{error.message ? `: ${error.message}` : ''}</Typography>)}</Alert>}
@@ -255,18 +303,20 @@ function Comparison({ product }: { product: AuditProduct }) {
         </TableRow>)}</TableBody>
       </Table></TableContainer>
     </Box> : <TableContainer><Table size="small" aria-label="Vendor and system comparison">
-      <TableHead><TableRow><TableCell>Field</TableCell><TableCell>Vendor API</TableCell><TableCell>CIXCI System</TableCell></TableRow></TableHead>
-      <TableBody>{fields.map(([label, original, current]) => <TableRow key={label as string}
-        sx={theme => ({ bgcolor: label !== 'Status' && original !== null && current !== null && comparable(original) !== comparable(current) ? alpha(theme.palette.warning.main, .12) : undefined,
+      <TableHead><TableRow><TableCell sx={{ width: 100 }}>Field</TableCell><TableCell>Vendor API</TableCell><TableCell>CIXCI System</TableCell><TableCell sx={{ width: 28 }} /></TableRow></TableHead>
+      <TableBody>{fields.map(([label, original, current]) => { const diff = diffColor(label as string, original, current); return <TableRow key={label as string}
+        sx={theme => ({ bgcolor: diff === 'error' ? alpha(theme.palette.error.main, .06) : diff === 'success' ? alpha(theme.palette.success.main, .04) : undefined,
           '& td': { verticalAlign: 'top', overflowWrap: 'anywhere' } })}>
-        <TableCell>{label as string}</TableCell>
-        <TableCell>{label === 'Images' ? <Images urls={product.payload_images || []} /> : label === 'Devices'
+        <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>{label as string}</TableCell>
+        <TableCell>{label === 'Images' ? <Images urls={product.payload_images || []} size={96} /> : label === 'Devices'
           ? vendorModels.map((name, i) => <Chip key={name + i} label={name} size="small" sx={{ m: .25 }} />) : display(original)}
           {label === 'Category' && <Typography variant="caption" sx={{ display: 'block' }}>Mapped category →</Typography>}</TableCell>
-        <TableCell>{label === 'Images' ? <Images urls={product.primary_image_url ? [product.primary_image_url] : []} /> : label === 'Devices'
+        <TableCell>{label === 'Images' ? <Images urls={product.primary_image_url ? [product.primary_image_url] : []} size={96} /> : label === 'Devices'
           ? systemModels.map((name, i) => <Chip key={name + i} label={name} size="small" sx={{ m: .25 }} />)
           : label === 'Status' ? <StatusChip status={product.status} /> : current === null ? <Typography variant="caption" color="text.secondary">N/A</Typography> : display(current)}</TableCell>
-      </TableRow>)}</TableBody>
+        <TableCell sx={{ p: 0.5 }}>{diff === 'success' ? <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'success.main' }} />
+          : diff === 'error' ? <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'error.main' }} /> : null}</TableCell>
+      </TableRow> })}</TableBody>
     </Table></TableContainer>}
   </Paper>
 }
@@ -335,6 +385,37 @@ function ProductActions({ scope, product, configs, busy, submit }: { scope: stri
     {mappingRulesOpen && <DropdownManagerDialog open onClose={() => setMappingRulesOpen(false)} dropdownConfigs={configs}
       initialCategoryValue={product.product_category} onConfigChanged={refreshRules} />}
   </Paper>
+}
+
+const catColors = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2', '#4f46e5', '#be185d', '#65a30d', '#ea580c']
+
+function CategoryBreakdown({ products: _products, categories, total }: { products: AuditProduct[]; categories: string[]; total: number }) {
+  if (!categories.length || !total) return null
+  return <Stack spacing={0.75}>{categories.slice(0, 8).map((cat, i) => {
+    const count = _products.filter(p => p.product_category === cat).length
+    return <Stack key={cat} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+      <Typography variant="caption" sx={{ width: 120, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat}</Typography>
+      <LinearProgress variant="determinate" value={Math.min(100, (count / Math.max(1, _products.length)) * 100)}
+        sx={{ flex: 1, height: 6, borderRadius: 3, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { bgcolor: catColors[i % catColors.length], borderRadius: 3 } }} />
+      <Typography variant="caption" sx={{ minWidth: 24, textAlign: 'right' }}>{count}</Typography>
+    </Stack>
+  })}{categories.length > 8 && <Typography variant="caption" color="text.secondary">+{categories.length - 8} more categories</Typography>}
+  </Stack>
+}
+
+function ExportCsvButton({ rows, disabled }: { rows: AuditProduct[]; disabled: boolean }) {
+  const exportCsv = () => {
+    if (!rows.length) return
+    const headers = ['SKU', 'Name', 'Brand', 'Category', 'Status', 'Audit Status', 'Devices', 'MSRP', 'Wholesale']
+    const csvRows = rows.map(p => [p.sku, p.name, p.brand, p.product_category, p.status, p.audit_status,
+      (p.device_assertions || []).map(d => d.name).join('; '), p.msrp, p.vendor_wholesale_price_amount])
+    const csv = [headers, ...csvRows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
+    a.download = `vendor-audit-${new Date().toISOString().slice(0, 10)}.csv`; a.click()
+    URL.revokeObjectURL(a.href)
+  }
+  return <Button variant="outlined" size="small" disabled={disabled || !rows.length} onClick={exportCsv}>Export CSV</Button>
 }
 
 function ForceSyncButton({ vendor, busy }: { vendor: string; busy: boolean }) {
