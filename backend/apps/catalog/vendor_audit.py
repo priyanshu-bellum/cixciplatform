@@ -20,6 +20,7 @@ from .models import Product, ProductCompatibilityAssertion
 class AuditQuerySerializer(serializers.Serializer):
     vendor = serializers.UUIDField()
     brand = serializers.UUIDField(required=False)
+    product_category = serializers.CharField(required=False, allow_blank=True, max_length=200)
     search = serializers.CharField(required=False, allow_blank=True, max_length=300)
     audit_status = serializers.ChoiceField(choices=['review','no_devices','no_image','ok'], required=False)
 
@@ -54,6 +55,8 @@ def audit_products(params):
     qs = Product.objects.filter(vendor_company_reference=vendor.pk)
     if query.get('brand'):
         qs = qs.filter(brand_reference_id=query['brand'])
+    if query.get('product_category'):
+        qs = qs.filter(product_category=query['product_category'])
     if query.get('search'):
         text = query['search'].strip()
         qs = qs.filter(Q(name__icontains=text) | Q(sku__icontains=text) | Q(upc__icontains=text))

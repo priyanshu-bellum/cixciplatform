@@ -62,6 +62,7 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
   const queryClient = useQueryClient()
   const { showSnackbar } = useSnackbar()
   const [brand, setBrand] = useState('')
+  const [category, setCategory] = useState('')
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 400)
   const [auditFilter, setAuditFilter] = useState<AuditStatus | 'all'>('all')
@@ -74,9 +75,10 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
   const resetFilters = () => { setPage(1); setSelectedId(null); setSelectedIds([]) }
   const stats = useQuery({ queryKey: ['vendor-audit-stats', user.id, vendor], queryFn: async () =>
     (await api.get<AuditStats>(base + 'vendor-audit-stats/', { params: { vendor } })).data })
-  const products = useQuery({ queryKey: ['vendor-audit', user.id, vendor, brand, debouncedSearch, auditFilter, page],
+  const products = useQuery({ queryKey: ['vendor-audit', user.id, vendor, brand, category, debouncedSearch, auditFilter, page],
     refetchOnWindowFocus: false,
     queryFn: async () => (await api.get<AuditPage>(base + 'vendor-audit/', { params: { vendor, brand: brand || undefined,
+      product_category: category || undefined,
       search: debouncedSearch || undefined, audit_status: auditFilter === 'all' ? undefined : auditFilter, page, page_size: 25 } })).data })
   const rows = responseRows<AuditProduct>(products.data)
   const selected = rows.find(product => product.id === selectedId)
@@ -112,10 +114,15 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
   const allOnPage = !!rows.length && rows.every(product => selectedIds.includes(product.id))
   return <Box>
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
-      <TextField select size="small" label="Brand" value={brand} disabled={busy} sx={{ minWidth: 200 }}
+      <TextField select size="small" label="Brand" value={brand} disabled={busy} sx={{ minWidth: 180 }}
         onChange={event => { setBrand(event.target.value); resetFilters() }}>
         <MenuItem value="">All brands</MenuItem>
         {(stats.data?.brands || []).map(item => <MenuItem key={item.brand_reference_id} value={item.brand_reference_id}>{item.brand_reference__name}</MenuItem>)}
+      </TextField>
+      <TextField select size="small" label="Category" value={category} disabled={busy} sx={{ minWidth: 180 }}
+        onChange={event => { setCategory(event.target.value); resetFilters() }}>
+        <MenuItem value="">All categories</MenuItem>
+        {(stats.data?.categories || []).map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
       </TextField>
       <TextField label="Search products" size="small" value={search} disabled={busy} sx={{ flex: 1 }}
         onChange={event => { setSearch(event.target.value); resetFilters() }} />
@@ -161,7 +168,10 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
                   bgcolor: product.audit_status === 'no_devices' ? '#eab308' : product.audit_status === 'no_image' ? 'warning.main' : auditColors[product.audit_status] + '.main' }} />
                   <Typography noWrap variant="body2" sx={{ fontWeight: 600 }}>{product.name}</Typography></Box>
                 <Typography noWrap variant="caption" sx={{ fontFamily: 'monospace', display: 'block' }}>{product.sku}</Typography>
-                <Chip size="small" label={auditLabels[product.audit_status]} color={auditColors[product.audit_status]} sx={{ mt: .5 }} />
+                <Stack direction="row" spacing={.5} sx={{ mt: .5, flexWrap: 'wrap', gap: .5 }}>
+                  <Chip size="small" label={auditLabels[product.audit_status]} color={auditColors[product.audit_status]} />
+                  {product.product_category && <Chip size="small" label={product.product_category} variant="outlined" sx={{ maxWidth: 120 }} />}
+                </Stack>
               </Box>
             </Button>
           </Box>)}
