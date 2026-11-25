@@ -147,9 +147,9 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
             <Typography variant="caption" color="text.secondary">{label}</Typography>
           </Box>)}
       </Stack>
-      {!!stats.data.categories?.length && <Box>
+      {!!stats.data.category_counts?.length && <Box>
         <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Products by Category</Typography>
-        <CategoryBreakdown products={rows} categories={stats.data.categories} total={stats.data.total} />
+        <CategoryBreakdown categoryCounts={stats.data.category_counts} total={stats.data.total} />
       </Box>}
     </Paper>}
     {!!stats.data?.unlinked_review_required && <Alert severity="info" sx={{ mb: 2 }}>
@@ -389,17 +389,17 @@ function ProductActions({ scope, product, configs, busy, submit }: { scope: stri
 
 const catColors = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2', '#4f46e5', '#be185d', '#65a30d', '#ea580c']
 
-function CategoryBreakdown({ products: _products, categories, total }: { products: AuditProduct[]; categories: string[]; total: number }) {
-  if (!categories.length || !total) return null
-  return <Stack spacing={0.75}>{categories.slice(0, 8).map((cat, i) => {
-    const count = _products.filter(p => p.product_category === cat).length
-    return <Stack key={cat} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-      <Typography variant="caption" sx={{ width: 120, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat}</Typography>
-      <LinearProgress variant="determinate" value={Math.min(100, (count / Math.max(1, _products.length)) * 100)}
+function CategoryBreakdown({ categoryCounts, total }: { categoryCounts: { name: string; count: number }[]; total: number }) {
+  if (!categoryCounts.length || !total) return null
+  const maxCount = categoryCounts[0]?.count || 1
+  return <Stack spacing={0.75}>{categoryCounts.slice(0, 10).map((cat, i) =>
+    <Stack key={cat.name} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+      <Tooltip title={cat.name}><Typography variant="caption" sx={{ width: 130, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</Typography></Tooltip>
+      <LinearProgress variant="determinate" value={(cat.count / maxCount) * 100}
         sx={{ flex: 1, height: 6, borderRadius: 3, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { bgcolor: catColors[i % catColors.length], borderRadius: 3 } }} />
-      <Typography variant="caption" sx={{ minWidth: 24, textAlign: 'right' }}>{count}</Typography>
+      <Typography variant="caption" sx={{ minWidth: 32, textAlign: 'right' }}>{cat.count}</Typography>
     </Stack>
-  })}{categories.length > 8 && <Typography variant="caption" color="text.secondary">+{categories.length - 8} more categories</Typography>}
+  )}{categoryCounts.length > 10 && <Typography variant="caption" color="text.secondary">+{categoryCounts.length - 10} more</Typography>}
   </Stack>
 }
 

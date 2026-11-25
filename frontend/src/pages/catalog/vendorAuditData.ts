@@ -10,6 +10,7 @@ export interface AuditStats {
   review_required: number; no_image: number; unlinked_review_required?: number
   brands: { brand_reference_id: string; brand_reference__name: string }[]
   categories?: string[]
+  category_counts?: { name: string; count: number }[]
 }
 export interface AuditPage { count: number; next: string | null; previous: string | null; results: AuditProduct[] }
 export interface AuditWriteBody extends Record<string, unknown> { device_ids?: string[]; update_type?: 'add' | 'replace' | 'remove' }

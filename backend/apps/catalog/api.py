@@ -1671,8 +1671,10 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         stats['unlinked_review_required'] = reviews.filter(product_id__isnull=True).count()
         stats['brands'] = list(products.exclude(brand_reference_id=None).order_by('brand_reference__name').values(
             'brand_reference_id','brand_reference__name').distinct())
-        stats['categories'] = sorted(products.exclude(product_category__isnull=True).exclude(product_category='').values_list(
-            'product_category', flat=True).distinct())
+        cat_qs = products.exclude(product_category__isnull=True).exclude(product_category='').values('product_category').annotate(
+            count=Count('id')).order_by('-count')
+        stats['category_counts'] = [{'name': row['product_category'], 'count': row['count']} for row in cat_qs]
+        stats['categories'] = [row['name'] for row in stats['category_counts']]
         return Response(stats)
 
     @action(detail=True, methods=['post'], url_path='map-devices')
