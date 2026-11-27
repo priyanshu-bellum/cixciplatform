@@ -1,6 +1,29 @@
 # Session handoff
 
-Active task: TASK-016 — in_progress.
+Active task: TASK-019 — in_progress.
+
+TASK-019 files: frontend/src/theme/components.ts, components/AppLayout.tsx,
+components/data-display/StatCard.tsx, pages/DashboardPage.tsx, NotificationsPage.tsx
+plus size/flash fixes in the TASK-017/018 files. Next: get buyer and vendor test
+logins from the user and review their pages; do not change logic.
+
+Previous (TASK-018):
+
+TASK-018 changed frontend/src/pages/DevicesPage.tsx (main view only) and added
+frontend/src/pages/devices/{DeviceCards.tsx,deviceCatalog.css}. Uncommitted. Dev
+stack: docker compose -f docker-compose.dev.yml, frontend build needs
+--build-arg VITE_API_URL=http://localhost:8000/api/v1; celery left stopped.
+
+Previous (TASK-017):
+
+Changed: frontend/src/pages/catalog/{productCatalog.css (new), ProductCard,
+ProductFilterBar, CatalogPage, AllProductsTab, CompatibilityTab}.tsx and
+dialogs/ManageProductDialog.tsx. Presentation only. Next: user reviews /catalog on
+the dev compose stack (docker-compose.dev.yml, port 5173); adjust styling on
+feedback; commit only when asked. Reference images (*.webp in repo root) are the
+user's untracked files. Then resume TASK-014.
+
+Previous task notes (TASK-016, completed):
 
 Current objective: direct "Configure manual mapping" action in Vendor Audit's
 mapping panel, using the existing category editor. Phone Attachments is Feature

@@ -45,17 +45,20 @@ import CloseIcon from '@mui/icons-material/Close'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined'
 import DownloadIcon from '@mui/icons-material/Download'
 import SettingsIcon from '@mui/icons-material/Settings'
+import GridViewIcon from '@mui/icons-material/GridView'
+import ViewListIcon from '@mui/icons-material/ViewList'
 import api from '../lib/apiClient'
 import { useAuthStore } from '../stores/authStore'
 import Pagination, { usePagination } from '../components/Pagination'
-import PageHeader from '../components/layout/PageHeader'
 import StatusChip from '../components/data-display/StatusChip'
 import SearchBar from '../components/forms/SearchBar'
 import ConfirmDialog from '../components/feedback/ConfirmDialog'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useSnackbar } from '../components/feedback/SnackbarProvider'
 import { formatDate } from '../lib/formatters'
 import { MONO_FONT } from '../theme/typography'
+import { DeviceCard, PortfolioDeviceCard, DeviceCardSkeleton, DeviceStat } from './devices/DeviceCards'
 
 function parseApiError(err: any, fallback: string = 'An error occurred'): string {
   const data = err?.response?.data
@@ -104,6 +107,67 @@ export function parseWirelessCharging(val: string | null | undefined): string[] 
   return result
 }
 
+// Shared pill styling for the page toolbar, tabs and actions
+const pillButtonSx = { height: 34, px: 1.75, borderRadius: '999px', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap' }
+const fieldSx = { '& .MuiOutlinedInput-root': { borderRadius: '14px' } }
+const searchSx = { flex: '1 1 280px', maxWidth: 520, '& .MuiOutlinedInput-root': { borderRadius: '999px', bgcolor: 'var(--bg-elevated)' } }
+const toolbarSx = { p: { xs: 1.5, md: 2 }, mb: 2.5, borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: 1.75 }
+const emptyStateSx = { display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8, px: 2, gap: 1, border: '1px dashed', borderColor: 'divider', borderRadius: '20px' }
+const viewToggleSx = { display: 'flex', alignItems: 'center', gap: '2px', height: 34, p: '3px', border: 1, borderColor: 'divider', borderRadius: '999px' }
+const viewButtonSx = (active: boolean) => ({
+  height: 26,
+  px: 1.5,
+  minWidth: 0,
+  borderRadius: '999px',
+  fontSize: 12,
+  fontWeight: 600,
+  textTransform: 'none',
+  bgcolor: active ? 'text.primary' : 'transparent',
+  color: active ? 'background.paper' : 'text.secondary',
+  '&:hover': { bgcolor: active ? 'text.primary' : 'action.hover' },
+})
+const filterChipSx = (active: boolean) => ({
+  appearance: 'none',
+  font: 'inherit',
+  fontSize: 12,
+  fontWeight: 600,
+  height: 30,
+  px: 1.5,
+  borderRadius: '999px',
+  border: 1,
+  borderColor: active ? 'text.primary' : 'divider',
+  bgcolor: active ? 'text.primary' : 'background.paper',
+  color: active ? 'background.paper' : 'text.primary',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+  '&:hover': { borderColor: active ? 'text.primary' : 'text.secondary' },
+  '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+})
+const pillTabsSx = {
+  mb: 2.5,
+  '& .MuiTabs-indicator': { display: 'none' },
+  '& .MuiTabs-flexContainer, & .MuiTabs-list': { gap: 1 },
+  '& .MuiTab-root': {
+    minHeight: 34,
+    px: 2,
+    fontSize: 12.5,
+    py: 0,
+    borderRadius: '999px',
+    border: 1,
+    borderColor: 'divider',
+    bgcolor: 'background.paper',
+    color: 'text.primary',
+    fontWeight: 600,
+    transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+    '&:hover': { borderColor: 'text.secondary' },
+  },
+  '& .MuiTab-root.Mui-selected': { bgcolor: 'text.primary', borderColor: 'text.primary', color: 'background.paper' },
+}
+
+// Device lifecycle status shown to users: future-dated inactive devices read as "launching"
+const getDisplayStatus = (status: string, launchDate?: string) => status === 'launching' || (status === 'inactive' && launchDate && new Date(launchDate) > new Date()) ? 'launching' : status
+
 export default function DevicesPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
@@ -119,6 +183,7 @@ export default function DevicesPage() {
   const [filterType, setFilterType] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [tab, setTab] = useState<'devices' | 'portfolio'>('devices')
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards')
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false)
@@ -347,17 +412,20 @@ export default function DevicesPage() {
   const [portfolioType, setPortfolioType] = useState('')
 
   // TanStack queries
-  const { data, isLoading, refetch: refreshDevices } = useQuery({
-    queryKey: ['devices', search, filterManufacturer, filterType, filterStatus],
+  // Debounced search + previous results kept on screen so the list does not flash while typing
+  const debouncedSearch = useDebouncedValue(search, 300)
+  const { data, isLoading, isFetching: isFetchingDevices, refetch: refreshDevices } = useQuery({
+    queryKey: ['devices', debouncedSearch, filterManufacturer, filterType, filterStatus],
     queryFn: () => api.get('/devices/devices/', {
       params: {
-        search,
+        search: debouncedSearch,
         manufacturer: filterManufacturer || undefined,
         device_type: filterType || undefined,
         lifecycle_status: filterStatus || undefined,
         paginate: 'false',
       }
     }).then(r => r.data),
+    placeholderData: (previous: any) => previous,
   })
 
   const { data: portfolio, refetch: refreshPortfolio } = useQuery({
@@ -440,6 +508,23 @@ export default function DevicesPage() {
   const portfolioDeviceIds = new Set(
     myDevices.filter((ref: any) => ref.active_flag).map((ref: any) => ref.device)
   )
+
+  // Counts for the summary tiles, derived from the devices matching the current filters
+  const deviceStats = useMemo(() => {
+    const counts = { total: devices.length, available: 0, launching: 0, inactive: 0, eol: 0, manufacturers: 0 }
+    const makers = new Set<string>()
+    devices.forEach((d: any) => {
+      const status = getDisplayStatus(d.lifecycle_status, d.launch_date)
+      if (status === 'available') counts.available++
+      else if (status === 'launching') counts.launching++
+      else if (status === 'inactive') counts.inactive++
+      else if (status === 'eol') counts.eol++
+      const maker = d.manufacturer_name ?? d.manufacturer
+      if (maker) makers.add(String(maker))
+    })
+    counts.manufacturers = makers.size
+    return counts
+  }, [devices])
 
   const handleAdd = async (deviceId: string) => {
     try {
@@ -919,209 +1004,284 @@ export default function DevicesPage() {
     const parts = value.split('-')
     return parts.length === 3 ? `${parts[1]}/${parts[2]}/${parts[0]}` : value
   }
-  const getDisplayStatus = (status: string, launchDate?: string) => status === 'launching' || (status === 'inactive' && launchDate && new Date(launchDate) > new Date()) ? 'launching' : status
 
   return (
     <Box>
-      <PageHeader
-        title="Device Catalog"
-        subtitle="All devices, features, and buyer portfolios"
-        actions={
-          (canManageDropdowns || canImportDevices) ? (
-            <>
-              {canManageDropdowns && (
-                <Button variant="outlined" size="small" onClick={() => setShowDropdownModal(true)}>
-                  Manage Dropdown Values
+      {/* Hero: active section title + page actions (page title itself lives in the AppBar) */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 2, flexWrap: 'wrap', mb: 2.5 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography component="h2" sx={{ fontSize: { xs: 18, md: 21 }, fontWeight: 650, letterSpacing: '-0.015em', lineHeight: 1.2, color: 'text.primary' }}>
+            {tab === 'devices' ? 'All Devices' : 'My Portfolio'}
+          </Typography>
+          <Typography sx={{ fontSize: 13, color: 'text.secondary', mt: 0.5, maxWidth: 520 }}>
+            All devices, features, and buyer portfolios
+          </Typography>
+        </Box>
+        {(canManageDropdowns || canImportDevices) && (
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', '& .MuiButton-root': pillButtonSx }}>
+            {canManageDropdowns && (
+              <Button variant="outlined" size="small" startIcon={<SettingsIcon />} onClick={() => setShowDropdownModal(true)}>
+                Manage Dropdown Values
+              </Button>
+            )}
+            {canImportDevices && (
+              <>
+                <Button variant="outlined" size="small" onClick={() => { resetImportState(); setShowImportModal(true); }}>
+                  Import Devices
                 </Button>
-              )}
-              {canImportDevices && (
-                <>
-                  <Button variant="outlined" size="small" onClick={() => { resetImportState(); setShowImportModal(true); }}>
-                    Import Devices
-                  </Button>
-                  <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { resetAddState(); setShowAddModal(true); }}>
-                    Add Device
-                  </Button>
-                </>
-              )}
-            </>
-          ) : undefined
-        }
-      />
+                <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { resetAddState(); setShowAddModal(true); }}>
+                  Add Device
+                </Button>
+              </>
+            )}
+          </Box>
+        )}
+      </Box>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+      {/* Summary of the devices matching the current All Devices filters */}
+      {!isLoading && (
+        <div className="dc-stats">
+          <DeviceStat ink label="Devices" value={deviceStats.total.toLocaleString()} />
+          <DeviceStat label="Available" value={deviceStats.available.toLocaleString()} tone="var(--green)" />
+          <DeviceStat label="Launching" value={deviceStats.launching.toLocaleString()} tone="var(--amber)" />
+          {isBuyer ? (
+            <DeviceStat label="In My Portfolio" value={portfolioDeviceIds.size.toLocaleString()} tone="var(--accent)" />
+          ) : (
+            <>
+              <DeviceStat label="Inactive" value={deviceStats.inactive.toLocaleString()} tone="var(--red)" />
+              <DeviceStat label="EOL" value={deviceStats.eol.toLocaleString()} tone="var(--text-muted)" />
+            </>
+          )}
+          <DeviceStat label="Manufacturers" value={deviceStats.manufacturers.toLocaleString()} />
+        </div>
+      )}
+
+      {/* Only buyers have a second tab; a single pill would be noise for other roles */}
+      {isBuyer && (
         <Tabs
           value={tab === 'devices' ? 0 : 1}
           onChange={(_, v) => setTab(v === 0 ? 'devices' : 'portfolio')}
+          sx={pillTabsSx}
         >
           <Tab label="All Devices" />
-          {isBuyer && <Tab label="My Portfolio" />}
+          <Tab label="My Portfolio" />
         </Tabs>
-      </Box>
+      )}
 
       {tab === 'devices' && (
         <>
-          <Box sx={{ mb: 2, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-            <SearchBar
-              placeholder="Search by name, SKU, model..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              sx={{ width: 280 }}
-            />
-
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <Select
-                value={filterManufacturer}
-                onChange={e => setFilterManufacturer(e.target.value)}
-                displayEmpty
-              >
-                <MenuItem value="">All Manufacturers</MenuItem>
-                {manufacturers.map((m: any) => (
-                  <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <Select
-                value={filterType}
-                onChange={e => setFilterType(e.target.value)}
-                displayEmpty
-              >
-                <MenuItem value="">All Device Types</MenuItem>
-                {deviceTypes.map((t: any) => (
-                  <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <Select
-                value={filterStatus}
-                onChange={e => setFilterStatus(e.target.value)}
-                displayEmpty
-              >
-                <MenuItem value="">All Statuses</MenuItem>
-                <MenuItem value="available">Available</MenuItem>
-                <MenuItem value="launching">Launching</MenuItem>
-                {!isBuyer && [
-                  <MenuItem key="inactive" value="inactive">Inactive</MenuItem>,
-                  <MenuItem key="eol" value="eol">EOL</MenuItem>,
-                ]}
-              </Select>
-            </FormControl>
-
-            {(search || filterManufacturer || filterType || filterStatus) && (
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => {
-                  setSearch('')
-                  setFilterManufacturer('')
-                  setFilterType('')
-                  setFilterStatus('')
-                }}
-              >
-                Clear Filters
-              </Button>
-            )}
-          </Box>
-
-          <Paper variant="outlined">
-            {isLoading ? (
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Device Name</TableCell>
-                      <TableCell>Manufacturer</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Status</TableCell>
-                      {isBuyer && <TableCell>Action</TableCell>}
-                      <TableCell sx={{ width: 32 }} />
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {Array.from({ length: 8 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell><Skeleton width="70%" /></TableCell>
-                        <TableCell><Skeleton width="60%" /></TableCell>
-                        <TableCell><Skeleton width="50%" /></TableCell>
-                        <TableCell><Skeleton variant="rounded" width={72} height={24} /></TableCell>
-                        {isBuyer && <TableCell><Skeleton variant="rounded" width={100} height={28} /></TableCell>}
-                        <TableCell><Skeleton variant="circular" width={18} height={18} /></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : devices.length === 0 ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
-                <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
-                <Typography variant="body1">No devices found</Typography>
-                <Typography variant="body2" color="text.secondary">Import devices via CSV to get started</Typography>
+          <Paper variant="outlined" sx={toolbarSx}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25 }}>
+              <SearchBar
+                placeholder="Search by name, SKU, model..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                sx={searchSx}
+              />
+              {!isLoading && (
+                <Typography sx={{ fontSize: 13, color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                  <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>{totalDevices.toLocaleString()}</Box>{' '}
+                  {totalDevices === 1 ? 'device' : 'devices'}
+                </Typography>
+              )}
+              <Box sx={{ ml: 'auto' }} />
+              <Box sx={viewToggleSx}>
+                <Button onClick={() => setViewMode('cards')} aria-pressed={viewMode === 'cards'} startIcon={<GridViewIcon sx={{ fontSize: 14 }} />} sx={viewButtonSx(viewMode === 'cards')}>
+                  Cards
+                </Button>
+                <Button onClick={() => setViewMode('table')} aria-pressed={viewMode === 'table'} startIcon={<ViewListIcon sx={{ fontSize: 14 }} />} sx={viewButtonSx(viewMode === 'table')}>
+                  Table
+                </Button>
               </Box>
-            ) : (
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Device Name</TableCell>
-                      <TableCell>Manufacturer</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Status</TableCell>
-                      {isBuyer && <TableCell>Action</TableCell>}
-                      <TableCell sx={{ width: 32 }} />
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {paginatedDevices.map((d: any) => {
-                      const inPortfolio = portfolioDeviceIds.has(d.id)
-                      const displayStatus = getDisplayStatus(d.lifecycle_status, d.launch_date)
-                      return (
-                        <TableRow
-                          key={d.id}
-                          hover
-                          sx={{ cursor: 'pointer' }}
-                          onClick={() => handleRowClick(d)}
-                        >
-                          <TableCell sx={{ fontWeight: 500, color: 'text.primary' }}>{d.name}</TableCell>
-                          <TableCell>{d.manufacturer_name ?? d.manufacturer}</TableCell>
-                          <TableCell>{d.device_type_name ?? d.device_type}</TableCell>
-                          <TableCell>
-                            <StatusChip
-                              status={displayStatus}
-                              label={displayStatus === 'eol' ? 'EOL' : undefined}
-                            />
-                          </TableCell>
-                          {isBuyer && (
-                            <TableCell onClick={e => e.stopPropagation()}>
-                              {inPortfolio ? (
-                                <Chip
-                                  icon={<CheckIcon sx={{ fontSize: 14 }} />}
-                                  label="In Portfolio"
-                                  color="success"
-                                  size="small"
-                                  variant="filled"
-                                />
-                              ) : (
-                                <Button variant="outlined" size="small" sx={{ py: 0.25, px: 1 }} onClick={() => handleAdd(d.id)}>
-                                  Add to Portfolio
-                                </Button>
-                              )}
-                            </TableCell>
-                          )}
-                          <TableCell>
-                            <ChevronRightIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
+            </Box>
+
+            {/* Device type quick filters */}
+            <Box role="group" aria-label="Device type" sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+              <Box component="button" type="button" aria-pressed={!filterType} onClick={() => setFilterType('')} sx={filterChipSx(!filterType)}>
+                All Device Types
+              </Box>
+              {deviceTypes.map((t: any) => (
+                <Box key={t.id} component="button" type="button" aria-pressed={filterType === t.id} onClick={() => setFilterType(filterType === t.id ? '' : t.id)} sx={filterChipSx(filterType === t.id)}>
+                  {t.name}
+                </Box>
+              ))}
+            </Box>
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25 }}>
+              <FormControl size="small" sx={{ minWidth: 200, ...fieldSx }}>
+                <Select
+                  value={filterManufacturer}
+                  onChange={e => setFilterManufacturer(e.target.value)}
+                  displayEmpty
+                >
+                  <MenuItem value="">All Manufacturers</MenuItem>
+                  {manufacturers.map((m: any) => (
+                    <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 160, ...fieldSx }}>
+                <Select
+                  value={filterStatus}
+                  onChange={e => setFilterStatus(e.target.value)}
+                  displayEmpty
+                >
+                  <MenuItem value="">All Statuses</MenuItem>
+                  <MenuItem value="available">Available</MenuItem>
+                  <MenuItem value="launching">Launching</MenuItem>
+                  {!isBuyer && [
+                    <MenuItem key="inactive" value="inactive">Inactive</MenuItem>,
+                    <MenuItem key="eol" value="eol">EOL</MenuItem>,
+                  ]}
+                </Select>
+              </FormControl>
+
+              {(search || filterManufacturer || filterType || filterStatus) && (
+                <Button
+                  variant="text"
+                  startIcon={<CloseIcon sx={{ fontSize: 14 }} />}
+                  sx={{ ...pillButtonSx, color: 'text.secondary' }}
+                  onClick={() => {
+                    setSearch('')
+                    setFilterManufacturer('')
+                    setFilterType('')
+                    setFilterStatus('')
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
+            </Box>
           </Paper>
+
+          {viewMode === 'table' ? (
+
+            <Paper variant="outlined" sx={{ borderRadius: '20px', overflow: 'hidden' }}>
+              {isLoading ? (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Device Name</TableCell>
+                        <TableCell>Manufacturer</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell>Status</TableCell>
+                        {isBuyer && <TableCell>Action</TableCell>}
+                        <TableCell sx={{ width: 32 }} />
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {Array.from({ length: 8 }).map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell><Skeleton width="70%" /></TableCell>
+                          <TableCell><Skeleton width="60%" /></TableCell>
+                          <TableCell><Skeleton width="50%" /></TableCell>
+                          <TableCell><Skeleton variant="rounded" width={72} height={24} /></TableCell>
+                          {isBuyer && <TableCell><Skeleton variant="rounded" width={100} height={28} /></TableCell>}
+                          <TableCell><Skeleton variant="circular" width={18} height={18} /></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : devices.length === 0 ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
+                  <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                  <Typography variant="body1">No devices found</Typography>
+                  <Typography variant="body2" color="text.secondary">Import devices via CSV to get started</Typography>
+                </Box>
+              ) : (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Device Name</TableCell>
+                        <TableCell>Manufacturer</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell>Status</TableCell>
+                        {isBuyer && <TableCell>Action</TableCell>}
+                        <TableCell sx={{ width: 32 }} />
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {paginatedDevices.map((d: any) => {
+                        const inPortfolio = portfolioDeviceIds.has(d.id)
+                        const displayStatus = getDisplayStatus(d.lifecycle_status, d.launch_date)
+                        return (
+                          <TableRow
+                            key={d.id}
+                            hover
+                            sx={{ cursor: 'pointer' }}
+                            onClick={() => handleRowClick(d)}
+                          >
+                            <TableCell sx={{ fontWeight: 500, color: 'text.primary' }}>{d.name}</TableCell>
+                            <TableCell>{d.manufacturer_name ?? d.manufacturer}</TableCell>
+                            <TableCell>{d.device_type_name ?? d.device_type}</TableCell>
+                            <TableCell>
+                              <StatusChip
+                                status={displayStatus}
+                                label={displayStatus === 'eol' ? 'EOL' : undefined}
+                              />
+                            </TableCell>
+                            {isBuyer && (
+                              <TableCell onClick={e => e.stopPropagation()}>
+                                {inPortfolio ? (
+                                  <Chip
+                                    icon={<CheckIcon sx={{ fontSize: 14 }} />}
+                                    label="In Portfolio"
+                                    color="success"
+                                    size="small"
+                                    variant="filled"
+                                  />
+                                ) : (
+                                  <Button variant="outlined" size="small" sx={{ py: 0.25, px: 1 }} onClick={() => handleAdd(d.id)}>
+                                    Add to Portfolio
+                                  </Button>
+                                )}
+                              </TableCell>
+                            )}
+                            <TableCell>
+                              <ChevronRightIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Paper>
+          ) : isLoading ? (
+            <div className="dc-grid">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <DeviceCardSkeleton key={i} withAction={isBuyer} />
+              ))}
+            </div>
+          ) : devices.length === 0 ? (
+            <Box sx={emptyStateSx}>
+              <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+              <Typography variant="body1">No devices found</Typography>
+              <Typography variant="body2" color="text.secondary">Import devices via CSV to get started</Typography>
+            </Box>
+          ) : (
+            <div className="dc-grid" style={{ opacity: isFetchingDevices ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+              {paginatedDevices.map((d: any) => (
+                <DeviceCard
+                  key={d.id}
+                  name={d.name}
+                  manufacturer={d.manufacturer_name ?? d.manufacturer}
+                  typeName={d.device_type_name ?? d.device_type}
+                  status={getDisplayStatus(d.lifecycle_status, d.launch_date)}
+                  launchDate={d.launch_date ? formatLaunchDate(d.launch_date) : null}
+                  onOpen={() => handleRowClick(d)}
+                  showPortfolioAction={isBuyer}
+                  inPortfolio={portfolioDeviceIds.has(d.id)}
+                  onAddToPortfolio={() => handleAdd(d.id)}
+                />
+              ))}
+            </div>
+          )}
           <Pagination
             currentPage={devicePage}
             totalPages={totalDevicePages}
@@ -1135,138 +1295,188 @@ export default function DevicesPage() {
 
       {tab === 'portfolio' && isBuyer && (
         <>
-          <Box sx={{ mb: 2, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-            <SearchBar
-              placeholder="Search by name, SKU, model..."
-              value={portfolioSearch}
-              onChange={e => setPortfolioSearch(e.target.value)}
-              sx={{ width: 280 }}
-            />
-
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <Select
-                value={portfolioMfg}
-                onChange={e => setPortfolioMfg(e.target.value)}
-                displayEmpty
-              >
-                <MenuItem value="">All Manufacturers</MenuItem>
-                {manufacturers.map((m: any) => (
-                  <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <Select
-                value={portfolioType}
-                onChange={e => setPortfolioType(e.target.value)}
-                displayEmpty
-              >
-                <MenuItem value="">All Device Types</MenuItem>
-                {deviceTypes.map((t: any) => (
-                  <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
-
-          <Paper variant="outlined">
-            {(portfolio ?? []).length === 0 ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
-                <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
-                <Typography variant="body1">Your portfolio is empty</Typography>
-                <Typography variant="body2" color="text.secondary">Add devices from the All Devices tab</Typography>
+          <Paper variant="outlined" sx={toolbarSx}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25 }}>
+              <SearchBar
+                placeholder="Search by name, SKU, model..."
+                value={portfolioSearch}
+                onChange={e => setPortfolioSearch(e.target.value)}
+                sx={searchSx}
+              />
+              <Typography sx={{ fontSize: 13, color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>{totalPortfolioDevices.toLocaleString()}</Box>{' '}
+                {totalPortfolioDevices === 1 ? 'device' : 'devices'}
+              </Typography>
+              <Box sx={{ ml: 'auto' }} />
+              <Box sx={viewToggleSx}>
+                <Button onClick={() => setViewMode('cards')} aria-pressed={viewMode === 'cards'} startIcon={<GridViewIcon sx={{ fontSize: 14 }} />} sx={viewButtonSx(viewMode === 'cards')}>
+                  Cards
+                </Button>
+                <Button onClick={() => setViewMode('table')} aria-pressed={viewMode === 'table'} startIcon={<ViewListIcon sx={{ fontSize: 14 }} />} sx={viewButtonSx(viewMode === 'table')}>
+                  Table
+                </Button>
               </Box>
-            ) : filteredMyDevices.length === 0 ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
-                <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
-                <Typography variant="body1">No matching devices found</Typography>
-                <Typography variant="body2" color="text.secondary">Try clearing or adjusting your search filters</Typography>
+            </Box>
+
+            {/* Device type quick filters */}
+            <Box role="group" aria-label="Device type" sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+              <Box component="button" type="button" aria-pressed={!portfolioType} onClick={() => setPortfolioType('')} sx={filterChipSx(!portfolioType)}>
+                All Device Types
               </Box>
-            ) : (
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Device Name</TableCell>
-                      <TableCell>Manufacturer</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Added</TableCell>
-                      <TableCell>Action</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {paginatedMyDevices.map((ref: any) => {
-                      const displayStatus = getDisplayStatus(ref.device_status, ref.device_launch_date)
-                      return (
-                        <TableRow key={ref.id} hover>
-                          <TableCell>
-                            <Tooltip title="View device details">
-                              <Typography
-                                component="span"
-                                variant="body2"
-                                sx={{
-                                  color: 'primary.main',
-                                  fontWeight: 500,
-                                  cursor: 'pointer',
-                                  textDecoration: 'underline',
-                                  textUnderlineOffset: '2px',
-                                  '&:hover': { opacity: 0.8 },
-                                }}
-                                onClick={() => handlePortfolioDeviceClick(ref)}
-                              >
-                                {ref.device_name}
-                              </Typography>
-                            </Tooltip>
-                          </TableCell>
-                          <TableCell>{ref.device_manufacturer}</TableCell>
-                          <TableCell>{ref.device_type ?? '\u2014'}</TableCell>
-                          <TableCell>
-                            <StatusChip
-                              status={displayStatus || 'available'}
-                              label={displayStatus === 'eol' ? 'EOL' : undefined}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="caption">{formatDate(ref.created_at)}</Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                              {ref.active_flag && ref.has_accessories && (
-                                <Button
-                                  variant="contained"
-                                  size="small"
-                                  onClick={() => navigate(`/catalog?tab=projection&compat_device_id=${ref.device}`)}
-                                >
-                                  View Products
-                                </Button>
-                              )}
-                              {ref.active_flag ? (
-                                <Button
-                                  variant="outlined"
-                                  color="error"
-                                  size="small"
-                                  startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
-                                  onClick={() => handleRemoveClick(ref.device, ref.device_name)}
-                                >
-                                  Remove
-                                </Button>
-                              ) : (
-                                <Button variant="outlined" size="small" onClick={() => handleAdd(ref.device)}>
-                                  Add back
-                                </Button>
-                              )}
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
+              {deviceTypes.map((t: any) => (
+                <Box key={t.id} component="button" type="button" aria-pressed={portfolioType === t.id} onClick={() => setPortfolioType(portfolioType === t.id ? '' : t.id)} sx={filterChipSx(portfolioType === t.id)}>
+                  {t.name}
+                </Box>
+              ))}
+            </Box>
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25 }}>
+              <FormControl size="small" sx={{ minWidth: 200, ...fieldSx }}>
+                <Select
+                  value={portfolioMfg}
+                  onChange={e => setPortfolioMfg(e.target.value)}
+                  displayEmpty
+                >
+                  <MenuItem value="">All Manufacturers</MenuItem>
+                  {manufacturers.map((m: any) => (
+                    <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
           </Paper>
+
+          {viewMode === 'table' ? (
+
+            <Paper variant="outlined" sx={{ borderRadius: '20px', overflow: 'hidden' }}>
+              {(portfolio ?? []).length === 0 ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
+                  <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                  <Typography variant="body1">Your portfolio is empty</Typography>
+                  <Typography variant="body2" color="text.secondary">Add devices from the All Devices tab</Typography>
+                </Box>
+              ) : filteredMyDevices.length === 0 ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1 }}>
+                  <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                  <Typography variant="body1">No matching devices found</Typography>
+                  <Typography variant="body2" color="text.secondary">Try clearing or adjusting your search filters</Typography>
+                </Box>
+              ) : (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Device Name</TableCell>
+                        <TableCell>Manufacturer</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Added</TableCell>
+                        <TableCell>Action</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {paginatedMyDevices.map((ref: any) => {
+                        const displayStatus = getDisplayStatus(ref.device_status, ref.device_launch_date)
+                        return (
+                          <TableRow key={ref.id} hover>
+                            <TableCell>
+                              <Tooltip title="View device details">
+                                <Typography
+                                  component="span"
+                                  variant="body2"
+                                  sx={{
+                                    color: 'primary.main',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline',
+                                    textUnderlineOffset: '2px',
+                                    '&:hover': { opacity: 0.8 },
+                                  }}
+                                  onClick={() => handlePortfolioDeviceClick(ref)}
+                                >
+                                  {ref.device_name}
+                                </Typography>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>{ref.device_manufacturer}</TableCell>
+                            <TableCell>{ref.device_type ?? '\u2014'}</TableCell>
+                            <TableCell>
+                              <StatusChip
+                                status={displayStatus || 'available'}
+                                label={displayStatus === 'eol' ? 'EOL' : undefined}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="caption">{formatDate(ref.created_at)}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                {ref.active_flag && ref.has_accessories && (
+                                  <Button
+                                    variant="contained"
+                                    size="small"
+                                    onClick={() => navigate(`/catalog?tab=projection&compat_device_id=${ref.device}`)}
+                                  >
+                                    View Products
+                                  </Button>
+                                )}
+                                {ref.active_flag ? (
+                                  <Button
+                                    variant="outlined"
+                                    color="error"
+                                    size="small"
+                                    startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
+                                    onClick={() => handleRemoveClick(ref.device, ref.device_name)}
+                                  >
+                                    Remove
+                                  </Button>
+                                ) : (
+                                  <Button variant="outlined" size="small" onClick={() => handleAdd(ref.device)}>
+                                    Add back
+                                  </Button>
+                                )}
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Paper>
+          ) : (portfolio ?? []).length === 0 ? (
+            <Box sx={emptyStateSx}>
+              <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+              <Typography variant="body1">Your portfolio is empty</Typography>
+              <Typography variant="body2" color="text.secondary">Add devices from the All Devices tab</Typography>
+            </Box>
+          ) : filteredMyDevices.length === 0 ? (
+            <Box sx={emptyStateSx}>
+              <SmartphoneIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+              <Typography variant="body1">No matching devices found</Typography>
+              <Typography variant="body2" color="text.secondary">Try clearing or adjusting your search filters</Typography>
+            </Box>
+          ) : (
+            <div className="dc-grid">
+              {paginatedMyDevices.map((ref: any) => (
+                <PortfolioDeviceCard
+                  key={ref.id}
+                  name={ref.device_name}
+                  manufacturer={ref.device_manufacturer}
+                  typeName={ref.device_type}
+                  status={getDisplayStatus(ref.device_status, ref.device_launch_date) || 'available'}
+                  addedDate={formatDate(ref.created_at)}
+                  active={!!ref.active_flag}
+                  canViewProducts={!!(ref.active_flag && ref.has_accessories)}
+                  onOpen={() => handlePortfolioDeviceClick(ref)}
+                  onViewProducts={() => navigate(`/catalog?tab=projection&compat_device_id=${ref.device}`)}
+                  onRemove={() => handleRemoveClick(ref.device, ref.device_name)}
+                  onAddBack={() => handleAdd(ref.device)}
+                />
+              ))}
+            </div>
+          )}
           <Pagination
             currentPage={portfolioPage}
             totalPages={totalPortfolioPages}

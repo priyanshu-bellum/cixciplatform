@@ -54,7 +54,8 @@ export default function StatCard({ title, value, subtitle, icon, color, loading 
                   fontSize: '1.75rem',
                   fontWeight: 700,
                   lineHeight: 1.1,
-                  color: color ?? 'text.primary',
+                  letterSpacing: '-0.02em',
+                  color: 'text.primary',
                 }}
               >
                 {value}
@@ -71,7 +72,7 @@ export default function StatCard({ title, value, subtitle, icon, color, loading 
               sx={{
                 width: 42,
                 height: 42,
-                borderRadius: 2.5,
+                borderRadius: '12px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

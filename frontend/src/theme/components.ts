@@ -14,12 +14,13 @@ export const components: Components<Theme> = {
     defaultProps: { disableElevation: true, size: 'small' },
     styleOverrides: {
       root: {
-        borderRadius: 6,
+        borderRadius: 999,
         fontWeight: 600,
-        padding: '6px 14px',
+        whiteSpace: 'nowrap',
+        padding: '6px 16px',
         transition: 'all 0.15s ease',
       },
-      sizeSmall: { fontSize: '0.75rem', padding: '4px 10px' },
+      sizeSmall: { fontSize: '0.75rem', padding: '4px 12px' },
       contained: ({ theme }) => ({
         '&:hover': {
           boxShadow:
@@ -41,12 +42,13 @@ export const components: Components<Theme> = {
   MuiTextField: {
     defaultProps: { size: 'small', variant: 'outlined' },
     styleOverrides: {
-      root: { '& .MuiOutlinedInput-root': { borderRadius: 6 } },
+      root: { '& .MuiOutlinedInput-root': { borderRadius: 10 } },
     },
   },
   MuiOutlinedInput: {
     styleOverrides: {
       root: ({ theme }) => ({
+        borderRadius: 10,
         transition: 'box-shadow 0.15s ease',
         '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
           borderWidth: 1.5,
@@ -76,7 +78,7 @@ export const components: Components<Theme> = {
     defaultProps: { variant: 'outlined' },
     styleOverrides: {
       root: {
-        borderRadius: 10,
+        borderRadius: 16,
         transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
       },
     },
@@ -88,20 +90,20 @@ export const components: Components<Theme> = {
   },
   MuiPaper: {
     styleOverrides: {
-      root: { borderRadius: 10, backgroundImage: 'none' },
+      root: { borderRadius: 16, backgroundImage: 'none' },
     },
   },
   MuiChip: {
     defaultProps: { size: 'small' },
     styleOverrides: {
-      root: { borderRadius: 6, fontWeight: 600, fontSize: '0.6875rem' },
+      root: { borderRadius: 999, fontWeight: 600, fontSize: '0.6875rem' },
     },
   },
 
   // ── Tables ──
   MuiTableContainer: {
     styleOverrides: {
-      root: { borderRadius: 10, overflow: 'hidden' },
+      root: { borderRadius: 16, overflow: 'hidden' },
     },
   },
   MuiTableCell: {
@@ -157,7 +159,7 @@ export const components: Components<Theme> = {
   MuiDialog: {
     styleOverrides: {
       paper: ({ theme }) => ({
-        borderRadius: 12,
+        borderRadius: 20,
         border: `1px solid ${theme.palette.divider}`,
         boxShadow:
           theme.palette.mode === 'dark'
@@ -191,7 +193,7 @@ export const components: Components<Theme> = {
   MuiMenu: {
     styleOverrides: {
       paper: ({ theme }) => ({
-        borderRadius: 8,
+        borderRadius: 12,
         border: `1px solid ${theme.palette.divider}`,
         boxShadow:
           theme.palette.mode === 'dark'
@@ -202,7 +204,7 @@ export const components: Components<Theme> = {
   },
   MuiMenuItem: {
     styleOverrides: {
-      root: { fontSize: '0.8125rem', borderRadius: 4, margin: '2px 4px', padding: '8px 12px', minHeight: 36 },
+      root: { fontSize: '0.8125rem', borderRadius: 8, margin: '2px 4px', padding: '8px 12px', minHeight: 36 },
     },
   },
 
@@ -237,7 +239,7 @@ export const components: Components<Theme> = {
   },
   MuiAlert: {
     styleOverrides: {
-      root: { borderRadius: 8 },
+      root: { borderRadius: 12 },
     },
   },
   MuiSkeleton: {

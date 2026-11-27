@@ -14,6 +14,10 @@ export default function VendorAuditDevicePicker({ scope, value, onChange, disabl
 }) {
   const [search, setSearch] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
+  // Long selections are collapsed to a preview instead of scrolling inside the panel
+  const [showAll, setShowAll] = useState(false)
+  const PREVIEW = 12
+  const visible = showAll ? value : value.slice(0, PREVIEW)
   const debounced = useDebouncedValue(search, 400)
   const { showSnackbar } = useSnackbar()
   const options = useQuery({ queryKey: ['vendor-audit-device-options', scope, debounced], queryFn: async () =>
@@ -34,10 +38,13 @@ export default function VendorAuditDevicePicker({ scope, value, onChange, disabl
   }
   return <Box>
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: .5, mb: 1 }} data-testid="audit-current-devices">
-      {value.map(device => <Chip key={deviceId(device)} label={device.name} size="small" disabled={disabled}
+      {visible.map(device => <Chip key={deviceId(device)} label={device.name} size="small" disabled={disabled}
         onDelete={() => onChange(value.filter(item => deviceId(item) !== deviceId(device)))} />)}
       {!value.length && <Typography variant="body2" color="text.secondary">No models selected.</Typography>}
     </Box>
+    {value.length > PREVIEW && <Button size="small" onClick={() => setShowAll(!showAll)} sx={{ mb: 1, px: 1, fontSize: 11 }}>
+      {showAll ? 'Show fewer' : `Show all ${value.length} selected`}
+    </Button>}
     <Autocomplete options={(options.data || []).filter(permitted).map(optionDevice).filter(item => !value.some(current => deviceId(current) === deviceId(item)))}
       value={null} inputValue={search} getOptionLabel={item => item.name} filterOptions={items => items}
       loading={options.isFetching} disabled={disabled || suggesting} isOptionEqualToValue={(a, b) => deviceId(a) === deviceId(b)}

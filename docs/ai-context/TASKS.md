@@ -1,8 +1,80 @@
 # Persistent tasks
 
-Latest completion: TASK-016 (direct governed manual device mapping setup).
+Latest completion: TASK-018 (Device Catalog page redesign; TASK-017 catalog redesign).
 Open follow-up: TASK-014 (provider mappings/images and remote test diagnostics).
 TASK-002–008 record earlier discoveries. IDs are permanent.
+
+## TASK-019 — App-wide UI polish and dashboard refresh
+
+- Status: in_progress
+- Related features: UI-001 (presentation only; no rule/API/schema/dependency change).
+- Trigger: user asked to fix the dashboard and polish every page without logic
+  changes, then reported oversized fonts and a flashing Device Catalog search.
+- Implementation: theme/components.ts (pill buttons with nowrap, 10px inputs, 16px
+  cards/papers/tables, 20px dialogs, pill chips); AppLayout scopes pill page tabs to
+  pages inside the layout (dialogs and TelcoCellularPage keep their own tabs);
+  DashboardPage shared WelcomeBanner/quick actions and StatCard restyled for all
+  three role dashboards; catalog/device hero and controls scaled back to the app's
+  existing type sizes; Devices query keeps previous results and debounces search
+  (300 ms) so the list no longer flashes; single All Devices tab hidden for non-buyers.
+- Verification: tsc -b clean; dev compose frontend rebuilt; real local admin session
+  screenshots of all 16 routes in light mode and key routes in dark mode reviewed,
+  no console errors reported on those routes.
+- Not verified: buyer and vendor sessions (no test credentials available in the
+  repo; local token minting was not permitted). Pre-existing: /telco-cellular throws
+  React error 300 for a non-Telco user (early return before hooks) — not changed.
+- Follow-ups (2026-11-28): ProductCard compacted (overlay pager, inline specs,
+  2-column price panel) then fonts raised again on user feedback. VendorAuditTab
+  re-laid out (one toolbar with vendor/filters/actions, single-row stat tiles beside
+  category breakdown, sectioned action panel, diff count + match/differ icons, Live
+  API Search moved below the workspace). Long device lists show a count and scroll
+  inside a fixed-height box; list, comparison and action panes scroll internally
+  with overscroll containment. All data-testids, labels and requests unchanged;
+  13/13 vendor-audit browser tests pass after the change.
+- Remaining: buyer/vendor walkthrough once credentials are supplied. Uncommitted.
+
+## TASK-018 — Redesign Device Catalog page
+
+- Status: completed
+- Related features: UI-001, DEV-001/002 (presentation only; no rule/API/schema change).
+- Trigger: user asked for a distinct UI redesign of the Device Catalog after TASK-017.
+- Implementation: DevicesPage main view only — hero + pill actions/tabs, summary
+  tiles counted from the devices matching current filters, toolbar (pill search,
+  count, device-type chips writing the existing type filter, manufacturer/status
+  selects, Cards/Table toggle), device and portfolio cards in
+  frontend/src/pages/devices/DeviceCards.tsx + deviceCatalog.css. Table view, all
+  handlers, queries, role gating and every dialog are unchanged. Cards additionally
+  show the existing launch_date field.
+- Verification: tsc -b clean; eslint DevicesPage 75 vs 72 before (3 more
+  no-explicit-any in the existing idiom); mock-harness screenshots light/dark
+  reviewed, harness removed; dev compose frontend rebuilt with
+  --build-arg VITE_API_URL (compose file passes it only at runtime, .env is
+  dockerignored — a build without the arg breaks login), frontend 200/backend 403.
+- Remaining: user review with real data; device dialogs not redesigned. Uncommitted.
+
+## TASK-017 — Redesign product catalog page, card and detail modal
+
+- Status: completed
+- Related features: UI-001, CAT-001 (presentation only; no rule/API/schema change).
+- Trigger: user request with two reference images; every value shown today must
+  remain visible, layout must fit beside the app sidebar.
+- Implementation: new productCatalog.css card (media tile, "n of N" image pager,
+  brand/series, category, SKU/UPC, color/system color, exported date, wholesale/
+  vendor wholesale/MAP/sale/inventory panel, MSRP + status, buyer Add Product pill);
+  ProductFilterBar toolbar (pill search, count, category chips replacing the Category
+  multiselect with the same filter state, existing attribute filters, selection bar);
+  CatalogPage hero + pill tabs/actions; ManageProductDialog header, pill tabs,
+  gallery, pricing tiles, helpers hoisted out of render. Role gating, handlers,
+  queries and filter parameters are unchanged.
+- Verification: tsc -b clean; eslint on the six files 93 pre-existing-category
+  errors vs 130 before; headless Chrome screenshots of a temporary mock harness
+  (admin light, buyer dark, dialog admin/vendor) reviewed then harness removed;
+  dev compose frontend image fb494b1aac34 rebuilt/recreated, frontend 200, backend 403
+  unauthenticated. Not run: npm browser tests (VendorAuditTab only, untouched) and an
+  authenticated real-data walkthrough (no browser session available).
+- Remaining: user visual review on /catalog with real data. Changes uncommitted.
+  cixci_celery left stopped after Docker restart; backend needed one restart
+  (bind-mount I/O error right after Docker start).
 
 ## TASK-016 — Make governed manual device mapping discoverable
 

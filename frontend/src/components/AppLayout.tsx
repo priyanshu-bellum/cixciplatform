@@ -34,6 +34,28 @@ const TITLES: Record<string, string> = {
   '/product-images': 'Product Images',
 }
 
+// Pill-style page tabs for every page rendered inside the layout (dialogs keep the default tabs)
+const pageTabsSx = {
+  '& .MuiTabs-root': { borderBottom: 'none', minHeight: 36 },
+  '& .MuiTabs-indicator': { display: 'none' },
+  '& .MuiTabs-flexContainer, & .MuiTabs-list': { gap: 1 },
+  '& .MuiTab-root': {
+    minHeight: 34,
+    px: 2,
+    py: 0,
+    fontSize: '0.78125rem',
+    fontWeight: 600,
+    borderRadius: '999px',
+    border: 1,
+    borderColor: 'divider',
+    bgcolor: 'background.paper',
+    color: 'text.primary',
+    transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+    '&:hover': { borderColor: 'text.secondary' },
+  },
+  '& .MuiTab-root.Mui-selected': { bgcolor: 'text.primary', borderColor: 'text.primary', color: 'background.paper' },
+}
+
 export default function AppLayout() {
   const { pathname } = useLocation()
   const { mode, toggleMode } = useThemeMode()
@@ -95,7 +117,7 @@ export default function AppLayout() {
           </Toolbar>
         </AppBar>
 
-        <Box component="main" sx={{ flex: 1, p: { xs: 2, sm: 3 }, overflow: 'auto' }}>
+        <Box component="main" sx={{ flex: 1, p: { xs: 2, sm: 3 }, overflow: 'auto', ...pageTabsSx }}>
           <Outlet />
         </Box>
       </Box>

@@ -1,6 +1,26 @@
 # Current state
 
-Active task: TASK-016 — completed.
+Active task: TASK-019 — in_progress.
+
+TASK-019 (2026-11-28): app-wide presentation polish through the MUI theme, pill page
+tabs scoped in AppLayout and a refreshed dashboard; admin routes verified on the
+local stack, buyer/vendor sessions still to be checked. Uncommitted.
+
+Earlier: TASK-018 — completed.
+
+Latest change (2026-11-27): Device Catalog main view redesigned (TASK-018), same
+presentation-only scope as TASK-017. Local dev frontend must be built with
+--build-arg VITE_API_URL=http://localhost:8000/api/v1 or login requests miss the backend.
+
+Earlier: TASK-017 — completed.
+
+Latest change (2026-11-27): presentation-only redesign of the Product Catalog page,
+ProductCard, ProductFilterBar and ManageProductDialog (see TASK-017). No API, schema,
+rule or dependency change. tsc clean; dev compose frontend image fb494b1aac34 running
+(frontend 200, backend 403 unauthenticated); celery container left stopped. Source
+and docs are uncommitted; real-data visual review by the user is pending.
+
+Earlier: TASK-016 — completed.
 
 Latest fix (2026-11-22): Vendor Audit's mapping panel now has a direct Configure
 manual mapping action into the shared category editor. The reported Nimbus9 bundle

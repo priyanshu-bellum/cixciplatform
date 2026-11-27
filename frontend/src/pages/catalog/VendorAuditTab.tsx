@@ -1,11 +1,24 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { alpha } from '@mui/material/styles'
 import { Alert, Avatar, Box, Button, Checkbox, Chip, CircularProgress,
-  Dialog, DialogActions, DialogContent, DialogTitle, Divider, LinearProgress, MenuItem, Pagination,
+  Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, MenuItem, Pagination,
   Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TextField, Tooltip, Typography } from '@mui/material'
+import StorefrontIcon from '@mui/icons-material/StorefrontOutlined'
+import RefreshIcon from '@mui/icons-material/Refresh'
+import SyncIcon from '@mui/icons-material/Sync'
+import FileDownloadIcon from '@mui/icons-material/FileDownloadOutlined'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import ErrorIcon from '@mui/icons-material/Error'
+import DevicesIcon from '@mui/icons-material/DevicesOutlined'
+import CategoryIcon from '@mui/icons-material/CategoryOutlined'
+import PaletteIcon from '@mui/icons-material/PaletteOutlined'
+import TravelExploreIcon from '@mui/icons-material/TravelExplore'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
 import api from '../../lib/apiClient'
 import { getImageUrl } from '../../lib/formatters'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
@@ -22,6 +35,19 @@ import type { AuditConfig, AuditDevice, AuditPage, AuditProduct, AuditStats, Aud
 interface VendorAuditTabProps { user: AuditUser; dropdownConfigs: AuditConfig[] }
 const base = '/catalog/products/'
 const panel = { p: 2, minWidth: 0, bgcolor: 'var(--bg-surface, var(--mui-palette-background-paper))', borderColor: 'var(--border, var(--mui-palette-divider))' }
+// Shared presentation tokens for the audit workspace
+const fieldSx = { '& .MuiOutlinedInput-root': { borderRadius: '12px' } }
+const sectionSx = { p: 1.5, mb: 1.5, borderRadius: '12px', bgcolor: 'var(--bg-elevated, rgba(127,127,127,.08))', minWidth: 0 }
+const sectionTitleSx = { display: 'flex', alignItems: 'center', gap: .75, fontWeight: 700, fontSize: 13, mb: 1 }
+const wrapButtonSx = { whiteSpace: 'normal' }
+// Desktop workspace: three equal-height panes that fill the screen; each pane body scrolls on its own
+// and the page scrolls normally everywhere else (and continues once a pane reaches its end).
+// 52px sticky app bar + 12px gap above, 24px below
+const workspaceHeight = 'calc(100vh - 88px)'
+const paneBodySx = { overflowY: { lg: 'auto' }, minHeight: 0, scrollbarWidth: 'thin', scrollbarGutter: 'stable',
+  '&::-webkit-scrollbar': { width: 8 }, '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(127,127,127,.35)', borderRadius: 99 } }
+const CHIP_PREVIEW = 12
+const mutedTileBg = 'var(--bg-elevated, rgba(127,127,127,.08))'
 const imageUrl = (value?: string) => {
   if (!value || typeof value !== 'string') return ''
   try { const url = new URL(getImageUrl(value)); return ['http:', 'https:'].includes(url.protocol) ? url.href : '' } catch { return '' }
@@ -44,21 +70,28 @@ function AuditWorkspace({ user, dropdownConfigs }: VendorAuditTabProps) {
     if (value) next.set('vendor', value); else next.delete('vendor')
     setParams(next, { replace: true })
   }
+  const selector = <TextField select label="Vendor" value={vendor} onChange={event => changeVendor(event.target.value)}
+    size="small" sx={{ width: { xs: '100%', sm: 220 }, ...fieldSx }} data-testid="audit-vendor-selector">
+    <MenuItem value="">Select a vendor</MenuItem>
+    {!!vendor && !(vendors.data || []).some(company => company.id === vendor) && <MenuItem value={vendor} disabled>{vendors.isLoading ? 'Loading vendor…' : 'Vendor unavailable'}</MenuItem>}
+    {(vendors.data || []).map(company => <MenuItem key={company.id} value={company.id}>{company.display_name || company.name}</MenuItem>)}
+  </TextField>
   return <Box data-testid="vendor-audit" sx={{ minWidth: 0 }}>
-    <TextField select label="Vendor" value={vendor} onChange={event => changeVendor(event.target.value)}
-      size="small" sx={{ width: { xs: '100%', sm: 320 }, mb: 2 }} data-testid="audit-vendor-selector">
-      <MenuItem value="">Select a vendor</MenuItem>
-      {!!vendor && !(vendors.data || []).some(company => company.id === vendor) && <MenuItem value={vendor} disabled>{vendors.isLoading ? 'Loading vendor…' : 'Vendor unavailable'}</MenuItem>}
-      {(vendors.data || []).map(company => <MenuItem key={company.id} value={company.id}>{company.display_name || company.name}</MenuItem>)}
-    </TextField>
-    {vendors.error && <Alert severity="error">{apiError(vendors.error)}</Alert>}
-    {vendors.isLoading && <CircularProgress size={24} />}
-    {vendor ? <VendorWorkspace key={vendor} vendor={vendor} user={user} dropdownConfigs={dropdownConfigs} />
-      : <Alert severity="info">Select a vendor to compare API observations with catalog products.</Alert>}
+    {vendors.error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(vendors.error)}</Alert>}
+    {vendor ? <VendorWorkspace key={vendor} vendor={vendor} user={user} dropdownConfigs={dropdownConfigs} selector={selector} />
+      : <Paper variant="outlined" sx={{ ...panel, py: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, textAlign: 'center' }}>
+        <Avatar sx={{ width: 56, height: 56, bgcolor: mutedTileBg, color: 'text.secondary' }}><StorefrontIcon /></Avatar>
+        <Box>
+          <Typography sx={{ fontWeight: 700, fontSize: 15 }}>Choose a vendor to audit</Typography>
+          <Typography variant="body2" color="text.secondary">Select a vendor to compare API observations with catalog products.</Typography>
+        </Box>
+        {selector}
+        {vendors.isLoading && <CircularProgress size={22} />}
+      </Paper>}
   </Box>
 }
 
-function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps & { vendor: string }) {
+function VendorWorkspace({ vendor, user, dropdownConfigs, selector }: VendorAuditTabProps & { vendor: string; selector: ReactNode }) {
   const queryClient = useQueryClient()
   const { showSnackbar } = useSnackbar()
   const [brand, setBrand] = useState('')
@@ -114,63 +147,91 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
   const submit: AuditSubmit = (path, body, method = 'post') => mutation.mutate({ path, body, method })
   const toggle = (id: string) => setSelectedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])
   const allOnPage = !!rows.length && rows.every(product => selectedIds.includes(product.id))
+  // Opening a product brings the three panes to the top of the screen so they can be worked without page scrolling
+  const workspaceRef = useRef<HTMLDivElement>(null)
+  const openProduct = (id: string) => {
+    setSelectedId(id)
+    if (window.matchMedia('(min-width: 1200px)').matches) workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const statTiles = stats.data ? ([['Total', stats.data.total, 'default'], ['New', stats.data.new_count || 0, 'info'], ['Active', stats.data.active, 'success'], ['Mapped', stats.data.mapped, 'success'],
+    ['Unmapped', stats.data.unmapped, 'warning'], ['Review', stats.data.review_products, 'error'], ['No image', stats.data.no_image, 'warning']] as const) : []
+  const hasCategories = !!stats.data?.category_counts?.length
   return <Box>
-    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
-      <TextField select size="small" label="Brand" value={brand} disabled={busy} sx={{ minWidth: 180 }}
+    {/* Toolbar: vendor, filters and vendor-level actions */}
+    <Paper variant="outlined" sx={{ ...panel, mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+      {selector}
+      <TextField select size="small" label="Brand" value={brand} disabled={busy} sx={{ minWidth: 150, flex: { xs: '1 1 100%', sm: '0 0 auto' }, ...fieldSx }}
         onChange={event => { setBrand(event.target.value); resetFilters() }}>
         <MenuItem value="">All brands</MenuItem>
         {(stats.data?.brands || []).map(item => <MenuItem key={item.brand_reference_id} value={item.brand_reference_id}>{item.brand_reference__name}</MenuItem>)}
       </TextField>
-      <TextField select size="small" label="Category" value={category} disabled={busy} sx={{ minWidth: 180 }}
+      <TextField select size="small" label="Category" value={category} disabled={busy} sx={{ minWidth: 150, flex: { xs: '1 1 100%', sm: '0 0 auto' }, ...fieldSx }}
         onChange={event => { setCategory(event.target.value); resetFilters() }}>
         <MenuItem value="">All categories</MenuItem>
         {(stats.data?.categories || []).map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
       </TextField>
-      <TextField label="Search products" size="small" value={search} disabled={busy} sx={{ flex: 1 }}
+      <TextField label="Search products" size="small" value={search} disabled={busy} sx={{ flex: '1 1 180px', '& .MuiOutlinedInput-root': { borderRadius: '999px' } }}
         onChange={event => { setSearch(event.target.value); resetFilters() }} />
-      <Button disabled={busy || products.isFetching} onClick={() => { void products.refetch(); void stats.refetch() }}>Refresh</Button>
-      <ForceSyncButton vendor={vendor} busy={busy} />
-      <ExportCsvButton rows={rows} disabled={busy} />
-    </Stack>
-    <Stack direction="row" spacing={1} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }}>
+      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+        <Button startIcon={<RefreshIcon sx={{ fontSize: 16 }} />} disabled={busy || products.isFetching} onClick={() => { void products.refetch(); void stats.refetch() }}>Refresh</Button>
+        <ForceSyncButton vendor={vendor} busy={busy} />
+        <ExportCsvButton rows={rows} disabled={busy} />
+      </Stack>
+    </Paper>
+
+    {/* Vendor summary */}
+    {stats.data && <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr)', lg: hasCategories ? 'minmax(0,1.35fr) minmax(0,1fr)' : 'minmax(0,1fr)' }, gap: 2, mb: 2 }}>
+      <Paper variant="outlined" sx={panel} data-testid="audit-stats">
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(auto-fit, minmax(86px, 1fr))', lg: 'repeat(7, minmax(0, 1fr))' }, gap: .75, mb: stats.data.last_sync ? 1.5 : 0 }}>
+          {statTiles.map(([label, value, color]) =>
+            <Box key={label} sx={{ px: .75, py: 1, borderRadius: '12px', minWidth: 0, bgcolor: mutedTileBg,
+              border: 1, borderColor: 'transparent', cursor: label === 'New' && value ? 'pointer' : undefined,
+              '&:hover': label === 'New' && value ? { borderColor: 'info.main' } : undefined }}
+              onClick={() => { if (label === 'New' && value) { setAuditFilter('new'); resetFilters() } }}>
+              <Stack direction="row" spacing={.5} sx={{ alignItems: 'center' }}>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, bgcolor: color === 'default' ? 'text.disabled' : `${color}.main` }} />
+                <Typography variant="caption" color="text.secondary" noWrap sx={{ letterSpacing: '-0.01em' }}>{label}</Typography>
+              </Stack>
+              <Typography sx={{ fontWeight: 700, fontSize: 20, lineHeight: 1.25, fontVariantNumeric: 'tabular-nums' }}>{value}</Typography>
+            </Box>)}
+        </Box>
+        {stats.data.last_sync && <LastSyncSummary lastSync={stats.data.last_sync} />}
+      </Paper>
+      {hasCategories && <Paper variant="outlined" sx={panel}>
+        <Typography sx={{ fontWeight: 700, fontSize: 13, mb: 1 }}>Products by Category</Typography>
+        <Box sx={{ maxHeight: 132, overflowY: 'auto', pr: .5 }}>
+          <CategoryBreakdown categoryCounts={stats.data.category_counts || []} total={stats.data.total} />
+        </Box>
+      </Paper>}
+    </Box>}
+    {!!stats.data?.unlinked_review_required && <Alert severity="info" sx={{ mb: 2, py: .25 }}>
+      {stats.data.unlinked_review_required} source rows need review before a product can be created. Open API Import Review for those rows.
+    </Alert>}
+    {[stats.error, products.error].filter(Boolean).map((error, index) => <Alert key={index} severity="error" sx={{ mb: 1 }}>{apiError(error)}</Alert>)}
+    {bulkError && <Alert severity="warning" onClose={() => setBulkError('')} sx={{ mb: 1, overflowWrap: 'anywhere' }}>{bulkError}</Alert>}
+
+    {/* Audit status filter */}
+    <Stack direction="row" spacing={1} useFlexGap sx={{ mb: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, mr: .5 }}>Audit status</Typography>
       {(['all', 'new', 'review', 'no_devices', 'no_image', 'ok'] as const).map(value => <Chip key={value}
         label={value === 'all' ? 'All' : value === 'new' ? `New${stats.data?.new_count ? ` (${stats.data.new_count})` : ''}` : auditLabels[value]}
         color={value === 'all' ? 'default' : auditColors[value]}
         variant={auditFilter === value ? 'filled' : 'outlined'} disabled={busy}
-        onClick={() => { setAuditFilter(value); resetFilters() }} />)}
+        onClick={() => { setAuditFilter(value); resetFilters() }} sx={{ height: 28, px: .5 }} />)}
     </Stack>
-    {stats.data && <Paper variant="outlined" sx={{ p: 2, mb: 2 }} data-testid="audit-stats">
-      <Stack direction="row" spacing={3} useFlexGap sx={{ flexWrap: 'wrap', mb: stats.data.categories?.length || stats.data.last_sync ? 2 : 0 }}>
-        {([['Total', stats.data.total, 'default'], ['New', stats.data.new_count || 0, 'info'], ['Active', stats.data.active, 'success'], ['Mapped', stats.data.mapped, 'success'],
-          ['Unmapped', stats.data.unmapped, 'warning'], ['Review', stats.data.review_products, 'error'], ['No image', stats.data.no_image, 'warning']] as const).map(([label, value, color]) =>
-          <Box key={label} sx={{ textAlign: 'center', minWidth: 64, cursor: label === 'New' && value ? 'pointer' : undefined,
-            borderRadius: 1, p: .5, '&:hover': label === 'New' && value ? { bgcolor: 'action.hover' } : undefined }}
-            onClick={() => { if (label === 'New' && value) { setAuditFilter('new'); resetFilters() } }}>
-            <Typography variant="h5" color={color === 'default' ? 'text.primary' : `${color}.main`} sx={{ fontWeight: 700 }}>{value}</Typography>
-            <Typography variant="caption" color="text.secondary">{label}</Typography>
-          </Box>)}
-      </Stack>
-      {stats.data.last_sync && <LastSyncSummary lastSync={stats.data.last_sync} />}
-      {!!stats.data.category_counts?.length && <Box>
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Products by Category</Typography>
-        <CategoryBreakdown categoryCounts={stats.data.category_counts} total={stats.data.total} />
-      </Box>}
-    </Paper>}
-    {!!stats.data?.unlinked_review_required && <Alert severity="info" sx={{ mb: 2 }}>
-      {stats.data.unlinked_review_required} source rows need review before a product can be created. Open API Import Review for those rows.
-    </Alert>}
-    <LiveApiSearch vendor={vendor} />
-    {[stats.error, products.error].filter(Boolean).map((error, index) => <Alert key={index} severity="error" sx={{ mb: 1 }}>{apiError(error)}</Alert>)}
-    {bulkError && <Alert severity="warning" onClose={() => setBulkError('')} sx={{ mb: 1, overflowWrap: 'anywhere' }}>{bulkError}</Alert>}
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr)', lg: '300px minmax(0,1fr) 350px' }, gap: 2, alignItems: 'start' }}>
-      <Paper variant="outlined" sx={panel}>
+
+    {/* Workspace: product list, comparison, actions */}
+    <Box ref={workspaceRef} sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr)', lg: '320px minmax(0,1fr) 340px' }, gridTemplateRows: { lg: 'minmax(0,1fr)' },
+      height: { lg: workspaceHeight }, minHeight: { lg: 520 }, gap: 2, alignItems: { xs: 'start', lg: 'stretch' }, mb: 2, scrollMarginTop: 64 }}>
+      <Paper variant="outlined" sx={{ ...panel, p: 1.5, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <Stack direction="row" sx={{ alignItems: 'center', mb: 1 }}><Checkbox checked={allOnPage} disabled={busy || !rows.length}
           indeterminate={!allOnPage && rows.some(product => selectedIds.includes(product.id))}
           slotProps={{ input: { 'aria-label': 'Select all products on this page' } }} onChange={() => setSelectedIds(current => allOnPage
             ? current.filter(id => !rows.some(product => product.id === id)) : [...new Set([...current, ...rows.map(product => product.id)])])} />
-          <Typography variant="subtitle2" sx={{ flex: 1 }}>Products ({products.data?.count || 0})</Typography></Stack>
+          <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 700 }}>Products ({products.data?.count || 0})</Typography>
+          {products.isFetching && <CircularProgress size={16} />}</Stack>
         <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-          <TextField select size="small" value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1) }} sx={{ flex: 1 }} label="Sort">
+          <TextField select size="small" value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1) }} sx={{ flex: 1, ...fieldSx }} label="Sort">
             <MenuItem value="-updated_at">Newest</MenuItem>
             <MenuItem value="updated_at">Oldest</MenuItem>
             <MenuItem value="name">Name A-Z</MenuItem>
@@ -178,50 +239,57 @@ function VendorWorkspace({ vendor, user, dropdownConfigs }: VendorAuditTabProps 
             <MenuItem value="sku">SKU A-Z</MenuItem>
             <MenuItem value="product_category">Category</MenuItem>
           </TextField>
-          <TextField select size="small" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }} sx={{ width: 72 }} label="Show">
+          <TextField select size="small" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }} sx={{ width: 76, ...fieldSx }} label="Show">
             <MenuItem value={25}>25</MenuItem>
             <MenuItem value={50}>50</MenuItem>
             <MenuItem value={100}>100</MenuItem>
           </TextField>
         </Stack>
-        {products.isFetching && <CircularProgress size={20} />}
-        <Box sx={{ maxHeight: { xs: 380, lg: '65vh' }, overflowY: 'auto' }}>
-          {!products.isLoading && !products.error && !rows.length && <Typography sx={{ p: 2 }}>No products match these filters.</Typography>}
-          {rows.map(product => <Box key={product.id} data-testid="audit-product" sx={{ display: 'flex', borderBottom: 1,
-            borderColor: 'divider', bgcolor: selectedId === product.id ? 'action.selected' : 'transparent', alignItems: 'center' }}>
-            <Checkbox checked={selectedIds.includes(product.id)} onChange={() => toggle(product.id)} disabled={busy}
+        <Box sx={{ ...paneBodySx, maxHeight: { xs: 380, lg: 'none' }, flex: { lg: 1 }, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: .5, pr: .25 }}>
+          {!products.isLoading && !products.error && !rows.length && <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>No products match these filters.</Typography>}
+          {rows.map(product => <Box key={product.id} data-testid="audit-product" sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, borderRadius: '12px', border: 1,
+            borderColor: selectedId === product.id ? 'primary.main' : 'transparent', bgcolor: selectedId === product.id ? 'action.selected' : 'transparent',
+            transition: 'background-color .15s, border-color .15s', '&:hover': { bgcolor: selectedId === product.id ? 'action.selected' : 'action.hover' } }}>
+            <Checkbox checked={selectedIds.includes(product.id)} onChange={() => toggle(product.id)} disabled={busy} size="small"
               slotProps={{ input: { 'aria-label': `Select ${product.sku}` } }} />
-            <Button color="inherit" disabled={busy} data-product-id={product.id} onClick={() => setSelectedId(product.id)}
-              sx={{ justifyContent: 'start', textTransform: 'none', minWidth: 0, flex: 1, gap: 1, p: 1 }}>
-              <Avatar variant="rounded" src={imageUrl(product.primary_image_url)} sx={{ width: 50, height: 50 }}>{product.name.slice(0, 1)}</Avatar>
+            <Button color="inherit" disabled={busy} data-product-id={product.id} onClick={() => openProduct(product.id)}
+              sx={{ justifyContent: 'start', textTransform: 'none', minWidth: 0, flex: 1, gap: 1, p: 1, pl: .5, borderRadius: '12px', whiteSpace: 'normal', '&:hover': { bgcolor: 'transparent' } }}>
+              <Avatar variant="rounded" src={imageUrl(product.primary_image_url)} sx={{ width: 46, height: 46, borderRadius: '10px', bgcolor: mutedTileBg, color: 'text.secondary', '& img': { objectFit: 'contain' } }}>{product.name.slice(0, 1)}</Avatar>
               <Box sx={{ minWidth: 0, textAlign: 'left', flex: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: .75 }}><Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
                   bgcolor: product.audit_status === 'no_devices' ? '#eab308' : product.audit_status === 'no_image' ? 'warning.main' : auditColors[product.audit_status] + '.main' }} />
                   <Typography noWrap variant="body2" sx={{ fontWeight: 600 }}>{product.name}</Typography></Box>
-                <Typography noWrap variant="caption" sx={{ fontFamily: 'monospace', display: 'block' }}>{product.sku}</Typography>
+                <Typography noWrap variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', display: 'block' }}>{product.sku}</Typography>
                 <Stack direction="row" spacing={.5} sx={{ mt: .5, flexWrap: 'wrap', gap: .5 }}>
-                  <Chip size="small" label={auditLabels[product.audit_status]} color={auditColors[product.audit_status]} />
-                  {isNewProduct(product) && <Chip size="small" label="NEW" color="info" sx={{ fontWeight: 700, fontSize: 10 }} />}
-                  {product.product_category && <Chip size="small" label={product.product_category} variant="outlined" sx={{ maxWidth: 120 }} />}
+                  <Chip size="small" label={auditLabels[product.audit_status]} color={auditColors[product.audit_status]} sx={{ height: 20 }} />
+                  {isNewProduct(product) && <Chip size="small" label="NEW" color="info" sx={{ fontWeight: 700, fontSize: 10, height: 20 }} />}
+                  {product.product_category && <Chip size="small" label={product.product_category} variant="outlined" sx={{ maxWidth: 120, height: 20 }} />}
                 </Stack>
               </Box>
             </Button>
           </Box>)}
         </Box>
         <Pagination size="small" count={Math.max(1, Math.ceil((products.data?.count || 0) / pageSize))} page={page}
-          disabled={busy || products.isFetching} onChange={(_, next) => { setPage(next); setSelectedId(null) }} sx={{ mt: 2 }} />
-        {!!selectedIds.length && <Stack spacing={1} sx={{ mt: 2 }}>
-          <Typography variant="body2">{selectedIds.length} selected</Typography>
-          <Button variant="outlined" disabled={busy || selectedIds.length > 50} onClick={() => { setBulkDevices([]); setBulkOpen(true) }}>Map Devices to Selected</Button>
-          <Button color="warning" disabled={busy || selectedIds.length > 200} onClick={() => submit(base + 'bulk-resolve-review/', { product_ids: selectedIds })}>Resolve Review for Selected</Button>
+          disabled={busy || products.isFetching} onChange={(_, next) => { setPage(next); setSelectedId(null) }} sx={{ mt: 1.5, display: 'flex', justifyContent: 'center' }} />
+        {!!selectedIds.length && <Stack spacing={1} sx={{ ...sectionSx, mt: 1.5, mb: 0 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>{selectedIds.length} selected</Typography>
+          <Button variant="contained" disabled={busy || selectedIds.length > 50} onClick={() => { setBulkDevices([]); setBulkOpen(true) }}>Map Devices to Selected</Button>
+          <Button variant="outlined" color="warning" disabled={busy || selectedIds.length > 200} onClick={() => submit(base + 'bulk-resolve-review/', { product_ids: selectedIds })}>Resolve Review for Selected</Button>
           {selectedIds.length > 50 && <Typography variant="caption">Device mapping supports up to 50 products per request.</Typography>}
         </Stack>}
       </Paper>
       {selected ? <>
         <Comparison product={selected} />
         <ProductActions key={selected.id + ':' + products.dataUpdatedAt} scope={user.id + ':' + vendor} product={selected} configs={dropdownConfigs} busy={busy} submit={submit} />
-      </> : <Paper variant="outlined" sx={{ ...panel, gridColumn: { lg: 'span 2' } }}><Typography>Select a product to compare and review.</Typography></Paper>}
+      </> : <Paper variant="outlined" sx={{ ...panel, gridColumn: { lg: 'span 2' }, py: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, textAlign: 'center' }}>
+        <Avatar sx={{ width: 56, height: 56, bgcolor: mutedTileBg, color: 'text.secondary' }}><CompareArrowsIcon /></Avatar>
+        <Typography sx={{ fontWeight: 700, fontSize: 15 }}>Select a product to compare and review.</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420 }}>
+          Pick a product from the list to see the vendor API values next to the CIXCI catalog values, then fix its device mapping, category or color.
+        </Typography>
+      </Paper>}
     </Box>
+    <LiveApiSearch vendor={vendor} />
     <Dialog open={bulkOpen} onClose={() => { if (!busy) setBulkOpen(false) }} fullWidth maxWidth="sm">
       <DialogTitle>Map Devices to Selected</DialogTitle>
       <DialogContent><Typography sx={{ mb: 2 }}>{selectedIds.length} products selected</Typography>
@@ -255,6 +323,20 @@ function Images({ urls, size = 80 }: { urls: string[]; size?: number }) {
   </Box> : <Typography variant="caption" color="text.secondary">No image</Typography>
 }
 
+// Device lists can run to 100+ models: show the count and scroll inside a fixed-height box
+function DeviceChips({ names }: { names: string[] }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!names.length) return null
+  const visible = expanded ? names : names.slice(0, CHIP_PREVIEW)
+  return <Box>
+    {names.length > 6 && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: .5, fontWeight: 600 }}>{names.length} devices</Typography>}
+    <Box>{visible.map((name, i) => <Chip key={name + i} label={name} size="small" sx={{ m: .25, maxWidth: '100%' }} />)}</Box>
+    {names.length > CHIP_PREVIEW && <Button size="small" onClick={() => setExpanded(!expanded)} sx={{ mt: .5, px: 1, fontSize: 11 }}>
+      {expanded ? 'Show fewer' : `Show all ${names.length}`}
+    </Button>}
+  </Box>
+}
+
 function Comparison({ product }: { product: AuditProduct }) {
   const [showRaw, setShowRaw] = useState(false)
   const raw = product.vendor_values || {}
@@ -277,22 +359,29 @@ function Comparison({ product }: { product: AuditProduct }) {
     return comparable(original) === comparable(current) ? 'success' : 'error'
   }
   const payload = product.vendor_payload || {}
-  return <Paper variant="outlined" sx={panel} data-testid="audit-comparison">
-    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-      <Box>
+  const differences = fields.filter(([label, original, current]) => diffColor(label, original, current) === 'error').length
+  return <Paper variant="outlined" sx={{ ...panel, p: 0, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }} data-testid="audit-comparison">
+    <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'flex-start', flexWrap: 'wrap', p: 2, pb: 1.5, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+      <Avatar variant="rounded" src={imageUrl(product.primary_image_url)} sx={{ width: 56, height: 56, borderRadius: '12px', flexShrink: 0,
+        bgcolor: mutedTileBg, color: 'text.secondary', '& img': { objectFit: 'contain' } }}>{product.name.slice(0, 1)}</Avatar>
+      <Box sx={{ minWidth: 0, flex: '1 1 200px' }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{product.name}</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.3, overflowWrap: 'anywhere' }}>{product.name}</Typography>
           {isNewProduct(product) && <Chip size="small" label="NEW" color="info" sx={{ fontWeight: 700, fontSize: 10 }} />}
         </Stack>
-        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{product.sku}</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{product.sku}</Typography>
+        <Stack direction="row" spacing={.75} useFlexGap sx={{ flexWrap: 'wrap', mt: .75, alignItems: 'center' }}>
+          <Chip size="small" label={product.product_category || 'No category'} variant="outlined" />
+          <Chip size="small" label={auditLabels[product.audit_status]} color={auditColors[product.audit_status]} />
+          <Chip size="small" variant="outlined" color={differences ? 'error' : 'success'}
+            label={differences ? `${differences} field${differences === 1 ? '' : 's'} differ` : 'All compared fields match'} />
+        </Stack>
       </Box>
-      <Stack direction="row" spacing={1}>
-        <Chip size="small" label={product.product_category || 'No category'} variant="outlined" />
-        <Button size="small" variant={showRaw ? 'contained' : 'outlined'} onClick={() => setShowRaw(!showRaw)}>
-          {showRaw ? 'Mapped View' : 'Full API Response'}
-        </Button>
-      </Stack>
+      <Button size="small" variant={showRaw ? 'contained' : 'outlined'} onClick={() => setShowRaw(!showRaw)} sx={{ flexShrink: 0 }}>
+        {showRaw ? 'Mapped View' : 'Full API Response'}
+      </Button>
     </Stack>
+    <Box sx={{ ...paneBodySx, p: 2, flex: { lg: 1 } }}>
     {!!product.review_errors?.length && <Alert severity="error" sx={{ mb: 2 }}>{product.review_errors.map((error, i) =>
       <Typography key={i} variant="body2">{error.code}{error.field ? ` — ${error.field}` : ''}{error.message ? `: ${error.message}` : ''}</Typography>)}</Alert>}
     {showRaw ? <Box>
@@ -310,22 +399,24 @@ function Comparison({ product }: { product: AuditProduct }) {
               : <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{display(value)}</Typography>}</TableCell>
         </TableRow>)}</TableBody>
       </Table></TableContainer>
-    </Box> : <TableContainer><Table size="small" aria-label="Vendor and system comparison">
-      <TableHead><TableRow><TableCell sx={{ width: 100 }}>Field</TableCell><TableCell>Vendor API</TableCell><TableCell>CIXCI System</TableCell><TableCell sx={{ width: 28 }} /></TableRow></TableHead>
+    </Box> : <TableContainer><Table size="small" aria-label="Vendor and system comparison" sx={{ tableLayout: 'fixed', minWidth: 420 }}>
+      <TableHead><TableRow><TableCell sx={{ width: 96 }}>Field</TableCell><TableCell>Vendor API</TableCell><TableCell>CIXCI System</TableCell><TableCell sx={{ width: 28 }} /></TableRow></TableHead>
       <TableBody>{fields.map(([label, original, current]) => { const diff = diffColor(label as string, original, current); return <TableRow key={label as string}
-        sx={theme => ({ bgcolor: diff === 'error' ? alpha(theme.palette.error.main, .06) : diff === 'success' ? alpha(theme.palette.success.main, .04) : undefined,
+        sx={theme => ({ bgcolor: diff === 'error' ? alpha(theme.palette.error.main, .07) : undefined,
+          boxShadow: diff === 'error' ? `inset 3px 0 0 ${theme.palette.error.main}` : undefined,
           '& td': { verticalAlign: 'top', overflowWrap: 'anywhere' } })}>
-        <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>{label as string}</TableCell>
+        <TableCell sx={{ fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', overflowWrap: 'normal !important' }}>{label as string}</TableCell>
         <TableCell>{label === 'Images' ? <Images urls={product.payload_images || []} size={96} /> : label === 'Devices'
-          ? vendorModels.map((name, i) => <Chip key={name + i} label={name} size="small" sx={{ m: .25 }} />) : display(original)}
+          ? <DeviceChips names={vendorModels} /> : display(original)}
           {label === 'Category' && <Typography variant="caption" sx={{ display: 'block' }}>Mapped category →</Typography>}</TableCell>
         <TableCell>{label === 'Images' ? <Images urls={product.primary_image_url ? [product.primary_image_url] : []} size={96} /> : label === 'Devices'
-          ? systemModels.map((name, i) => <Chip key={name + i} label={name} size="small" sx={{ m: .25 }} />)
+          ? <DeviceChips names={systemModels} />
           : label === 'Status' ? <StatusChip status={product.status} /> : current === null ? <Typography variant="caption" color="text.secondary">N/A</Typography> : display(current)}</TableCell>
-        <TableCell sx={{ p: 0.5 }}>{diff === 'success' ? <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'success.main' }} />
-          : diff === 'error' ? <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'error.main' }} /> : null}</TableCell>
+        <TableCell sx={{ p: 0.5 }}>{diff === 'success' ? <Tooltip title="Values match"><CheckCircleIcon sx={{ fontSize: 16, color: 'success.main', display: 'block' }} /></Tooltip>
+          : diff === 'error' ? <Tooltip title="Values differ"><ErrorIcon sx={{ fontSize: 16, color: 'error.main', display: 'block' }} /></Tooltip> : null}</TableCell>
       </TableRow> })}</TableBody>
     </Table></TableContainer>}
+    </Box>
   </Paper>
 }
 
@@ -351,42 +442,46 @@ function ProductActions({ scope, product, configs, busy, submit }: { scope: stri
       'vendor-audit-product-detail', 'products', 'compatibility', 'my-projection'].map(key =>
       queryClient.invalidateQueries({ queryKey: [key] })))
   }
-  return <Paper variant="outlined" sx={{ ...panel, position: { lg: 'sticky' }, top: 16 }} data-testid="audit-actions">
-    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Device Mapping</Typography>
-    {manual ? <DevicePicker scope={scope} value={devices} onChange={setDevices} disabled={busy} suggestions={product.payload_devices || []} />
-      : <Alert severity="info">{product.compatibility_mode === 'universal_device_type' ? 'This product uses Universal Device Types. Edit its compatibility setup to adjust the scope.'
-        : 'Exact model mapping requires Device Specific or Hybrid category rules. Open compatibility setup to review fields or adjust Category Rules.'}</Alert>}
-    {!manual && product.compatibility_mode === 'direct_device' && <Box sx={{ mt: 1 }}>
-      <Button fullWidth variant="contained" disabled={busy || !currentConfig} onClick={() => setMappingRulesOpen(true)}>Configure manual mapping</Button>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .5 }}>
-        Open {product.product_category} category rules and choose Hybrid to enable model selection. Rule changes apply to all products in this category.
-      </Typography>
-    </Box>}
-    {manual && <Button fullWidth variant="contained" sx={{ mt: 2 }} disabled={busy} onClick={() => submit(base + product.id + '/map-devices/',
-      { device_ids: devices.map(deviceId), update_type: 'replace' })}>Save device mapping</Button>
-    }
-    <Button fullWidth disabled={busy} onClick={() => { setCategory(product.product_category); setSetupOpen(true) }}>Edit compatibility / Universal</Button>
-    <Divider sx={{ my: 2 }} />
-    <Typography variant="subtitle1" sx={{ mb: 1 }}>Category</Typography>
-    <TextField select fullWidth label="Approved category" size="small" value={category} disabled={busy}
-      onChange={event => { setCategory(event.target.value); setSetupOpen(true) }}>
-      {!categories.includes(category) && <MenuItem value={category} disabled>{category || 'Select category'}</MenuItem>}
-      {categories.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-    </TextField>
-    <Button fullWidth disabled={busy || !category || !categories.includes(category)} onClick={() => setSetupOpen(true)}>Review category setup</Button>
-    <Divider sx={{ my: 2 }} />
-    <Typography variant="subtitle1">Color Mapping</Typography>
-    <Typography variant="body2" sx={{ mb: 1 }}>Vendor: {String(product.vendor_values?.color || 'Not supplied')}</Typography>
-    <TextField select fullWidth label="System color" size="small" value={color} disabled={busy} onChange={event => setColor(event.target.value)}>
-      {!colors.includes(color) && <MenuItem value={color} disabled>{color || 'Select color'}</MenuItem>}
-      {colors.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-    </TextField>
-    <Button fullWidth disabled={busy || !color || !colors.includes(color)} onClick={() => submit(base + product.id + '/',
-      { system_color: color, system_colors: [color] }, 'patch')}>Save color</Button>
-    {product.audit_status === 'review' && <Box sx={{ mt: 2, p: 1.5, border: 1, borderColor: 'error.main', borderRadius: 1 }}>
-      <Typography color="error" variant="subtitle2">Review Required</Typography>
-      {product.review_errors.map((error, i) => <Typography key={i} variant="caption" sx={{ display: 'block' }}>{error.code}: {error.field}</Typography>)}
-      <Button fullWidth color="warning" disabled={busy} onClick={() => submit(base + product.id + '/resolve-review/', {})}>Resolve Review</Button>
+  return <Paper variant="outlined" sx={{ ...panel, ...paneBodySx, p: 1.5 }} data-testid="audit-actions">
+    <Box sx={sectionSx}>
+      <Typography sx={sectionTitleSx}><DevicesIcon sx={{ fontSize: 17, color: 'primary.main' }} />Device Mapping</Typography>
+      {manual ? <DevicePicker scope={scope} value={devices} onChange={setDevices} disabled={busy} suggestions={product.payload_devices || []} />
+        : <Alert severity="info" sx={{ py: .25 }}>{product.compatibility_mode === 'universal_device_type' ? 'This product uses Universal Device Types. Edit its compatibility setup to adjust the scope.'
+          : 'Exact model mapping requires Device Specific or Hybrid category rules. Open compatibility setup to review fields or adjust Category Rules.'}</Alert>}
+      {!manual && product.compatibility_mode === 'direct_device' && <Box sx={{ mt: 1 }}>
+        <Button fullWidth variant="contained" disabled={busy || !currentConfig} onClick={() => setMappingRulesOpen(true)} sx={wrapButtonSx}>Configure manual mapping</Button>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .5 }}>
+          Open {product.product_category} category rules and choose Hybrid to enable model selection. Rule changes apply to all products in this category.
+        </Typography>
+      </Box>}
+      {manual && <Button fullWidth variant="contained" sx={{ mt: 1.5, ...wrapButtonSx }} disabled={busy} onClick={() => submit(base + product.id + '/map-devices/',
+        { device_ids: devices.map(deviceId), update_type: 'replace' })}>Save device mapping</Button>
+      }
+      <Button fullWidth variant="outlined" disabled={busy} sx={{ mt: 1, ...wrapButtonSx }} onClick={() => { setCategory(product.product_category); setSetupOpen(true) }}>Edit compatibility / Universal</Button>
+    </Box>
+    <Box sx={sectionSx}>
+      <Typography sx={sectionTitleSx}><CategoryIcon sx={{ fontSize: 17, color: 'primary.main' }} />Category</Typography>
+      <TextField select fullWidth label="Approved category" size="small" value={category} disabled={busy} sx={fieldSx}
+        onChange={event => { setCategory(event.target.value); setSetupOpen(true) }}>
+        {!categories.includes(category) && <MenuItem value={category} disabled>{category || 'Select category'}</MenuItem>}
+        {categories.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+      </TextField>
+      <Button fullWidth variant="outlined" sx={{ mt: 1, ...wrapButtonSx }} disabled={busy || !category || !categories.includes(category)} onClick={() => setSetupOpen(true)}>Review category setup</Button>
+    </Box>
+    <Box sx={{ ...sectionSx, mb: product.audit_status === 'review' ? 1.5 : 0 }}>
+      <Typography sx={sectionTitleSx}><PaletteIcon sx={{ fontSize: 17, color: 'primary.main' }} />Color Mapping</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>Vendor: {String(product.vendor_values?.color || 'Not supplied')}</Typography>
+      <TextField select fullWidth label="System color" size="small" value={color} disabled={busy} sx={fieldSx} onChange={event => setColor(event.target.value)}>
+        {!colors.includes(color) && <MenuItem value={color} disabled>{color || 'Select color'}</MenuItem>}
+        {colors.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+      </TextField>
+      <Button fullWidth variant="outlined" sx={{ mt: 1 }} disabled={busy || !color || !colors.includes(color)} onClick={() => submit(base + product.id + '/',
+        { system_color: color, system_colors: [color] }, 'patch')}>Save color</Button>
+    </Box>
+    {product.audit_status === 'review' && <Box sx={{ p: 1.5, border: 1, borderColor: 'error.main', borderRadius: '12px' }}>
+      <Typography color="error" variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: .75, fontWeight: 700 }}><ErrorIcon sx={{ fontSize: 17 }} />Review Required</Typography>
+      {product.review_errors.map((error, i) => <Typography key={i} variant="caption" sx={{ display: 'block', overflowWrap: 'anywhere' }}>{error.code}: {error.field}</Typography>)}
+      <Button fullWidth variant="contained" color="warning" sx={{ mt: 1 }} disabled={busy} onClick={() => submit(base + product.id + '/resolve-review/', {})}>Resolve Review</Button>
     </Box>}
     {setupOpen && <VendorAuditCategoryDrawer product={product} category={category} configs={configs} scope={scope}
       onClose={() => { setSetupOpen(false); setCategory(product.product_category) }} />}
@@ -430,7 +525,7 @@ function timeAgo(dateStr: string): string {
 
 function LastSyncSummary({ lastSync }: { lastSync: LastSyncInfo }) {
   if (!lastSync.completed_at) return null
-  return <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', pt: 1, borderTop: 1, borderColor: 'divider' }}>
+  return <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center', pt: 1.25, borderTop: 1, borderColor: 'divider' }}>
     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Last Sync:</Typography>
     <Chip size="small" label={`${lastSync.created_count} new`} color={lastSync.created_count > 0 ? 'info' : 'default'} variant="outlined" />
     <Chip size="small" label={`${lastSync.updated_count} updated`} variant="outlined" />
@@ -453,7 +548,7 @@ function ExportCsvButton({ rows, disabled }: { rows: AuditProduct[]; disabled: b
     a.download = `vendor-audit-${new Date().toISOString().slice(0, 10)}.csv`; a.click()
     URL.revokeObjectURL(a.href)
   }
-  return <Button variant="outlined" size="small" disabled={disabled || !rows.length} onClick={exportCsv}>Export CSV</Button>
+  return <Button variant="outlined" startIcon={<FileDownloadIcon sx={{ fontSize: 16 }} />} disabled={disabled || !rows.length} onClick={exportCsv}>Export CSV</Button>
 }
 
 function ForceSyncButton({ vendor, busy }: { vendor: string; busy: boolean }) {
@@ -468,7 +563,7 @@ function ForceSyncButton({ vendor, busy }: { vendor: string; busy: boolean }) {
     },
     onError: error => showSnackbar(apiError(error), 'error'),
   })
-  return <Button variant="outlined" color="warning" disabled={busy || sync.isPending}
+  return <Button variant="outlined" color="warning" startIcon={<SyncIcon sx={{ fontSize: 16 }} />} disabled={busy || sync.isPending}
     onClick={() => sync.mutate()}>
     {sync.isPending ? 'Syncing…' : '100% Sync'}
   </Button>
@@ -500,11 +595,18 @@ function LiveApiSearch({ vendor }: { vendor: string }) {
     onError: error => showSnackbar(apiError(error), 'error'),
   })
   const busy = search.isPending || syncProduct.isPending
-  return <Paper variant="outlined" sx={{ ...panel, mb: 2 }}>
-    <Button size="small" onClick={() => setExpanded(!expanded)} sx={{ mb: expanded ? 1 : 0 }}>
-      {expanded ? '▾ Live API Search' : '▸ Live API Search — search vendor API by SKU/UID'}
-    </Button>
-    {expanded && <Box>
+  return <Paper variant="outlined" sx={{ ...panel, p: 0, mb: 2, overflow: 'hidden' }}>
+    <Box component="button" type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}
+      sx={{ all: 'unset', boxSizing: 'border-box', width: '100%', display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.25, cursor: 'pointer',
+        '&:hover': { bgcolor: 'action.hover' }, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 } }}>
+      <TravelExploreIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography sx={{ fontWeight: 700, fontSize: 13 }}>Live API Search</Typography>
+        <Typography variant="caption" color="text.secondary">Search the vendor API by SKU / UID and sync products that are missing from the system</Typography>
+      </Box>
+      <ExpandMoreIcon sx={{ color: 'text.secondary', transition: 'transform .2s', transform: expanded ? 'rotate(180deg)' : 'none' }} />
+    </Box>
+    {expanded && <Box sx={{ px: 2, pb: 2 }}>
       <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
         <TextField size="small" label="Search vendor API (SKU / UID / name)" value={query} sx={{ flex: 1 }}
           disabled={busy} onChange={e => setQuery(e.target.value)}

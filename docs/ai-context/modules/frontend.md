@@ -87,3 +87,18 @@ No dedicated frontend unit test package script exists. ISSUE-008 localStorage/ke
 exposure review; large pages/shared handlers have ISSUE-012 coupling debt.
 Do not install dependencies or run credentialed browser workflows for a docs-only
 change. Frontend build/lint/browser checks were not run for TASK-001.
+
+TASK-017 / UI-001: catalog grid uses [ProductCard](../../../frontend/src/pages/catalog/ProductCard.tsx)
+styled by [productCatalog.css](../../../frontend/src/pages/catalog/productCatalog.css) (`pc-*`
+classes on the shared CSS variables, light/dark). [ProductFilterBar](../../../frontend/src/pages/catalog/ProductFilterBar.tsx)
+is shared by All Products and My Compatibility; category chips replace the Category
+multiselect but write the same filter state. CatalogPage renders its own hero and
+pill tabs instead of PageHeader. Presentation only; role gating is unchanged.
+TASK-018 / UI-001: [DevicesPage](../../../frontend/src/pages/DevicesPage.tsx) main view uses
+[DeviceCards](../../../frontend/src/pages/devices/DeviceCards.tsx) with `dc-*` classes from
+[deviceCatalog.css](../../../frontend/src/pages/devices/deviceCatalog.css); Cards/Table toggle,
+type chips and summary tiles are presentation over the existing queries and filters.
+TASK-019 / UI-001: global shape tokens live in [theme/components.ts](../../../frontend/src/theme/components.ts)
+(pill buttons/chips, 16px surfaces). Page-level pill tabs are scoped by
+[AppLayout](../../../frontend/src/components/AppLayout.tsx) to its main area, so dialogs and
+pages outside the layout keep the default MUI tabs.

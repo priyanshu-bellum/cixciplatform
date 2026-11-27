@@ -1,0 +1,281 @@
+/* Device catalog cards — theme-aware through the shared CSS variables in index.css */
+
+.dc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+/* Summary tiles */
+.dc-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.dc-stat {
+  position: relative;
+  overflow: hidden;
+  padding: 13px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.dc-stat.is-ink {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+}
+.dc-stat-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.dc-stat-value {
+  display: block;
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.dc-stat.is-ink .dc-stat-label { color: var(--bg-surface); opacity: 0.65; }
+.dc-stat.is-ink .dc-stat-value { color: var(--bg-surface); }
+.dc-stat-dot {
+  position: absolute;
+  top: 15px;
+  right: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Device card */
+.dc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  min-width: 0;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  outline: none;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+}
+.dc-card.is-clickable {
+  cursor: pointer;
+}
+.dc-card.is-clickable:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.09);
+}
+[data-theme="dark"] .dc-card.is-clickable:hover {
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+.dc-card:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.3);
+}
+.dc-card.is-muted .dc-icon,
+.dc-card.is-muted .dc-name,
+.dc-card.is-muted .dc-sub {
+  opacity: 0.55;
+}
+
+.dc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.dc-icon {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.dc-card.is-clickable:hover .dc-icon {
+  background: var(--text-primary);
+  color: var(--bg-surface);
+}
+.dc-titles {
+  flex: 1;
+  min-width: 0;
+}
+.dc-mfr {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-theme="dark"] .dc-mfr {
+  color: #4e9bd6;
+}
+.dc-name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dc-name-link {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+  max-width: 100%;
+  cursor: pointer;
+}
+.dc-name-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dc-arrow {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+.dc-card.is-clickable:hover .dc-arrow {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transform: rotate(45deg);
+}
+
+/* Meta row: type pill, status, dates */
+.dc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.dc-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.dc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dc-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.dc-status.is-ok { color: var(--green); }
+.dc-status.is-warn { color: var(--amber); }
+.dc-status.is-off { color: var(--red); }
+.dc-status.is-neutral { color: var(--text-muted); }
+[data-theme="light"] .dc-status.is-warn { color: #b45309; }
+.dc-date {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Actions */
+.dc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+.dc-btn {
+  flex: 1 1 auto;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.dc-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.dc-btn.is-primary {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--bg-surface);
+}
+.dc-btn.is-danger {
+  color: var(--red);
+}
+.dc-btn.is-danger:hover:not(:disabled) {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+.dc-btn.is-done {
+  border-color: transparent;
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--green);
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-card,
+  .dc-arrow,
+  .dc-icon {
+    transition: none;
+  }
+  .dc-card.is-clickable:hover {
+    transform: none;
+  }
+}

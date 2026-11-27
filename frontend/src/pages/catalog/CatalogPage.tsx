@@ -22,7 +22,6 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import api from '../../lib/apiClient'
 import { useAuthStore } from '../../stores/authStore'
 import { useConfirmDialog } from '../../hooks/useConfirmDialog'
-import PageHeader from '../../components/layout/PageHeader'
 import ConfirmDialog from '../../components/feedback/ConfirmDialog'
 
 import AllProductsTab from './AllProductsTab'
@@ -36,6 +35,16 @@ import DropdownManagerDialog from './dialogs/DropdownManagerDialog'
 import BatchRevalidateDialog from './dialogs/BatchRevalidateDialog'
 import MissingDevicesTab from './MissingDevicesTab'
 import VendorAuditTab from './VendorAuditTab'
+
+// Tab labels and the hero copy shown for the active tab
+const TAB_META: Record<string, { label: string; description: string }> = {
+  products: { label: 'All Products', description: 'Search and filter accessories by category, brand, color and price.' },
+  'api-imports': { label: 'API Import Review', description: 'Review products imported through vendor API connections.' },
+  'vendor-audit': { label: 'Vendor Audit', description: 'Audit vendor products, categories and device mappings.' },
+  'missing-devices': { label: 'Missing Devices', description: 'Resolve vendor device names that are missing from the Device Catalog.' },
+  projection: { label: 'My Compatibility', description: 'Accessories compatible with the devices in your portfolio.' },
+  export_jobs: { label: 'Added Products', description: 'Products you have added from the catalog.' },
+}
 
 export default function CatalogPage() {
   const queryClient = useQueryClient()
@@ -76,6 +85,7 @@ export default function CatalogPage() {
     return 'products'
   })()
   const [tab, setTab] = useState<string>(initialTab)
+  const activeTabMeta = TAB_META[tab] ?? TAB_META.products
   const tabParam = searchParams.get('tab')
   useEffect(() => {
     if (tabParam === 'vendor-audit' && user?.is_cixci_admin) setTab('vendor-audit')
@@ -189,7 +199,7 @@ export default function CatalogPage() {
   }
 
   const headerActions = (
-    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', maxWidth: { xs: 'calc(100vw - 48px)', md: 'none' } }}>
+    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', maxWidth: { xs: 'calc(100vw - 48px)', md: 'none' }, '& .MuiButton-root': { height: 34, px: 1.75, borderRadius: '999px', fontSize: 12, textTransform: 'none' } }}>
       {(isCixciAdmin || isVendor) && (
         <>
           <Button
@@ -243,7 +253,18 @@ export default function CatalogPage() {
 
   return (
     <Box>
-      <PageHeader title="Product Catalog" actions={headerActions} />
+      {/* Hero: active section title + page actions (page title itself lives in the AppBar) */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 2, flexWrap: 'wrap', mb: 2.5 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography component="h2" sx={{ fontSize: { xs: 18, md: 21 }, fontWeight: 650, letterSpacing: '-0.015em', lineHeight: 1.2, color: 'text.primary' }}>
+            {activeTabMeta.label}
+          </Typography>
+          <Typography sx={{ fontSize: 13, color: 'text.secondary', mt: 0.5, maxWidth: 520 }}>
+            {activeTabMeta.description}
+          </Typography>
+        </Box>
+        {headerActions}
+      </Box>
 
       {isCixciAdmin && importAlerts.length > 0 && (
         <Alert
@@ -302,14 +323,37 @@ export default function CatalogPage() {
         scrollButtons="auto"
         allowScrollButtonsMobile
         onChange={(_, v) => setTab(v)}
-        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+        sx={{
+          mb: 2.5,
+          '& .MuiTabs-indicator': { display: 'none' },
+          '& .MuiTabs-flexContainer, & .MuiTabs-list': { gap: 1 },
+          '& .MuiTab-root': {
+            minHeight: 34,
+            px: 2,
+            fontSize: 12.5,
+            py: 0,
+            borderRadius: '999px',
+            border: 1,
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            color: 'text.primary',
+            fontWeight: 600,
+            transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+            '&:hover': { borderColor: 'text.secondary' },
+          },
+          '& .MuiTab-root.Mui-selected': {
+            bgcolor: 'text.primary',
+            borderColor: 'text.primary',
+            color: 'background.paper',
+          },
+        }}
       >
-        <Tab label="All Products" value="products" />
-        {isCixciAdmin && <Tab label="API Import Review" value="api-imports" />}
-        {user?.is_cixci_admin && <Tab label="Vendor Audit" value="vendor-audit" />}
-        {isCixciAdmin && <Tab label="Missing Devices" value="missing-devices" />}
-        {isBuyer && <Tab label="My Compatibility" value="projection" />}
-        {isBuyer && <Tab label="Added Products" value="export_jobs" />}
+        <Tab label={TAB_META.products.label} value="products" />
+        {isCixciAdmin && <Tab label={TAB_META['api-imports'].label} value="api-imports" />}
+        {user?.is_cixci_admin && <Tab label={TAB_META['vendor-audit'].label} value="vendor-audit" />}
+        {isCixciAdmin && <Tab label={TAB_META['missing-devices'].label} value="missing-devices" />}
+        {isBuyer && <Tab label={TAB_META.projection.label} value="projection" />}
+        {isBuyer && <Tab label={TAB_META.export_jobs.label} value="export_jobs" />}
       </Tabs>
 
       {tab === 'api-imports' && isCixciAdmin && <VendorImportReviewTab initialConnection={searchParams.get('connection') || ''} onEditProduct={handleEditProduct}/>}

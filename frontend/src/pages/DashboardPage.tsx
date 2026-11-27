@@ -56,7 +56,6 @@ import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import Collapse from '@mui/material/Collapse'
-import { useTheme } from '@mui/material/styles'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 
@@ -980,6 +979,13 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
 
 // ─── SHARED DASHBOARD HELPERS ────────────────────────────────────────────────
 
+// Large two-line quick action rows (kept rectangular; the theme default button is a pill)
+const quickActionSx = {
+  justifyContent: 'flex-start', p: 1.5, borderRadius: '14px', textTransform: 'none', textAlign: 'left', whiteSpace: 'normal',
+  borderColor: 'divider', bgcolor: 'var(--bg-elevated)',
+  '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' },
+}
+
 function getGreeting() {
   const h = new Date().getHours()
   if (h < 12) return 'Good morning'
@@ -988,28 +994,39 @@ function getGreeting() {
 }
 
 function WelcomeBanner({ userName, highlights }: { userName: string; highlights?: string[] }) {
-  const theme = useTheme()
-  const logoSrc = theme.palette.mode === 'dark'
-    ? '/cixci-logo-white-rgb-864px@72ppi.png'
-    : '/cixci-logo-color.jpeg'
+  // Dark "ink" banner in both themes, so the white logo is always used
+  const logoSrc = '/cixci-logo-white-rgb-864px@72ppi.png'
 
   return (
     <Card
       variant="outlined"
       sx={{
         mb: 3,
+        position: 'relative',
+        overflow: 'hidden',
+        color: '#f8fafc',
         background: (t) =>
           t.palette.mode === 'dark'
-            ? 'linear-gradient(135deg, rgba(11,106,176,0.08) 0%, rgba(243,107,28,0.08) 100%)'
-            : 'linear-gradient(135deg, rgba(8,67,135,0.06) 0%, rgba(206,73,18,0.04) 100%)',
-        borderColor: (t) =>
-          t.palette.mode === 'dark' ? 'rgba(11,106,176,0.2)' : 'rgba(8,67,135,0.15)',
+            ? 'linear-gradient(120deg, #111c33 0%, #0b2a4a 100%)'
+            : 'linear-gradient(120deg, #0f172a 0%, #0a2d5c 100%)',
+        borderColor: (t) => (t.palette.mode === 'dark' ? 'rgba(78,155,214,0.25)' : 'transparent'),
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          right: -60,
+          top: -90,
+          width: 260,
+          height: 260,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(243,107,28,0.28) 0%, rgba(243,107,28,0) 70%)',
+          pointerEvents: 'none',
+        },
       }}
     >
-      <CardContent sx={{ py: 2.5, px: 3, '&:last-child': { pb: 2.5 } }}>
+      <CardContent sx={{ py: 2.5, px: 3, '&:last-child': { pb: 2.5 }, position: 'relative', zIndex: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: 'inherit' }}>
               {getGreeting()}, {userName}
             </Typography>
             {highlights && highlights.length > 0 && (
@@ -1019,8 +1036,7 @@ function WelcomeBanner({ userName, highlights }: { userName: string; highlights?
                     key={i}
                     label={h}
                     size="small"
-                    variant="outlined"
-                    sx={{ fontSize: '0.75rem', borderColor: 'divider' }}
+                    sx={{ fontSize: '0.75rem', color: '#f8fafc', bgcolor: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.16)' }}
                   />
                 ))}
               </Box>
@@ -1031,7 +1047,7 @@ function WelcomeBanner({ userName, highlights }: { userName: string; highlights?
             src={logoSrc}
             alt="CIXCI"
             sx={{
-              height: 44,
+              height: 40,
               objectFit: 'contain',
               flexShrink: 0,
               display: { xs: 'none', sm: 'block' },
@@ -1070,7 +1086,7 @@ function NeedsAttention({ items }: { items: AttentionItem[] }) {
               {...(item.link ? { to: item.link, style: { textDecoration: 'none', color: 'inherit' } } : {})}
               sx={{
                 display: 'flex', alignItems: 'center', gap: 1.5,
-                p: 1.25, borderRadius: 1.5,
+                p: 1.25, borderRadius: '12px',
                 bgcolor: 'action.hover',
                 transition: 'background 0.15s',
                 ...(item.link ? { cursor: 'pointer', '&:hover': { bgcolor: 'action.selected' } } : {}),
@@ -1407,7 +1423,7 @@ function AdminDashboard({ count, user }: any) {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1, justifyContent: 'center' }}>
                 <Button
                   component={Link} to="/settings?tab=users&action=invite" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  sx={quickActionSx}
                   startIcon={<PeopleIcon sx={{ color: 'primary.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
@@ -1417,7 +1433,7 @@ function AdminDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/devices" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  sx={quickActionSx}
                   startIcon={<SmartphoneIcon sx={{ color: 'success.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
@@ -1427,7 +1443,7 @@ function AdminDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/integration" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  sx={quickActionSx}
                   startIcon={<ShieldIcon sx={{ color: 'warning.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
@@ -1579,7 +1595,7 @@ function BuyerDashboard({ count, user }: any) {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <Button
                   component={Link} to="/catalog" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  sx={quickActionSx}
                   startIcon={<ShoppingBagIcon sx={{ color: 'secondary.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
@@ -1589,7 +1605,7 @@ function BuyerDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/devices" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  sx={quickActionSx}
                   startIcon={<SmartphoneIcon sx={{ color: 'primary.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
@@ -1599,7 +1615,7 @@ function BuyerDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/orders" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  sx={quickActionSx}
                   startIcon={<InventoryIcon sx={{ color: 'success.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
@@ -1762,7 +1778,7 @@ function VendorDashboard({ count, user }: any) {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <Button
                   component={Link} to="/catalog" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  sx={quickActionSx}
                   startIcon={<ShoppingBagIcon sx={{ color: 'secondary.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
@@ -1772,7 +1788,7 @@ function VendorDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/fulfillment" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  sx={quickActionSx}
                   startIcon={<LocalShippingIcon sx={{ color: 'success.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>
@@ -1782,7 +1798,7 @@ function VendorDashboard({ count, user }: any) {
                 </Button>
                 <Button
                   component={Link} to="/invoicing" variant="outlined" color="inherit"
-                  sx={{ justifyContent: 'flex-start', p: 1.5, textTransform: 'none', textAlign: 'left', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } }}
+                  sx={quickActionSx}
                   startIcon={<ReceiptLongIcon sx={{ color: 'warning.main' }} />}
                 >
                   <Box sx={{ ml: 1 }}>

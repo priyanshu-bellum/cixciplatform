@@ -27,6 +27,9 @@ import StatusChip from '../../components/data-display/StatusChip'
 import ExportDialog from './dialogs/ExportDialog'
 import type { ProductsPageResponse } from './types'
 
+// Rounded surface shared by the table view
+const tableWrapSx = { overflowX: 'auto', bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '20px' }
+
 interface CompatibilityTabProps {
   user: any
   onManageProduct: (p: any) => void
@@ -181,7 +184,7 @@ export default function CompatibilityTab({
           <Skeleton variant="text" width={180} sx={{ fontSize: 12 }} />
           <Skeleton variant="rounded" width={90} height={30} sx={{ borderRadius: 1 }} />
         </Box>
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(264px, 1fr))', gap: 2 }}>
           {Array.from({ length: 8 }).map((_, i) => (
             <ProductCardSkeleton key={i} />
           ))}
@@ -219,6 +222,7 @@ export default function CompatibilityTab({
             display: 'flex',
             alignItems: 'center',
             gap: 1.5,
+            borderRadius: '20px',
             bgcolor: 'action.hover',
           }}
         >
@@ -264,7 +268,7 @@ export default function CompatibilityTab({
       />
 
       {products.length === 0 && !isLoading ? (
-        <Box sx={{ textAlign: 'center', py: 8 }}>
+        <Box sx={{ textAlign: 'center', py: 8, px: 2, border: '1px dashed', borderColor: 'divider', borderRadius: '20px' }}>
           <ShoppingBagIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h6" color="text.secondary">{compatEmptyState.title}</Typography>
           <Typography variant="body2" color="text.secondary">{compatEmptyState.hint}</Typography>
@@ -275,7 +279,7 @@ export default function CompatibilityTab({
           )}
         </Box>
       ) : viewMode === 'grid' ? (
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(264px, 1fr))', gap: 2 }}>
           {products.map((p: any) => (
             <ProductCard
               key={p.id}
@@ -294,7 +298,7 @@ export default function CompatibilityTab({
           ))}
         </Box>
       ) : (
-        <Box sx={{ overflowX: 'auto' }}>
+        <Box sx={{ ...tableWrapSx }}>
           <Table size="small">
             <TableHead>
               <TableRow>

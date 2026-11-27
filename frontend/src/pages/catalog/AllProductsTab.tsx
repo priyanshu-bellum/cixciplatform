@@ -22,6 +22,9 @@ import { Pagination } from '../../components/Pagination'
 import StatusChip from '../../components/data-display/StatusChip'
 import type { ProductsPageResponse } from './types'
 
+// Rounded surface shared by the table view
+const tableWrapSx = { overflowX: 'auto', bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '20px' }
+
 interface AllProductsTabProps {
   user: any
   onManageProduct: (p: any) => void
@@ -177,18 +180,17 @@ export default function AllProductsTab({
           exporting={exporting}
           selectedCount={0}
           showSelectAll={false}
-          totalProducts={0}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
         />
         {viewMode === 'grid' ? (
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2.5 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(264px, 1fr))', gap: 2 }}>
             {Array.from({ length: 12 }).map((_, i) => (
               <ProductCardSkeleton key={i} />
             ))}
           </Box>
         ) : (
-          <Box sx={{ overflowX: 'auto' }}>
+          <Box sx={{ ...tableWrapSx }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -247,7 +249,7 @@ export default function AllProductsTab({
       />
 
       {products.length === 0 && !isLoading ? (
-        <Box sx={{ textAlign: 'center', py: 8 }}>
+        <Box sx={{ textAlign: 'center', py: 8, px: 2, border: '1px dashed', borderColor: 'divider', borderRadius: '20px' }}>
           <ShoppingBagIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h6" color="text.secondary">
             {filters.hasActiveFilters ? 'No products match your filters' : 'No products yet'}
@@ -257,7 +259,7 @@ export default function AllProductsTab({
           </Typography>
         </Box>
       ) : viewMode === 'grid' ? (
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2.5, opacity: isFetching ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(264px, 1fr))', gap: 2, opacity: isFetching ? 0.6 : 1, transition: 'opacity 0.2s' }}>
           {products.map((p: any) => (
             <ProductCard
               key={p.id}
@@ -276,7 +278,7 @@ export default function AllProductsTab({
           ))}
         </Box>
       ) : (
-        <Box sx={{ overflowX: 'auto', opacity: isFetching ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+        <Box sx={{ ...tableWrapSx, opacity: isFetching ? 0.6 : 1, transition: 'opacity 0.2s' }}>
           <Table size="small">
             <TableHead>
               <TableRow>

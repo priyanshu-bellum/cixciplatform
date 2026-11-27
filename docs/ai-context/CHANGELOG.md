@@ -128,3 +128,36 @@ chronologically with task, reason, files/features/contracts, verification and ri
   fresh structural inventory; no new tests added for this operational task.
 - Remaining risk/limitations: nonblocking Vite large-chunk warning; authenticated
   business flows and historical source changes were not re-audited during restart.
+
+## 2026-11-27 — TASK-017 — Product catalog UI redesign
+
+- Reason: explicit user request with reference images; keep all displayed data.
+- Files: frontend/src/pages/catalog/productCatalog.css (new), ProductCard.tsx,
+  ProductFilterBar.tsx, CatalogPage.tsx, AllProductsTab.tsx, CompatibilityTab.tsx,
+  dialogs/ManageProductDialog.tsx. Features UI-001/CAT-001 presentation only.
+- Contracts: no API, schema, business-rule or dependency change. Category filter
+  is now chips writing the same filterCategories state/URL parameter.
+- Verification: tsc -b clean; no new lint categories; mock-harness screenshots in
+  light/dark for admin, buyer and vendor; dev compose frontend rebuilt and serving.
+- Risk: not exercised against real catalog data in an authenticated browser;
+  legacy admin-* card CSS classes were removed (no other consumers found).
+## 2026-11-27 — TASK-018 — Device Catalog UI redesign
+
+- Reason: explicit user request following TASK-017.
+- Files: frontend/src/pages/DevicesPage.tsx, frontend/src/pages/devices/DeviceCards.tsx,
+  frontend/src/pages/devices/deviceCatalog.css (new). Presentation only.
+- Contracts: no API, schema, rule or dependency change; filters use existing state.
+- Verification: tsc -b clean; mock-harness screenshots; dev frontend rebuilt/serving.
+- Risk: not exercised with real device data in an authenticated browser.
+## 2026-11-28 — TASK-019 — App-wide UI polish
+
+- Reason: explicit user request; no logic changes allowed.
+- Files: theme/components.ts, components/AppLayout.tsx, data-display/StatCard.tsx,
+  pages/DashboardPage.tsx, pages/NotificationsPage.tsx, DevicesPage.tsx and the
+  TASK-017/018 style files. Devices list query now debounces search and keeps
+  previous data while refetching (display behaviour only; same endpoint/params).
+- Verification: tsc -b clean; admin screenshots of all routes on the local stack.
+- Risk: buyer/vendor sessions not yet reviewed; theme radii apply app-wide.
+- 2026-11-28 follow-up (TASK-019): compact ProductCard and Vendor Audit workspace
+  redesign in catalog/ProductCard.tsx, productCatalog.css, VendorAuditTab.tsx and
+  VendorAuditDevicePicker.tsx. Presentation only; 13/13 browser tests pass.

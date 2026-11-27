@@ -10,7 +10,6 @@ import Chip from '@mui/material/Chip'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
-import Avatar from '@mui/material/Avatar'
 import Tooltip from '@mui/material/Tooltip'
 import CloseIcon from '@mui/icons-material/Close'
 import LockIcon from '@mui/icons-material/Lock'
@@ -44,6 +43,67 @@ interface ManageProductDialogProps {
 }
 
 type TabKey = 'details' | 'compatibility' | 'bulk' | 'audit' | 'original'
+
+// ─── Presentational helpers ────────────────────────────────────────────────
+const fieldLabelSx = { fontSize: 10.5, fontWeight: 600, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5 }
+const pillTabSx = (active: boolean) => ({
+  appearance: 'none',
+  font: 'inherit',
+  fontSize: 12,
+  fontWeight: 600,
+  height: 32,
+  px: 1.75,
+  borderRadius: '999px',
+  border: 1,
+  borderColor: active ? 'text.primary' : 'divider',
+  bgcolor: active ? 'text.primary' : 'background.paper',
+  color: active ? 'background.paper' : 'text.primary',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+  '&:hover': { borderColor: active ? 'text.primary' : 'text.secondary' },
+  '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+})
+const galleryArrowSx = {
+  position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+  width: 36, height: 36,
+  bgcolor: 'background.paper', color: 'text.primary',
+  border: 1, borderColor: 'divider',
+  '&:hover': { bgcolor: 'background.paper', borderColor: 'text.secondary' },
+}
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Box sx={{ bgcolor: 'background.paper', borderRadius: '16px', border: 1, borderColor: 'divider', p: 2.25 }}>
+      <Typography sx={{ fontWeight: 700, fontSize: 13, color: 'text.primary', mb: 1.5 }}>
+        {title}
+      </Typography>
+      {children}
+    </Box>
+  )
+}
+
+function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Box>
+      <Typography sx={{ ...fieldLabelSx, mb: 0.25 }}>
+        {label}
+      </Typography>
+      <Box>{children}</Box>
+    </Box>
+  )
+}
+
+function PriceTile({ label, value, color = 'text.primary' }: { label: string; value: string; color?: string }) {
+  return (
+    <Box sx={{ flex: '1 1 130px', bgcolor: 'var(--bg-elevated)', borderRadius: '12px', px: 1.5, py: 1.25 }}>
+      <Typography sx={fieldLabelSx}>{label}</Typography>
+      <Typography sx={{ fontSize: 16, fontWeight: 700, color, lineHeight: 1.3, mt: 0.25, fontVariantNumeric: 'tabular-nums' }}>
+        {value}
+      </Typography>
+    </Box>
+  )
+}
 
 export default function ManageProductDialog({
   open,
@@ -331,27 +391,6 @@ export default function ManageProductDialog({
 
   if (!product) return null
 
-  // ─── Inline Helpers ────────────────────────────────────────────────────
-  const SectionCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <Box sx={{ bgcolor: 'background.paper', borderRadius: 2.5, border: 1, borderColor: 'divider', overflow: 'hidden' }}>
-      <Box sx={{ px: 2, py: 1.25, borderBottom: 1, borderColor: 'divider', bgcolor: 'action.hover' }}>
-        <Typography sx={{ fontWeight: 700, fontSize: 11.5, letterSpacing: 0.8, textTransform: 'uppercase', color: 'text.secondary' }}>
-          {title}
-        </Typography>
-      </Box>
-      <Box sx={{ p: 2 }}>{children}</Box>
-    </Box>
-  )
-
-  const DetailField = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <Box>
-      <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.25 }}>
-        {label}
-      </Typography>
-      <Box>{children}</Box>
-    </Box>
-  )
-
   // ═══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════════
@@ -364,110 +403,103 @@ export default function ManageProductDialog({
         fullWidth
         maxWidth="lg"
         scroll="paper"
-        slotProps={{ paper: { sx: { borderRadius: 3, overflow: 'hidden' } } }}
+        slotProps={{ paper: { sx: { borderRadius: '24px', overflow: 'hidden', height: { md: 'min(880px, calc(100% - 64px))' } } } }}
       >
-        {/* ── Branded Gradient Header ──────────────────────────────────────── */}
-        <Box sx={{
-          background: 'linear-gradient(135deg, #042C71 0%, #084387 50%, #0B6AB0 100%)',
-          color: '#fff',
-          px: 3, py: 2.5,
-          position: 'relative',
-        }}>
+        {/* ── Header ───────────────────────────────────────────────────────── */}
+        <Box sx={{ px: 3, pt: 2.5, pb: 2, display: 'flex', gap: 2, alignItems: 'center', bgcolor: 'background.paper' }}>
+          <Box sx={{
+            width: 64, height: 64, flexShrink: 0,
+            borderRadius: '14px', bgcolor: 'var(--bg-elevated)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+            color: 'text.disabled', fontSize: 20, fontWeight: 600,
+          }}>
+            {product.primary_image_url ? (
+              <Box
+                component="img"
+                src={getImageUrl(product.primary_image_url)}
+                alt={product.name}
+                sx={{ maxWidth: '84%', maxHeight: '84%', objectFit: 'contain' }}
+              />
+            ) : '?'}
+          </Box>
+
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {(product.brand || product.series) && (
+              <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.7, textTransform: 'uppercase', color: 'primary.light', mb: 0.25 }}>
+                {product.brand}
+                {product.series && (
+                  <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
+                    {product.brand ? ' · ' : ''}{product.series}
+                  </Box>
+                )}
+              </Typography>
+            )}
+            <Typography sx={{ fontWeight: 600, fontSize: 17, lineHeight: 1.25, letterSpacing: '-0.01em', mb: 0.75 }}>
+              {product.name}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Typography sx={{ fontSize: 12, color: 'text.secondary', fontFamily: "'JetBrains Mono', monospace" }}>
+                SKU: {product.sku}
+              </Typography>
+              {product.product_category && (
+                <Box sx={{ px: 1.25, py: 0.25, borderRadius: '999px', bgcolor: 'var(--bg-elevated)', fontSize: 12, fontWeight: 500, color: 'text.secondary' }}>
+                  {product.product_category}
+                </Box>
+              )}
+            </Box>
+          </Box>
+
+          {/* Status Indicator */}
+          <Box sx={{
+            display: 'inline-flex', alignItems: 'center', gap: 0.75, flexShrink: 0,
+            height: 30, px: 1.5, borderRadius: '999px', border: 1, borderColor: 'divider',
+          }}>
+            <Box sx={{
+              width: 8, height: 8, borderRadius: '50%',
+              bgcolor: product.status === 'active' ? 'success.main' : product.status === 'inactive' ? 'error.main' : 'warning.main',
+            }} />
+            <Typography sx={{ fontSize: 12, fontWeight: 600, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
+              {(product.status || 'unknown').replace(/_/g, ' ')}
+            </Typography>
+          </Box>
+
           <IconButton
             size="small"
             onClick={onClose}
-            sx={{
-              position: 'absolute', top: 12, right: 12,
-              color: 'rgba(255,255,255,0.8)',
-              bgcolor: 'rgba(255,255,255,0.1)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
-            }}
+            aria-label="Close"
+            sx={{ flexShrink: 0, width: 36, height: 36, border: 1, borderColor: 'divider', alignSelf: 'flex-start' }}
           >
             <CloseIcon fontSize="small" />
           </IconButton>
-
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            {product.primary_image_url ? (
-              <Avatar
-                variant="rounded"
-                src={getImageUrl(product.primary_image_url)}
-                alt={product.name}
-                sx={{ width: 56, height: 56, border: '2px solid rgba(255,255,255,0.25)', borderRadius: 2 }}
-              />
-            ) : (
-              <Avatar
-                variant="rounded"
-                sx={{ width: 56, height: 56, bgcolor: 'rgba(255,255,255,0.15)', borderRadius: 2, fontSize: 20 }}
-              >
-                ?
-              </Avatar>
-            )}
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontWeight: 700, fontSize: 18, lineHeight: 1.2, mb: 0.5 }}>
-                {product.name}
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-                {product.brand && (
-                  <Chip
-                    label={product.brand}
-                    size="small"
-                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', color: '#fff', fontWeight: 600, fontSize: 11, height: 22 }}
-                  />
-                )}
-                <Typography sx={{ fontSize: 12, opacity: 0.75, fontFamily: 'monospace' }}>
-                  SKU: {product.sku}
-                </Typography>
-                {product.product_category && (
-                  <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
-                    {product.product_category}
-                  </Typography>
-                )}
-              </Box>
-            </Box>
-
-            {/* Status Indicator */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 4 }}>
-              <Box sx={{
-                width: 8, height: 8, borderRadius: '50%',
-                bgcolor: product.status === 'active' ? '#34D399' : product.status === 'inactive' ? '#F87171' : '#FCD34D',
-                boxShadow: product.status === 'active' ? '0 0 8px rgba(52,211,153,0.6)' : 'none',
-              }} />
-              <Typography sx={{
-                fontSize: 12, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', opacity: 0.9,
-              }}>
-                {(product.status || 'unknown').replace(/_/g, ' ')}
-              </Typography>
-            </Box>
-          </Box>
         </Box>
 
-        {/* ── Chip-style Navigation Tabs ───────────────────────────────────── */}
-        <Box sx={{
-          px: 3, py: 1.5,
-          borderBottom: 1, borderColor: 'divider',
-          display: 'flex', gap: 1, flexWrap: 'wrap',
-          bgcolor: 'background.paper',
-        }}>
+        {/* ── Pill Navigation Tabs ─────────────────────────────────────────── */}
+        <Box
+          role="tablist"
+          sx={{
+            px: 3, pb: 2,
+            borderBottom: 1, borderColor: 'divider',
+            display: 'flex', gap: 1, flexWrap: 'wrap',
+            bgcolor: 'background.paper',
+          }}
+        >
           {tabs.map(t => (
-            <Chip
+            <Box
               key={t.id}
-              label={t.label}
+              component="button"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === t.id}
               onClick={() => setActiveTab(t.id)}
-              variant={activeTab === t.id ? 'filled' : 'outlined'}
-              color={activeTab === t.id ? 'primary' : 'default'}
-              sx={{
-                fontWeight: activeTab === t.id ? 600 : 400,
-                fontSize: 13,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                ...(activeTab !== t.id && { '&:hover': { bgcolor: 'action.hover' } }),
-              }}
-            />
+              sx={pillTabSx(activeTab === t.id)}
+            >
+              {t.label}
+            </Box>
           ))}
         </Box>
 
         {/* ── Dialog Content ───────────────────────────────────────────────── */}
-        <DialogContent sx={{ p: 0, bgcolor: 'action.hover' }}>
+        <DialogContent sx={{ p: 0, bgcolor: 'background.default' }}>
           <Box sx={{ p: 2.5 }}>
 
             {/* ════════════════════════════════════════════════════════════════ */}
@@ -480,13 +512,13 @@ export default function ManageProductDialog({
                 <Box sx={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: 2 }}>
 
                   {/* Image Viewer Card */}
-                  <Box sx={{ bgcolor: 'background.paper', borderRadius: 2.5, border: 1, borderColor: 'divider', overflow: 'hidden' }}>
+                  <Box sx={{ bgcolor: 'background.paper', borderRadius: '16px', border: 1, borderColor: 'divider', p: 1.25 }}>
                     {/* Main Image */}
                     <Box sx={{
-                      width: '100%', height: 320,
+                      width: '100%', height: 340,
                       position: 'relative',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      bgcolor: 'action.hover',
+                      bgcolor: 'var(--bg-elevated)', borderRadius: '12px', overflow: 'hidden',
                     }}>
                       {activeDetailImageUrl ? (
                         <>
@@ -494,50 +526,34 @@ export default function ManageProductDialog({
                             component="img"
                             src={activeDetailImageUrl}
                             alt={product.name}
-                            sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', p: 2 }}
+                            sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', p: 3 }}
                           />
                           {allImages.length > 1 && (
                             <>
                               <IconButton
                                 size="small"
+                                aria-label="Previous image"
                                 onClick={() => navigateImage(-1)}
-                                sx={{
-                                  position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-                                  bgcolor: 'rgba(0,0,0,0.45)', color: '#fff',
-                                  width: 34, height: 34,
-                                  '&:hover': { bgcolor: 'rgba(0,0,0,0.65)' },
-                                  transition: 'all 0.2s',
-                                }}
+                                sx={{ ...galleryArrowSx, left: 10 }}
                               >
                                 <ArrowBackIosNewIcon sx={{ fontSize: 14 }} />
                               </IconButton>
                               <IconButton
                                 size="small"
+                                aria-label="Next image"
                                 onClick={() => navigateImage(1)}
-                                sx={{
-                                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                                  bgcolor: 'rgba(0,0,0,0.45)', color: '#fff',
-                                  width: 34, height: 34,
-                                  '&:hover': { bgcolor: 'rgba(0,0,0,0.65)' },
-                                  transition: 'all 0.2s',
-                                }}
+                                sx={{ ...galleryArrowSx, right: 10 }}
                               >
                                 <ArrowForwardIosIcon sx={{ fontSize: 14 }} />
                               </IconButton>
-                              {/* Dot Indicators */}
-                              <Box sx={{ position: 'absolute', bottom: 12, display: 'flex', gap: 0.75 }}>
-                                {allImages.map((_, i) => (
-                                  <Box
-                                    key={i}
-                                    onClick={() => setActiveDetailImageUrl(allImages[i])}
-                                    sx={{
-                                      width: 8, height: 8, borderRadius: '50%', cursor: 'pointer',
-                                      bgcolor: allImages.indexOf(activeDetailImageUrl!) === i ? '#fff' : 'rgba(255,255,255,0.4)',
-                                      transition: 'all 0.2s',
-                                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                                    }}
-                                  />
-                                ))}
+                              {/* Position Indicator */}
+                              <Box sx={{
+                                position: 'absolute', bottom: 10,
+                                px: 1.25, py: 0.25, borderRadius: '999px',
+                                bgcolor: 'background.paper', border: 1, borderColor: 'divider',
+                                fontSize: 11.5, fontWeight: 600, color: 'text.secondary', fontVariantNumeric: 'tabular-nums',
+                              }}>
+                                {allImages.indexOf(activeDetailImageUrl) + 1} of {allImages.length}
                               </Box>
                             </>
                           )}
@@ -552,23 +568,20 @@ export default function ManageProductDialog({
 
                     {/* Thumbnail Strip */}
                     {allImages.length > 1 && (
-                      <Box sx={{
-                        display: 'flex', gap: 1, p: 1.5,
-                        borderTop: 1, borderColor: 'divider',
-                        overflowX: 'auto', justifyContent: 'center',
-                      }}>
+                      <Box sx={{ display: 'flex', gap: 1, pt: 1.25, overflowX: 'auto' }}>
                         {allImages.map((imgUrl, i) => (
                           <Box
                             key={i}
                             component="button"
                             type="button"
+                            aria-label={`Show image ${i + 1}`}
                             onClick={() => setActiveDetailImageUrl(imgUrl)}
                             sx={{
-                              width: 54, height: 54, p: 0, flexShrink: 0,
+                              width: 58, height: 58, p: 0.5, flexShrink: 0,
                               border: '2px solid',
-                              borderColor: activeDetailImageUrl === imgUrl ? 'primary.main' : 'transparent',
-                              borderRadius: 1.5,
-                              bgcolor: 'action.hover',
+                              borderColor: activeDetailImageUrl === imgUrl ? 'text.primary' : 'transparent',
+                              borderRadius: '12px',
+                              bgcolor: 'var(--bg-elevated)',
                               overflow: 'hidden',
                               cursor: 'pointer',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -576,11 +589,11 @@ export default function ManageProductDialog({
                               opacity: activeDetailImageUrl === imgUrl ? 1 : 0.7,
                               '&:hover': {
                                 opacity: 1,
-                                borderColor: activeDetailImageUrl === imgUrl ? 'primary.main' : 'divider',
+                                borderColor: activeDetailImageUrl === imgUrl ? 'text.primary' : 'divider',
                               },
                             }}
                           >
-                            <Box component="img" src={imgUrl} alt={`Thumbnail ${i + 1}`} sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'cover' }} />
+                            <Box component="img" src={imgUrl} alt={`Thumbnail ${i + 1}`} sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                           </Box>
                         ))}
                       </Box>
@@ -623,58 +636,43 @@ export default function ManageProductDialog({
 
                   {/* Pricing */}
                   <SectionCard title="Pricing">
-                    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 2 }}>
-                      <Box>
-                        <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                          MSRP
-                        </Typography>
-                        <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'text.primary', lineHeight: 1.3, mt: 0.25 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 1.25 }}>
+                      <Box sx={{ flex: '1 1 100%' }}>
+                        <Typography sx={fieldLabelSx}>MSRP</Typography>
+                        <Typography sx={{ fontSize: 24, fontWeight: 700, color: 'text.primary', letterSpacing: '-0.02em', lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
                           {formatCurrency(product.msrp, product.vendor_wholesale_price_currency)}
                         </Typography>
                       </Box>
 
                       {!isVendor && (
-                        <Box>
-                          <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            Wholesale
-                          </Typography>
-                          <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'primary.main', lineHeight: 1.3, mt: 0.25 }}>
-                            {formatCurrency(product.buyer_wholesale_price ?? product.vendor_wholesale_price_amount, product.vendor_wholesale_price_currency)}
-                          </Typography>
-                        </Box>
+                        <PriceTile
+                          label="Wholesale"
+                          color="primary.light"
+                          value={formatCurrency(product.buyer_wholesale_price ?? product.vendor_wholesale_price_amount, product.vendor_wholesale_price_currency)}
+                        />
                       )}
 
                       {(isVendor || isCixciAdmin) && product.vendor_wholesale_price_amount != null && (
-                        <Box>
-                          <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            Vendor Wholesale
-                          </Typography>
-                          <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'primary.main', lineHeight: 1.3, mt: 0.25 }}>
-                            {formatCurrency(product.vendor_wholesale_price_amount, product.vendor_wholesale_price_currency)}
-                          </Typography>
-                        </Box>
+                        <PriceTile
+                          label="Vendor Wholesale"
+                          color="primary.light"
+                          value={formatCurrency(product.vendor_wholesale_price_amount, product.vendor_wholesale_price_currency)}
+                        />
                       )}
 
                       {product.vendor_map_pricing_enforced && (
-                        <Box>
-                          <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            MAP Price
-                          </Typography>
-                          <Typography sx={{ fontSize: 17, fontWeight: 600, color: 'text.primary', mt: 0.25 }}>
-                            {formatCurrency(product.map_price, product.vendor_wholesale_price_currency)}
-                          </Typography>
-                        </Box>
+                        <PriceTile
+                          label="MAP Price"
+                          value={formatCurrency(product.map_price, product.vendor_wholesale_price_currency)}
+                        />
                       )}
 
                       {product.sale_price && (
-                        <Box>
-                          <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            Sale Price
-                          </Typography>
-                          <Typography sx={{ fontSize: 17, fontWeight: 600, color: 'success.main', mt: 0.25 }}>
-                            {formatCurrency(product.sale_price, product.vendor_wholesale_price_currency)}
-                          </Typography>
-                        </Box>
+                        <PriceTile
+                          label="Sale Price"
+                          color="success.main"
+                          value={formatCurrency(product.sale_price, product.vendor_wholesale_price_currency)}
+                        />
                       )}
                     </Box>
                   </SectionCard>
@@ -897,7 +895,7 @@ export default function ManageProductDialog({
             {/* 2. COMPATIBILITY TAB                                            */}
             {/* ════════════════════════════════════════════════════════════════ */}
             {activeTab === 'compatibility' && (
-              <Box sx={{ maxHeight: 400, overflowY: 'auto', pr: 0.5 }}>
+              <Box>
                 {/* Universal Product Mapping Banner */}
                 {product.compatibility_mode === 'universal_device_type' && Array.isArray(product.compatible_device_types) && product.compatible_device_types.length > 0 && (
                   <Alert severity="info" sx={{ mb: 1, fontSize: 12, py: 0.25 }}>
@@ -1062,7 +1060,7 @@ export default function ManageProductDialog({
             {/* 3. BULK TAB                                                     */}
             {/* ════════════════════════════════════════════════════════════════ */}
             {activeTab === 'bulk' && !isBuyer && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 400, overflowY: 'auto' }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12 }}>
                   Select devices and choose the update type.
                 </Typography>
@@ -1227,7 +1225,7 @@ export default function ManageProductDialog({
             )}
 
             {activeTab === 'audit' && !isBuyer && (
-              <Box sx={{ maxHeight: 400, overflowY: 'auto', pr: 0.5 }}>
+              <Box>
                 {isLoadingAudit ? (
                   <Box sx={{ textAlign: 'center', py: 5 }}>
                     <CircularProgress size={24} />
@@ -1277,7 +1275,7 @@ export default function ManageProductDialog({
         <DialogActions sx={{ justifyContent: 'space-between', px: 3, py: 1.5, borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
           {isBuyer ? (
             <Box sx={{ display: 'flex', width: '100%', justifyContent: 'flex-end' }}>
-              <Button variant="outlined" onClick={onClose} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>Close</Button>
+              <Button variant="outlined" onClick={onClose} sx={{ borderRadius: '999px', height: 34, px: 2.25, textTransform: 'none', fontWeight: 600 }}>Close</Button>
             </Box>
           ) : (
             <>
@@ -1288,7 +1286,7 @@ export default function ManageProductDialog({
                   onClick={handleDeleteProduct}
                   startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
                   sx={{
-                    borderRadius: 2, textTransform: 'none', fontWeight: 600,
+                    borderRadius: '999px', height: 34, px: 2.25, textTransform: 'none', fontWeight: 600,
                     opacity: product.status === 'active' ? 0.5 : 1,
                     cursor: product.status === 'active' ? 'not-allowed' : 'pointer',
                   }}
@@ -1297,13 +1295,13 @@ export default function ManageProductDialog({
                 </Button>
               )}
               <Box sx={{ display: 'flex', gap: 1.25, ml: isCixciAdmin ? 'auto' : 0 }}>
-                <Button variant="outlined" onClick={onClose} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>Close</Button>
+                <Button variant="outlined" onClick={onClose} sx={{ borderRadius: '999px', height: 34, px: 2.25, textTransform: 'none', fontWeight: 600 }}>Close</Button>
                 {!isCixciAdmin && (
                   <Button
                     variant="contained"
                     onClick={() => onEditProduct(product)}
                     startIcon={<EditIcon sx={{ fontSize: 14 }} />}
-                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                    sx={{ borderRadius: '999px', height: 34, px: 2.25, textTransform: 'none', fontWeight: 600 }}
                   >
                     Edit Product
                   </Button>
