@@ -11,9 +11,9 @@ from django.utils import timezone
 from apps.devices.models import Device
 from .models import DynamicDropdownConfig, Product, ProductCompatibilityAssertion
 from .compatibility_contract import (
-    CURRENT_DEVICE_TYPE_CODES, FIELD_OPERATIONS, canonical_field, category_mode,
+    FIELD_OPERATIONS, canonical_field, category_mode,
     capacity_in_gb, configured_type_ids, eligible_devices, normalized_rules,
-    product_universal_types,
+    product_universal_types, usable_device_type,
 )
 from .compatibility_values import NEGATIVE, normalized_value, normalized_wireless, value_catalog
 
@@ -71,7 +71,7 @@ def check_compatibility(product, device, *, config=None, catalog=None, evidence=
     if not config or config.status != "active" or not device.device_type_id:
         return False
     kind = device.device_type
-    if kind.code not in CURRENT_DEVICE_TYPE_CODES or kind.status != "active" or not kind.is_active or not kind.auto_mapping_eligible:
+    if not usable_device_type(kind) or not kind.auto_mapping_eligible:
         return False
     if str(kind.id) not in configured_type_ids(config):
         return False
@@ -241,7 +241,7 @@ def reconcile_product_compatibility(product, actor_id=None, change_source="Auto-
         evidence = _existing_evidence(assertion) if assertion else {}
         before_evidence = deepcopy(assertion.match_evidence or {}) if assertion else {}
         future = bool(device and device.launch_date and device.launch_date > now)
-        valid_type = bool(device and device.device_type and device.device_type.is_active and device.device_type.status == "active" and device.device_type.code in CURRENT_DEVICE_TYPE_CODES and str(device.device_type_id) in category_types)
+        valid_type = bool(device and usable_device_type(device.device_type) and str(device.device_type_id) in category_types)
         candidate = valid_type and (reference in current_ids or (future and device.lifecycle_status in ("inactive", "launching", "announced", "available")))
         feature_details = {}
         feature = bool(candidate and "feature" in allowed and check_compatibility(product, device, config=config, catalog=catalog, evidence=feature_details, cache=cache))

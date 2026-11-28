@@ -29,7 +29,7 @@ class Command(BaseCommand):
         report = {
             "read_only": True,
             "manual_selections_with_universal_origin": [{"sku": sku, "devices": count} for sku, count in sorted(former_universal.items())],
-            "disabled_automatic_types": list(DeviceType.objects.filter(code__in=["phone", "tablet", "smartwatch"], auto_mapping_eligible=False).values("id", "name", "status")),
+            "disabled_automatic_types": list(DeviceType.objects.filter(status="active", is_active=True, auto_mapping_eligible=False).values("id", "name", "status")),
             "active_categories_without_resolved_types": [config.value for config in configs.values() if config.status == "active" and not configured_type_ids(config)],
             "category_product_method_mismatches": mismatches,
             "invalid_direct_type_scopes": list(Product.objects.filter(compatibility_mode="direct_device").exclude(compatible_device_types=[]).values("id", "sku")),

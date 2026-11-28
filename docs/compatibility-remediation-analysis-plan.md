@@ -34,7 +34,8 @@ The newer category requirement explicitly supersedes older category decisions.
 Current eligible matching types are Phone, Tablet and Smartwatch. Smartphone
 is an approved alias for Phone. Older Universal examples mentioning Laptop do
 not authorize adding Laptop to current matching eligibility or deleting its
-historical references.
+historical references. (Superseded 2026-11-28 by BR-CMP-002: any Device Type an
+admin activates can be listed by a category.)
 
 The supplied Claude transcript is a report of attempted work, not evidence that
 all changes are correct or complete. The user's current instruction authorizes

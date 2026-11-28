@@ -7,7 +7,17 @@ import uuid
 from django.core.exceptions import ValidationError
 
 
-CURRENT_DEVICE_TYPE_CODES = ("phone", "tablet", "smartwatch")
+# The three original types. Since 2026-11-28 this list no longer decides which
+# types can be matched: any Device Type an admin has made Active can (see
+# usable_device_type). It remains only the default scope of a provider's bare
+# "Universal" declaration, so adding a new type never widens existing products.
+CORE_DEVICE_TYPE_CODES = ("phone", "tablet", "smartwatch")
+CURRENT_DEVICE_TYPE_CODES = CORE_DEVICE_TYPE_CODES  # kept for existing imports
+
+
+def usable_device_type(record):
+    """A Device Type takes part in compatibility once an admin has activated it."""
+    return bool(record and record.status == "active" and record.is_active)
 MODE_ALIASES = {"explicit": "device_specific"}
 CATEGORY_MODES = ("device_specific", "universal", "hybrid", "feature_based")
 ENTRY_MODES = ("required", "optional", "hidden", "defaulted", "conditional")
@@ -84,7 +94,7 @@ def resolve_device_types(values, *, field="compatible_device_types", eligible=Tr
             invalid.append(str(value))
             continue
         record = candidates[0]
-        if eligible and (record.code not in CURRENT_DEVICE_TYPE_CODES or record.status != "active" or not record.is_active):
+        if eligible and not usable_device_type(record):
             invalid.append(str(value))
             continue
         if record.id not in {r.id for r in result}:
@@ -230,7 +240,6 @@ def eligible_devices():
     from django.utils import timezone
     from apps.devices.models import Device
     return Device.objects.filter(
-        device_type__code__in=CURRENT_DEVICE_TYPE_CODES,
         device_type__status="active", device_type__is_active=True,
         lifecycle_status="available",
     ).filter(Q(launch_date__lte=timezone.localdate()) | Q(launch_date__isnull=True))

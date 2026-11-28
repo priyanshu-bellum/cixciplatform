@@ -9,7 +9,7 @@ from django.utils import timezone
 from apps.devices.models import Device
 from apps.tenant.services import check_access
 from .models import DynamicDropdownConfig, Product, ProductCompatibilityAssertion
-from .compatibility_contract import CURRENT_DEVICE_TYPE_CODES, category_mode, configured_type_ids
+from .compatibility_contract import category_mode, configured_type_ids, usable_device_type
 from .compatibility_engine import flush_mapping_changes, log_compatibility_change, reconcile_product_compatibility
 
 EXCLUSION_REASONS = {"physical_mismatch", "connector_incompatibility", "power_spec_conflict", "firmware_os_limitation", "performance_issue", "regulatory_unsupported", "other"}
@@ -90,7 +90,7 @@ def update_explicit_selections(product, items, actor, *, update_type="replace", 
         compatible = item.get("is_compatible", True)
         if not isinstance(compatible, bool):
             raise ValidationError({"is_compatible": "Use a JSON boolean."})
-        if not vendor_import and update_type != "remove" and (str(device.device_type_id) not in allowed_types or device.device_type.code not in CURRENT_DEVICE_TYPE_CODES or device.device_type.status != "active" or not device.device_type.is_active):
+        if not vendor_import and update_type != "remove" and (str(device.device_type_id) not in allowed_types or not usable_device_type(device.device_type)):
             raise ValidationError({"device_ids": "A selected device is outside the category's approved current types."})
         notes = item.get("notes", "")
         if not isinstance(notes, str):

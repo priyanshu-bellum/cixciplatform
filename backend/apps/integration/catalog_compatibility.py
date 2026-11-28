@@ -171,6 +171,11 @@ class CatalogDeviceResolver:
             if not isinstance(token, str) or not token.strip():
                 raise ValidationError('A device reference needs a configured canonical mapping or non-empty name.')
             token = token.strip()
+            if normalized_name(token) == 'universal':
+                # A scope declaration, not a model name: it must never be looked
+                # up or auto-created as a device called "Universal".
+                tokens.append(token)
+                continue
             try:
                 uuid.UUID(token)
             except ValueError:
@@ -194,9 +199,13 @@ class CatalogDeviceResolver:
             if not types and product is not None:
                 types = [str(record.pk) for record in product_universal_types(product)]
             if not types:
+                # A bare provider "Universal" keeps its original three-type meaning.
+                # A type added later (e.g. Laptop) is never implied: it needs an
+                # explicit universal_type_map entry or an admin's product scope.
                 from apps.devices.models import DeviceType
+                from apps.catalog.compatibility_contract import CORE_DEVICE_TYPE_CODES
                 types = [str(dt.pk) for dt in DeviceType.objects.filter(
-                    code__in=('phone', 'tablet', 'smartwatch'), status='active', is_active=True)]
+                    code__in=CORE_DEVICE_TYPE_CODES, status='active', is_active=True)]
             if not types:
                 raise ValidationError('Universal requires an explicit approved Device Type scope.')
             tokens.extend(str(value) for value in types)

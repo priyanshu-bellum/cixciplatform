@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import DynamicDropdownConfig, Product
-from .compatibility_contract import FIELD_OPERATIONS, CURRENT_DEVICE_TYPE_CODES, canonical_field, normalized_rules
+from .compatibility_contract import FIELD_OPERATIONS, canonical_field, normalized_rules
 from .compatibility_values import MANAGED_FIELDS, NEGATIVE, WIRELESS_POLICY_FIELD, value_catalog
 
 CONFIGURATION_FIELDS = ("field_name", "value", "display_name", "status", "compatibility_mode", "eligible_device_types", "match_logic", "accessory_fields", "compatibility_rules")
@@ -92,9 +92,10 @@ def save_configuration(serializer, actor):
 def public_configuration_options():
     from apps.devices.models import DeviceType
     result = value_catalog()
+    # Every Device Type an admin has activated, not a fixed list.
     result["device_types"] = list(DeviceType.objects.filter(
-        code__in=CURRENT_DEVICE_TYPE_CODES, status="active", is_active=True,
-    ).values("id", "name", "code"))
+        status="active", is_active=True,
+    ).order_by("name").values("id", "name", "code"))
     result["field_operations"] = FIELD_OPERATIONS
     from .compatibility_commands import EXCLUSION_REASONS
     result["exclusion_reasons"] = sorted(EXCLUSION_REASONS)
