@@ -28,7 +28,7 @@ import StatusChip from '../../components/data-display/StatusChip'
 import DevicePicker from './VendorAuditDevicePicker'
 import VendorAuditCategoryDrawer from './VendorAuditCategoryDrawer'
 import DropdownManagerDialog from './dialogs/DropdownManagerDialog'
-import { auditColors, auditLabels, comparable, deviceId, responseRows } from './vendorAuditData'
+import { auditColors, auditLabels, comparable, deviceId, explicitDevices, responseRows } from './vendorAuditData'
 import type { AuditConfig, AuditDevice, AuditPage, AuditProduct, AuditStats, AuditStatus, AuditSubmit,
   AuditUser, AuditVendor, AuditWriteBody, AuditWriteResult, LastSyncInfo, LiveSearchResult } from './vendorAuditData'
 
@@ -424,7 +424,7 @@ function ProductActions({ scope, product, configs, busy, submit }: { scope: stri
   submit: AuditSubmit }) {
   const queryClient = useQueryClient()
   const { showSnackbar } = useSnackbar()
-  const [devices, setDevices] = useState<AuditDevice[]>(product.device_assertions || [])
+  const [devices, setDevices] = useState<AuditDevice[]>(() => explicitDevices(product.device_assertions))
   const [category, setCategory] = useState(product.product_category || '')
   const [color, setColor] = useState(product.system_color || '')
   const [setupOpen, setSetupOpen] = useState(false)

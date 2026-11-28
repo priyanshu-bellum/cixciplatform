@@ -454,7 +454,9 @@ class VendorAuditProductSerializer(ProductListSerializer):
         return self._source(obj).get('review_errors',[])
 
     def get_device_assertions(self, obj):
-        return self.context.get('bulk_compatibility',{}).get(obj.pk,[])
+        explicit = self.context.get('audit_explicit',set())
+        return [{**row,'explicit':(obj.pk,row['device_id']) in explicit}
+            for row in self.context.get('bulk_compatibility',{}).get(obj.pk,[])]
 
     def get_payload_devices(self, obj):
         from .vendor_audit import declared_devices
@@ -1016,6 +1018,10 @@ class DynamicDropdownConfigSerializer(serializers.ModelSerializer):
         product_field = self._FIELD_TO_PRODUCT_COLUMN.get(obj.field_name)
         if not product_field:
             return 0
+        # The list view supplies one grouped count per column for the whole page.
+        counts = self.context.get("linked_product_counts")
+        if counts is not None:
+            return counts.get(product_field, {}).get(obj.value, 0)
         return Product.objects.filter(**{product_field: obj.value}).count()
 
     def validate(self, attrs):
@@ -1644,13 +1650,14 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='vendor-audit')
     def vendor_audit(self, request):
-        from .vendor_audit import audit_products, source_context
+        from .vendor_audit import audit_products, explicit_selections, source_context
         _, products = audit_products(request.query_params)
         # Always bounded, including when a caller supplies paginate=false.
         paginator = ProductPagination()
         rows = paginator.paginate_queryset(products,request,view=self)
         self._bulk_ctx = self._build_bulk_context(rows)
         self._bulk_ctx['bulk_sources'] = source_context(rows)
+        self._bulk_ctx['audit_explicit'] = explicit_selections(rows)
         serializer = VendorAuditProductSerializer(rows,many=True,context=self.get_serializer_context())
         return paginator.get_paginated_response(serializer.data)
 
@@ -1934,10 +1941,15 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             
         count = 0
         try:
-            with transaction.atomic():
-                for prod in products:
+            # One buyer-projection invalidation for the batch instead of a full
+            # recalculation of every projection after each product.
+            from .services import defer_buyer_projection_refresh, invalidate_buyer_projection_cache
+            with transaction.atomic(), defer_buyer_projection_refresh():
+                for prod in products.iterator(chunk_size=200):
                     run_compatibility_automapping(prod, actor_id=request.user.id, change_source="Bulk Recalculation")
                     count += 1
+                if count:
+                    invalidate_buyer_projection_cache('bulk_recalculation')
             return Response({"status": "success", "recalculated_count": count})
         except Exception as e:
             return Response({"error": str(e)}, status=500)
@@ -3956,6 +3968,21 @@ class DynamicDropdownConfigViewSet(viewsets.ModelViewSet):
         result = check_access(request.user, "catalog.product.update" if modifying else "catalog.product.read")
         if not result.granted or (modifying and result.reason != "cixci_admin"):
             raise PermissionDenied("Only authorized CIXCI System Admins can change compatibility configuration." if modifying else "Catalog configuration access denied.")
+
+    def list(self, request, *args, **kwargs):
+        from django.db.models import Count
+        self._linked_product_counts = {
+            column: dict(Product.objects.order_by().values_list(column).annotate(total=Count("id")))
+            for column in set(self._FIELD_TO_PRODUCT_COLUMN.values())
+        }
+        return super().list(request, *args, **kwargs)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        counts = getattr(self, "_linked_product_counts", None)
+        if counts is not None:
+            context["linked_product_counts"] = counts
+        return context
 
     @action(detail=False, methods=["get"], url_path="compatibility-options")
     def compatibility_options(self, request):

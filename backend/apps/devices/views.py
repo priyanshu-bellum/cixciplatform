@@ -58,7 +58,7 @@ class DeviceTypeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         import uuid
         from django.db import transaction
         from apps.audit.models import AuditRecord
-        from apps.catalog.compatibility_engine import run_device_remapping
+        from apps.catalog.compatibility_engine import run_devices_remapping
         fields = ("name", "code", "status", "is_active", "auto_mapping_eligible", "compatibility_rules", "supported_accessory_categories")
         with transaction.atomic():
             before = {field: getattr(serializer.instance, field) for field in fields} if serializer.instance else None
@@ -69,8 +69,8 @@ class DeviceTypeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 actor_reference=self.request.user.id, company_scope_reference=uuid.UUID(int=0),
                 source_module="devices", source_record_type="DeviceType", source_record_id=instance.id)
             if before and any(before[field] != after[field] for field in fields if field not in ("name", "code")):
-                for device in instance.devices.select_related("device_type", "manufacturer").iterator():
-                    run_device_remapping(device, actor_id=self.request.user.id, change_source="Device Type Configuration")
+                # Each affected product is reconciled once for the whole type.
+                run_devices_remapping(list(instance.devices.all()), actor_id=self.request.user.id, change_source="Device Type Configuration")
 
     def perform_create(self, serializer):
         self._save_configuration(serializer)
@@ -86,15 +86,12 @@ class DeviceTypeViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             return Response({"error": "Only CIXCI Admins can trigger compatibility recalculation."}, status=403)
         device_type = self.get_object()
         try:
-            from apps.catalog.compatibility_engine import run_device_remapping
+            from apps.catalog.compatibility_engine import run_devices_remapping
             from django.db import transaction
-            devices = device_type.devices.all()
-            count = 0
+            devices = list(device_type.devices.all())
             with transaction.atomic():
-                for dev in devices:
-                    run_device_remapping(dev, actor_id=request.user.id, change_source="Device Type Recalculation")
-                    count += 1
-            return Response({"status": "success", "recalculated_count": count})
+                run_devices_remapping(devices, actor_id=request.user.id, change_source="Device Type Recalculation")
+            return Response({"status": "success", "recalculated_count": len(devices)})
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
@@ -778,22 +775,20 @@ class DeviceViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         if not device_type_id and not manufacturer_id and not recalculate_all:
             return Response({"error": "Please provide 'device_type_id', 'manufacturer_id', or 'all' to recalculate compatibility."}, status=400)
             
-        from apps.catalog.compatibility_engine import run_device_remapping
+        from apps.catalog.compatibility_engine import run_devices_remapping
         from django.db import transaction
-        
+
         devices = Device.objects.all()
         if device_type_id:
             devices = devices.filter(device_type_id=device_type_id)
         if manufacturer_id:
             devices = devices.filter(manufacturer_id=manufacturer_id)
-            
-        count = 0
+
+        devices = list(devices)
         try:
             with transaction.atomic():
-                for dev in devices:
-                    run_device_remapping(dev, actor_id=request.user.id, change_source="Bulk Recalculation")
-                    count += 1
-            return Response({"status": "success", "recalculated_count": count})
+                run_devices_remapping(devices, actor_id=request.user.id, change_source="Bulk Recalculation")
+            return Response({"status": "success", "recalculated_count": len(devices)})
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 

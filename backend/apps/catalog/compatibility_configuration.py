@@ -78,8 +78,10 @@ def save_configuration(serializer, actor):
         return instance
     from .compatibility_engine import reconcile_product_compatibility
     affected = False
+    # Loaded after the save above, so every product sees the new values.
+    catalog = value_catalog()
     for product in products.order_by("pk").iterator():
-        reconcile_product_compatibility(product, actor_id=actor.id, change_source="Admin Configuration", notify=False)
+        reconcile_product_compatibility(product, actor_id=actor.id, change_source="Admin Configuration", notify=False, catalog=catalog)
         affected = True
     if affected:
         from .services import invalidate_buyer_projection_cache

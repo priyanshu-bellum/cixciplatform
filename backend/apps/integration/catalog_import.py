@@ -160,6 +160,9 @@ def ingest_rows(connection, run, items, actor):
 
     counts = {"created_count": 0, "updated_count": 0, "unchanged_count": 0, "review_count": 0, "error_count": 0}
     device_resolver = CatalogDeviceResolver(connection.config)
+    # Controlled compatibility values are read once per page, not once per row.
+    from apps.catalog.compatibility_values import value_catalog
+    value_options = value_catalog()
     unchanged, observations, deferred_images = [], [], []
     resolved_brand_names = set()
     unresolved_colors = set()
@@ -322,7 +325,7 @@ def ingest_rows(connection, run, items, actor):
                 compatibility_input = {'devicecompatibility': compat_raw}
                 if config:
                     compatibility_input.update({field.replace('_', ''): fields[field] for field in COMPATIBILITY_FIELDS if field in fields})
-                values, types, devices = parse_compatibility_row(compatibility_input, None)
+                values, types, devices = parse_compatibility_row(compatibility_input, None, catalog=value_options)
                 if config:
                     attrs.update(values)
                 if types:

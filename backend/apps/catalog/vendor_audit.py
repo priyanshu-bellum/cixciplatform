@@ -103,6 +103,25 @@ def source_context(products):
     return result
 
 
+DERIVED_BASES = {'feature_evidence', 'universal_device_type', 'review_required'}
+
+
+def explicit_selections(products):
+    """(product, device) pairs that were selected model by model.
+
+    Feature and Universal matches are results of rules, not selections; an
+    editor must not send them back as explicit choices.
+    """
+    result = set()
+    rows = ProductCompatibilityAssertion.objects.filter(product_id__in=[product.pk for product in products],
+        is_compatible=True, is_excluded=False).values_list('product_id', 'device_reference', 'match_evidence', 'compatibility_basis')
+    for product_id, device, evidence, basis in rows.iterator():
+        explicit = evidence.get('explicit') if isinstance(evidence, dict) else None
+        if (explicit.get('active') if isinstance(explicit, dict) else not evidence and basis not in DERIVED_BASES):
+            result.add((product_id, str(device)))
+    return result
+
+
 def declared_devices(source):
     raw = source.get('mapped_fields',{}).get('compatibility_declaration',
         source.get('payload',{}).get('compatible_devices',[]))

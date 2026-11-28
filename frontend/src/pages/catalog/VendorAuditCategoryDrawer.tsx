@@ -9,7 +9,7 @@ import { useSnackbar } from '../../components/feedback/SnackbarProvider'
 import DropdownManagerDialog from './dialogs/DropdownManagerDialog'
 import DevicePicker from './VendorAuditDevicePicker'
 import { categoryDeviceTypes, declaredTypeIds } from './compatibilityEntry'
-import { deviceId } from './vendorAuditData'
+import { deviceId, explicitDevices } from './vendorAuditData'
 import type { AuditConfig, AuditDevice, AuditProduct, AuditWriteBody } from './vendorAuditData'
 
 type Rule = { mode?: string; default_value?: string; default?: string; condition_field?: string; condition_values?: string[] }
@@ -55,7 +55,7 @@ function CategoryForm({ product, detail, category, configs, scope, onClose, onBu
     ? detail.universal_device_type_ids as string[] : Array.isArray(detail.compatible_device_types) ? detail.compatible_device_types as string[] : []
   const [typeDraft, setTypeDraft] = useState<string[]>(savedTypes)
   const selectedTypes = declaredTypeIds(typeDraft, types)
-  const [devices, setDevices] = useState<AuditDevice[]>(product.device_assertions || [])
+  const [devices, setDevices] = useState<AuditDevice[]>(() => explicitDevices(product.device_assertions))
   const [errors, setErrors] = useState<string[]>([])
   const [rulesOpen, setRulesOpen] = useState(false)
   const save = useMutation({ mutationFn: (body: AuditWriteBody) => api.patch(`/catalog/products/${product.id}/`, body),

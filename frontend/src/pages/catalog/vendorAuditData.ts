@@ -1,5 +1,6 @@
 export type AuditStatus = 'review' | 'no_devices' | 'no_image' | 'ok' | 'new'
-export interface AuditDevice { device_id?: string; id?: string; name: string; model_number?: string }
+// explicit: selected model by model; false means the match is derived from Feature or Universal rules
+export interface AuditDevice { device_id?: string; id?: string; name: string; model_number?: string; explicit?: boolean }
 export interface AuditUser { id: string; is_cixci_admin?: boolean }
 export interface AuditConfig { id?: string; field_name: string; value: string; status: string;
   compatibility_mode?: string; eligible_device_types?: string[]; accessory_fields?: string[]; compatibility_rules?: Record<string, unknown> }
@@ -43,6 +44,9 @@ export const auditLabels: Record<AuditStatus, string> = {
 }
 export const auditColors = { review: 'error', no_devices: 'warning', no_image: 'warning', ok: 'success', new: 'info' } as const
 export const deviceId = (device: AuditDevice) => device.device_id || device.id || ''
+// A model picker starts from explicit selections only: sending rule-derived matches
+// back would store them as manual choices that no later rule change can remove.
+export const explicitDevices = (devices?: AuditDevice[]) => (devices || []).filter(device => device.explicit !== false)
 export const normalizeLabel = (name: string) => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase()
 export const responseRows = <T,>(data: unknown): T[] => {
   if (Array.isArray(data)) return data as T[]

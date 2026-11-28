@@ -25,8 +25,17 @@ def parse_storage(storage_str):
     return float(value) if value is not None else 0
 
 
-def _field_matches(field, product, device, catalog):
-    rule = normalized_rules(device.device_type.compatibility_rules or {}).get(field, {})
+def _cached(cache, key, build):
+    """Memoize pure normalization within one reconciliation; None disables it."""
+    if cache is None:
+        return build()
+    if key not in cache:
+        cache[key] = build()
+    return cache[key]
+
+
+def _field_matches(field, product, device, catalog, cache=None):
+    rule = _cached(cache, ("type_rules", device.device_type_id), lambda: normalized_rules(device.device_type.compatibility_rules or {})).get(field, {})
     if rule.get("mode") == "hidden":
         return False
     if rule.get("mode") == "conditional":
@@ -40,10 +49,11 @@ def _field_matches(field, product, device, catalog):
     if field == "wireless_charging_compatibility":
         if device.device_type.code == "tablet":
             return False
-        left = set(normalized_wireless(raw, catalog).split("+")) - {"", NEGATIVE}
+        left = _cached(cache, ("product", field), lambda: set(normalized_wireless(raw, catalog).split("+")) - {"", NEGATIVE})
         right = set(normalized_wireless(other, catalog).split("+")) - {"", NEGATIVE}
         return bool(left & right)
-    left, right = normalized_value(field, raw, catalog), normalized_value(field, other, catalog)
+    left = _cached(cache, ("product", field), lambda: normalized_value(field, raw, catalog))
+    right = normalized_value(field, other, catalog)
     if left in ("", NEGATIVE, "No") or right in ("", NEGATIVE, "No"):
         return False
     if field == "memory_capacity":
@@ -55,7 +65,7 @@ def _field_matches(field, product, device, catalog):
     return left == right
 
 
-def check_compatibility(product, device, *, config=None, catalog=None, evidence=None):
+def check_compatibility(product, device, *, config=None, catalog=None, evidence=None, cache=None):
     """Feature matching only: entry requirements do not imply comparisons."""
     config = config or DynamicDropdownConfig.objects.filter(field_name="product_category", value=product.product_category).first()
     if not config or config.status != "active" or not device.device_type_id:
@@ -71,8 +81,8 @@ def check_compatibility(product, device, *, config=None, catalog=None, evidence=
         return False
     catalog = catalog or value_catalog()
     try:
-        rules = normalized_rules(config.compatibility_rules or {})
-        fields = list(dict.fromkeys(canonical_field(field) for field in config.accessory_fields or []))
+        rules = _cached(cache, "config_rules", lambda: normalized_rules(config.compatibility_rules or {}))
+        fields = _cached(cache, "config_fields", lambda: list(dict.fromkeys(canonical_field(field) for field in config.accessory_fields or [])))
         # Writes enforce complete data-entry requirements. Matching reads only
         # assigned comparisons; unrelated informational/retired values cannot
         # supply evidence or disable another valid connection method.
@@ -100,7 +110,7 @@ def check_compatibility(product, device, *, config=None, catalog=None, evidence=
                 if value not in {str(item).casefold() for item in rule.get("condition_values", [])}:
                     continue
             try:
-                matched = _field_matches(field, product, device, catalog)
+                matched = _field_matches(field, product, device, catalog, cache)
             except ValidationError:
                 matched = False
             matches.append(matched)
@@ -118,8 +128,12 @@ def check_compatibility(product, device, *, config=None, catalog=None, evidence=
 
 def log_compatibility_change(assertion, previous_status, new_status, actor_id=None,
                              change_source="Auto-Mapping", exclusion_reason=None,
-                             exclusion_source=None, previous_evidence=None, device=None):
-    """Append to the existing audit spine; a failed audit must not look successful."""
+                             exclusion_source=None, previous_evidence=None, device=None, records=None):
+    """Append to the existing audit spine; a failed audit must not look successful.
+
+    A caller that changes many mappings in one transaction passes ``records`` and
+    inserts the collected rows together before it commits.
+    """
     from apps.audit.models import AuditRecord
     device = device or Device.objects.filter(id=assertion.device_reference).select_related("device_type").first()
     payload = {
@@ -137,12 +151,16 @@ def log_compatibility_change(assertion, previous_status, new_status, actor_id=No
         "exclusion_reason": exclusion_reason or assertion.exclusion_reason,
         "changed_by": str(actor_id) if actor_id else "System", "change_source": change_source,
     }
-    AuditRecord.objects.create(
+    record = AuditRecord(
         event_code="catalog.compatibility.changed", event_description=json.dumps(payload),
         status="success", actor_reference=actor_id, service_trigger_reference=change_source,
         company_scope_reference=assertion.product.company_scope_reference or assertion.product.vendor_company_reference or uuid.UUID(int=0),
         source_module="catalog", source_record_type="ProductCompatibilityAssertion", source_record_id=assertion.id,
     )
+    if records is None:
+        record.save()
+    else:
+        records.append(record)
 
 
 def _existing_evidence(assertion):
@@ -166,8 +184,23 @@ def _permitted_sources(product, config):
     return {"device_specific": {"explicit"}, "feature_based": {"feature"}, "hybrid": {"explicit", "feature"}}.get(mode, set())
 
 
+RECONCILED_FIELDS = ("is_compatible", "match_status", "match_evidence", "match_reason", "compatibility_basis", "match_source",
+    "updated_by", "device_status_at_mapping", "device_launch_date_at_mapping", "updated_at")
+
+
+def flush_mapping_changes(created, updated, fields, audits):
+    """One insert/update per batch instead of two statements per changed mapping."""
+    from apps.audit.models import AuditRecord
+    if created:
+        ProductCompatibilityAssertion.objects.bulk_create(created, batch_size=500)
+    if updated:
+        ProductCompatibilityAssertion.objects.bulk_update(updated, fields, batch_size=200)
+    if audits:
+        AuditRecord.objects.bulk_create(audits, batch_size=500)
+
+
 @transaction.atomic
-def reconcile_product_compatibility(product, actor_id=None, change_source="Auto-Mapping", *, config=None, catalog=None, device_ids=None, notify=True):
+def reconcile_product_compatibility(product, actor_id=None, change_source="Auto-Mapping", *, config=None, catalog=None, device_ids=None, notify=True, prefetched=None):
     # Serialize reconciliation for a supplier product, including concurrent
     # product/device updates; the existing pair uniqueness remains authoritative.
     caller_product = product
@@ -175,7 +208,9 @@ def reconcile_product_compatibility(product, actor_id=None, change_source="Auto-
     # Read current committed configuration after taking the product lock. A
     # reverse-remap batch must not replay a stale admin rule over a newer save.
     config = DynamicDropdownConfig.objects.filter(field_name="product_category", value=product.product_category).first()
-    catalog = value_catalog()
+    # A batch caller in the same transaction may share one controlled-value
+    # catalog; the category configuration above is always read fresh.
+    catalog = catalog or value_catalog()
     allowed = _permitted_sources(product, config)
     category_types = configured_type_ids(config) if config else set()
     scope_types = {str(record.id) for record in product_universal_types(product)} if "universal" in allowed else set()
@@ -183,17 +218,24 @@ def reconcile_product_compatibility(product, actor_id=None, change_source="Auto-
     if device_ids is not None:
         rows = rows.filter(device_reference__in=device_ids)
     existing = {str(row.device_reference): row for row in rows}
-    candidates = Device.objects.select_related("device_type", "manufacturer")
-    if device_ids is not None:
-        candidates = candidates.filter(pk__in=device_ids)
-    elif "feature" in allowed or "universal" in allowed:
-        candidates = candidates.filter(Q(device_type_id__in=category_types) | Q(pk__in=existing))
+    for row in existing.values():
+        row.product = product
+    if device_ids is not None and prefetched is not None:
+        # (devices by ID, currently eligible IDs) loaded once for a device batch.
+        devices, current_ids = prefetched
     else:
-        candidates = candidates.filter(pk__in=existing)
-    devices = {str(row.id): row for row in candidates}
-    current_ids = {str(value) for value in eligible_devices().filter(pk__in=devices).values_list("id", flat=True)}
+        candidates = Device.objects.select_related("device_type", "manufacturer")
+        if device_ids is not None:
+            candidates = candidates.filter(pk__in=device_ids)
+        elif "feature" in allowed or "universal" in allowed:
+            candidates = candidates.filter(Q(device_type_id__in=category_types) | Q(pk__in=existing))
+        else:
+            candidates = candidates.filter(pk__in=existing)
+        devices = {str(row.id): row for row in candidates}
+        current_ids = {str(value) for value in eligible_devices().filter(pk__in=devices).values_list("id", flat=True)}
     now = timezone.localdate()
     changed = 0
+    cache, created, updated, audits = {}, [], [], []
     for reference in sorted(set(devices) | set(existing)):
         device, assertion = devices.get(reference), existing.get(reference)
         evidence = _existing_evidence(assertion) if assertion else {}
@@ -202,7 +244,7 @@ def reconcile_product_compatibility(product, actor_id=None, change_source="Auto-
         valid_type = bool(device and device.device_type and device.device_type.is_active and device.device_type.status == "active" and device.device_type.code in CURRENT_DEVICE_TYPE_CODES and str(device.device_type_id) in category_types)
         candidate = valid_type and (reference in current_ids or (future and device.lifecycle_status in ("inactive", "launching", "announced", "available")))
         feature_details = {}
-        feature = bool(candidate and "feature" in allowed and check_compatibility(product, device, config=config, catalog=catalog, evidence=feature_details))
+        feature = bool(candidate and "feature" in allowed and check_compatibility(product, device, config=config, catalog=catalog, evidence=feature_details, cache=cache))
         universal = bool(candidate and "universal" in allowed and str(device.device_type_id) in scope_types and device.device_type.auto_mapping_eligible)
         for source, active, basis, reason in (
             ("feature", feature, "feature_evidence", "Matched configured comparisons: " + ", ".join(feature_details.get("comparisons", [])) if feature else "No current configured feature comparison result supports this mapping."),
@@ -243,10 +285,12 @@ def reconcile_product_compatibility(product, actor_id=None, change_source="Auto-
         assertion.updated_by = actor_id
         assertion.device_status_at_mapping = device.lifecycle_status if device else assertion.device_status_at_mapping
         assertion.device_launch_date_at_mapping = device.launch_date if device else assertion.device_launch_date_at_mapping
-        # Use the base save to update readiness once after the atomic batch.
-        super(ProductCompatibilityAssertion, assertion).save()
-        log_compatibility_change(assertion, previous, status, actor_id, change_source, previous_evidence=before_evidence, device=device)
+        assertion.updated_at = timezone.now()
+        # Written together below; readiness is updated once after the batch.
+        (created if assertion._state.adding else updated).append(assertion)
+        log_compatibility_change(assertion, previous, status, actor_id, change_source, previous_evidence=before_evidence, device=device, records=audits)
         changed += 1
+    flush_mapping_changes(created, updated, RECONCILED_FIELDS, audits)
     readiness_changed = ProductCompatibilityAssertion.update_product_status(product, notify=False)
     caller_product.compatibility_status = product.compatibility_status
     if notify and (changed or readiness_changed):
@@ -268,17 +312,31 @@ def run_universal_device_type_mapping(product, actor_id=None, change_source="Uni
 
 def run_device_remapping(device, actor_id=None, change_source="System Remap"):
     """The same reconciliation removes stale type/status matches as well as adds."""
+    return run_devices_remapping([device], actor_id, change_source)
+
+
+def run_devices_remapping(devices, actor_id=None, change_source="System Remap"):
+    """Reconcile every affected product once for a whole batch of devices."""
     from .services import defer_buyer_projection_refresh, invalidate_buyer_projection_cache
-    changed = 0
+    device_ids = list(dict.fromkeys(device.id for device in devices))
+    if not device_ids:
+        return 0
+    loaded = {str(row.id): row for row in Device.objects.select_related("device_type", "manufacturer").filter(pk__in=device_ids)}
+    current_ids = {str(value) for value in eligible_devices().filter(pk__in=device_ids).values_list("id", flat=True)}
+    type_ids = {device.device_type_id for device in loaded.values()}
+    type_keys = {str(value) for value in type_ids}
     feature_categories = [row.value for row in DynamicDropdownConfig.objects.filter(field_name="product_category")
-                          if category_mode(row.compatibility_mode) in ("feature_based", "hybrid") and str(device.device_type_id) in configured_type_ids(row)]
-    prior_products = ProductCompatibilityAssertion.objects.filter(device_reference=device.id).values_list("product_id", flat=True)
+                          if category_mode(row.compatibility_mode) in ("feature_based", "hybrid") and configured_type_ids(row) & type_keys]
+    prior_products = ProductCompatibilityAssertion.objects.filter(device_reference__in=device_ids).values_list("product_id", flat=True)
     affected = Product.objects.filter(Q(product_category__in=feature_categories) |
-        Q(compatibility_mode="universal_device_type", universal_type_scopes__device_type_id=device.device_type_id, universal_type_scopes__is_active=True) |
+        Q(compatibility_mode="universal_device_type", universal_type_scopes__device_type_id__in=type_ids, universal_type_scopes__is_active=True) |
         Q(id__in=prior_products)).distinct()
+    catalog = value_catalog()
+    changed = 0
     with defer_buyer_projection_refresh():
         for product in affected.order_by("pk").iterator():
-            changed += reconcile_product_compatibility(product, actor_id, change_source, device_ids=[device.id])
+            changed += reconcile_product_compatibility(product, actor_id, change_source, catalog=catalog,
+                device_ids=device_ids, prefetched=(loaded, current_ids))
     if changed:
         invalidate_buyer_projection_cache("device_remapping")
     return changed

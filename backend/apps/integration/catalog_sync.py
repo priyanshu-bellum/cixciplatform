@@ -94,16 +94,30 @@ def catalog_request_params(config, cursor=None, *, limit=None):
     return params
 
 
+IMAGE_BATCH = 20
+
+
 def _process_deferred_images(deferred_images):
-    from .catalog_media import process_vendor_product_images
+    """Download a bounded batch of products' images in parallel, then store them.
+
+    Worker threads only fetch bytes; every database write stays on this thread.
+    """
+    from .catalog_media import image_candidates, prefetch_vendor_images, process_vendor_product_images
     from apps.catalog.models import Product
-    for product_pk, image_urls, vendor_company_id, actor_id in deferred_images:
+    for start in range(0, len(deferred_images), IMAGE_BATCH):
+        batch = deferred_images[start:start + IMAGE_BATCH]
+        products = {row.pk: row for row in Product.objects.filter(pk__in=[item[0] for item in batch], primary_image_reference__isnull=True)}
         try:
-            product = Product.objects.get(pk=product_pk)
-            if not product.primary_image_reference:
-                process_vendor_product_images(product, image_urls, vendor_company_id, actor_id)
+            fetched = prefetch_vendor_images(url for item in batch if item[0] in products for url in image_candidates(item[1]))
         except Exception:
-            pass
+            fetched = None
+        for product_pk, image_urls, vendor_company_id, actor_id in batch:
+            try:
+                product = products.get(product_pk)
+                if product is not None and not product.primary_image_reference:
+                    process_vendor_product_images(product, image_urls, vendor_company_id, actor_id, fetched=fetched)
+            except Exception:
+                pass
 
 
 def test_catalog_connection(connection, actor):

@@ -4,12 +4,13 @@ import uuid
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from apps.devices.models import Device
 from apps.tenant.services import check_access
 from .models import DynamicDropdownConfig, Product, ProductCompatibilityAssertion
 from .compatibility_contract import CURRENT_DEVICE_TYPE_CODES, category_mode, configured_type_ids
-from .compatibility_engine import log_compatibility_change, reconcile_product_compatibility
+from .compatibility_engine import flush_mapping_changes, log_compatibility_change, reconcile_product_compatibility
 
 EXCLUSION_REASONS = {"physical_mismatch", "connector_incompatibility", "power_spec_conflict", "firmware_os_limitation", "performance_issue", "regulatory_unsupported", "other"}
 
@@ -22,12 +23,30 @@ def authorize_edit(actor, product):
     return result.reason == "cixci_admin"
 
 
-def canonical_device(value):
+def _reference(item):
+    return (item.get("device_id") or item.get("device_reference")) if isinstance(item, dict) else item
+
+
+def known_devices(values):
+    """One lookup for a whole selection instead of one query per device."""
+    identifiers = set()
+    for value in values:
+        try:
+            identifiers.add(uuid.UUID(str(value)))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return {row.id: row for row in Device.objects.filter(id__in=identifiers).select_related("device_type", "manufacturer")}
+
+
+def canonical_device(value, known=None):
     try:
         identifier = uuid.UUID(str(value))
     except (ValueError, TypeError, AttributeError):
         raise ValidationError({"device_reference": "Select an existing canonical Device ID."}) from None
-    device = Device.objects.filter(id=identifier).select_related("device_type").first()
+    if known is not None:
+        device = known.get(identifier)
+    else:
+        device = Device.objects.filter(id=identifier).select_related("device_type", "manufacturer").first()
     if device is None:
         raise ValidationError({"device_reference": "The canonical device record does not exist."})
     return device
@@ -43,6 +62,7 @@ def update_explicit_selections(product, items, actor, *, update_type="replace", 
         raise ValidationError({"assertions": "Supply a list of canonical device selections."})
     if update_type == "replace" and not admin and not vendor_import and (product.status == "active" or product.is_tied_to_activity):
         raise ValidationError({"update_type": "Replacing compatibility on a live or previously exported/sold product requires CIXCI Admin approval. Use Add or a reasoned exclusion."})
+    known = known_devices(_reference(item) for item in items)
     if update_type == "remove":
         selections = []
         for item in items:
@@ -52,7 +72,7 @@ def update_explicit_selections(product, items, actor, *, update_type="replace", 
                 raise ValidationError({"notes": "Use plain text."})
             if item["exclusion_reason"] == "other" and not item.get("notes", "").strip():
                 raise ValidationError({"notes": "Other requires descriptive notes."})
-            device = canonical_device(item.get("device_id") or item.get("device_reference"))
+            device = canonical_device(item.get("device_id") or item.get("device_reference"), known)
             selections.append((device, item))
         for device, item in selections:
             apply_mapping_control(product, actor, "exclude", device.id, reason=item["exclusion_reason"], notes=item.get("notes", ""), reconcile=False)
@@ -66,7 +86,7 @@ def update_explicit_selections(product, items, actor, *, update_type="replace", 
         item = {"device_id": item} if isinstance(item, (str, uuid.UUID)) else item
         if not isinstance(item, dict):
             raise ValidationError({"assertions": "Each selection needs a canonical device reference."})
-        device = canonical_device(item.get("device_id") or item.get("device_reference"))
+        device = canonical_device(item.get("device_id") or item.get("device_reference"), known)
         compatible = item.get("is_compatible", True)
         if not isinstance(compatible, bool):
             raise ValidationError({"is_compatible": "Use a JSON boolean."})
@@ -77,7 +97,11 @@ def update_explicit_selections(product, items, actor, *, update_type="replace", 
             raise ValidationError({"notes": "Use plain text."})
         selected[str(device.id)] = (device, compatible, notes)
     rows = {str(row.device_reference): row for row in ProductCompatibilityAssertion.objects.select_for_update().filter(product=product)}
+    retiring = [row.device_reference for reference, row in rows.items() if update_type == "replace" and reference not in selected]
+    known.update(known_devices(retiring))
+    created, updated, audits = [], [], []
     for reference, row in rows.items():
+        row.product = product
         retire = (update_type == "replace" and reference not in selected) or (update_type == "remove" and reference in selected)
         if not retire or row.is_excluded or row.is_locked:
             continue
@@ -89,9 +113,10 @@ def update_explicit_selections(product, items, actor, *, update_type="replace", 
         if not explicit:
             continue
         evidence["explicit"] = {**explicit, "active": False}
-        row.match_evidence, row.updated_by = evidence, actor.id
-        super(ProductCompatibilityAssertion, row).save()
-        log_compatibility_change(row, row.match_status, row.match_status, actor.id, change_source, previous_evidence=before)
+        row.match_evidence, row.updated_by, row.updated_at = evidence, actor.id, timezone.now()
+        updated.append(row)
+        log_compatibility_change(row, row.match_status, row.match_status, actor.id, change_source, previous_evidence=before,
+            device=known.get(row.device_reference), records=audits)
     if update_type != "remove":
         for reference, (device, compatible, notes) in selected.items():
             row = rows.get(reference)
@@ -101,10 +126,12 @@ def update_explicit_selections(product, items, actor, *, update_type="replace", 
                 row = ProductCompatibilityAssertion(product=product, device_reference=device.id, is_compatible=False, compatibility_basis=basis, match_status="Pending", vendor_company_reference=product.vendor_company_reference, sku=product.sku, created_by=actor.id)
             before = deepcopy(row.match_evidence or {})
             row.match_evidence = {**before, "explicit": {"active": compatible, "basis": basis, "reason": notes or "Explicit canonical model selection."}}
-            row.notes, row.updated_by = notes, actor.id
+            row.notes, row.updated_by, row.updated_at = notes, actor.id, timezone.now()
             row.compatibility_basis = basis
-            super(ProductCompatibilityAssertion, row).save()
-            log_compatibility_change(row, row.match_status, row.match_status, actor.id, change_source, previous_evidence=before)
+            (created if row._state.adding else updated).append(row)
+            log_compatibility_change(row, row.match_status, row.match_status, actor.id, change_source, previous_evidence=before,
+                device=device, records=audits)
+    flush_mapping_changes(created, updated, ("match_evidence", "notes", "updated_by", "compatibility_basis", "updated_at"), audits)
     return reconcile_product_compatibility(product, actor.id, change_source)
 
 

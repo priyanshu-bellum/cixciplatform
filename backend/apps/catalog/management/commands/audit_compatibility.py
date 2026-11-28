@@ -16,8 +16,19 @@ class Command(BaseCommand):
             config = configs.get(product.product_category)
             if config and category_mode(config.compatibility_mode) == "universal" and product.compatibility_mode != "universal_device_type":
                 mismatches.append({"sku": product.sku, "category": product.product_category, "product_mode": product.compatibility_mode, "category_mode": config.compatibility_mode})
+        # Manual selections that began as Universal matches: before the Vendor
+        # Audit editor was corrected it could resubmit rule results as choices.
+        # Reported for admin review only; a deliberate selection looks the same.
+        former_universal = {}
+        manual = ProductCompatibilityAssertion.objects.filter(compatibility_basis="manual_assertion", is_compatible=True, is_excluded=False,
+            product__compatibility_mode="direct_device").values_list("product__sku", "match_evidence")
+        for sku, evidence in manual.iterator():
+            evidence = evidence if isinstance(evidence, dict) else {}
+            if "universal" in evidence and (evidence.get("explicit") or {}).get("active"):
+                former_universal[sku] = former_universal.get(sku, 0) + 1
         report = {
             "read_only": True,
+            "manual_selections_with_universal_origin": [{"sku": sku, "devices": count} for sku, count in sorted(former_universal.items())],
             "disabled_automatic_types": list(DeviceType.objects.filter(code__in=["phone", "tablet", "smartwatch"], auto_mapping_eligible=False).values("id", "name", "status")),
             "active_categories_without_resolved_types": [config.value for config in configs.values() if config.status == "active" and not configured_type_ids(config)],
             "category_product_method_mismatches": mismatches,

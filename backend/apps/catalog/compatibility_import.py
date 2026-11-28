@@ -19,7 +19,7 @@ ALIASES = {
 }
 
 
-def parse_compatibility_row(row, config):
+def parse_compatibility_row(row, config, *, catalog=None):
     def key(value):
         return re.sub(r"[^a-z0-9]", "", value.casefold())
 
@@ -34,7 +34,7 @@ def parse_compatibility_row(row, config):
     declaration = str(row.get("devicecompatibility") or row.get("compatibility") or row.get("compatibilitynames") or "").strip()
     parts = [part.strip() for part in re.split(r"[;,]", declaration) if part.strip()]
     devices = []
-    catalog = value_catalog()
+    catalog = catalog or value_catalog()
     mode = category_mode(config.compatibility_mode) if config else "device_specific"
     if parts and parts[0].casefold() == "universal":
         if devices or type_values:
@@ -42,11 +42,20 @@ def parse_compatibility_row(row, config):
         type_values, parts = parts[1:], []
         if not type_values:
             raise ValidationError('Universal requires explicit approved Device Types; it cannot imply every type.')
+    identifiers = {}
     for part in parts:
         try:
-            identifier = uuid.UUID(part)
+            identifiers[part] = uuid.UUID(part)
         except ValueError:
-            identifier = None
+            identifiers[part] = None
+    # Canonical IDs (the vendor sync resolves every name to one) are confirmed
+    # with a single set lookup instead of two queries per device.
+    known = set(Device.objects.filter(pk__in=[value for value in identifiers.values() if value]).values_list("pk", flat=True)) if any(identifiers.values()) else set()
+    for part in parts:
+        identifier = identifiers[part]
+        if identifier in known:
+            devices.append(str(identifier))
+            continue
         matches = Device.objects.filter(Q(pk=identifier) if identifier else Q(name__iexact=part))
         if not identifier and not matches.exists():
             # Match a complete canonical display name, never a substring or

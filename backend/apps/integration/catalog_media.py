@@ -62,15 +62,48 @@ def download_vendor_image(url, timeout=DOWNLOAD_TIMEOUT):
     return data, filename, mime
 
 
-def create_vendor_media_asset(product_id, image_url, vendor_company_id, actor_id):
+DOWNLOAD_WORKERS = 8
+
+
+def image_candidates(image_urls):
+    """The URLs process_vendor_product_images will try, in order."""
+    return [url.strip() for url in (image_urls or [])[:6] if isinstance(url, str) and url.strip()]
+
+
+def prefetch_vendor_images(urls, workers=DOWNLOAD_WORKERS):
+    """Download distinct URLs concurrently; network only, no database access.
+
+    Returns {url: (data, filename, mime_type) or the raised Exception}.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    urls = list(dict.fromkeys(urls))
+    if not urls:
+        return {}
+
+    def fetch(url):
+        try:
+            return download_vendor_image(url)
+        except Exception as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(urls)))) as pool:
+        return dict(zip(urls, pool.map(fetch, urls)))
+
+
+def create_vendor_media_asset(product_id, image_url, vendor_company_id, actor_id, fetched=None):
     """Download a vendor image and create a MediaAsset linked to the product.
 
+    ``fetched`` is an optional prefetch_vendor_images result for this URL.
     Returns the asset UUID on success, None on failure.
     """
     from apps.media.models import MediaAsset, AssetType, AssetStatus
 
     try:
-        data, filename, mime_type = download_vendor_image(image_url)
+        result = fetched.get(image_url) if fetched else None
+        if isinstance(result, Exception):
+            raise result
+        data, filename, mime_type = result or download_vendor_image(image_url)
     except Exception as exc:
         logger.warning("Vendor image download failed for product %s: %s", product_id, exc)
         return None
@@ -130,7 +163,7 @@ def create_vendor_media_asset(product_id, image_url, vendor_company_id, actor_id
     return asset_id
 
 
-def process_vendor_product_images(product, image_urls, vendor_company_id, actor_id):
+def process_vendor_product_images(product, image_urls, vendor_company_id, actor_id, fetched=None):
     """Process image URLs for a vendor-sourced product.
 
     Downloads the first valid image, creates a MediaAsset, and sets
@@ -148,11 +181,10 @@ def process_vendor_product_images(product, image_urls, vendor_company_id, actor_
     media_refs = []
     primary_id = None
 
-    for url in image_urls[:6]:
-        if not isinstance(url, str) or not url.strip():
-            continue
+    for url in image_candidates(image_urls):
+        extra = {"fetched": fetched} if fetched else {}
         asset_id = create_vendor_media_asset(
-            product.id, url.strip(), vendor_company_id, actor_id,
+            product.id, url, vendor_company_id, actor_id, **extra,
         )
         if asset_id:
             media_refs.append(media_short_url(asset_id))

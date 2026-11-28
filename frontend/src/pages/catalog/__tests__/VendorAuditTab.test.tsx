@@ -191,6 +191,25 @@ test('cancelled or rejected category configuration does not enable manual mappin
   assert.equal(h.state.requests.filter(request=>request.endpoint.endsWith('/map-devices/')).length,0)
 })
 
+test('switching a Universal product to category rules does not turn rule-derived devices into selections', async () => {
+  await h.reset('?derived=1')
+  await h.until('document.querySelectorAll(\'[data-testid="audit-product"]\').length===2')
+  await h.click(`[data-product-id="${h.productIds[0]}"]`)
+  await h.until('document.querySelector(\'[data-testid="audit-comparison"]\').innerText.includes("Model Alpha")')
+  await h.button('Edit compatibility / Universal')
+  await h.until('!!document.querySelector(\'[aria-label="Category compatibility setup"]\')')
+  await h.select('Product compatibility','category')
+  const drawerDevices = '[aria-label="Category compatibility setup"] [data-testid="audit-current-devices"]'
+  await h.until(`!!document.querySelector('${drawerDevices}')`)
+  assert.equal(await h.evaluate(`document.querySelector('${drawerDevices}').innerText.includes("No models selected")`),true)
+  assert.equal(await h.evaluate(`document.querySelector('${drawerDevices}').innerText.includes("Model Alpha")`),false)
+  await h.button('Save category')
+  await h.until('!document.querySelector(\'[aria-label="Category compatibility setup"]\')')
+  const request=h.state.requests.find(request=>request.method==='PATCH')!
+  assert.equal((request.body as Record<string,unknown>).compatibility_mode,'direct_device')
+  assert.deepEqual(request.body.device_ids,[])
+})
+
 test('dark mode narrow layout and buyer guard', async () => {
   await h.reset('?dark=1')
   await h.until('document.querySelectorAll(\'[data-testid="audit-product"]\').length===2')

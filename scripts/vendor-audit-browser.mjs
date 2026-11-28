@@ -132,6 +132,12 @@ export async function createAuditBrowser() {
         compatibility_rules:index===3?{compatible_charging_interface:{mode:'required',comparison:'informational'},bluetooth_compatibility:{mode:'required',comparison:'informational'}}:{}
       })).concat([{id:'color-black',field_name:'system_color',value:'Black',status:'active'},{id:'color-blue',field_name:'system_color',value:'Blue',status:'active'}])
       if(query.includes('feature=1') || query.includes('bundle=1')){state.rows[0].product_category='Phone Attachments';state.rows[0].review_errors=[]}
+      if(query.includes('derived=1')){
+        // A Universal product in a Hybrid category: every current match is rule-derived.
+        state.configs[0].compatibility_mode='hybrid'
+        Object.assign(state.rows[0],{compatibility_mode:'universal_device_type',review_errors:[],
+          device_assertions:devices.slice(0,2).map(device=>({device_id:device.id,name:device.manufacturer_name+' '+device.name,explicit:false}))})
+      }
       if(query.includes('bundle=1')){
         state.rows[0].name='Nimbus9 Alto 2 + Power Bank Bundle for Galaxy Z Flip8'
         state.rows[0].payload_devices=[{name:'Galaxy Z Flip8'}]
