@@ -2,6 +2,35 @@
 
 Active task: TASK-019 — in_progress.
 
+TASK-024 (2026-11-28, completed, uncommitted): Missing Devices is backed by
+VendorDeviceMapping (catalog 0047, applied to the local copy only); adding or
+linking a device maps the declaring products, clears their review flag and is
+reused by later syncs. Page rewritten.
+
+TASK-023 (2026-11-28, completed, uncommitted): provider device names that are not
+in the Device Catalog are no longer auto-created; they go to Missing Devices
+(BR-INT-003). Earlier auto-created devices were not touched.
+
+TASK-022 (2026-11-28, completed, uncommitted): any Device Type an admin sets Active
+can be listed by a category and matched (BR-CMP-002); the fixed phone/tablet/
+smartwatch list now only scopes a provider's bare "Universal". Local stack is up
+(backend 8000, frontend 5173, db, redis; celery deliberately stopped) with
+fulfillment 0011 applied to the local copy.
+
+TASK-021 (2026-11-28, completed, uncommitted): EasyPost carrier tracking for
+CSV-uploaded shipments with an admin screen (Integrations → Carrier Tracking), a
+signed webhook receiver and a polling safety net; Balaji shipment events now follow
+the documented contract and reach the buyer. Migration fulfillment 0011 is NOT
+applied anywhere. No EasyPost or Balaji call was made; see TASK-021 for what a
+real key must still prove.
+
+TASK-020 (2026-11-28, completed, uncommitted on branch perf/compat-sync-and-audit-seeding):
+Vendor Audit no longer resubmits Universal/Feature matches as manual selections
+(BR-CAT-004); compatibility mapping and audit writes are batched, device batches
+reconcile each product once, vendor images download in parallel. Same 55
+pre-existing backend failures before and after; 9 new backend and 1 new browser
+test pass. Client server data not inspected; see TASK-020 for the review command.
+
 TASK-019 (2026-11-28): app-wide presentation polish through the MUI theme, pill page
 tabs scoped in AppLayout and a refreshed dashboard; admin routes verified on the
 local stack, buyer/vendor sessions still to be checked. Uncommitted.

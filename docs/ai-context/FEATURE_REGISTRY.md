@@ -313,14 +313,14 @@ known_issues: ["ISSUE-003", "ISSUE-009"]
 feature_id: FUL-001
 feature_name: Fulfillment, shipping, tracking and SLA
 status: implemented
-description: Vendor handoffs/imports, buyer shipment view, carrier observations, delivery evidence and SLA signals.
-frontend_files: ["frontend/src/pages/FulfillmentPage.tsx"]
-backend_files: ["backend/apps/fulfillment/api.py", "backend/apps/fulfillment/tasks.py", "backend/apps/fulfillment/carrier_tracking.py"]
-database_entities: ["fulfillment.FulfillmentHandoff", "fulfillment.DeliveryDateEvidence", "fulfillment.SLAEvaluationRecord", "fulfillment.BuyerUpdateReadySignal", "fulfillment.VendorShippingImportLog"]
-api_endpoints: ["GET /api/v1/fulfillment/handoffs/", "GET /api/v1/fulfillment/buyer-shipments/"]
+description: Vendor handoffs/imports, buyer shipment view, EasyPost carrier tracking (admin-configured), delivery evidence and SLA signals.
+frontend_files: ["frontend/src/pages/FulfillmentPage.tsx", "frontend/src/pages/integration/CarrierTrackingPanel.tsx"]
+backend_files: ["backend/apps/fulfillment/api.py", "backend/apps/fulfillment/tasks.py", "backend/apps/fulfillment/carrier_tracking.py", "backend/apps/fulfillment/tracking.py", "backend/apps/fulfillment/easypost.py", "backend/apps/fulfillment/tracking_api.py"]
+database_entities: ["fulfillment.FulfillmentHandoff", "fulfillment.DeliveryDateEvidence", "fulfillment.SLAEvaluationRecord", "fulfillment.BuyerUpdateReadySignal", "fulfillment.VendorShippingImportLog", "fulfillment.CarrierTrackingConfig", "fulfillment.ShipmentTracker", "fulfillment.ShipmentTrackingEvent", "fulfillment.CarrierWebhookReceipt"]
+api_endpoints: ["GET /api/v1/fulfillment/handoffs/", "GET /api/v1/fulfillment/buyer-shipments/", "GET /api/v1/fulfillment/carrier-tracking/", "POST /api/v1/fulfillment/carrier-webhooks/{provider}/{receiver_id}/"]
 dependencies: ["ORD-001", "ORD-002", "TEN-001", "NTF-001", "AUD-001"]
-business_rules: ["BR-TEN-001", "BR-AUD-001"]
-related_tests: ["backend/tests/test_fulfillment_shipping.py", "backend/tests/test_shipping_import.py", "backend/tests/test_buyer_shipping_import.py", "backend/tests/test_webhook_and_shipment.py"]
+business_rules: ["BR-TEN-001", "BR-AUD-001", "BR-FUL-001"]
+related_tests: ["backend/tests/test_fulfillment_shipping.py", "backend/tests/test_shipping_import.py", "backend/tests/test_buyer_shipping_import.py", "backend/tests/test_webhook_and_shipment.py", "backend/tests/test_carrier_tracking.py", "backend/tests/test_balaji_shipment_contract.py"]
 known_issues: ["ISSUE-003"]
 ```
 

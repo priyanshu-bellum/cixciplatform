@@ -213,7 +213,7 @@ Table: `catalog_product`. Source: [backend/apps/catalog/models.py](../../../../b
 | `selling_status` / `selling_status` | `CharField` | `NOT NULL; length=20; default="not_for_sale"` | `—` |
 | `vendor_wholesale_price_amount` / `vendor_wholesale_price_amount` | `DecimalField` | `NULL; blank allowed; precision=12, scale=4; default="<not set>"` | `—` |
 | `vendor_wholesale_price_currency` / `vendor_wholesale_price_currency` | `CharField` | `NOT NULL; length=3; default="USD"` | `—` |
-| `primary_image_reference` / `primary_image_reference` | `UUIDField` | `NULL; blank allowed; length=32; default="<not set>"` | `—` |
+| `primary_image_reference` / `primary_image_reference` | `UUIDField` | `indexed; NULL; blank allowed; length=32; default="<not set>"` | `—` |
 | `media_references` / `media_references` | `JSONField` | `NOT NULL; default="builtins.list (callable; not evaluated)"` | `—` |
 | `upc` / `upc` | `CharField` | `NULL; blank allowed; length=100; default="<not set>"` | `—` |
 | `launch_date` / `launch_date` | `DateField` | `NULL; blank allowed; default="<not set>"` | `—` |
@@ -307,7 +307,7 @@ Table: `catalog_product_compatibility`. Source: [backend/apps/catalog/models.py]
 | `created_at` / `created_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
 | `updated_at` / `updated_at` | `DateTimeField` | `NOT NULL; blank allowed; auto_now; default="<not set>"` | `—` |
 
-Indexes: `[]`.
+Indexes: `[["django.db.models.Index",[],{"name":"compat_device_lookup_idx","fields":["device_reference","is_compatible","is_excluded","product"]}]]`.
 
 Constraints: `[]`.
 
@@ -414,6 +414,30 @@ Constraints: `[]`.
 
 Unique together: `[["vendor_company_reference","vendor_color"]]`. Ordering: `[]`.
 
+## catalog.VendorDeviceMapping
+
+Table: `catalog_vendor_device_mapping`. Source: [backend/apps/catalog/models.py](../../../../backend/apps/catalog/models.py).
+
+| Field / column | Django type | Constraints / defaults | Relationship |
+|---|---|---|---|
+| `id` / `id` | `UUIDField` | `PK; unique; NOT NULL; length=32; default="uuid.uuid4 (callable; not evaluated)"` | `—` |
+| `vendor_company_reference` / `vendor_company_reference` | `UUIDField` | `indexed; NOT NULL; length=32; default="<not set>"` | `—` |
+| `vendor_device_name` / `vendor_device_name` | `CharField` | `NOT NULL; length=255; default="<not set>"` | `—` |
+| `name_key` / `name_key` | `CharField` | `NOT NULL; length=255; default="<not set>"` | `—` |
+| `status` / `status` | `CharField` | `indexed; NOT NULL; length=20; default="missing"` | `—` |
+| `device` / `device_id` | `ForeignKey` | `indexed; NULL; blank allowed; default="<not set>"` | `devices.Device; PROTECT; reverse=vendor_names` |
+| `product_ids` / `product_ids` | `JSONField` | `NOT NULL; blank allowed; default="builtins.list (callable; not evaluated)"` | `—` |
+| `first_seen_at` / `first_seen_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
+| `last_seen_at` / `last_seen_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
+| `resolved_by` / `resolved_by` | `UUIDField` | `NULL; blank allowed; length=32; default="<not set>"` | `—` |
+| `resolved_at` / `resolved_at` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+
+Indexes: `[["django.db.models.Index",[],{"name":"vendor_device_status_idx","fields":["status","last_seen_at"]}]]`.
+
+Constraints: `[["django.db.models.UniqueConstraint",[],{"name":"vendor_device_name_once","fields":["vendor_company_reference","name_key"]}]]`.
+
+Unique together: `[]`. Ordering: `[]`.
+
 ## Migrations
 
 - [backend/apps/catalog/migrations/0001_initial.py](../../../../backend/apps/catalog/migrations/0001_initial.py)
@@ -461,3 +485,5 @@ Unique together: `[["vendor_company_reference","vendor_color"]]`. Ordering: `[]`
 - [backend/apps/catalog/migrations/0043_product_needs_buyer_sync.py](../../../../backend/apps/catalog/migrations/0043_product_needs_buyer_sync.py)
 - [backend/apps/catalog/migrations/0044_normalize_balaji_products.py](../../../../backend/apps/catalog/migrations/0044_normalize_balaji_products.py)
 - [backend/apps/catalog/migrations/0045_product_vendor_original_data.py](../../../../backend/apps/catalog/migrations/0045_product_vendor_original_data.py)
+- [backend/apps/catalog/migrations/0046_performance_indexes.py](../../../../backend/apps/catalog/migrations/0046_performance_indexes.py)
+- [backend/apps/catalog/migrations/0047_vendor_device_mapping.py](../../../../backend/apps/catalog/migrations/0047_vendor_device_mapping.py)

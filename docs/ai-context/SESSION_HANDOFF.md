@@ -2,6 +2,44 @@
 
 Active task: TASK-019 — in_progress.
 
+TASK-024 (completed, uncommitted): catalog/missing_devices.py (new), catalog/
+models.py + migration 0047, catalog/api.py (MissingDeviceViewSet), integration/
+catalog_{compatibility,import}.py, frontend pages/catalog/MissingDevicesTab.tsx,
+tests/test_missing_device_flow.py. Test and live servers need catalog 0047 and
+fulfillment 0011 before this code runs there.
+
+TASK-023 (completed, uncommitted): integration/catalog_compatibility.py,
+integration/catalog_import.py, catalog/api.py (MissingDeviceViewSet),
+tests/test_missing_device_flow.py. ISSUE-013's auto-create part is addressed in
+code; its other failing tests are unchanged.
+
+TASK-022 (completed, uncommitted): catalog/compatibility_{contract,engine,commands,
+configuration}.py, integration/catalog_compatibility.py, management/commands/
+audit_compatibility.py, tests/test_device_type_activation.py. Open owner question:
+provider device names that do not exist are auto-created as Phone (ISSUE-013).
+
+TASK-021 (completed, uncommitted): new backend fulfillment/{tracking.py,
+easypost.py,tracking_api.py}, migration 0011; changed fulfillment/{models,api,
+tasks,carrier_tracking}.py, integration/{webhook_handlers,webhook_receiver,
+shipment_poll}.py, routing/api.py; tests test_carrier_tracking.py,
+test_balaji_shipment_contract.py, test_shipping_import.py; frontend
+pages/integration/CarrierTrackingPanel.tsx, IntegrationPage.tsx, OrdersPage.tsx.
+Next: user applies migration on the intended database, sets VENDOR_CATALOG_
+ENCRYPTION_KEYS (already required for vendor credentials), saves an EasyPost
+test key, registers the webhook and runs one end-to-end shipment.
+
+TASK-020 (completed, uncommitted): backend catalog/{api,vendor_audit,
+compatibility_engine,compatibility_commands,compatibility_configuration,
+compatibility_import}.py, management/commands/audit_compatibility.py,
+devices/views.py, integration/{catalog_import,catalog_media,catalog_sync}.py,
+tests/test_compat_selection_and_batching.py; frontend catalog/{vendorAuditData.ts,
+VendorAuditCategoryDrawer.tsx,VendorAuditTab.tsx} and the browser test/fixture.
+Tests run in the backend image: docker run --rm -v <repo>/backend:/app -w /app
+-e DJANGO_SETTINGS_MODULE=config.test_settings cixci-backend:latest python -m pytest.
+Next: user review, commit when asked, rebuild local images, then run
+audit_compatibility on the client server. Local containers other than cixci_db
+were left stopped.
+
 TASK-019 files: frontend/src/theme/components.ts, components/AppLayout.tsx,
 components/data-display/StatCard.tsx, pages/DashboardPage.tsx, NotificationsPage.tsx
 plus size/flash fixes in the TASK-017/018 files. Next: get buyer and vendor test

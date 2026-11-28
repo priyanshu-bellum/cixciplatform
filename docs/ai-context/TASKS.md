@@ -1,8 +1,165 @@
 # Persistent tasks
 
-Latest completion: TASK-018 (Device Catalog page redesign; TASK-017 catalog redesign).
+Latest completion: TASK-024 (Missing Devices resolve flow and page; TASK-023 no auto-created devices).
 Open follow-up: TASK-014 (provider mappings/images and remote test diagnostics).
 TASK-002–008 record earlier discoveries. IDs are permanent.
+
+## TASK-024 — Missing Devices: durable vendor names and a complete resolve flow
+
+- Status: completed
+- Related features: INT-002, CMP-002, DEV-002, CAT-002, UI-001; BR-INT-003.
+- Trigger: user asked that adding a missing device sets everything right and that
+  the page makes clear what is missing and lets the admin fix it there.
+- Schema: catalog 0047 adds catalog_vendor_device_mapping (VendorDeviceMapping):
+  one row per vendor and normalized name, status missing/mapped/dismissed, device
+  FK, product references. Applied to the local copy only.
+- Backend: catalog/missing_devices.py. Ingest records unresolved names with the
+  products that declared them. The resolver reads mapped rows as aliases and skips
+  dismissed text, so a decision survives later syncs even when the catalog device
+  is named differently. resolve_mapping maps every declaring product through the
+  canonical command, clears MISSING_DEVICE_REVIEW on sources with nothing left
+  missing, invalidates projections once, audits, and reports products it could not
+  map with the reason. Earlier dashboard alerts are imported into rows on list.
+- API (admin only): GET /catalog/missing-devices/?status=&search=&vendor=,
+  GET {id}/products/, POST add_device/ (manufacturer_id or manufacturer_name),
+  link_device/, dismiss_device/, restore_device/. The old request shapes still work.
+- UI: MissingDevicesTab rewritten: counts, Missing/Resolved/Dismissed views, vendor
+  and product count per name, affected products on expand, type/manufacturer
+  suggestion, likely existing device to link, add/link dialogs, result summary.
+- Verification: 12 tests in tests/test_missing_device_flow.py; full backend suite
+  996 passed/55 failed (same 55 as baseline); makemigrations --check clean; tsc and
+  eslint clean; page driven in headless Chrome with fixture APIs (add, link,
+  dismiss, undo; light and dark/narrow) and opened on the real local stack as admin.
+- Not verified: a real provider sync producing missing names; PostgreSQL test settings.
+- Remaining: none for this task. Uncommitted.
+
+## TASK-023 — Unknown provider device names go to Missing Devices
+
+- Status: completed
+- Related features: INT-002, CMP-002, DEV-002, CAT-002, NTF-001; BR-INT-003.
+- Trigger: explicit user decision 2026-11-28 to stop auto-creating devices from
+  provider text (they were always created as Phone, e.g. a laptop model).
+- Change: CatalogDeviceResolver no longer creates Device/Manufacturer rows; it maps
+  the known models and reports the rest in `missing`. ingest_rows adds those names
+  to the missing-device alert (limit raised from 50 to 500 names per page) and marks
+  the source MISSING_DEVICE_REVIEW, which is informational and does not block the
+  save. Missing Devices add_device now maps matching products through
+  update_explicit_selections (history, locks/exclusions, readiness) instead of a raw
+  bulk insert, and only offers/accepts Active device types.
+- Verification: 4 tests in tests/test_missing_device_flow.py; full backend suite
+  989 passed/55 failed, the same 55 as before.
+- Not changed: devices auto-created by earlier syncs (22 unconfigured in the local
+  copy) remain; no data repair was run.
+- Remaining: on the next provider sync, products that declare unknown models show
+  Review Required until an admin adds the device. Uncommitted.
+
+## TASK-022 — Device types become compatible when an admin activates them
+
+- Status: completed
+- Related features: DEV-001/002, CMP-001/002, CAT-002, INT-002; BR-CMP-002.
+- Trigger: a Laptop type added in Device Catalog never appeared in Vendor Audit or
+  category rules. Cause: a fixed list (phone, tablet, smartwatch) in
+  compatibility_contract gated options, validation, matching and eligibility; the
+  local Laptop type is also still Setup Required. The earlier rule ("current
+  eligible types are Phone, Tablet and Smartwatch") was changed on the user's
+  explicit choice on 2026-11-28.
+- Change: usable_device_type (status active and is_active) replaces the fixed list
+  in resolve_device_types, eligible_devices, check_compatibility, reconcile,
+  explicit selections and compatibility-options. A category must still list the
+  type. The fixed list survives only as CORE_DEVICE_TYPE_CODES, the scope of a
+  provider's bare "Universal".
+- Also fixed: a bare "Universal" declaration was looked up as a device name and
+  auto-created as a device called "Universal" (ISSUE-013 behaviour), so the
+  Universal branch never ran; it is now kept as a scope token.
+- Unknown provider device names: decided and changed in TASK-023.
+- Verification: 5 new tests in tests/test_device_type_activation.py; full backend
+  suite 985 passed/55 failed, the same 55 as before. Local server: only active
+  types are offered; Laptop remains Setup Required until an admin activates it.
+- Remaining: admin activates Laptop and adds it to the wanted categories. Uncommitted.
+
+## TASK-021 — EasyPost carrier tracking and vendor shipment contract
+
+- Status: completed
+- Related features: FUL-001, INT-003, ORD-001/002, NTF-001, UI-001; BR-FUL-001.
+- Trigger: user request to integrate EasyPost for manual (CSV) vendors, add an admin
+  screen for its API key, and verify the Balaji shipment webhook path end to end
+  (vendor, platform, buyer dashboard and buyer API).
+- Sources: EasyPost docs (trackers, webhooks, events, authentication, errors,
+  tracking guide) and the official Python client's validate_webhook, fetched
+  2026-11-28; Balaji OpenAPI saved under .local-copy/balaji-buyer-fix/openapi.yaml.
+- Design: fulfillment/tracking.py is the single place where a shipment moves.
+  CSV upload, Balaji webhook/poll and EasyPost all report there; it updates the
+  handoff (never backwards from delivered), suborder, order and buyer signals.
+  fulfillment/easypost.py is a DNS-pinned HTTPS client (no SDK, Basic auth).
+  CSV upload only queues a ShipmentTracker row; a worker registers it. EasyPost
+  webhooks (HMAC-verified, stored once per event ID) are the main path; the
+  existing 30-minute beat task is the safety net with leases and backoff.
+- Schema: migration fulfillment 0011 adds four tables only (CarrierTrackingConfig,
+  ShipmentTracker, ShipmentTrackingEvent, CarrierWebhookReceipt). Not applied to
+  any database by this task.
+- API: admin-only /api/v1/fulfillment/carrier-tracking/ (GET, config/, test/,
+  generate-webhook-secret/, register-webhook/, trackers/, trackers/{id}/retry/,
+  sync/); public signed POST /api/v1/fulfillment/carrier-webhooks/easypost/{id}/.
+  Additive `tracking` object on handoffs, buyer-shipments, order shipping_info and
+  suborder_shipments; `tracking_events` on buyer-shipments/{id}/.
+- UI: Integrations → Carrier Tracking (CIXCI admin): key, mode, enable, webhook
+  registration, carrier names, tracked shipments with retry. Orders show carrier
+  status, estimate and tracking link per vendor shipment.
+- Balaji gaps found and fixed: `tracking` is documented as an array but was read as
+  an object (number/carrier were never stored); shipment.delivered did not deliver
+  when status stayed "Shipped"; shipped events did not move suborder/order or
+  create the buyer shipment signal; unmatched events were recorded as processed
+  with the reason dropped; buyer notifications were scoped to a user ID instead of
+  the buyer company; buyer-signals list was not tenant scoped.
+- Verification: 20 carrier-tracking, 6 Balaji contract and 1 CSV-queue tests pass;
+  full backend result and UI check recorded in CHANGELOG. tsc clean.
+- Not verified: a real EasyPost key, webhook delivery from EasyPost, carrier name
+  strings other than UPS/USPS (their documentation table could not be read),
+  EasyPost rate limits, dedicated PostgreSQL settings, a live Balaji event.
+- Remaining: apply migration 0011, enter a test key in the admin screen, register
+  the webhook from a public https host, upload one CSV with an EasyPost test
+  tracking code and confirm the buyer view. Uncommitted, same branch as TASK-020.
+
+## TASK-020 — Vendor Audit selection fix and compatibility write batching
+
+- Status: completed
+- Related features: CMP-001/002, CAT-002, INT-002, DEV-002, MED-001, UI-001; BR-CAT-004.
+- Trigger: client video (Cricket Icon 6 in Chargers and Cables): a Universal product
+  switched to "Use category compatibility rules" kept every former device, including
+  models whose Device Catalog evidence fails the rule. User then asked for the whole
+  device/dropdown/category/sync path to be reviewed and optimised.
+- Root cause: vendor-audit `device_assertions` listed every compatible row without
+  its source; VendorAuditCategoryDrawer and the mapping panel seeded the model picker
+  from that list and saved it with `replace`, storing Universal/Feature results as
+  manual_assertion. Hybrid then keeps explicit evidence regardless of field rules.
+- Fix: rows carry `explicit`; both pickers start from explicit rows only
+  (vendorAuditData.explicitDevices). Backend rule semantics are unchanged.
+- Optimisation (same results and audit rows): reconcile and explicit-selection
+  commands write mappings and audit records in batches; one controlled-value catalog
+  and one device lookup per batch; Device Type saves and device bulk recalculation
+  reconcile each affected product once (run_devices_remapping); vendor sync resolves
+  declared device IDs with one set lookup and reads controlled values once per page;
+  deferred vendor images download in parallel (8 threads, 20 products per batch,
+  database writes stay on the task thread); dropdown list uses grouped product
+  counts; product bulk recalculation invalidates buyer projections once.
+- User-delegated decisions 2026-11-28 ("do what is best"), all conservative: Hybrid
+  explicit selections stay authoritative; Balaji "Universal" expansion and
+  auto-created devices are unchanged (ISSUE-013); no automatic cleanup of earlier
+  rows, `audit_compatibility` now reports manual selections with a Universal origin.
+- Verification: full backend suite in the backend image, SQLite test settings:
+  953 passed/55 failed against 944 passed/55 failed before, identical failing set
+  (pre-existing). 9 new tests in tests/test_compat_selection_and_batching.py pass.
+  Browser tests 14/14 (1 new). tsc -b clean; eslint clean on changed audit files.
+  Rolled-back replay on the local copy: old payload keeps 114 devices incl. Icon 6
+  as 114 explicit rows; corrected payload gives 35 rule matches, Icon 6 excluded.
+  One Universal product: 238 statements before, 12 after; one-device remap 1,535
+  to 1,133.
+- Not verified: dedicated PostgreSQL test settings, a real provider sync, the
+  client's server (its category mode and existing manual rows are unknown here).
+- Remaining: run `manage.py audit_compatibility` on the client server and review
+  the reported SKUs; rebuild/redeploy frontend and backend. Uncommitted on branch
+  perf/compat-sync-and-audit-seeding. Dev compose worker still ignores the
+  vendor_catalog queue (ISSUE-011), deliberately unchanged.
 
 ## TASK-019 — App-wide UI polish and dashboard refresh
 

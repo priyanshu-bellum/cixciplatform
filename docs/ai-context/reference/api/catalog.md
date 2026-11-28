@@ -102,7 +102,7 @@ Serializer fields: `["id","field_name","value","display_name","created_at","stat
 | PATCH | `/api/v1/catalog/dropdown-configs/{pk}/` | `partial_update` |
 | DELETE | `/api/v1/catalog/dropdown-configs/{pk}/` | `destroy` |
 
-- `list`: `rest_framework.mixins.ListModelMixin.list` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+- `list`: `apps.catalog.api.DynamicDropdownConfigViewSet.list` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `create`: `rest_framework.mixins.CreateModelMixin.create` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `compatibility_options`: `apps.catalog.api.DynamicDropdownConfigViewSet.compatibility_options` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `retrieve`: `rest_framework.mixins.RetrieveModelMixin.retrieve` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
@@ -167,10 +167,16 @@ Serializer: `none` at framework/dynamic (inspect handler).
 | GET | `/api/v1/catalog/missing-devices/` | `list` |
 | POST | `/api/v1/catalog/missing-devices/add_device/` | `add_device` |
 | POST | `/api/v1/catalog/missing-devices/dismiss_device/` | `dismiss_device` |
+| POST | `/api/v1/catalog/missing-devices/link_device/` | `link_device` |
+| POST | `/api/v1/catalog/missing-devices/restore_device/` | `restore_device` |
+| GET | `/api/v1/catalog/missing-devices/{pk}/products/` | `products` |
 
-- `list`: `apps.catalog.api.MissingDeviceViewSet.list` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `device_types`, `devices`, `manufacturers`, `total`. Local service imports: `apps.devices.models.Device`, `apps.devices.models.DeviceType`, `apps.devices.models.Manufacturer`, `apps.notification.models.NotificationRequest`.
-- `add_device`: `apps.catalog.api.MissingDeviceViewSet.add_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `device_name`, `device_type_code`, `manufacturer_id`, `vendor_device_name`. Direct Response dictionary keys: `created`, `device_id`, `device_name`, `error`, `products_matched`. Local service imports: `apps.audit.models.AuditRecord`, `apps.devices.models.Device`, `apps.devices.models.DeviceType`, `apps.devices.models.Manufacturer`.
-- `dismiss_device`: `apps.catalog.api.MissingDeviceViewSet.dismiss_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `vendor_device_name`. Direct Response dictionary keys: `dismissed`, `error`. Local service imports: `apps.notification.models.NotificationRequest`.
+- `list`: `apps.catalog.api.MissingDeviceViewSet.list` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `search`, `status`, `vendor`. Direct Response dictionary keys: `affected_products`, `counts`, `device_types`, `devices`, `manufacturers`, `total`. Local service imports: `apps.devices.models.Device`, `apps.devices.models.DeviceType`, `apps.devices.models.Manufacturer`, `apps.tenant.models.Company`.
+- `add_device`: `apps.catalog.api.MissingDeviceViewSet.add_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `device_name`, `device_type_code`, `manufacturer_id`, `manufacturer_name`, `vendor_company_id`, `vendor_device_name`. Direct Response dictionary keys: `error`. Local service imports: `apps.devices.models.Device`, `apps.devices.models.DeviceType`, `apps.devices.models.Manufacturer`.
+- `dismiss_device`: `apps.catalog.api.MissingDeviceViewSet.dismiss_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `vendor_device_name`. Direct Response dictionary keys: `dismissed`, `error`. Local service imports: none declared.
+- `link_device`: `apps.catalog.api.MissingDeviceViewSet.link_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `device_id`. Direct Response dictionary keys: `error`. Local service imports: `apps.devices.models.Device`.
+- `restore_device`: `apps.catalog.api.MissingDeviceViewSet.restore_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `error`, `restored`. Local service imports: none declared.
+- `products`: `apps.catalog.api.MissingDeviceViewSet.products` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `count`, `error`, `products`. Local service imports: none declared.
 
 Request/response key extraction is static and partial; inherited CRUD uses the
 serializer above. Action-specific serializers, nested schemas, validations,
@@ -186,7 +192,7 @@ Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authenticati
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
-Action capability map: `{"list":"catalog.product.list","matching_ids":"catalog.product.list","filter_options":"catalog.product.list","retrieve":"catalog.product.read","create":"catalog.product.create","update":"catalog.product.update","partial_update":"catalog.product.update","destroy":"catalog.product.delete","set_selling_status":"catalog.product.manage_selling","compatibility":"catalog.product.read","bulk_upload":"catalog.product.create","recalculate_compatibility":"catalog.product.update","recalculate_bulk_compatibility":"catalog.product.update","audit_history":"catalog.product.read","vendor_audit":"catalog.product.list","vendor_audit_stats":"catalog.product.list","map_devices":"catalog.product.update","bulk_map_devices":"catalog.product.update","resolve_review":"catalog.product.update","bulk_resolve_review":"catalog.product.update"}`.
+Action capability map: `{"list":"catalog.product.list","matching_ids":"catalog.product.list","filter_options":"catalog.product.list","retrieve":"catalog.product.read","create":"catalog.product.create","update":"catalog.product.update","partial_update":"catalog.product.update","destroy":"catalog.product.delete","set_selling_status":"catalog.product.manage_selling","compatibility":"catalog.product.read","bulk_upload":"catalog.product.create","recalculate_compatibility":"catalog.product.update","recalculate_bulk_compatibility":"catalog.product.update","audit_history":"catalog.product.read","vendor_audit":"catalog.product.list","vendor_audit_stats":"catalog.product.list","map_devices":"catalog.product.update","bulk_map_devices":"catalog.product.update","resolve_review":"catalog.product.update","bulk_resolve_review":"catalog.product.update","vendor_live_search":"catalog.product.list","vendor_sync_product":"catalog.product.update","vendor_force_sync":"catalog.product.update"}`.
 
 These are declarations, not a complete access proof: read custom permission,
 queryset and action checks in the handler and its mixins. Plain Django views may
@@ -211,6 +217,9 @@ Serializer: `none` at framework/dynamic (inspect handler).
 | POST | `/api/v1/catalog/products/recalculate-compatibility/` | `recalculate_bulk_compatibility` |
 | GET | `/api/v1/catalog/products/vendor-audit/` | `vendor_audit` |
 | GET | `/api/v1/catalog/products/vendor-audit-stats/` | `vendor_audit_stats` |
+| POST | `/api/v1/catalog/products/vendor-force-sync/` | `vendor_force_sync` |
+| GET | `/api/v1/catalog/products/vendor-live-search/` | `vendor_live_search` |
+| POST | `/api/v1/catalog/products/vendor-sync-product/` | `vendor_sync_product` |
 | GET | `/api/v1/catalog/products/{pk}/` | `retrieve` |
 | PUT | `/api/v1/catalog/products/{pk}/` | `update` |
 | PATCH | `/api/v1/catalog/products/{pk}/` | `partial_update` |
@@ -237,7 +246,10 @@ Serializer: `none` at framework/dynamic (inspect handler).
 - `pending_sync`: `apps.catalog.api.ProductViewSet.pending_sync` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `limit`. Direct Response dictionary keys: `count`, `products`. Local service imports: none declared.
 - `recalculate_bulk_compatibility`: `apps.catalog.api.ProductViewSet.recalculate_bulk_compatibility` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `brand`, `category`, `vendor_id`. Direct Response dictionary keys: `error`, `recalculated_count`, `status`. Local service imports: `apps.catalog.compatibility_engine.run_compatibility_automapping`.
 - `vendor_audit`: `apps.catalog.api.ProductViewSet.vendor_audit` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
-- `vendor_audit_stats`: `apps.catalog.api.ProductViewSet.vendor_audit_stats` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `vendor`. Direct Response dictionary keys: none declared. Local service imports: `apps.integration.models.VendorCatalogItem`.
+- `vendor_audit_stats`: `apps.catalog.api.ProductViewSet.vendor_audit_stats` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `vendor`. Direct Response dictionary keys: none declared. Local service imports: `apps.integration.models.VendorCatalogItem`, `apps.integration.models.VendorCatalogSyncRun`.
+- `vendor_force_sync`: `apps.catalog.api.ProductViewSet.vendor_force_sync` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `vendor`. Direct Response dictionary keys: `error`, `run_id`, `run_status`, `status`. Local service imports: `apps.integration.catalog_sync.request_sync`, `apps.integration.models.VendorCatalogConnection`.
+- `vendor_live_search`: `apps.catalog.api.ProductViewSet.vendor_live_search` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `q`, `vendor`. Direct Response dictionary keys: `error`, `results`. Local service imports: `apps.integration.catalog_transport.CatalogTransportError`, `apps.integration.models.VendorCatalogConnection`.
+- `vendor_sync_product`: `apps.catalog.api.ProductViewSet.vendor_sync_product` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `payload`, `vendor`. Direct Response dictionary keys: `error`. Local service imports: `apps.integration.models.VendorCatalogConnection`.
 - `retrieve`: `rest_framework.mixins.RetrieveModelMixin.retrieve` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `update`: `rest_framework.mixins.UpdateModelMixin.update` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `partial_update`: `rest_framework.mixins.UpdateModelMixin.partial_update` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.

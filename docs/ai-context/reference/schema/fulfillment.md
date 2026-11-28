@@ -35,6 +35,60 @@ Constraints: `[]`.
 
 Unique together: `[]`. Ordering: `[]`.
 
+## fulfillment.CarrierTrackingConfig
+
+Table: `fulfillment_carrier_tracking_config`. Source: [backend/apps/fulfillment/models.py](../../../../backend/apps/fulfillment/models.py).
+
+| Field / column | Django type | Constraints / defaults | Relationship |
+|---|---|---|---|
+| `id` / `id` | `UUIDField` | `PK; unique; NOT NULL; length=32; default="uuid.uuid4 (callable; not evaluated)"` | `—` |
+| `provider` / `provider` | `CharField` | `unique; NOT NULL; length=30; default="easypost"` | `—` |
+| `enabled` / `enabled` | `BooleanField` | `NOT NULL; default=false` | `—` |
+| `mode` / `mode` | `CharField` | `NOT NULL; length=20; default="test"` | `—` |
+| `encrypted_api_key` / `encrypted_api_key` | `TextField` | `NOT NULL; blank allowed; default="<not set>"` | `—` |
+| `api_key_hint` / `api_key_hint` | `CharField` | `NOT NULL; blank allowed; length=12; default="<not set>"` | `—` |
+| `encrypted_webhook_secret` / `encrypted_webhook_secret` | `TextField` | `NOT NULL; blank allowed; default="<not set>"` | `—` |
+| `provider_webhook_id` / `provider_webhook_id` | `CharField` | `NOT NULL; blank allowed; length=100; default="<not set>"` | `—` |
+| `receiver_id` / `receiver_id` | `UUIDField` | `unique; NOT NULL; length=32; default="uuid.uuid4 (callable; not evaluated)"` | `—` |
+| `track_vendor_api_shipments` / `track_vendor_api_shipments` | `BooleanField` | `NOT NULL; default=false` | `—` |
+| `carrier_map` / `carrier_map` | `JSONField` | `NOT NULL; blank allowed; default="apps.fulfillment.models.default_carrier_map (callable; not evaluated)"` | `—` |
+| `poll_interval_minutes` / `poll_interval_minutes` | `PositiveIntegerField` | `NOT NULL; default=240` | `—` |
+| `last_verified_at` / `last_verified_at` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `last_error` / `last_error` | `CharField` | `NOT NULL; blank allowed; length=200; default="<not set>"` | `—` |
+| `updated_by` / `updated_by_id` | `ForeignKey` | `indexed; NULL; blank allowed; default="<not set>"` | `tenant.User; SET_NULL; reverse=(default)` |
+| `created_at` / `created_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
+| `updated_at` / `updated_at` | `DateTimeField` | `NOT NULL; blank allowed; auto_now; default="<not set>"` | `—` |
+
+Indexes: `[]`.
+
+Constraints: `[]`.
+
+Unique together: `[]`. Ordering: `[]`.
+
+## fulfillment.CarrierWebhookReceipt
+
+Table: `fulfillment_carrier_webhook_receipt`. Source: [backend/apps/fulfillment/models.py](../../../../backend/apps/fulfillment/models.py).
+
+| Field / column | Django type | Constraints / defaults | Relationship |
+|---|---|---|---|
+| `id` / `id` | `UUIDField` | `PK; unique; NOT NULL; length=32; default="uuid.uuid4 (callable; not evaluated)"` | `—` |
+| `provider` / `provider` | `CharField` | `NOT NULL; length=30; default="easypost"` | `—` |
+| `provider_event_id` / `provider_event_id` | `CharField` | `NOT NULL; length=200; default="<not set>"` | `—` |
+| `event_type` / `event_type` | `CharField` | `NOT NULL; length=100; default="<not set>"` | `—` |
+| `mode` / `mode` | `CharField` | `NOT NULL; blank allowed; length=20; default="<not set>"` | `—` |
+| `payload_hash` / `payload_hash` | `CharField` | `NOT NULL; length=64; default="<not set>"` | `—` |
+| `tracker_reference` / `tracker_reference` | `CharField` | `NOT NULL; blank allowed; length=100; default="<not set>"` | `—` |
+| `status` / `status` | `CharField` | `indexed; NOT NULL; length=30; default="received"` | `—` |
+| `error_code` / `error_code` | `CharField` | `NOT NULL; blank allowed; length=100; default="<not set>"` | `—` |
+| `received_at` / `received_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
+| `processed_at` / `processed_at` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+
+Indexes: `[]`.
+
+Constraints: `[["django.db.models.UniqueConstraint",[],{"name":"carrier_webhook_event_once","fields":["provider","provider_event_id"]}]]`.
+
+Unique together: `[]`. Ordering: `["-received_at"]`.
+
 ## fulfillment.DeliveryDateCorrectionEvidence
 
 Table: `fulfillment_delivery_date_correction`. Source: [backend/apps/fulfillment/models.py](../../../../backend/apps/fulfillment/models.py).
@@ -272,6 +326,71 @@ Constraints: `[]`.
 
 Unique together: `[]`. Ordering: `[]`.
 
+## fulfillment.ShipmentTracker
+
+Table: `fulfillment_shipment_tracker`. Source: [backend/apps/fulfillment/models.py](../../../../backend/apps/fulfillment/models.py).
+
+| Field / column | Django type | Constraints / defaults | Relationship |
+|---|---|---|---|
+| `id` / `id` | `UUIDField` | `PK; unique; NOT NULL; length=32; default="uuid.uuid4 (callable; not evaluated)"` | `—` |
+| `handoff` / `handoff_id` | `OneToOneField` | `unique; indexed; NOT NULL; default="<not set>"` | `fulfillment.FulfillmentHandoff; PROTECT; reverse=tracker` |
+| `provider` / `provider` | `CharField` | `NOT NULL; length=30; default="easypost"` | `—` |
+| `tracking_code` / `tracking_code` | `CharField` | `NOT NULL; length=255; default="<not set>"` | `—` |
+| `carrier` / `carrier` | `CharField` | `NOT NULL; blank allowed; length=255; default="<not set>"` | `—` |
+| `provider_carrier` / `provider_carrier` | `CharField` | `NOT NULL; blank allowed; length=100; default="<not set>"` | `—` |
+| `provider_tracker_id` / `provider_tracker_id` | `CharField` | `indexed; NOT NULL; blank allowed; length=100; default="<not set>"` | `—` |
+| `state` / `state` | `CharField` | `NOT NULL; length=20; default="pending"` | `—` |
+| `status` / `status` | `CharField` | `NOT NULL; blank allowed; length=30; default="<not set>"` | `—` |
+| `status_detail` / `status_detail` | `CharField` | `NOT NULL; blank allowed; length=50; default="<not set>"` | `—` |
+| `est_delivery_date` / `est_delivery_date` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `public_url` / `public_url` | `CharField` | `NOT NULL; blank allowed; length=1000; default="<not set>"` | `—` |
+| `signed_by` / `signed_by` | `CharField` | `NOT NULL; blank allowed; length=255; default="<not set>"` | `—` |
+| `provider_updated_at` / `provider_updated_at` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `last_event_at` / `last_event_at` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `last_synced_at` / `last_synced_at` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `next_poll_at` / `next_poll_at` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `attempt_count` / `attempt_count` | `PositiveIntegerField` | `NOT NULL; default=0` | `—` |
+| `last_error` / `last_error` | `CharField` | `NOT NULL; blank allowed; length=200; default="<not set>"` | `—` |
+| `created_at` / `created_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
+| `updated_at` / `updated_at` | `DateTimeField` | `NOT NULL; blank allowed; auto_now; default="<not set>"` | `—` |
+
+Choices (stored value → display label):
+
+- `state`: `[["pending","Waiting to be registered"],["registered","Registered with provider"],["failed","Registration failed"],["stopped","No further updates expected"]]`
+
+Indexes: `[["django.db.models.Index",[],{"name":"tracker_due_idx","fields":["state","next_poll_at"]}]]`.
+
+Constraints: `[]`.
+
+Unique together: `[]`. Ordering: `[]`.
+
+## fulfillment.ShipmentTrackingEvent
+
+Table: `fulfillment_shipment_tracking_event`. Source: [backend/apps/fulfillment/models.py](../../../../backend/apps/fulfillment/models.py).
+
+| Field / column | Django type | Constraints / defaults | Relationship |
+|---|---|---|---|
+| `id` / `id` | `UUIDField` | `PK; unique; NOT NULL; length=32; default="uuid.uuid4 (callable; not evaluated)"` | `—` |
+| `handoff` / `handoff_id` | `ForeignKey` | `indexed; NOT NULL; default="<not set>"` | `fulfillment.FulfillmentHandoff; PROTECT; reverse=tracking_events` |
+| `source` / `source` | `CharField` | `NOT NULL; length=20; default="<not set>"` | `—` |
+| `status` / `status` | `CharField` | `NOT NULL; blank allowed; length=30; default="<not set>"` | `—` |
+| `status_detail` / `status_detail` | `CharField` | `NOT NULL; blank allowed; length=50; default="<not set>"` | `—` |
+| `message` / `message` | `CharField` | `NOT NULL; blank allowed; length=500; default="<not set>"` | `—` |
+| `location` / `location` | `CharField` | `NOT NULL; blank allowed; length=255; default="<not set>"` | `—` |
+| `occurred_at` / `occurred_at` | `DateTimeField` | `NOT NULL; default="<not set>"` | `—` |
+| `event_key` / `event_key` | `CharField` | `NOT NULL; length=64; default="<not set>"` | `—` |
+| `created_at` / `created_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
+
+Choices (stored value → display label):
+
+- `source`: `[["manual_csv","Manual CSV Upload"],["vendor_api","Vendor API (Webhook/Polling)"],["easypost","EasyPost Carrier Tracking"]]`
+
+Indexes: `[["django.db.models.Index",[],{"name":"tracking_event_time_idx","fields":["handoff","occurred_at"]}]]`.
+
+Constraints: `[["django.db.models.UniqueConstraint",[],{"name":"tracking_event_once","fields":["handoff","event_key"]}]]`.
+
+Unique together: `[]`. Ordering: `[]`.
+
 ## fulfillment.VendorFulfillmentResponseSLAPolicy
 
 Table: `fulfillment_sla_policy`. Source: [backend/apps/fulfillment/models.py](../../../../backend/apps/fulfillment/models.py).
@@ -363,3 +482,4 @@ Unique together: `[]`. Ordering: `["-uploaded_at"]`.
 - [backend/apps/fulfillment/migrations/0008_add_tracking_source.py](../../../../backend/apps/fulfillment/migrations/0008_add_tracking_source.py)
 - [backend/apps/fulfillment/migrations/0009_add_buyer_shipment_indexes.py](../../../../backend/apps/fulfillment/migrations/0009_add_buyer_shipment_indexes.py)
 - [backend/apps/fulfillment/migrations/0010_add_easypost_tracker_id.py](../../../../backend/apps/fulfillment/migrations/0010_add_easypost_tracker_id.py)
+- [backend/apps/fulfillment/migrations/0011_carrier_tracking_provider.py](../../../../backend/apps/fulfillment/migrations/0011_carrier_tracking_provider.py)

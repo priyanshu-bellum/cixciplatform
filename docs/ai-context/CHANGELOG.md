@@ -161,3 +161,63 @@ chronologically with task, reason, files/features/contracts, verification and ri
 - 2026-11-28 follow-up (TASK-019): compact ProductCard and Vendor Audit workspace
   redesign in catalog/ProductCard.tsx, productCatalog.css, VendorAuditTab.tsx and
   VendorAuditDevicePicker.tsx. Presentation only; 13/13 browser tests pass.
+
+## 2026-11-28 — TASK-020 — Vendor Audit selections and compatibility batching
+
+- Reason: client report that category rules did not change a former Universal
+  product's devices; user request to optimise device/category/vendor-sync paths.
+- Files: see SESSION_HANDOFF. Contract: vendor-audit `device_assertions[]` gains
+  boolean `explicit` (additive); buyer-facing device_compatibility is unchanged.
+  New helpers run_devices_remapping, flush_mapping_changes, known_devices,
+  explicit_selections, prefetch_vendor_images; optional `records`, `catalog`,
+  `prefetched`, `cache`, `fetched` arguments on existing functions.
+- Features: CMP-001/002, CAT-002, INT-002, DEV-002, MED-001, UI-001; BR-CAT-004.
+  No schema, dependency, route or matching-rule change.
+- Verification: recorded in TASK-020.
+- Risk: product bulk recalculation now marks buyer projections for lazy refresh
+  instead of recalculating each one per product; a shared controlled-value catalog
+  is reused inside one batch transaction; image downloads use worker threads.
+
+## 2026-11-28 — TASK-021 — EasyPost carrier tracking and vendor shipment contract
+
+- Reason: explicit user request (EasyPost for CSV vendors, admin key screen, Balaji
+  shipment webhook review, buyer visibility).
+- Files, schema and API: see TASK-021 and SESSION_HANDOFF. Migration fulfillment
+  0011 creates four tables and changes no existing column. No new dependency.
+- Features: FUL-001, INT-003, ORD-001/002, NTF-001, UI-001; BR-FUL-001.
+- Verification: full backend suite in the backend image (SQLite test settings)
+  980 passed/55 failed; the 55 are the same set that failed before TASK-020.
+  Django check clean; makemigrations --check clean for fulfillment. tsc -b clean;
+  eslint clean on the new panel, unchanged counts on IntegrationPage/OrdersPage.
+  Admin panel driven in headless Chrome against fixture APIs (save, test, secret,
+  retry; light and dark/narrow, no console errors); temporary harness removed.
+  Fresh SQL-blocked inventory: memory validator 0 errors, 0 warnings.
+- Risk: buyer-signals list is now tenant scoped (previously unscoped); vendor
+  shipment handling was consolidated into apply_vendor_shipment for webhook and
+  poll; nothing here has run against EasyPost or Balaji.
+
+## 2026-11-28 — TASK-022 — Device type eligibility is data-driven
+
+- Reason: user chose to let newly added types (Laptop) take part in compatibility.
+- Files and rule: see TASK-022; BR-CMP-002 supersedes the fixed three-type list.
+  No schema, route or dependency change.
+- Verification: 985 passed/55 failed (same 55 as baseline); 5 new tests.
+- Risk: a type activated by mistake becomes selectable in category rules at once;
+  matching still needs a category to list it. Provider auto-created devices are
+  still typed Phone.
+- Also 2026-11-28: fulfillment 0011 applied to the local copy database only, at the
+  user's request; local backend/frontend restarted and checked with an admin login.
+
+## 2026-11-28 — TASK-023 — No device auto-creation from provider names
+
+- Reason: explicit user decision. Rule BR-INT-003; details in TASK-023.
+- Verification: 989 passed/55 failed (same 55 as baseline); 4 new tests.
+- Risk: until an admin adds a missing device, products that declare only unknown
+  models have no device mapping and are not buyer-visible for that device.
+
+## 2026-11-28 — TASK-024 — Missing Devices resolve flow
+
+- Reason: explicit user request. Schema: catalog 0047 (one new table). Details and
+  verification in TASK-024; rule BR-INT-003 unchanged.
+- Risk: add_device may create a manufacturer the admin types; the list imports
+  names from earlier alerts on first load.

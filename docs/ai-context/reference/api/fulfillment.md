@@ -20,7 +20,7 @@ implement signature or session validation instead of DRF policies.
 
 Serializer: `apps.fulfillment.api.BuyerShipmentSerializer` at [backend/apps/fulfillment/api.py](../../../../backend/apps/fulfillment/api.py).
 
-Serializer fields: `["id","order_id","routed_suborder_reference","buyer_order_number","vendor_name","vendor_company_reference","status","order_status","tracking_source","tracking_source_label","shipping_carrier","tracking_number","vendor_order_number","shipped_date","delivered_date","easypost_tracker_id","created_at","updated_at"]`. Read-only fields: `[]`. Excluded: `[]`. Validation methods: none declared.
+Serializer fields: `["id","order_id","routed_suborder_reference","buyer_order_number","vendor_name","vendor_company_reference","status","order_status","tracking_source","tracking_source_label","tracking","tracking_events","shipping_carrier","tracking_number","vendor_order_number","shipped_date","delivered_date","easypost_tracker_id","created_at","updated_at"]`. Read-only fields: `[]`. Excluded: `[]`. Validation methods: none declared.
 
 | Method | Endpoint | Action |
 |---|---|---|
@@ -38,7 +38,7 @@ Frontend consumers (resource-path text matches; confirm action callers): no dire
 
 ## apps.fulfillment.api.BuyerUpdateSignalViewSet
 
-Handler: [backend/apps/fulfillment/api.py](../../../../backend/apps/fulfillment/api.py). Declared queryset model: `fulfillment.BuyerUpdateReadySignal`.
+Handler: [backend/apps/fulfillment/api.py](../../../../backend/apps/fulfillment/api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
 
 Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
 
@@ -84,7 +84,7 @@ implement signature or session validation instead of DRF policies.
 
 Serializer: `apps.fulfillment.api.FulfillmentHandoffSerializer` at [backend/apps/fulfillment/api.py](../../../../backend/apps/fulfillment/api.py).
 
-Serializer fields: `["id","routed_suborder_reference","vendor_company_reference","company_scope_reference","status","tracking_source","delivery_evidence_reference","buyer_order_number","buyer_id","vendor_order","shipping_carrier","shipping_tracking_number","order_status","shipped_date","delivered_date","vendor_order_number","tracking_number","created_at","updated_at"]`. Read-only fields: `["id","created_at"]`. Excluded: `[]`. Validation methods: `validate_status`.
+Serializer fields: `["id","routed_suborder_reference","vendor_company_reference","company_scope_reference","status","tracking_source","tracking","delivery_evidence_reference","buyer_order_number","buyer_id","vendor_order","shipping_carrier","shipping_tracking_number","order_status","shipped_date","delivered_date","vendor_order_number","tracking_number","created_at","updated_at"]`. Read-only fields: `["id","created_at"]`. Excluded: `[]`. Validation methods: `validate_status`.
 
 | Method | Endpoint | Action |
 |---|---|---|
@@ -335,4 +335,76 @@ serializer above. Action-specific serializers, nested schemas, validations,
 service calls and conditional response redaction must be read in source.
 
 Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/pages/FulfillmentPage.tsx](../../../../frontend/src/pages/FulfillmentPage.tsx).
+
+## apps.fulfillment.tracking_api.CarrierTrackingViewSet
+
+Handler: [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Declared queryset model: `fulfillment.CarrierTrackingConfig`.
+
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+
+Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
+
+Action capability map: `{}`.
+
+These are declarations, not a complete access proof: read custom permission,
+queryset and action checks in the handler and its mixins. Plain Django views may
+implement signature or session validation instead of DRF policies.
+
+Serializer: `apps.fulfillment.tracking_api.CarrierTrackingConfigSerializer` at [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py).
+
+Serializer fields: `["id","provider","enabled","mode","api_key","has_api_key","api_key_hint","has_webhook_secret","provider_webhook_id","webhook_path","track_vendor_api_shipments","carrier_map","poll_interval_minutes","last_verified_at","last_error","updated_at"]`. Read-only fields: `["id","provider","api_key_hint","provider_webhook_id","last_verified_at","last_error","updated_at"]`. Excluded: `[]`. Validation methods: `validate_mode`, `validate_poll_interval_minutes`, `validate_carrier_map`, `validate`.
+
+| Method | Endpoint | Action |
+|---|---|---|
+| GET | `/api/v1/fulfillment/carrier-tracking/` | `list` |
+| PATCH | `/api/v1/fulfillment/carrier-tracking/config/` | `configure` |
+| POST | `/api/v1/fulfillment/carrier-tracking/generate-webhook-secret/` | `generate_webhook_secret` |
+| POST | `/api/v1/fulfillment/carrier-tracking/register-webhook/` | `register_webhook` |
+| POST | `/api/v1/fulfillment/carrier-tracking/trackers/{tracker_id}/retry/` | `retry_tracker` |
+| POST | `/api/v1/fulfillment/carrier-tracking/sync/` | `sync` |
+| POST | `/api/v1/fulfillment/carrier-tracking/test/` | `test_connection` |
+| GET | `/api/v1/fulfillment/carrier-tracking/trackers/` | `trackers` |
+
+- `list`: `apps.fulfillment.tracking_api.CarrierTrackingViewSet.list` in [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+- `configure`: `apps.fulfillment.tracking_api.CarrierTrackingViewSet.configure` in [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+- `generate_webhook_secret`: `apps.fulfillment.tracking_api.CarrierTrackingViewSet.generate_webhook_secret` in [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `detail`, `webhook_secret`. Local service imports: none declared.
+- `register_webhook`: `apps.fulfillment.tracking_api.CarrierTrackingViewSet.register_webhook` in [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Direct request/query keys: `origin`. Direct Response dictionary keys: `code`, `detail`, `ok`. Local service imports: `apps.integration.catalog_transport.CatalogTransportError`, `apps.integration.catalog_transport.public_target`.
+- `retry_tracker`: `apps.fulfillment.tracking_api.CarrierTrackingViewSet.retry_tracker` in [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `detail`, `ok`. Local service imports: none declared.
+- `sync`: `apps.fulfillment.tracking_api.CarrierTrackingViewSet.sync` in [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+- `test_connection`: `apps.fulfillment.tracking_api.CarrierTrackingViewSet.test_connection` in [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `code`, `detail`, `ok`. Local service imports: none declared.
+- `trackers`: `apps.fulfillment.tracking_api.CarrierTrackingViewSet.trackers` in [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Direct request/query keys: `search`, `state`. Direct Response dictionary keys: none declared. Local service imports: none declared.
+
+Request/response key extraction is static and partial; inherited CRUD uses the
+serializer above. Action-specific serializers, nested schemas, validations,
+service calls and conditional response redaction must be read in source.
+
+Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/pages/integration/CarrierTrackingPanel.tsx](../../../../frontend/src/pages/integration/CarrierTrackingPanel.tsx).
+
+## apps.fulfillment.tracking_api.CarrierWebhookView
+
+Handler: [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
+
+Declared permissions: none declared. Authentication: none declared.
+
+Throttles: none declared. Required capability: `none`.
+
+Action capability map: `{}`.
+
+These are declarations, not a complete access proof: read custom permission,
+queryset and action checks in the handler and its mixins. Plain Django views may
+implement signature or session validation instead of DRF policies.
+
+Serializer: `none` at framework/dynamic (inspect handler).
+
+| Method | Endpoint | Action |
+|---|---|---|
+| POST | `/api/v1/fulfillment/carrier-webhooks/{provider}/{receiver_id}/` | `post` |
+
+- `post`: `apps.fulfillment.tracking_api.CarrierWebhookView.post` in [backend/apps/fulfillment/tracking_api.py](../../../../backend/apps/fulfillment/tracking_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+
+Request/response key extraction is static and partial; inherited CRUD uses the
+serializer above. Action-specific serializers, nested schemas, validations,
+service calls and conditional response redaction must be read in source.
+
+Frontend consumers (resource-path text matches; confirm action callers): no direct resource-path match; may be indirect or external.
 
