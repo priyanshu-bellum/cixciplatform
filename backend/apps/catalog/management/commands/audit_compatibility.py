@@ -26,8 +26,20 @@ class Command(BaseCommand):
             evidence = evidence if isinstance(evidence, dict) else {}
             if "universal" in evidence and (evidence.get("explicit") or {}).get("active"):
                 former_universal[sku] = former_universal.get(sku, 0) + 1
+        # Devices with no positive capability at all, e.g. created from a vendor's
+        # text before unknown names went to Missing Devices. They match nothing by
+        # feature rules but are still covered by Universal and explicit mappings.
+        from apps.devices.models import Device
+        blank = ("", "Not Compatible")
+        unconfigured = Device.objects.filter(compatible_charging_interface__in=blank, wireless_charging_compatibility__in=blank,
+            headphone_jack_compatibility__in=blank, storage_expansion_compatibility__in=blank,
+            compatible_watch_case_size__in=blank).select_related("manufacturer", "device_type")
+        unconfigured_rows = [{"id": str(device.pk), "name": str(device), "type": device.device_type.code,
+            "compatible_products": ProductCompatibilityAssertion.objects.filter(device_reference=device.pk, is_compatible=True, is_excluded=False).count()}
+            for device in unconfigured.order_by("manufacturer__name", "name")[:500]]
         report = {
             "read_only": True,
+            "devices_without_any_capability": unconfigured_rows,
             "manual_selections_with_universal_origin": [{"sku": sku, "devices": count} for sku, count in sorted(former_universal.items())],
             "disabled_automatic_types": list(DeviceType.objects.filter(status="active", is_active=True, auto_mapping_eligible=False).values("id", "name", "status")),
             "active_categories_without_resolved_types": [config.value for config in configs.values() if config.status == "active" and not configured_type_ids(config)],

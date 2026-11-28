@@ -47,6 +47,24 @@ class BulkReviewSerializer(serializers.Serializer):
     product_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=200)
 
 
+class BulkCompatibilitySerializer(serializers.Serializer):
+    """Declared compatibility answers an admin sets on many products at once.
+
+    Vendor feeds such as Balaji carry no structured charging, wireless or
+    Bluetooth attributes, so these are declared by a person, never inferred
+    from product names.
+    """
+    product_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=200)
+    values = serializers.DictField(child=serializers.CharField(allow_blank=False, max_length=200), allow_empty=False)
+
+    def validate_values(self, value):
+        from .compatibility_contract import COMPATIBILITY_FIELDS
+        unknown = sorted(set(value) - set(COMPATIBILITY_FIELDS))
+        if unknown:
+            raise serializers.ValidationError('Unknown compatibility fields: ' + ', '.join(unknown))
+        return value
+
+
 def validated(serializer_class, data):
     serializer = serializer_class(data=data)
     serializer.is_valid(raise_exception=True)

@@ -231,3 +231,8 @@ chronologically with task, reason, files/features/contracts, verification and ri
 - Verification and the 17 tests left failing on purpose: see TASK-025.
 - Risk: clients that treated 403 as "not logged in" now receive 401; new vendor
   offers with open review errors start as draft.
+- 2026-11-28 (TASK-025, continued): order acceptance uses the shared image rule;
+  export requests name MAP/compatibility reasons; webhook payloads are readable;
+  bulk-set-compatibility endpoint and dialog; four owner decisions applied to
+  tests; backend suite 1,055 passed, 0 failed. New route:
+  POST /api/v1/catalog/products/bulk-set-compatibility/ (CIXCI admin).

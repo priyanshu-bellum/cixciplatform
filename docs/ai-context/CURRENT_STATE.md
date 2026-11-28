@@ -5,8 +5,9 @@ Active task: TASK-019 — in_progress.
 Commit state (2026-11-28): TASK-020 to TASK-024 are on origin/main (3c1f8eb,
 eee846d, 3b3bd52, a1cf653, f4fb534, 0df3689), pushed at the user's request. Notes
 below that say "uncommitted" for these tasks predate those commits. TASK-025 is on
-local branch fix/tenant-scope-and-test-baseline: backend suite 1,041 passed/17
-failed (was 55 failed); the 17 need owner decisions (ISSUE-015 to 017, TASK-025).
+local branch fix/tenant-scope-and-test-baseline, not pushed: backend suite 1,055
+passed, 0 failed (was 55 failed). It also fixes order acceptance for vendor JPEG
+products and adds bulk compatibility values in Vendor Audit.
 
 TASK-024 (2026-11-28, completed, uncommitted): Missing Devices is backed by
 VendorDeviceMapping (catalog 0047, applied to the local copy only); adding or

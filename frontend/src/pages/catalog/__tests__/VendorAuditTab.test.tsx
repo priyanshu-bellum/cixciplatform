@@ -66,6 +66,20 @@ test('bulk select and map update both selected products', async () => {
   assert.ok(h.state.rows.every(row => row.device_assertions.length === 1))
 })
 
+test('bulk compatibility values send only the fields the admin filled', async () => {
+  await h.click('input[aria-label="Select SKU-1"]')
+  await h.click('input[aria-label="Select SKU-2"]')
+  await h.button('Set Compatibility Values')
+  await h.until('!!document.querySelector(\'[role="dialog"]\')')
+  assert.equal(await h.evaluate('[...document.querySelectorAll(\'[role="dialog"] button\')].find(b=>b.textContent.trim()==="Apply to selected").disabled'), true)
+  await h.select('Charging Interface', 'USB-C')
+  await h.button('Apply to selected')
+  await h.until('!document.querySelector(\'[role="dialog"]\')')
+  const request = h.state.requests.find(request => request.endpoint.endsWith('/bulk-set-compatibility/'))!
+  assert.deepEqual(request.body.product_ids, h.productIds)
+  assert.deepEqual((request.body as Record<string, unknown>).values, { compatible_charging_interface: 'USB-C' })
+})
+
 test('review resolve clears review and refreshes the product and stats', async () => {
   await h.click(`[data-product-id="${h.productIds[0]}"]`)
   await h.button('Resolve Review')

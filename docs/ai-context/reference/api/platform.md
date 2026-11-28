@@ -152,7 +152,7 @@ Frontend consumers (resource-path text matches; confirm action callers): no dire
 
 Handler: framework/dynamic (inspect handler). Declared queryset model: `dynamic/undeclared; inspect handler`.
 
-Declared permissions: `rest_framework.permissions.AllowAny`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.AllowAny`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -185,7 +185,7 @@ Frontend consumers (resource-path text matches; confirm action callers): no dire
 
 Handler: framework/dynamic (inspect handler). Declared queryset model: `dynamic/undeclared; inspect handler`.
 
-Declared permissions: `rest_framework.permissions.AllowAny`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.AllowAny`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 

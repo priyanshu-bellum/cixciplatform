@@ -8,7 +8,7 @@ See [API_REGISTRY](../../API_REGISTRY.md) for lifecycle, errors and contract not
 
 Handler: [backend/apps/audit/views.py](../../../../backend/apps/audit/views.py). Declared queryset model: `audit.AuditRecord`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -40,7 +40,7 @@ Frontend consumers (resource-path text matches; confirm action callers): no dire
 
 Handler: [backend/apps/tenant/regional_api.py](../../../../backend/apps/tenant/regional_api.py). Declared queryset model: `tenant.OperatingRegion`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -86,7 +86,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.Capability`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -118,7 +118,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.ChildOnboardingRequest`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -164,7 +164,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.CompanyEntity`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -204,7 +204,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.CompanyRelationship`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -246,7 +246,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.CompanyUserMembership`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -298,7 +298,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.Company`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -344,7 +344,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.DistributionCenter`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -386,7 +386,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.RegionChangeEvent`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -418,7 +418,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.UserInvitation`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -466,7 +466,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/tenant/views.py](../../../../backend/apps/tenant/views.py). Declared queryset model: `tenant.User`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 

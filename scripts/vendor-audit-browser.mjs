@@ -103,6 +103,9 @@ export async function createAuditBrowser() {
               row.device_assertions = body.update_type === 'add' ? [...new Map([...row.device_assertions, ...chosen].map(device => [device.device_id, device])).values()] : chosen
             }
             data = { status: 'ok', updated: ids.length, total: ids.length, device_count: body.device_ids.length, unapplied_device_ids: [], failures: [] }
+          } else if (endpoint.endsWith('/bulk-set-compatibility/')) {
+            for (const row of state.rows.filter(row => body.product_ids.includes(row.id))) Object.assign(row, body.values)
+            data = { status: 'ok', updated: body.product_ids.length, total: body.product_ids.length, results: [], failures: [] }
           } else if (endpoint.endsWith('/resolve-review/') || endpoint.endsWith('/bulk-resolve-review/')) {
             const ids = body.product_ids || [endpoint.split('/').at(-3)]
             for (const row of state.rows.filter(row => ids.includes(row.id))) row.review_errors = []

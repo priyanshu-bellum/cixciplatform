@@ -214,3 +214,33 @@ def test_deferred_images_download_each_url_once_and_keep_declared_order(vendor_c
     assert MediaAsset.objects.get(pk=first.primary_image_reference).original_filename == 'a.jpg'
     assert len(first.media_references) == 2
     assert MediaAsset.objects.get(pk=second.primary_image_reference).original_filename == 'c.jpg'
+
+
+def test_admin_sets_declared_values_on_many_products_and_rules_do_the_matching(admin_client, vendor_client, vendor_company, phone, maker):
+    """Feeds without structured attributes: an admin declares the values once for a selection."""
+    category(phone, mode="feature_based")
+    magsafe = device(maker, phone, "MagSafe Model", wireless_charging_compatibility="MagSafe")
+    plain = device(maker, phone, "Plain Model")
+    items = [product(vendor_company, f"BULK-{index}") for index in range(3)]
+    assert all(compatible(item) == set() for item in items)
+    url = BASE + "bulk-set-compatibility/"
+    body = {"product_ids": [str(item.pk) for item in items], "values": {"wireless_charging_compatibility": "MagSafe"}}
+    assert vendor_client.post(url, body, format="json").status_code == 403
+    assert admin_client.post(url, {**body, "values": {"name": "x"}}, format="json").status_code == 400
+    assert admin_client.post(url, {**body, "values": {}}, format="json").status_code == 400
+
+    missing = "00000000-0000-4000-8000-00000000dead"
+    response = admin_client.post(url, {**body, "product_ids": body["product_ids"] + [missing]}, format="json")
+    assert response.status_code == 200, response.data
+    assert (response.data["status"], response.data["updated"], response.data["total"]) == ("partial", 3, 4)
+    assert response.data["failures"] == [{"product_id": missing, "errors": ["Product not found."]}]
+    for item in items:
+        item.refresh_from_db()
+        assert item.wireless_charging_compatibility == "MagSafe" and item.compatibility_status == "complete"
+        assert compatible(item) == {magsafe.pk} and plain.pk not in compatible(item)
+    assert AuditRecord.objects.filter(event_code="catalog.vendor_audit.compatibility_values_set").count() == 3
+
+    # A value that is not an approved option changes nothing for that selection.
+    response = admin_client.post(url, {**body, "values": {"wireless_charging_compatibility": "Telepathy"}}, format="json")
+    assert response.status_code == 200 and response.data["updated"] == 0 and len(response.data["failures"]) == 3
+    assert all(Product.objects.get(pk=item.pk).wireless_charging_compatibility == "MagSafe" for item in items)

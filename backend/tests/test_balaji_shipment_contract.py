@@ -121,3 +121,16 @@ def test_one_vendor_cannot_move_another_vendors_shipment(world):
     assert post(other, "shipment.delivered", shipment(world)).status_code == 200
     world["handoff"].refresh_from_db()
     assert world["handoff"].status == "received"
+
+
+def test_stored_event_can_be_read_back_for_support(world, settings):
+    """The raw event is sealed with the platform key ring, not with a key that is thrown away."""
+    from cryptography.fernet import Fernet
+    from apps.integration.commerce_models import VendorWebhookReceipt
+    from apps.integration.webhook_receiver import decrypt_payload
+    settings.VENDOR_CATALOG_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
+    assert post(world, "shipment.created", shipment(world), event_id="evt_readable").status_code == 200
+    receipt = VendorWebhookReceipt.objects.get(provider_event_id="evt_readable")
+    stored = json.loads(decrypt_payload(receipt))
+    assert stored["data"]["shipment"]["shipment_number"] == "IF1234567"
+    assert "IF1234567" not in receipt.encrypted_payload

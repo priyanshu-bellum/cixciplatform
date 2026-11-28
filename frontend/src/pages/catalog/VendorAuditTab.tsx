@@ -22,7 +22,8 @@ import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
 import api from '../../lib/apiClient'
 import { getImageUrl } from '../../lib/formatters'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
-import { apiError } from '../../hooks/useCompatibilityOptions'
+import { COMPATIBILITY_LABELS, apiError } from '../../hooks/useCompatibilityOptions'
+import CompatibilityFields from '../../components/CompatibilityFields'
 import { useSnackbar } from '../../components/feedback/SnackbarProvider'
 import StatusChip from '../../components/data-display/StatusChip'
 import DevicePicker from './VendorAuditDevicePicker'
@@ -131,7 +132,7 @@ function VendorWorkspace({ vendor, user, dropdownConfigs, selector }: VendorAudi
       else if (additionalMatches) showSnackbar('Explicit selections saved; additional category matches remain active.', 'info')
       else showSnackbar('Changes saved.', 'success')
       if (response.data.failures?.length) setBulkError(JSON.stringify(response.data.failures))
-      else { setBulkOpen(false); setBulkError('') }
+      else { setBulkOpen(false); setValuesOpen(false); setBulkValues({}); setBulkError('') }
       setPage(1)
       setSelectedIds((response.data.failures || []).map(failure => failure.product_id))
       await Promise.all([
@@ -143,6 +144,8 @@ function VendorWorkspace({ vendor, user, dropdownConfigs, selector }: VendorAudi
     onError: error => showSnackbar(apiError(error), 'error'),
   })
   const [bulkError, setBulkError] = useState('')
+  const [valuesOpen, setValuesOpen] = useState(false)
+  const [bulkValues, setBulkValues] = useState<Record<string, string>>({})
   const busy = mutation.isPending
   const submit: AuditSubmit = (path, body, method = 'post') => mutation.mutate({ path, body, method })
   const toggle = (id: string) => setSelectedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])
@@ -274,6 +277,7 @@ function VendorWorkspace({ vendor, user, dropdownConfigs, selector }: VendorAudi
         {!!selectedIds.length && <Stack spacing={1} sx={{ ...sectionSx, mt: 1.5, mb: 0 }}>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>{selectedIds.length} selected</Typography>
           <Button variant="contained" disabled={busy || selectedIds.length > 50} onClick={() => { setBulkDevices([]); setBulkOpen(true) }}>Map Devices to Selected</Button>
+          <Button variant="outlined" disabled={busy || selectedIds.length > 200} onClick={() => { setBulkValues({}); setBulkError(''); setValuesOpen(true) }}>Set Compatibility Values</Button>
           <Button variant="outlined" color="warning" disabled={busy || selectedIds.length > 200} onClick={() => submit(base + 'bulk-resolve-review/', { product_ids: selectedIds })}>Resolve Review for Selected</Button>
           {selectedIds.length > 50 && <Typography variant="caption">Device mapping supports up to 50 products per request.</Typography>}
         </Stack>}
@@ -290,6 +294,23 @@ function VendorWorkspace({ vendor, user, dropdownConfigs, selector }: VendorAudi
       </Paper>}
     </Box>
     <LiveApiSearch vendor={vendor} />
+    <Dialog open={valuesOpen} onClose={() => { if (!busy) setValuesOpen(false) }} fullWidth maxWidth="sm">
+      <DialogTitle>Set Compatibility Values</DialogTitle>
+      <DialogContent>
+        <Typography sx={{ mb: 1 }}>{selectedIds.length} products selected</Typography>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          The vendor feed has no charging, wireless or Bluetooth attributes, so declare them here. Only the fields you fill are changed.
+          Each product's category rules then decide which devices match; a field its category does not use is ignored.
+        </Alert>
+        {bulkError && <Alert severity="warning" sx={{ mb: 2, overflowWrap: 'anywhere' }}>{bulkError}</Alert>}
+        <CompatibilityFields values={bulkValues} rules={{}} assignedFields={Object.keys(COMPATIBILITY_LABELS)}
+          onChange={(field, value) => setBulkValues(current => ({ ...current, [field]: value }))} />
+      </DialogContent>
+      <DialogActions><Button disabled={busy} onClick={() => setValuesOpen(false)}>Cancel</Button>
+        <Button variant="contained" disabled={busy || !selectedIds.length || !Object.values(bulkValues).some(Boolean)}
+          onClick={() => submit(base + 'bulk-set-compatibility/', { product_ids: selectedIds,
+            values: Object.fromEntries(Object.entries(bulkValues).filter(([, value]) => value)) })}>Apply to selected</Button></DialogActions>
+    </Dialog>
     <Dialog open={bulkOpen} onClose={() => { if (!busy) setBulkOpen(false) }} fullWidth maxWidth="sm">
       <DialogTitle>Map Devices to Selected</DialogTitle>
       <DialogContent><Typography sx={{ mb: 2 }}>{selectedIds.length} products selected</Typography>

@@ -8,7 +8,7 @@ See [API_REGISTRY](../../API_REGISTRY.md) for lifecycle, errors and contract not
 
 Handler: [backend/apps/shared_api.py](../../../../backend/apps/shared_api.py). Declared queryset model: `launch.LaunchEvent`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 

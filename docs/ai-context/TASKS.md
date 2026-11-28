@@ -1,12 +1,12 @@
 # Persistent tasks
 
-Latest completion: TASK-024 (Missing Devices resolve flow and page). TASK-025 (tenant scope, 401, test baseline) is in progress.
+Latest completion: TASK-025 (tenant scope, 401 responses, order image rule, green backend suite, bulk compatibility values).
 Open follow-up: TASK-014 (provider mappings/images and remote test diagnostics).
 TASK-002–008 record earlier discoveries. IDs are permanent.
 
 ## TASK-025 — Fulfillment tenant scope, 401 responses and the failing-test baseline
 
-- Status: in_progress
+- Status: completed
 - Related features: FUL-001, TEN-001, AUTH-001, INT-002, CMP-002, MED-001; BR-TEN-001.
 - Tenant scope (fixed, reproduced first): handoffs, SLA evaluations, shipping and
   return import logs and return requests were unfiltered for a non-admin user whose
@@ -26,16 +26,37 @@ TASK-002–008 record earlier discoveries. IDs are permanent.
   URLs, six vendor images, admin-only API keys, exported-products image list,
   Missing Devices) and stale fixtures repaired (products whose readiness a save
   recomputes, seed categories without eligible types).
-- Verification: full backend suite 1,041 passed/17 failed (was 996/55); every
-  remaining failure was already failing before this task. 6 new tenant-scope tests.
-- Remaining 17, not changed because each needs an owner decision or a rebuilt
-  scenario: 6 keyword-category tests for a function removed in faa2f8c
-  (ISSUE-015); 2 tests that want a renamed image rejected while 2 newer passing
-  tests want it accepted (ISSUE-016); 6 export/storefront/assortment tests whose
-  fixtures predate that contract (ISSUE-017); whole-file rollback vs partial CSV
-  import; conflicting compatibility evidence should create no product; one
-  SQLite-only JSON lookup. An attempt to mark these as expected failures was not
-  permitted and was not applied.
+- Order acceptance (fixed, reproduced first): it required a transparent PNG
+  primary image while visibility and export accept an approved JPEG, so buyers
+  could see and export vendor JPEG products that an order refused
+  (OFFER_NOT_ORDERABLE). 1,204 of 2,206 local products with a primary image are
+  JPEG. Acceptance now uses media.readiness.valid_primary_asset_ids.
+- Export request (fixed): a MAP violation or incomplete compatibility is reported
+  and audited before the generic "outside your assortment" refusal that hid it.
+- Vendor webhook receipts (fixed): the raw payload was encrypted with a key
+  generated per call (the setting it read does not exist) and could never be
+  read; it is sealed with the platform key ring and readable via decrypt_payload.
+- Bulk compatibility values: Balaji sends no structured charging, wireless or
+  Bluetooth attributes (only free text), so nothing is inferred. Admins set
+  declared values on up to 200 selected products in Vendor Audit
+  (POST catalog/products/bulk-set-compatibility/); category rules then match.
+- Owner decisions 2026-11-28: categories are mapped explicitly (keyword helper not
+  restored, its tests removed); a file whose extension and content disagree is
+  accepted; a CSV upload keeps valid rows; conflicting compatibility evidence
+  creates the product for review and applies none of that source's compatibility
+  values. ISSUE-015, ISSUE-016 and ISSUE-017 are closed by these decisions and by
+  rebuilding the export/storefront/order scenarios (tests/assortment.py).
+- audit_compatibility also lists devices without any capability (22 locally).
+- Verification: full backend suite 1,055 passed, 0 failed (was 996/55). Vendor
+  Audit browser tests 15/15. tsc and eslint clean on changed files. Bulk endpoint
+  run on three real local products in a rolled-back transaction (incomplete to
+  complete, 114 devices each). Missing/bad token answers 401 on the local server.
+- Not done, by choice: per-save buyer projection recalculation stays eager (several
+  readers use the stored projection without refreshing it); dev Compose worker
+  still ignores vendor queues; buyer outbound webhooks, several tracking numbers
+  per shipment, one shared CSV shipping import and vendor image storage/retry are
+  separate features.
+- Not verified: PostgreSQL test settings, a real provider sync or order.
 
 ## TASK-024 — Missing Devices: durable vendor names and a complete resolve flow
 

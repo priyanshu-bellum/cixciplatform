@@ -206,17 +206,28 @@ class WebhookReceiverView(View):
 
 
 def _encrypt_payload(payload_bytes):
-    from cryptography.fernet import Fernet
-    from django.conf import settings
-    keys = getattr(settings, 'CATALOG_CREDENTIAL_KEYS', None)
-    if keys:
-        from cryptography.fernet import MultiFernet
-        parts = [k.strip() for k in keys.split(',') if k.strip()]
-        f = MultiFernet([Fernet(p) for p in parts]) if len(parts) > 1 else Fernet(parts[0])
-    else:
-        key = Fernet.generate_key()
-        f = Fernet(key)
-    return f.encrypt(payload_bytes).decode()
+    """Seal the raw event with the platform key ring so support can read it later.
+
+    The previous version looked for a setting that does not exist and fell back
+    to a key generated per call, which made every stored payload unreadable.
+    Without a configured key ring nothing is stored rather than something that
+    can never be opened.
+    """
+    from .catalog_secrets import key_ring
+    return key_ring().encrypt(payload_bytes).decode()
+
+
+def decrypt_payload(receipt):
+    """Raw JSON text of a stored event, or '' when it was not sealed with the key ring."""
+    if not receipt.encrypted_payload:
+        return ''
+    from cryptography.fernet import InvalidToken
+    from django.core.exceptions import ValidationError
+    from .catalog_secrets import key_ring
+    try:
+        return key_ring().decrypt(receipt.encrypted_payload.encode()).decode()
+    except (InvalidToken, ValidationError, UnicodeError):
+        return ''
 
 
 def _dispatch_event(route, event_type, data, profile, config, receipt):

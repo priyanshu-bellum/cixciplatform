@@ -1274,6 +1274,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "bulk_map_devices": "catalog.product.update",
         "resolve_review": "catalog.product.update",
         "bulk_resolve_review": "catalog.product.update",
+        "bulk_set_compatibility": "catalog.product.update",
         "vendor_live_search": "catalog.product.list",
         "vendor_sync_product": "catalog.product.update",
         "vendor_force_sync": "catalog.product.update",
@@ -1301,7 +1302,7 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     def check_permissions(self, request):
         super().check_permissions(request)
         if self.action in {'vendor_audit','vendor_audit_stats','map_devices',
-                'bulk_map_devices','resolve_review','bulk_resolve_review',
+                'bulk_map_devices','resolve_review','bulk_resolve_review','bulk_set_compatibility',
                 'vendor_live_search','vendor_sync_product','vendor_force_sync'} and not request.user.is_cixci_admin:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Vendor product audit requires CIXCI System Admin authority.')
@@ -1742,6 +1743,44 @@ class ProductViewSet(CheckAccessMixin, viewsets.ModelViewSet):
             invalidate_buyer_projection_cache('vendor_audit_bulk_mapping')
         return Response({'status':'partial' if failures else 'ok','updated':len(results),
             'total':len(ids),'results':results,'failures':failures})
+
+    @action(detail=False, methods=['post'], url_path='bulk-set-compatibility')
+    def bulk_set_compatibility(self, request):
+        """Set declared compatibility values on many products through the normal product validation."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from .compatibility_contract import COMPATIBILITY_FIELDS
+        from .services import defer_buyer_projection_refresh, invalidate_buyer_projection_cache
+        from .vendor_audit import BulkCompatibilitySerializer, record_action, validated
+        data = validated(BulkCompatibilitySerializer, request.data)
+        ids = list(dict.fromkeys(data['product_ids']))
+        products = {product.pk: product for product in self.get_queryset().filter(pk__in=ids)}
+        failures, results = [], []
+        with defer_buyer_projection_refresh():
+            for identifier in sorted(ids, key=str):
+                product = products.get(identifier)
+                if product is None:
+                    failures.append({'product_id': str(identifier), 'errors': ['Product not found.']})
+                    continue
+                before = {field: getattr(product, field) for field in data['values']}
+                serializer = ProductDetailSerializer(product, data=data['values'], partial=True, context=self.get_serializer_context())
+                if not serializer.is_valid():
+                    failures.append({'product_id': str(identifier), 'sku': product.sku, 'errors': serializer.errors})
+                    continue
+                try:
+                    with transaction.atomic():
+                        saved = serializer.save()
+                        after = {field: getattr(saved, field) for field in COMPATIBILITY_FIELDS if field in data['values']}
+                        record_action(saved, request.user, 'compatibility_values_set', before=before, after=after)
+                except (DjangoValidationError, serializers.ValidationError) as error:
+                    failures.append({'product_id': str(identifier), 'sku': product.sku,
+                        'errors': getattr(error, 'message_dict', None) or getattr(error, 'detail', None) or [str(error)]})
+                    continue
+                results.append({'product_id': str(identifier), 'compatibility_status': saved.compatibility_status,
+                    'device_count': saved.compatibility_assertions.filter(is_compatible=True, is_excluded=False).count()})
+        if results:
+            invalidate_buyer_projection_cache('vendor_audit_compatibility_values')
+        return Response({'status': 'partial' if failures else 'ok', 'updated': len(results), 'total': len(ids),
+            'results': results, 'failures': failures})
 
     @action(detail=False, methods=['post'], url_path='bulk-resolve-review')
     @transaction.atomic

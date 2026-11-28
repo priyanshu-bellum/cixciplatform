@@ -8,7 +8,7 @@ See [API_REGISTRY](../../API_REGISTRY.md) for lifecycle, errors and contract not
 
 Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -40,7 +40,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: none declared. Required capability: `none`.
 
@@ -78,7 +78,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `catalog.DynamicDropdownConfig`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -120,7 +120,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -150,7 +150,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -188,11 +188,11 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `catalog.Product`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
-Action capability map: `{"list":"catalog.product.list","matching_ids":"catalog.product.list","filter_options":"catalog.product.list","retrieve":"catalog.product.read","create":"catalog.product.create","update":"catalog.product.update","partial_update":"catalog.product.update","destroy":"catalog.product.delete","set_selling_status":"catalog.product.manage_selling","compatibility":"catalog.product.read","bulk_upload":"catalog.product.create","recalculate_compatibility":"catalog.product.update","recalculate_bulk_compatibility":"catalog.product.update","audit_history":"catalog.product.read","vendor_audit":"catalog.product.list","vendor_audit_stats":"catalog.product.list","map_devices":"catalog.product.update","bulk_map_devices":"catalog.product.update","resolve_review":"catalog.product.update","bulk_resolve_review":"catalog.product.update","vendor_live_search":"catalog.product.list","vendor_sync_product":"catalog.product.update","vendor_force_sync":"catalog.product.update"}`.
+Action capability map: `{"list":"catalog.product.list","matching_ids":"catalog.product.list","filter_options":"catalog.product.list","retrieve":"catalog.product.read","create":"catalog.product.create","update":"catalog.product.update","partial_update":"catalog.product.update","destroy":"catalog.product.delete","set_selling_status":"catalog.product.manage_selling","compatibility":"catalog.product.read","bulk_upload":"catalog.product.create","recalculate_compatibility":"catalog.product.update","recalculate_bulk_compatibility":"catalog.product.update","audit_history":"catalog.product.read","vendor_audit":"catalog.product.list","vendor_audit_stats":"catalog.product.list","map_devices":"catalog.product.update","bulk_map_devices":"catalog.product.update","resolve_review":"catalog.product.update","bulk_resolve_review":"catalog.product.update","bulk_set_compatibility":"catalog.product.update","vendor_live_search":"catalog.product.list","vendor_sync_product":"catalog.product.update","vendor_force_sync":"catalog.product.update"}`.
 
 These are declarations, not a complete access proof: read custom permission,
 queryset and action checks in the handler and its mixins. Plain Django views may
@@ -207,6 +207,7 @@ Serializer: `none` at framework/dynamic (inspect handler).
 | POST | `/api/v1/catalog/products/batch-revalidate/` | `batch_revalidate` |
 | POST | `/api/v1/catalog/products/bulk-map-devices/` | `bulk_map_devices` |
 | POST | `/api/v1/catalog/products/bulk-resolve-review/` | `bulk_resolve_review` |
+| POST | `/api/v1/catalog/products/bulk-set-compatibility/` | `bulk_set_compatibility` |
 | POST | `/api/v1/catalog/products/bulk_upload/` | `bulk_upload` |
 | GET | `/api/v1/catalog/products/bulk-upload-template/` | `bulk_upload_template` |
 | POST | `/api/v1/catalog/products/check-skus/` | `check_skus` |
@@ -237,6 +238,7 @@ Serializer: `none` at framework/dynamic (inspect handler).
 - `batch_revalidate`: `apps.catalog.api.ProductViewSet.batch_revalidate` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `date_from`, `date_to`, `limit`, `mode`, `product_category`, `status`, `vendor_company_reference`. Direct Response dictionary keys: `error`, `mode`, `results`, `rule_version`, `summary`. Local service imports: `apps.catalog.normalization.Outcome`, `apps.catalog.normalization.RULE_VERSION`, `apps.catalog.normalization.detect_buyer_sync_needed`, `apps.catalog.normalization.normalize_product`, `apps.catalog.normalization.normalize_short_description`, `apps.catalog.services.log_catalog_audit`.
 - `bulk_map_devices`: `apps.catalog.api.ProductViewSet.bulk_map_devices` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: `failures`, `results`, `status`, `total`, `updated`. Local service imports: none declared.
 - `bulk_resolve_review`: `apps.catalog.api.ProductViewSet.bulk_resolve_review` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: `cleared`, `status`. Local service imports: none declared.
+- `bulk_set_compatibility`: `apps.catalog.api.ProductViewSet.bulk_set_compatibility` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `failures`, `results`, `status`, `total`, `updated`. Local service imports: none declared.
 - `bulk_upload`: `apps.catalog.api.ProductViewSet.bulk_upload` in framework/dynamic (inspect handler). Direct request/query keys: `compatibility_update_type`, `update_mode`, `vendor_company_reference`. Direct Response dictionary keys: `compatibility_results`, `error`, `errors`, `missing_headers`, `products`, `rows_created`, `rows_failed`, `rows_passed`, `rows_staged`, `rows_updated`, `total_rows_processed`. Local service imports: `apps.catalog.compatibility_commands.update_explicit_selections`, `apps.catalog.compatibility_import.apply_import_values`, `apps.catalog.compatibility_import.parse_compatibility_row`, `apps.catalog.models.CategoryValidationStatus`, `apps.catalog.models.DynamicDropdownConfig`, `apps.catalog.models.ProductCompatibilityAssertion`, `apps.catalog.models.ProductStatus`, `apps.catalog.models.VendorCategoryMapping`, `apps.catalog.models.VendorCategoryMappingStatus`, `apps.catalog.services.log_catalog_audit`, `apps.devices.models.Device`, `apps.devices.models.DeviceType`, `apps.devices.models.Manufacturer`, `apps.media.models.AssetStatus`, `apps.media.models.AssetType`, `apps.media.models.MediaAsset`, `apps.media.validation.validate_image_bytes`, `apps.media.validation.validate_image_url`, `apps.pricing.services.check_pricing_exception_exists`, `apps.pricing.services.get_effective_map_price`, `apps.tenant.models.Company`.
 - `bulk_upload_template`: `apps.catalog.api.ProductViewSet.bulk_upload_template` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: `apps.catalog.models.ProductStatus`.
 - `check_skus`: `apps.catalog.api.ProductViewSet.check_skus` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `skus`, `vendor_company_reference`. Direct Response dictionary keys: `existing`. Local service imports: none declared.
@@ -271,7 +273,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `catalog.VendorCategoryMapping`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
@@ -313,7 +315,7 @@ Frontend consumers (resource-path text matches; confirm action callers): [fronte
 
 Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `catalog.VendorColorMapping`.
 
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `rest_framework.authentication.SessionAuthentication`, `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`.
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
 Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
 
