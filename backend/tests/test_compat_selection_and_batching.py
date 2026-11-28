@@ -187,9 +187,10 @@ def test_dropdown_list_counts_linked_products_with_grouped_queries(admin_client,
     assert len(statements) <= 3, len(statements)
 
 
-@override_settings(MEDIA_ROOT='')
-def test_deferred_images_download_each_url_once_and_keep_declared_order(vendor_company, phone, maker):
+def test_deferred_images_download_each_url_once_and_keep_declared_order(vendor_company, phone, maker, settings, tmp_path):
     from apps.integration.catalog_sync import _process_deferred_images
+    # An image is only recorded once its file is stored, so the test needs a real folder.
+    settings.MEDIA_ROOT = str(tmp_path)
     category(phone)
     first, second = product(vendor_company, 'IMG-1'), product(vendor_company, 'IMG-2')
     jpeg = b'\xff\xd8\xff\xe0'
@@ -244,3 +245,28 @@ def test_admin_sets_declared_values_on_many_products_and_rules_do_the_matching(a
     response = admin_client.post(url, {**body, "values": {"wireless_charging_compatibility": "Telepathy"}}, format="json")
     assert response.status_code == 200 and response.data["updated"] == 0 and len(response.data["failures"]) == 3
     assert all(Product.objects.get(pk=item.pk).wireless_charging_compatibility == "MagSafe" for item in items)
+
+
+def test_product_save_marks_buyer_projections_stale_instead_of_rebuilding_them(vendor_company, phone, maker, buyer_user):
+    """Save cost must not grow with the number of buyers; each buyer's projection is rebuilt on its next read."""
+    from apps.catalog import services
+    from apps.catalog.models import BuyerScopedCompatibilityProjection
+    category(phone)
+    item = product(vendor_company, "LAZY-1")
+    rows = [BuyerScopedCompatibilityProjection.objects.create(buyer_reference=uuid.uuid4(), company_scope_reference=uuid.uuid4(),
+        buyer_entity_reference=uuid.uuid4(), portfolio_snapshot_reference=uuid.uuid4(), status="active") for _ in range(3)]
+    mine = BuyerScopedCompatibilityProjection.objects.create(buyer_reference=buyer_user.id,
+        company_scope_reference=buyer_user.entity.company_id, buyer_entity_reference=buyer_user.entity_id,
+        portfolio_snapshot_reference=uuid.uuid4(), status="active", compatible_product_ids=["stale"])
+    with patch.object(services, "recalculate_buyer_compatibility_projection") as rebuild:
+        # A status change is what makes a product appear or disappear for buyers.
+        item.status = "draft" if item.status != "draft" else "active"
+        item.save()
+        assert not rebuild.called
+    assert set(BuyerScopedCompatibilityProjection.objects.values_list("status", flat=True)) == {"review_required"}
+    assert len(rows) == 3
+
+    # The next read by that buyer rebuilds only that buyer's projection.
+    fresh = services.ensure_buyer_compatibility_projection(buyer_user)
+    assert fresh.pk == mine.pk and fresh.status != "review_required" and "stale" not in fresh.compatible_product_ids
+    assert BuyerScopedCompatibilityProjection.objects.filter(status="review_required").count() == 3

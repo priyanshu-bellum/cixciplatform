@@ -299,6 +299,9 @@ class TestCatalogProjectionScope:
         )
         projection.compatible_product_ids = [str(p) for p in product_ids]
         projection.compatible_product_count = len(product_ids)
+        # A hand-written projection must be marked current: a product change marks
+        # projections stale and a stale one is rebuilt on the next read.
+        projection.status = "active"
         projection.save()
         return projection
 

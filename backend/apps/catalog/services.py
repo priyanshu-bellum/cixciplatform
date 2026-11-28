@@ -533,21 +533,16 @@ def invalidate_buyer_projection_cache(reason):
 
 
 def trigger_catalog_recalculation_for_product(product_id):
-    """Trigger buyer catalog visibility recalculation for all existing projections."""
+    """Mark buyer projections stale after a product change.
+
+    This used to rebuild every buyer's projection inside the product save, so one
+    save cost grew with the number of buyers. It is now one UPDATE; each buyer's
+    projection is rebuilt by ensure_buyer_compatibility_projection the next time
+    that buyer's catalog, export or listing needs it - the same path a vendor
+    sync and a regional change already use.
+    """
     if _defer_projection_refresh.get():
         return
-    from apps.catalog.models import BuyerScopedCompatibilityProjection
-    projections = BuyerScopedCompatibilityProjection.objects.all()
-    for proj in projections:
-        try:
-            recalculate_buyer_compatibility_projection(
-                buyer_reference=proj.buyer_reference,
-                company_scope_reference=proj.company_scope_reference,
-                buyer_entity_reference=proj.buyer_entity_reference,
-                portfolio_snapshot_reference=proj.portfolio_snapshot_reference,
-                trigger="product_update",
-            )
-        except Exception as e:
-            logger.error(f"Failed to recalculate projection for buyer {proj.buyer_reference}: {e}")
+    invalidate_buyer_projection_cache("product_update")
 
 
