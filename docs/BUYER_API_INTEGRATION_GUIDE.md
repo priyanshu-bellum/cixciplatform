@@ -176,6 +176,11 @@ Once an order has been shipped by the vendor, CIXCI provides buyers with trackin
 - **Carrier & Tracking**: `shipping_carrier` (FedEx, UPS, USPS, DHL, etc.), `tracking_number`
 - **Fulfillment Status**: `order_status` (`Processing`, `Shipped`, `Delivered`, `Exception`, `Closed`)
 - **Key Dates**: `shipped_date`, `delivered_date`
+- **Carrier Status** (`tracking`, `null` until the carrier tracker exists): `status` (`unknown`, `pre_transit`,
+  `in_transit`, `out_for_delivery`, `delivered`, `available_for_pickup`, `return_to_sender`, `failure`,
+  `cancelled`, `error`), `status_label`, `status_detail`, `estimated_delivery_date`, `tracking_url`,
+  `signed_by`, `last_event_at`. `GET /api/v1/fulfillment/buyer-shipments/{id}/` also returns
+  `tracking_events`, the carrier scan history (`status`, `message`, `location`, `occurred_at`).
 
 ### Endpoints
 

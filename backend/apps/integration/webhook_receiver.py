@@ -154,9 +154,11 @@ class WebhookReceiverView(View):
         try:
             data = path_value(payload, config.get('data_path', 'data')) or {}
             _dispatch_event(route, event_type, data, profile, config, receipt)
-            receipt.status = 'processed'
+            # A handler that could not match the event records why; it must not
+            # be reported as processed.
+            receipt.status = 'skipped' if receipt.error_code else 'processed'
             receipt.processed_at = timezone.now()
-            receipt.save(update_fields=['status', 'processed_at'])
+            receipt.save(update_fields=['status', 'error_code', 'processed_at'])
         except Exception as exc:
             receipt.status = 'failed'
             receipt.error_code = str(exc)[:100]

@@ -51,6 +51,7 @@ import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import ConfirmDialog from '../components/feedback/ConfirmDialog'
 import { useAuthStore } from '../stores/authStore'
 import { Link } from 'react-router-dom'
+import CarrierTrackingPanel from './integration/CarrierTrackingPanel'
 
 /* ── connector type chip colour mapping ── */
 const CONNECTOR_COLOR: Record<string, 'success' | 'info' | 'secondary' | 'default'> = {
@@ -63,7 +64,7 @@ const CONNECTOR_COLOR: Record<string, 'success' | 'info' | 'secondary' | 'defaul
   csv: 'default',
 }
 
-type TabValue = 'connections' | 'webhooks' | 'inbound' | 'api-keys' | 'commerce'
+type TabValue = 'connections' | 'webhooks' | 'inbound' | 'api-keys' | 'commerce' | 'carrier-tracking'
 
 const ADAPTER_LABELS: Record<string, string> = {
   generic_json: 'Generic REST/JSON',
@@ -735,7 +736,11 @@ export default function IntegrationPage() {
         <Tab label="Outbound Webhooks" value="webhooks" />
         <Tab label="Inbound Receipts" value="inbound" />
         <Tab label="B2B API Keys" value="api-keys" />
+        {user?.is_cixci_admin && <Tab label="Carrier Tracking" value="carrier-tracking" />}
       </Tabs>
+
+      {/* ── Carrier Tracking Tab (EasyPost) ── */}
+      {tab === 'carrier-tracking' && user?.is_cixci_admin && <CarrierTrackingPanel />}
 
       {/* ── Connections Tab ── */}
       {tab === 'connections' && (

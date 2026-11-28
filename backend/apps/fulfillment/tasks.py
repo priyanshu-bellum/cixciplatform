@@ -179,7 +179,8 @@ def dispatch_buyer_signals():
                 create_notification_request(
                     event_type=f"buyer.order.{signal.update_kind}_complete",
                     source_module="fulfillment",
-                    company_scope_reference=signal.buyer_reference,
+                    # The buyer company owns the notification; buyer_reference may be a user.
+                    company_scope_reference=signal.company_scope_reference,
                     recipient_ids=[],
                     safe_payload_summary=payload,
                     source_record_id=signal.pk,
@@ -203,8 +204,9 @@ def dispatch_buyer_signals():
 @shared_task(name="apps.fulfillment.tasks.poll_carrier_tracking", ignore_result=True)
 def poll_carrier_tracking():
     """
-    Poll carrier APIs for shipments that have tracking info but aren't delivered yet.
-    No-op until CARRIER_TRACKER_BACKEND is configured (e.g. 'easypost').
+    Register pending shipments with the carrier tracking provider and refresh
+    undelivered ones. Provider webhooks are the primary path; this is the safety net.
+    No-op until a CIXCI admin enables carrier tracking.
     """
     from .carrier_tracking import poll_manual_shipments
     result = poll_manual_shipments()

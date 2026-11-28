@@ -199,6 +199,37 @@ class TestVendorShippingImport:
         assert signal.expected_vendor_count == 1
         assert signal.confirmed_vendor_count == 1
 
+    def test_vendor_csv_upload_queues_carrier_tracking_only_when_enabled(self, setup_data, settings):
+        """The upload itself never calls the provider; it queues a tracker for the worker."""
+        from datetime import timedelta
+        from unittest.mock import patch
+        from cryptography.fernet import Fernet
+        from apps.fulfillment import tracking
+        from apps.fulfillment.models import CarrierTrackingConfig, ShipmentTracker
+        settings.VENDOR_CATALOG_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
+        data = setup_data
+        client = APIClient()
+        client.force_authenticate(user=data["vendor_user"])
+        shipped = (timezone.now() - timedelta(days=2)).date().strftime("%Y-%m-%d")
+        header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
+
+        def upload(tracking_number):
+            row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,{tracking_number},{shipped},\n"
+            file = io.BytesIO((header + row).encode("utf-8"))
+            file.name = "shipping.csv"
+            with patch("apps.fulfillment.easypost._request") as provider, patch("apps.fulfillment.tracking.publish_sync"):
+                response = client.post("/api/v1/routing/orders/import-shipping/", {"file": file}, format="multipart")
+            provider.assert_not_called()
+            return response
+
+        assert upload("TRK-987654").status_code == 200
+        assert not ShipmentTracker.objects.exists()
+        CarrierTrackingConfig.objects.create(provider="easypost", enabled=True, encrypted_api_key=tracking.seal("EZTK_key"))
+        assert upload("TRK-987655").status_code == 200
+        tracker = ShipmentTracker.objects.get()
+        assert (tracker.state, tracker.tracking_code, tracker.carrier) == ("pending", "TRK-987655", "FedEx")
+        assert tracker.handoff.routed_suborder_reference == data["suborder"].id
+
     def test_locked_fields_mismatch_rejection(self, setup_data):
         from datetime import timedelta
         data = setup_data

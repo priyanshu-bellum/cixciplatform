@@ -57,12 +57,17 @@ class FulfillmentHandoffSerializer(serializers.ModelSerializer):
     vendor_order = serializers.SerializerMethodField()
     shipping_tracking_number = serializers.SerializerMethodField()
     order_status = serializers.SerializerMethodField()
+    tracking = serializers.SerializerMethodField()
+
+    def get_tracking(self, obj):
+        from .tracking import tracking_summary
+        return tracking_summary(obj)
 
     class Meta:
         model = FulfillmentHandoff
         fields = [
             "id", "routed_suborder_reference", "vendor_company_reference",
-            "company_scope_reference", "status", "tracking_source",
+            "company_scope_reference", "status", "tracking_source", "tracking",
             "delivery_evidence_reference",
             # Required Shipping Info Data Specification fields
             "buyer_order_number", "buyer_id", "vendor_order", "shipping_carrier",
@@ -318,7 +323,7 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = FulfillmentHandoff.objects.all()
+        qs = FulfillmentHandoff.objects.select_related("tracker")
         is_admin = getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
@@ -829,6 +834,9 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 if not h.tracking_source:
                     h.tracking_source = "manual_csv"
                 h.save()
+                # Carrier tracking takes over from here when the admin enabled it.
+                from .tracking import ensure_tracker
+                ensure_tracker(h)
 
                 # Also update RoutedSuborder status
                 if h.status == "delivered":
@@ -994,8 +1002,18 @@ class SLAOverrideViewSet(CheckAccessMixin, viewsets.ModelViewSet):
 
 
 class BuyerUpdateSignalViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
-    queryset = BuyerUpdateReadySignal.objects.all()
     serializer_class = BuyerUpdateSignalSerializer
+
+    def get_queryset(self):
+        # Buyer signals belong to one buyer company; only CIXCI staff see all.
+        user = self.request.user
+        qs = BuyerUpdateReadySignal.objects.all()
+        if getattr(user, "is_cixci_admin", False) or (getattr(user, "company", None) and user.company.company_type == "cixci_internal"):
+            return qs
+        company = user.entity.company if getattr(user, "entity", None) else None
+        if company is None or company.company_type != "buyer":
+            return qs.none()
+        return qs.filter(company_scope_reference=company.id)
     action_capability_map = {
         "list": "fulfillment.buyer_signal.list",
         "retrieve": "fulfillment.buyer_signal.read",
@@ -1744,6 +1762,19 @@ class BuyerShipmentSerializer(serializers.ModelSerializer):
     vendor_name = serializers.SerializerMethodField()
     order_status = serializers.SerializerMethodField()
     tracking_source_label = serializers.SerializerMethodField()
+    tracking = serializers.SerializerMethodField()
+    tracking_events = serializers.SerializerMethodField()
+
+    def get_tracking(self, obj):
+        from .tracking import tracking_summary
+        return tracking_summary(obj)
+
+    def get_tracking_events(self, obj):
+        # The scan history is returned for one shipment, never for a whole list.
+        if not self.context.get("include_tracking_events"):
+            return None
+        from .tracking import tracking_events
+        return tracking_events(obj)
 
     class Meta:
         model = FulfillmentHandoff
@@ -1751,6 +1782,7 @@ class BuyerShipmentSerializer(serializers.ModelSerializer):
             "id", "order_id", "routed_suborder_reference",
             "buyer_order_number", "vendor_name", "vendor_company_reference",
             "status", "order_status", "tracking_source", "tracking_source_label",
+            "tracking", "tracking_events",
             "shipping_carrier", "tracking_number", "vendor_order_number",
             "shipped_date", "delivered_date", "easypost_tracker_id",
             "created_at", "updated_at",
@@ -1834,7 +1866,7 @@ class BuyerShipmentTrackingViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
 
     def get_queryset(self):
         user = self.request.user
-        qs = FulfillmentHandoff.objects.all()
+        qs = FulfillmentHandoff.objects.select_related("tracker")
         is_admin = getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
@@ -1860,6 +1892,7 @@ class BuyerShipmentTrackingViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
         ctx['_batch_preload'] = True
+        ctx['include_tracking_events'] = self.action == 'retrieve'
         return ctx
 
     def list(self, request, *args, **kwargs):
@@ -1894,4 +1927,10 @@ router.register("return-requests", ReturnRequestViewSet, basename="return-reques
 router.register("return-import-logs", VendorReturnImportLogViewSet, basename="return-import-log")
 router.register("shipping-import-logs", VendorShippingImportLogViewSet, basename="shipping-import-log")
 
-urlpatterns = [path("", include(router.urls))]
+from .tracking_api import CarrierTrackingViewSet, CarrierWebhookView  # noqa: E402
+router.register("carrier-tracking", CarrierTrackingViewSet, basename="carrier-tracking")
+
+urlpatterns = [
+    path("", include(router.urls)),
+    path("carrier-webhooks/<slug:provider>/<uuid:receiver_id>/", CarrierWebhookView.as_view(), name="carrier-webhook"),
+]

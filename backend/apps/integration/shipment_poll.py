@@ -174,98 +174,12 @@ def process_shipment_poll(poll_id):
 def _process_shipment_row(item, profile, cfg, run):
     if not isinstance(item, dict):
         return
-
-    po_number = path_value(item, cfg.get('po_path', 'po_number'))
-    external_order = path_value(item, cfg.get('external_order_path', 'order_number'))
-    shipment_id = path_value(item, cfg.get('id_path', 'shipment_number'))
-    raw_status = path_value(item, cfg.get('status_path', 'status'))
-    shipped_at = path_value(item, cfg.get('shipped_at_path', 'ship_date'))
-    delivered_at = path_value(item, cfg.get('delivered_at_path', 'delivered_date'))
-
-    tracking = path_value(item, cfg.get('tracking_path', 'tracking')) or {}
-    tracking_number = path_value(tracking, cfg.get('tracking_number_path', 'number')) if isinstance(tracking, dict) else None
-    carrier = path_value(tracking, cfg.get('carrier_path', 'carrier')) if isinstance(tracking, dict) else None
-
-    dispatch = _find_dispatch(profile, po_number, external_order)
-    if not dispatch:
+    from .webhook_handlers import apply_vendor_shipment
+    outcome = apply_vendor_shipment(item, profile, cfg)
+    if outcome['error']:
         run.review_count += 1
-        return
-
-    status_map = cfg.get('status_map', {})
-    normalized = status_map.get(str(raw_status), '') if raw_status else ''
-
-    with transaction.atomic():
-        from apps.fulfillment.models import FulfillmentHandoff
-        handoff = FulfillmentHandoff.objects.select_for_update().filter(
-            routed_suborder_reference=dispatch.suborder_id
-        ).first()
-        if not handoff:
-            run.review_count += 1
-            return
-
-        changed = False
-        if tracking_number and tracking_number != handoff.tracking_number:
-            handoff.tracking_number = str(tracking_number)[:255]
-            changed = True
-        if carrier and carrier != handoff.shipping_carrier:
-            handoff.shipping_carrier = str(carrier)[:255]
-            changed = True
-        if external_order and not handoff.vendor_order_number:
-            handoff.vendor_order_number = str(external_order)[:255]
-            changed = True
-
-        if shipped_at and not handoff.shipped_date:
-            try:
-                from django.utils.dateparse import parse_date, parse_datetime
-                d = parse_date(str(shipped_at)) if len(str(shipped_at)) <= 10 else None
-                if not d:
-                    dt = parse_datetime(str(shipped_at))
-                    d = dt.date() if dt else None
-                if d:
-                    handoff.shipped_date = d
-                    changed = True
-            except (ValueError, TypeError):
-                pass
-
-        if delivered_at and not handoff.delivered_date:
-            try:
-                from django.utils.dateparse import parse_date, parse_datetime
-                d = parse_date(str(delivered_at)) if len(str(delivered_at)) <= 10 else None
-                if not d:
-                    dt = parse_datetime(str(delivered_at))
-                    d = dt.date() if dt else None
-                if d:
-                    handoff.delivered_date = d
-                    changed = True
-            except (ValueError, TypeError):
-                pass
-
-        if not handoff.tracking_source:
-            handoff.tracking_source = "vendor_api"
-            changed = True
-
-        if normalized == 'shipped' and handoff.status in ('received', 'processing'):
-            handoff.status = 'shipped'
-            changed = True
-        elif normalized == 'delivered' and handoff.status in ('received', 'processing', 'shipped'):
-            handoff.status = 'delivered'
-            changed = True
-        elif normalized == 'exception':
-            handoff.status = 'exception'
-            changed = True
-
-        if changed:
-            handoff.save()
-            current_dispatch = SupplierOrderDispatch.objects.select_for_update().get(pk=dispatch.pk)
-            if normalized in ('shipped', 'delivered') and current_dispatch.status not in ('shipped', 'delivered', 'failed'):
-                current_dispatch.status = normalized
-                current_dispatch.provider_updated_at = timezone.now()
-                current_dispatch.save()
-            run.processed_count += 1
-
-            if normalized == 'delivered':
-                from .webhook_handlers import _check_parent_completeness
-                _check_parent_completeness(handoff, dispatch)
+    elif outcome['changed']:
+        run.processed_count += 1
 
 
 def _find_dispatch(profile, po_number, external_order_id):

@@ -1441,6 +1441,25 @@ export default function OrdersPage() {
                               {item.delivered_date ? formatDate(item.delivered_date) : '—'}
                             </Typography>
                           </Box>
+                          {item.tracking && (
+                            <Box>
+                              <Typography sx={detailLabelSx}>Carrier Status</Typography>
+                              <Typography sx={{ ...detailValueSx, fontWeight: 550 }}>
+                                {item.tracking.status_label || '—'}
+                              </Typography>
+                              {item.tracking.estimated_delivery_date && !item.delivered_date && (
+                                <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>
+                                  Est. {formatDate(item.tracking.estimated_delivery_date)}
+                                </Typography>
+                              )}
+                              {item.tracking.tracking_url && (
+                                <Typography component="a" href={item.tracking.tracking_url} target="_blank" rel="noreferrer"
+                                  sx={{ fontSize: 11, color: 'primary.main' }}>
+                                  Track shipment
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
                           {item.tracking_source && (
                             <Box>
                               <Typography sx={detailLabelSx}>Source</Typography>

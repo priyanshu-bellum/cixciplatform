@@ -74,43 +74,74 @@ def handle_order_event(event_type, record, profile, receipt):
               receipt_id=str(receipt.pk))
 
 
-def handle_shipment_event(event_type, record, profile, receipt):
-    if not isinstance(record, dict):
-        return
-    config = profile.config
-    ship_cfg = config.get('shipments', {})
+def _as_date(value):
+    if not value:
+        return None
+    from django.utils.dateparse import parse_date, parse_datetime
+    try:
+        text = str(value)
+        day = parse_date(text) if len(text) <= 10 else None
+        if not day:
+            moment = parse_datetime(text)
+            day = moment.date() if moment else None
+        return day
+    except (ValueError, TypeError):
+        return None
 
+
+def shipment_tracking(record, ship_cfg):
+    """Tracking may be one object or a list; Balaji documents an array of {number, carrier, url}."""
+    data = path_value(record, ship_cfg.get('tracking_path', 'tracking'))
+    entries = [item for item in (data if isinstance(data, list) else [data]) if isinstance(item, dict)]
+    numbers = [str(value) for value in (path_value(item, ship_cfg.get('tracking_number_path', 'number')) for item in entries) if value]
+    first = entries[0] if entries else {}
+    return (numbers[0] if numbers else None, path_value(first, ship_cfg.get('carrier_path', 'carrier')) if first else None,
+            path_value(first, ship_cfg.get('tracking_url_path', 'url')) if first else None, numbers[1:])
+
+
+def apply_vendor_shipment(record, profile, ship_cfg, *, event_type=''):
+    """Apply one vendor shipment observation (webhook event or poll row).
+
+    Returns a dict with ``error`` (code or '') and, on success, the dispatch,
+    handoff, normalized status and whether the shipment changed.
+    """
+    from apps.fulfillment.models import FulfillmentHandoff
+    from apps.fulfillment.tracking import ensure_tracker, record_events, sync_order_progress
     po_number = path_value(record, ship_cfg.get('po_path', 'po_number'))
     external_order = path_value(record, ship_cfg.get('external_order_path', 'order_number'))
     shipment_id = path_value(record, ship_cfg.get('id_path', 'shipment_number'))
     raw_status = path_value(record, ship_cfg.get('status_path', 'status'))
-    shipped_at = path_value(record, ship_cfg.get('shipped_at_path', 'ship_date'))
-    delivered_at = path_value(record, ship_cfg.get('delivered_at_path', 'delivered_date'))
+    carrier_status = path_value(record, ship_cfg.get('carrier_status_path', 'carrier_status'))
+    updated_at = path_value(record, ship_cfg.get('updated_at_path', 'updated_at'))
+    shipped_on = _as_date(path_value(record, ship_cfg.get('shipped_at_path', 'ship_date')))
+    delivered_path = ship_cfg.get('delivered_at_path', 'delivered_date')
+    delivered_on = _as_date(path_value(record, delivered_path)) if delivered_path else None
+    tracking_number, carrier, tracking_url, more_numbers = shipment_tracking(record, ship_cfg)
 
-    tracking_data = path_value(record, ship_cfg.get('tracking_path', 'tracking')) or {}
-    tracking_number = path_value(tracking_data, ship_cfg.get('tracking_number_path', 'number')) if isinstance(tracking_data, dict) else None
-    carrier = path_value(tracking_data, ship_cfg.get('carrier_path', 'carrier')) if isinstance(tracking_data, dict) else None
-    tracking_url = path_value(tracking_data, ship_cfg.get('tracking_url_path', 'url')) if isinstance(tracking_data, dict) else None
-
+    result = {'error': '', 'shipment_id': shipment_id, 'tracking_number': tracking_number, 'carrier': carrier,
+              'tracking_url': tracking_url, 'normalized': '', 'changed': False, 'dispatch': None, 'handoff': None}
     dispatch = _resolve_dispatch(profile, po_number, external_order)
     if not dispatch:
-        receipt.error_code = 'DISPATCH_NOT_FOUND'
-        return
+        result['error'] = 'DISPATCH_NOT_FOUND'
+        return result
 
-    status_map = ship_cfg.get('status_map', {})
-    normalized = status_map.get(str(raw_status), '') if raw_status else ''
+    normalized = ship_cfg.get('status_map', {}).get(str(raw_status), '') if raw_status else ''
+    # A delivered event, or the carrier status the vendor recorded, is delivery
+    # evidence even when the shipment's own status still reads "Shipped".
+    if normalized != 'exception' and (event_type.endswith('.delivered') or str(carrier_status or '').strip().casefold().startswith('delivered')):
+        normalized = 'delivered'
+    elif not normalized and tracking_number:
+        # Same rule as the vendor CSV import: a tracking number means it shipped.
+        normalized = 'shipped'
+    if normalized == 'delivered' and not delivered_on:
+        delivered_on = _as_date(updated_at) or timezone.localdate()
 
     with transaction.atomic():
-        from apps.fulfillment.models import FulfillmentHandoff
-        handoff = FulfillmentHandoff.objects.select_for_update().filter(
-            routed_suborder_reference=dispatch.suborder_id
-        ).first()
+        handoff = FulfillmentHandoff.objects.select_for_update().filter(routed_suborder_reference=dispatch.suborder_id).first()
         if not handoff:
-            receipt.error_code = 'HANDOFF_NOT_FOUND'
-            return
-
+            result['error'] = 'HANDOFF_NOT_FOUND'
+            return result
         changed = False
-
         if tracking_number and tracking_number != handoff.tracking_number:
             handoff.tracking_number = str(tracking_number)[:255]
             changed = True
@@ -120,77 +151,78 @@ def handle_shipment_event(event_type, record, profile, receipt):
         if external_order and not handoff.vendor_order_number:
             handoff.vendor_order_number = str(external_order)[:255]
             changed = True
-
-        if shipped_at and not handoff.shipped_date:
-            try:
-                from django.utils.dateparse import parse_date, parse_datetime
-                d = parse_date(str(shipped_at)) if len(str(shipped_at)) <= 10 else None
-                if not d:
-                    dt = parse_datetime(str(shipped_at))
-                    d = dt.date() if dt else None
-                if d:
-                    handoff.shipped_date = d
-                    changed = True
-            except (ValueError, TypeError):
-                pass
-
-        if delivered_at and not handoff.delivered_date:
-            try:
-                from django.utils.dateparse import parse_date, parse_datetime
-                d = parse_date(str(delivered_at)) if len(str(delivered_at)) <= 10 else None
-                if not d:
-                    dt = parse_datetime(str(delivered_at))
-                    d = dt.date() if dt else None
-                if d:
-                    handoff.delivered_date = d
-                    changed = True
-            except (ValueError, TypeError):
-                pass
-
+        if shipped_on and not handoff.shipped_date:
+            handoff.shipped_date = shipped_on
+            changed = True
+        if delivered_on and not handoff.delivered_date and normalized == 'delivered':
+            handoff.delivered_date = max(delivered_on, handoff.shipped_date) if handoff.shipped_date else delivered_on
+            changed = True
         if normalized == 'shipped' and handoff.status in ('received', 'processing'):
             handoff.status = 'shipped'
             changed = True
         elif normalized == 'delivered' and handoff.status in ('received', 'processing', 'shipped'):
             handoff.status = 'delivered'
             changed = True
-        elif normalized == 'exception':
+        elif normalized == 'exception' and handoff.status not in ('exception', 'delivered'):
             handoff.status = 'exception'
             changed = True
-
         if not handoff.tracking_source:
-            handoff.tracking_source = "vendor_api"
+            handoff.tracking_source = 'vendor_api'
             changed = True
-
         if changed:
             handoff.save()
 
         current_dispatch = SupplierOrderDispatch.objects.select_for_update().get(pk=dispatch.pk)
-        if normalized in ('shipped', 'delivered') and current_dispatch.status not in ('shipped', 'delivered', 'failed'):
+        if normalized in ('shipped', 'delivered') and current_dispatch.status not in (normalized, 'delivered', 'failed'):
             current_dispatch.status = normalized
             current_dispatch.provider_updated_at = timezone.now()
             current_dispatch.save()
 
-        audit('webhook_shipment_update', profile.connection, profile.updated_by,
-              dispatch_id=str(dispatch.pk), shipment_id=str(shipment_id)[:200],
-              event_type=event_type, tracking_number=str(tracking_number or '')[:100],
-              carrier=str(carrier or '')[:100], normalized=normalized,
-              receipt_id=str(receipt.pk))
-
+        if normalized or carrier_status:
+            from django.utils.dateparse import parse_datetime
+            occurred = parse_datetime(str(updated_at)) if updated_at else None
+            if occurred is not None and occurred.tzinfo is None:
+                occurred = None
+            message = str(carrier_status or raw_status or '')
+            if more_numbers:
+                message += ' (additional tracking numbers: ' + ', '.join(more_numbers[:10]) + ')'
+            record_events(handoff.pk, 'vendor_api', [{'status': normalized, 'status_detail': '', 'message': message,
+                'location': '', 'occurred_at': occurred or timezone.now()}] if occurred or changed else [])
         if changed:
-            outbound_type = 'shipment.delivered' if normalized == 'delivered' else 'shipment.updated'
-            _fire_outbound_event(
-                profile.vendor_company_id, outbound_type,
-                {'dispatch_id': str(dispatch.pk), 'po_number': dispatch.po_number,
-                 'shipment_id': str(shipment_id)[:200], 'status': normalized,
-                 'tracking_number': str(tracking_number or '')[:100],
-                 'carrier': str(carrier or '')[:100]},
-                source_id=f'shipment:{dispatch.pk}:{shipment_id}:{normalized}')
-
+            # Suborder, order and buyer signals follow the shipment for every
+            # change, not only for the final delivery.
+            sync_order_progress(handoff)
+            ensure_tracker(handoff)
         if normalized == 'delivered':
             _check_parent_completeness(handoff, dispatch)
 
-    if tracking_url and handoff:
-        _store_tracking_url(handoff, str(tracking_url)[:1000])
+    result.update(normalized=normalized, changed=changed, dispatch=dispatch, handoff=handoff)
+    return result
+
+
+def handle_shipment_event(event_type, record, profile, receipt):
+    if not isinstance(record, dict):
+        return
+    outcome = apply_vendor_shipment(record, profile, profile.config.get('shipments', {}), event_type=event_type)
+    if outcome['error']:
+        receipt.error_code = outcome['error']
+        return
+    dispatch, normalized = outcome['dispatch'], outcome['normalized']
+    shipment_id, tracking_number, carrier = outcome['shipment_id'], outcome['tracking_number'], outcome['carrier']
+    audit('webhook_shipment_update', profile.connection, profile.updated_by,
+          dispatch_id=str(dispatch.pk), shipment_id=str(shipment_id)[:200],
+          event_type=event_type, tracking_number=str(tracking_number or '')[:100],
+          carrier=str(carrier or '')[:100], normalized=normalized,
+          receipt_id=str(receipt.pk))
+    if outcome['changed']:
+        outbound_type = 'shipment.delivered' if normalized == 'delivered' else 'shipment.updated'
+        _fire_outbound_event(
+            profile.vendor_company_id, outbound_type,
+            {'dispatch_id': str(dispatch.pk), 'po_number': dispatch.po_number,
+             'shipment_id': str(shipment_id)[:200], 'status': normalized,
+             'tracking_number': str(tracking_number or '')[:100],
+             'carrier': str(carrier or '')[:100]},
+            source_id=f'shipment:{dispatch.pk}:{shipment_id}:{normalized}')
 
 
 def handle_finance_event(event_type, record_type, record, profile, receipt):

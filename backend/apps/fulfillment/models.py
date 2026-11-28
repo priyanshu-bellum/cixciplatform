@@ -131,6 +131,121 @@ class VendorShippingImportLog(models.Model):
         db_table = "fulfillment_vendor_shipping_import_log"
         ordering = ["-uploaded_at"]
 
+# ─── Carrier tracking provider (EasyPost) ─────────────────────────────────────
+
+def default_carrier_map():
+    """Vendor-entered carrier text (lower-case, letters/digits only) → provider carrier.
+
+    A carrier that is not listed is sent without a carrier so the provider
+    detects it from the tracking number.
+    """
+    return {"ups": "UPS", "usps": "USPS", "fedex": "FedEx", "dhl": "DHLExpress", "dhlexpress": "DHLExpress"}
+
+
+class CarrierTrackingConfig(models.Model):
+    """Platform-wide carrier tracking provider settings, managed by CIXCI admins.
+
+    Secrets are stored encrypted and are never returned by any API.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=30, unique=True, default="easypost")
+    enabled = models.BooleanField(default=False)
+    mode = models.CharField(max_length=20, default="test", help_text="test | production; events of the other mode are ignored")
+    encrypted_api_key = models.TextField(blank=True, editable=False)
+    api_key_hint = models.CharField(max_length=12, blank=True)
+    encrypted_webhook_secret = models.TextField(blank=True, editable=False)
+    provider_webhook_id = models.CharField(max_length=100, blank=True)
+    receiver_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    track_vendor_api_shipments = models.BooleanField(
+        default=False, help_text="Also track shipments whose vendor already reports status through its own API")
+    carrier_map = models.JSONField(default=default_carrier_map, blank=True)
+    poll_interval_minutes = models.PositiveIntegerField(default=240)
+    last_verified_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=200, blank=True)
+    updated_by = models.ForeignKey("tenant.User", null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "fulfillment_carrier_tracking_config"
+
+
+class TrackerState(models.TextChoices):
+    PENDING = "pending", "Waiting to be registered"
+    REGISTERED = "registered", "Registered with provider"
+    FAILED = "failed", "Registration failed"
+    STOPPED = "stopped", "No further updates expected"
+
+
+class ShipmentTracker(models.Model):
+    """One carrier tracker per shipment (handoff). Carrier truth for delivery status."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    handoff = models.OneToOneField(FulfillmentHandoff, on_delete=models.PROTECT, related_name="tracker")
+    provider = models.CharField(max_length=30, default="easypost")
+    tracking_code = models.CharField(max_length=255)
+    carrier = models.CharField(max_length=255, blank=True, help_text="Carrier as supplied by the vendor")
+    provider_carrier = models.CharField(max_length=100, blank=True)
+    provider_tracker_id = models.CharField(max_length=100, blank=True, db_index=True)
+    state = models.CharField(max_length=20, choices=TrackerState.choices, default=TrackerState.PENDING)
+    status = models.CharField(max_length=30, blank=True, help_text="Provider status, e.g. in_transit, delivered")
+    status_detail = models.CharField(max_length=50, blank=True)
+    est_delivery_date = models.DateTimeField(null=True, blank=True)
+    public_url = models.URLField(max_length=1000, blank=True)
+    signed_by = models.CharField(max_length=255, blank=True)
+    provider_updated_at = models.DateTimeField(null=True, blank=True)
+    last_event_at = models.DateTimeField(null=True, blank=True)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    next_poll_at = models.DateTimeField(null=True, blank=True)
+    attempt_count = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "fulfillment_shipment_tracker"
+        indexes = [models.Index(fields=["state", "next_poll_at"], name="tracker_due_idx")]
+
+
+class ShipmentTrackingEvent(models.Model):
+    """Carrier scan / vendor status history shown to the buyer as a timeline."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    handoff = models.ForeignKey(FulfillmentHandoff, on_delete=models.PROTECT, related_name="tracking_events")
+    source = models.CharField(max_length=20, choices=TrackingSource.choices)
+    status = models.CharField(max_length=30, blank=True)
+    status_detail = models.CharField(max_length=50, blank=True)
+    message = models.CharField(max_length=500, blank=True)
+    location = models.CharField(max_length=255, blank=True)
+    occurred_at = models.DateTimeField()
+    event_key = models.CharField(max_length=64, help_text="Stable hash; the same scan is stored once")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "fulfillment_shipment_tracking_event"
+        constraints = [models.UniqueConstraint(fields=["handoff", "event_key"], name="tracking_event_once")]
+        indexes = [models.Index(fields=["handoff", "occurred_at"], name="tracking_event_time_idx")]
+
+
+class CarrierWebhookReceipt(models.Model):
+    """Every signed provider event, stored once by its provider event ID."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=30, default="easypost")
+    provider_event_id = models.CharField(max_length=200)
+    event_type = models.CharField(max_length=100)
+    mode = models.CharField(max_length=20, blank=True)
+    payload_hash = models.CharField(max_length=64)
+    tracker_reference = models.CharField(max_length=100, blank=True)
+    status = models.CharField(max_length=30, default="received", db_index=True,
+        help_text="received | processed | skipped | failed")
+    error_code = models.CharField(max_length=100, blank=True)
+    received_at = models.DateTimeField(default=timezone.now)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "fulfillment_carrier_webhook_receipt"
+        constraints = [models.UniqueConstraint(fields=["provider", "provider_event_id"], name="carrier_webhook_event_once")]
+        ordering = ["-received_at"]
+
+
 
 # ─── PR #92: Vendor SLA Policy ────────────────────────────────────────────────
 

@@ -406,12 +406,12 @@ class OrderSerializer(serializers.ModelSerializer):
                     for s in order.routed_suborders.all():
                         sub_ids.append(s.id)
                 handoffs = {h.routed_suborder_reference: h for h in
-                            FulfillmentHandoff.objects.filter(routed_suborder_reference__in=sub_ids)}
+                            FulfillmentHandoff.objects.select_related("tracker").filter(routed_suborder_reference__in=sub_ids)}
                 self.context['_handoff_cache'] = handoffs
                 result = handoffs.get(sub.id)
                 self.context[cache_key] = result if result else '__none__'
                 return result
-            result = FulfillmentHandoff.objects.filter(routed_suborder_reference=sub.id).first()
+            result = FulfillmentHandoff.objects.select_related("tracker").filter(routed_suborder_reference=sub.id).first()
             self.context[cache_key] = result if result else '__none__'
             return result
         except Exception:
@@ -459,7 +459,16 @@ class OrderSerializer(serializers.ModelSerializer):
             "shipped_date": self.get_shipped_date(obj),
             "delivered_date": self.get_delivered_date(obj),
             "tracking_source": self._get_handoff(obj).tracking_source if self._get_handoff(obj) else "",
+            # Carrier status from the tracking provider; null until a tracker exists.
+            "tracking": self._tracking(self._get_handoff(obj)),
         }
+
+    @staticmethod
+    def _tracking(handoff):
+        if handoff is None:
+            return None
+        from apps.fulfillment.tracking import tracking_summary
+        return tracking_summary(handoff)
 
     def get_suborder_shipments(self, obj):
         """Per-suborder shipping breakdown for multi-vendor orders."""
@@ -472,7 +481,7 @@ class OrderSerializer(serializers.ModelSerializer):
             handoffs = {sid: cache.get(sid) for sid in sub_ids}
         else:
             handoffs = {h.routed_suborder_reference: h for h in
-                        FulfillmentHandoff.objects.filter(routed_suborder_reference__in=sub_ids)}
+                        FulfillmentHandoff.objects.select_related("tracker").filter(routed_suborder_reference__in=sub_ids)}
 
         vendor_ids = list(set(s.vendor_company_reference for s in subs))
         vendor_cache = self.context.get('_vendor_name_cache')
@@ -504,6 +513,7 @@ class OrderSerializer(serializers.ModelSerializer):
                 "delivered_date": str(h.delivered_date) if h and h.delivered_date else None,
                 "fulfillment_status": status_map.get(h.status, h.status.capitalize()) if h else "Pending",
                 "tracking_source": h.tracking_source if h else "",
+                "tracking": self._tracking(h),
             })
         return result
 
@@ -1643,6 +1653,8 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                         sub.status = RoutingStatus.SHIPPED
                     handoff.save()
                     sub.save()
+                    from apps.fulfillment.tracking import ensure_tracker
+                    ensure_tracker(handoff)
                 else: # review_required
                     handoff.status = op["issue_type"]
                     handoff.save()
