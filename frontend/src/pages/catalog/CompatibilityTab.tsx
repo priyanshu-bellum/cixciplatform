@@ -150,7 +150,7 @@ export default function CompatibilityTab({
     try {
       await api.post('/catalog/my-projection/refresh/')
       await refreshProjection()
-    } catch {} finally {
+    } catch { /* ignored on purpose */ } finally {
       setRefreshingProj(false)
     }
   }

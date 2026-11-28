@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Navigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
-import api from '../lib/apiClient'
 import axios from 'axios'
 import { formatCurrency, formatDate, getImageUrl } from '../lib/formatters'
 import { useSnackbar } from '../components/feedback/SnackbarProvider'
@@ -16,7 +15,6 @@ import { MONO_FONT } from '../theme/typography'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
-import CardContent from '@mui/material/CardContent'
 import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Chip from '@mui/material/Chip'
@@ -24,7 +22,6 @@ import TextField from '@mui/material/TextField'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import FormControl from '@mui/material/FormControl'
-import InputLabel from '@mui/material/InputLabel'
 import Grid from '@mui/material/Grid'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -401,11 +398,14 @@ function OrderDetailsRow({ order, accessoriesData, refetchOrders, refetchReturns
 /* ================================================================== */
 export default function TelcoCellularPage() {
   const { user } = useAuthStore()
-
+  // The guard lives in its own component so the page's hooks always run in the same order.
   if (user && user.company_type !== 'buyer') {
     return <Navigate to="/" replace />
   }
+  return <TelcoCellularContent />
+}
 
+function TelcoCellularContent() {
   const queryClient = useQueryClient()
   const { showSnackbar } = useSnackbar()
   const { dialogProps, confirm } = useConfirmDialog()

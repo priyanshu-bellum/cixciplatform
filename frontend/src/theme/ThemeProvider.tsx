@@ -32,7 +32,7 @@ export function CixciThemeProvider({ children }: { children: ReactNode }) {
 
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
-    try { localStorage.setItem('cixci-theme-mode', m); } catch {}
+    try { localStorage.setItem('cixci-theme-mode', m); } catch { /* ignored on purpose */ }
   }, []);
 
   const toggleMode = useCallback(() => {

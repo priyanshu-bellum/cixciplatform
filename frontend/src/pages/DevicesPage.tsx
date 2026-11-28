@@ -88,7 +88,7 @@ function parseApiError(err: any, fallback: string = 'An error occurred'): string
 
 export function parseWirelessCharging(val: string | null | undefined): string[] {
   if (!val) return []
-  const parts = val.split(/[\+,;\/]+/).map(s => s.trim()).filter(Boolean)
+  const parts = val.split(/[+,;/]+/).map(s => s.trim()).filter(Boolean)
   const result: string[] = []
   for (const p of parts) {
     const pl = p.toLowerCase()

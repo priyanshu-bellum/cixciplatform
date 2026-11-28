@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, MenuItem, Paper, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material'
+import { Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Paper, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material'
 import api from '../lib/apiClient'
 import { apiError } from '../hooks/useCompatibilityOptions'
 import VendorCatalogConfigEditor from './VendorCatalogConfigEditor'

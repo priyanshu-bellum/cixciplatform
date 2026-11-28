@@ -131,12 +131,12 @@ export function useProductForm() {
     setProdPromoInformation(p.promo_information || '')
 
     const primaryUrl = p.primary_image_url || ''
-    const cleanPrimary = primaryUrl.replace(/^(https?:\/\/[^\/]+)/, '')
+    const cleanPrimary = primaryUrl.replace(/^(https?:\/\/[^/]+)/, '')
     const additionalImages = (p.media_references || []).map((ref: any) =>
       typeof ref === 'string' ? ref : (ref?.url || ref?.storage_key || '')
     ).filter((url: string) => {
       if (!url) return false
-      const cleanRef = url.replace(/^(https?:\/\/[^\/]+)/, '')
+      const cleanRef = url.replace(/^(https?:\/\/[^/]+)/, '')
       return cleanRef !== cleanPrimary
     })
     setProdImageUrl1(additionalImages[0] || ''); setProdImageUrl2(additionalImages[1] || '')

@@ -51,7 +51,7 @@ export function useNotificationSocket() {
               queryClient.invalidateQueries({ queryKey: ['import-alerts-count'] })
               break
           }
-        } catch {}
+        } catch { /* ignored on purpose */ }
       }
 
       ws.onclose = (e) => {
@@ -65,7 +65,7 @@ export function useNotificationSocket() {
       ws.onerror = () => {
         ws.close()
       }
-    } catch {}
+    } catch { /* ignored on purpose */ }
   }, [user, queryClient])
 
   useEffect(() => {

@@ -127,7 +127,7 @@ export default function AddressAutocomplete({
     return () => {
       cancelled = true
       if (autocompleteRef.current) {
-        try { google.maps.event.clearInstanceListeners(autocompleteRef.current) } catch (_) {}
+        try { google.maps.event.clearInstanceListeners(autocompleteRef.current) } catch { /* ignored on purpose */ }
         autocompleteRef.current = null
       }
     }

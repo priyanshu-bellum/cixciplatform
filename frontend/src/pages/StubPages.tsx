@@ -7,7 +7,6 @@ import AddressAutocomplete from '../components/AddressAutocomplete'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
-import IconButton from '@mui/material/IconButton'
 import Chip from '@mui/material/Chip'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
@@ -22,8 +21,6 @@ import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import Alert from '@mui/material/Alert'
 import Card from '@mui/material/Card'
-import Paper from '@mui/material/Paper'
-import Divider from '@mui/material/Divider'
 import Checkbox from '@mui/material/Checkbox'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Table from '@mui/material/Table'
@@ -33,7 +30,6 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Stack from '@mui/material/Stack'
-import CircularProgress from '@mui/material/CircularProgress'
 import BusinessIcon from '@mui/icons-material/Business'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import PeopleIcon from '@mui/icons-material/People'
@@ -43,7 +39,6 @@ import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import DeleteIcon from '@mui/icons-material/Delete'
-import CloseIcon from '@mui/icons-material/Close'
 import { useSnackbar } from '../components/feedback/SnackbarProvider'
 import PageHeader from '../components/layout/PageHeader'
 import StatusChip from '../components/data-display/StatusChip'
@@ -609,7 +604,7 @@ export function SettingsPage() {
           await api.post(`/media/assets/${logoAssetId}/upload_file/`, fd, {
             headers: { 'Content-Type': 'multipart/form-data' },
           })
-        } catch (_) {}
+        } catch { /* ignored on purpose */ }
       }
 
       await api.post('/tenant/companies/', {
@@ -842,7 +837,7 @@ export function SettingsPage() {
       try {
         const meta = selectedCompany.external_id ? JSON.parse(selectedCompany.external_id) : {}
         existingLogoAssetId = meta.logo_asset_id || null
-      } catch {}
+      } catch { /* ignored on purpose */ }
 
       let logoAssetId = existingLogoAssetId
       if (editLogoFile) {
@@ -859,7 +854,7 @@ export function SettingsPage() {
           await api.post(`/media/assets/${logoAssetId}/upload_file/`, fd, {
             headers: { 'Content-Type': 'multipart/form-data' },
           })
-        } catch (_) {}
+        } catch { /* ignored on purpose */ }
       }
 
       const resp = await api.patch(`/tenant/companies/${selectedCompany.id}/`, {
@@ -1373,7 +1368,7 @@ export function SettingsPage() {
                             } else {
                               rAddr1 = c.return_address || ''
                             }
-                          } catch (_) {
+                          } catch {
                             rAddr1 = c.return_address || ''
                           }
                           setEditReturnAddress1(rAddr1)
@@ -1389,7 +1384,7 @@ export function SettingsPage() {
                             const meta = c.external_id ? JSON.parse(c.external_id) : {}
                             parsedCity = meta.city || ''
                             parsedZip = meta.zip || ''
-                          } catch (_) {}
+                          } catch { /* ignored on purpose */ }
 
                           const isSame = (
                             rAddr1 !== '' &&

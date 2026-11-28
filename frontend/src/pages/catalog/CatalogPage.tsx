@@ -179,7 +179,7 @@ export default function CatalogPage() {
     try {
       const detailRes = await api.get(`/catalog/products/${p.id}/`)
       setSelectedManageProduct(detailRes.data)
-    } catch {}
+    } catch { /* ignored on purpose */ }
   }
 
   const handleEditProduct = (p: any) => {

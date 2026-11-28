@@ -45,17 +45,14 @@ import PeopleIcon from '@mui/icons-material/People'
 import BusinessIcon from '@mui/icons-material/Business'
 import ShieldIcon from '@mui/icons-material/Shield'
 import CloseIcon from '@mui/icons-material/Close'
-import DescriptionIcon from '@mui/icons-material/Description'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import UploadIcon from '@mui/icons-material/Upload'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
 import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
-import Collapse from '@mui/material/Collapse'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 
@@ -69,7 +66,7 @@ import StatusChip from '../components/data-display/StatusChip'
 import ConfirmDialog from '../components/feedback/ConfirmDialog'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import { useSnackbar } from '../components/feedback/SnackbarProvider'
-import { formatCurrency, formatDate } from '../lib/formatters'
+import { formatDate } from '../lib/formatters'
 import { US_STATES } from '../lib/constants'
 
 // ─── AM/PM Time Picker ──────────────────────────────────────────────────────
@@ -291,7 +288,7 @@ function OnboardOrgModal({ onClose }: { onClose: () => void }) {
           await api.post(`/media/assets/${logoAssetId}/upload_file/`, fd, {
             headers: { 'Content-Type': 'multipart/form-data' },
           })
-        } catch (_) { /* logo upload failure is non-blocking */ }
+        } catch { /* logo upload failure is non-blocking */ }
       }
 
       await api.post('/tenant/companies/', {
