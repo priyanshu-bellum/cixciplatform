@@ -39,14 +39,14 @@ class TestMediaShortUrlAbsolute:
         url = media_short_url(asset_id)
         assert url.startswith("/api/img/")
 
-    @override_settings(MEDIA_USE_SHORT_URLS=False)
-    def test_long_url_mode_unchanged(self):
-        """Long URL mode uses MEDIA_URL + storage_key, unaffected by MEDIA_BASE_URL."""
+    @override_settings(MEDIA_USE_SHORT_URLS=False, MEDIA_BASE_URL="")
+    def test_proxy_path_is_used_even_when_short_urls_are_switched_off(self):
+        """media_short_url always returns the proxy path (TASK-012): storage keys are never exposed."""
         asset_id = uuid.uuid4()
         with patch("apps.media.models.MediaAsset.objects") as mock_qs:
             mock_qs.values_list.return_value.get.return_value = "products/img.png"
             url = media_short_url(asset_id)
-            assert "img.png" in url
+            assert url.startswith("/api/img/") and "img.png" not in url
 
 
 # ── Bug 1: Buyer API key product filtering (queryset-level) ──────────────────
@@ -54,7 +54,7 @@ class TestMediaShortUrlAbsolute:
 def _create_product(vendor_ref, name, sku):
     """Helper to create a minimal valid product for buyer visibility tests."""
     from apps.catalog.models import Product, ProductStatus
-    return Product.objects.create(
+    product = Product.objects.create(
         name=name, sku=sku,
         status=ProductStatus.ACTIVE,
         vendor_company_reference=vendor_ref,
@@ -64,6 +64,11 @@ def _create_product(vendor_ref, name, sku):
         release_date=date(2025, 1, 1),
         compatibility_status="complete",
     )
+    # Saving recomputes readiness from device matches; these tests are about the
+    # export filter and need a product that is already compatibility complete.
+    Product.objects.filter(pk=product.pk).update(compatibility_status="complete")
+    product.refresh_from_db()
+    return product
 
 
 @pytest.mark.django_db

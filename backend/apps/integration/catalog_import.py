@@ -355,7 +355,14 @@ def ingest_rows(connection, run, items, actor):
                             missing_device_names.add(_dn)
         attrs.update(vendor_company_reference=connection.vendor_company_id)
         if not product:
-            attrs.update(company_scope_reference=connection.vendor_company_id, product_type="accessory", status="active", selling_status="for_sale")
+            # A new offer goes live only when nothing about it still needs review
+            # (missing MSRP, brand or category). Otherwise it starts as a draft: an
+            # active product with open review errors would never receive later
+            # price or stock updates. Media and device-mapping notes do not block.
+            needs_review = {error["code"] for error in errors} - {"MEDIA_REVIEW_REQUIRED", "SENSITIVE_DATA_REMOVED",
+                "SEO_PRODUCT_FACT_CONFLICT", "MISSING_DEVICE_REVIEW", "COMPATIBILITY_REVIEW_REQUIRED"}
+            attrs.update(company_scope_reference=connection.vendor_company_id, product_type="accessory",
+                status="draft" if needs_review else "active", selling_status="not_for_sale" if needs_review else "for_sale")
         # Vendor APIs return null for absent text fields; DRF CharFields reject None.
         for _key in list(attrs):
             if attrs[_key] is None and _key in _NULLABLE_TEXT_FIELDS:

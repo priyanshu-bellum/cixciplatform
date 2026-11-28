@@ -10,7 +10,9 @@ def test_openapi_schema_endpoint():
         is_cixci_admin=True,
         is_active=True,
     )
-    client.force_authenticate(user=admin_user)
+    # The schema file is served by a plain Django view behind the admin's
+    # browser session, so a session login is the faithful way to reach it.
+    client.force_login(admin_user)
     response = client.get("/api/schema/", HTTP_HOST="localhost")
     assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}: {response.content}"
 

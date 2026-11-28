@@ -50,6 +50,9 @@ class TestProcurementNestedApi:
         product.inventory_level = 50
         product.status = "active"
         product.save()
+        # The fixture product has no governed category, so saving it recomputes
+        # readiness to incomplete; this test is about the nested PO, not matching.
+        type(product).objects.filter(pk=product.pk).update(compatibility_status="complete")
         
         url = "/api/v1/procurement/purchase-orders/"
         payload = {

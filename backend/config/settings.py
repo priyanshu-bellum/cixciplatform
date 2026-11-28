@@ -194,10 +194,16 @@ CELERY_BEAT_SCHEDULE = {
 
 # ─── REST Framework ───────────────────────────────────────────────────────────
 REST_FRAMEWORK = {
+    # Order matters: DRF answers an unauthenticated or expired-token request with
+    # 401 only when the FIRST class declares a WWW-Authenticate header. Session
+    # authentication declares none, so it must not come first; with it first every
+    # such request became 403 and the frontend's refresh-on-401 never ran.
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        # Company API keys may arrive in the Authorization header, so they are
+        # recognised before JWT would reject them as a malformed token.
         "apps.integration.authentication.CompanyAPIKeyAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",

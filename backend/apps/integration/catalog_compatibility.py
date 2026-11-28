@@ -26,6 +26,7 @@ class CatalogDeviceResolver:
         self.vendor_company_id = vendor_company_id
         self._devices = None
         self._vendor_names = None
+        self._feature_values = None
         # Names the last declaration() call could not find in the Device Catalog.
         self.missing = []
 
@@ -36,6 +37,15 @@ class CatalogDeviceResolver:
                 for label in {device.name, str(device), device.model_number} - {''}:
                     self._devices.setdefault(normalized_name(label), {})[str(device.pk)] = device
         return self._devices
+
+    def _is_feature_value(self, token):
+        """An approved compatibility value such as Lightning or MagSafe is a feature
+        declaration for the importer to judge, never a device name."""
+        if self._feature_values is None:
+            from apps.catalog.compatibility_values import NEGATIVE, value_catalog
+            self._feature_values = {option['value'].casefold() for options in value_catalog()['fields'].values()
+                for option in options} - {NEGATIVE.casefold(), 'yes', 'no'}
+        return token.casefold() in self._feature_values
 
     def _fuzzy_lookup(self, name):
         index = self._index()
@@ -135,6 +145,10 @@ class CatalogDeviceResolver:
             if not isinstance(token, str) or not token.strip():
                 raise ValidationError('A device reference needs a configured canonical mapping or non-empty name.')
             token = token.strip()
+            if tokens and normalized_name(tokens[0]) == 'universal':
+                # "Universal, Phone": what follows is the declared type scope, not models.
+                tokens.append(token)
+                continue
             if normalized_name(token) == 'universal':
                 # A scope declaration, not a model name: it must never be looked
                 # up or auto-created as a device called "Universal".
@@ -163,8 +177,16 @@ class CatalogDeviceResolver:
                 if len(candidates) > 1:
                     active = [d for d in candidates if getattr(d, 'lifecycle_status', '') == 'available']
                     candidates = active if active else candidates
+                if len(candidates) > 1:
+                    # Two catalog devices answer to this name: an admin links the
+                    # right one in Missing Devices instead of the sync picking one.
+                    self.missing.append(token)
+                    continue
                 if candidates:
                     token = str(candidates[0].pk)
+                elif not manufacturer and self._is_feature_value(token):
+                    tokens.append(token)
+                    continue
                 elif not manufacturer:
                     # Never invent a device (or its type) from a vendor's text.
                     # The known models are still mapped; this name goes to the

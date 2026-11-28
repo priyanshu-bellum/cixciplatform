@@ -22,7 +22,7 @@ class TestManualVendorExport:
 
     @pytest.fixture
     def product(self, vendor_company):
-        return Product.objects.create(
+        product = Product.objects.create(
             name="Manual Phone Accessories",
             sku="MAN-SKU-123",
             upc="123456789012",
@@ -34,6 +34,11 @@ class TestManualVendorExport:
             status=ProductStatus.ACTIVE,
             compatibility_status="complete",
         )
+        # Saving a product recomputes readiness from real device matches; these
+        # order-flow tests only need a product that is already compatibility complete.
+        Product.objects.filter(pk=product.pk).update(compatibility_status="complete")
+        product.refresh_from_db()
+        return product
 
     def test_manual_vendor_export_flow(self, buyer_company, buyer_user, vendor_company, product):
         # 1. Set vendor to manual integration mode

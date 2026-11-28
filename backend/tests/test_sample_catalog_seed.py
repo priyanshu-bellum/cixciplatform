@@ -21,6 +21,14 @@ def phone_device(db):
     )
     device_type.status = "active"
     device_type.save(update_fields=["status"])
+    # A fresh database has categories with no eligible Device Types; an admin
+    # configures them before anything can match, and the seed relies on that.
+    from apps.catalog.models import DynamicDropdownConfig
+    for config in DynamicDropdownConfig.objects.filter(field_name="product_category"):
+        config.status = "active"
+        config.eligible_device_types = ["phone"]
+        config.compatibility_rules = {**(config.compatibility_rules or {}), "_eligible_type_ids": [str(device_type.pk)]}
+        config.save()
     manufacturer, _ = Manufacturer.objects.get_or_create(name="SampleMfr")
     return Device.objects.create(
         sku="SAMPLE-DEV-001",

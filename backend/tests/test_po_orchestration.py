@@ -16,7 +16,7 @@ class TestPOOrchestration:
 
     @pytest.fixture
     def product(self, vendor_company):
-        return Product.objects.create(
+        product = Product.objects.create(
             name="Test Phone",
             sku="TEST-SKU-1",
             product_type="accessory",
@@ -27,6 +27,11 @@ class TestPOOrchestration:
             status=ProductStatus.ACTIVE,
             compatibility_status="complete",
         )
+        # Saving a product recomputes readiness from real device matches; these
+        # order-flow tests only need a product that is already compatibility complete.
+        Product.objects.filter(pk=product.pk).update(compatibility_status="complete")
+        product.refresh_from_db()
+        return product
 
     def test_end_to_end_orchestration_on_manual_approval(self, buyer_client, buyer_user, vendor_company, product):
         """Test manual PO approval triggers full orchestration."""

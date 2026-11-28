@@ -76,14 +76,21 @@ def test_provider_paths_and_aliases_are_connection_configuration(mapping_setup):
         'slug_path':'remote.slug','device_map':{'id:123':str(devices[1].pk)}}}
     raw = [{'model':{'label':'Provider alias'},'remote':{'key':123}}]
     assert CatalogDeviceResolver(config).declaration(raw, category='Cases') == str(devices[1].pk)
-    assert CatalogDeviceResolver({}).declaration([{'id':123,'name':'Provider alias'}], category='Cases') == 'Provider alias'
+    # Without a configured alias the name is not in the catalog: nothing is
+    # resolved or invented, and the name is reported for Missing Devices (BR-INT-003).
+    resolver = CatalogDeviceResolver({})
+    assert resolver.declaration([{'id':123,'name':'Provider alias'}], category='Cases') == ''
+    assert resolver.missing == ['Provider alias']
 
 
 def test_ambiguous_name_requires_explicit_mapping(mapping_setup):
     connection, _, devices, phone, _ = mapping_setup
     Device.objects.create(name=devices[0].name, manufacturer=Manufacturer.objects.create(name='Other Maker'), device_type=phone)
-    with pytest.raises(ValidationError, match='Ambiguous'):
-        CatalogDeviceResolver(connection.config).declaration([{'name':'Model One'}], category='Cases')
+    # The sync never picks one of two same-named devices; an admin links the
+    # right one in Missing Devices (BR-INT-003).
+    resolver = CatalogDeviceResolver(connection.config)
+    assert resolver.declaration([{'name':'Model One'}], category='Cases') == ''
+    assert resolver.missing == ['Model One']
     assert CatalogDeviceResolver(connection.config).declaration(
         [{'name':'Model One','manufacturer':'Canonical Maker'}], category='Cases') == str(devices[0].pk)
 
@@ -91,8 +98,10 @@ def test_ambiguous_name_requires_explicit_mapping(mapping_setup):
 def test_explicit_universal_requires_configured_types(mapping_setup):
     connection, _, _, phone, tablet = mapping_setup
     raw = [{'id':1004,'name':'Universal','slug':'universal'}]
-    with pytest.raises(ValidationError, match='explicit approved'):
-        CatalogDeviceResolver(connection.config).declaration(raw, category='Cases')
+    # A bare provider "Universal" means the original three types (TASK-012,
+    # confirmed 2026-11-28); a configured map narrows it.
+    bare = CatalogDeviceResolver(connection.config).declaration(raw, category='Cases')
+    assert bare.split('; ')[0] == 'Universal' and {str(phone.pk), str(tablet.pk)} <= set(bare.split('; ')[1:])
     config = {'compatibility':{'universal_type_map':{'Cases':[str(phone.pk)]}}}
     declaration = CatalogDeviceResolver(config).declaration(raw, category='Cases')
     _, types, devices = parse_compatibility_row({'devicecompatibility':declaration}, mapping_setup[1])
@@ -131,7 +140,7 @@ def test_unknown_source_cannot_create_universal_scope(mapping_setup):
     ingest(connection, [source_row(compatible_devices=[{'id':999,'name':'Not in canonical catalog'}])])
     source = VendorCatalogItem.objects.select_related('product').get()
     assert source.review_required
-    assert any(e['code'] == 'COMPATIBILITY_REVIEW_REQUIRED' for e in source.review_errors)
+    assert any(e['code'] == 'MISSING_DEVICE_REVIEW' for e in source.review_errors)
     assert not Product.objects.filter(compatibility_mode='universal_device_type').exists()
     if source.product:
         assert not source.product.universal_type_scopes.filter(is_active=True).exists()

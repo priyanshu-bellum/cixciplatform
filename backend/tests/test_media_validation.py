@@ -70,9 +70,15 @@ class TestImageValidation:
         assert not r.ok
         assert any("transparen" in e.lower() for e in r.errors)
 
-    def test_jpeg_rejected(self):
+    def test_jpeg_accepted_without_transparency(self):
+        # JPEG/JPG is accepted alongside PNG (TASK-009); it has no alpha channel.
         data = _jpeg_bytes()
         r = validation.validate_image_bytes(data, "photo.jpg", "product_image")
+        assert r.ok, r.errors
+        assert r.has_transparency is False
+
+    def test_other_formats_rejected(self):
+        r = validation.validate_image_bytes(_jpeg_bytes(), "photo.gif", "product_image")
         assert not r.ok
         assert any("Unsupported" in e for e in r.errors)
 
@@ -135,14 +141,16 @@ class TestFilenameSanitisation:
 
 @pytest.mark.django_db
 class TestZipValidation:
-    def test_zip_with_jpeg_reports_failure(self):
-        data = _zip_bytes({"a.png": _png_bytes(), "b.jpg": _jpeg_bytes()})
+    def test_zip_accepts_jpeg_and_rejects_other_formats(self):
+        # JPEG/JPG is accepted alongside PNG (TASK-009).
+        data = _zip_bytes({"a.png": _png_bytes(), "b.jpg": _jpeg_bytes(), "c.gif": _jpeg_bytes()})
         f = SimpleUploadedFile("imgs.zip", data, content_type="application/zip")
         res = validation.validate_zip_archive(f, company_id="11111111-1111-1111-1111-111111111111")
         assert res["ok"]
         statuses = {e["filename"]: e["status"] for e in res["entries"]}
         assert statuses["a.png"] == "valid"
-        assert statuses["b.jpg"] == "failed"
+        assert statuses["b.jpg"] == "valid"
+        assert statuses["c.gif"] == "failed"
 
     def test_zip_with_opaque_png_reports_not_transparent(self):
         data = _zip_bytes({"a.png": _png_bytes(transparent=False)})
@@ -288,7 +296,7 @@ class TestMediaTenantIsolation:
 
 @pytest.mark.django_db
 class TestSingleUploadValidation:
-    def test_upload_rejects_jpeg(self, buyer_client, buyer_company):
+    def test_upload_accepts_jpeg(self, buyer_client, buyer_company):
         asset = MediaAsset.objects.create(
             asset_type="product_image", status="upload_pending",
             company_scope_reference=buyer_company.id,
@@ -300,9 +308,7 @@ class TestSingleUploadValidation:
             f"/api/v1/media/assets/{asset.id}/upload_file/",
             {"file": f}, format="multipart",
         )
-        assert resp.status_code == 400
-        asset.refresh_from_db()
-        assert asset.status == "validation_failed"
+        assert resp.status_code == 200, resp.data
 
     def test_upload_accepts_transparent_png(self, buyer_client, buyer_company):
         asset = MediaAsset.objects.create(

@@ -82,7 +82,15 @@ def vendor_product(vendor_company, device, settings):
 
 
 @pytest.fixture
-def product_image(vendor_product, vendor_company, tmp_path):
+def product_image(vendor_product, vendor_company, tmp_path, buyer_user, buyer_company, device):
+    # My Product Images lists the products this buyer has exported (c55a78f).
+    from django.utils import timezone
+    from apps.catalog.models import BuyerProductExportDate
+    BuyerProductExportDate.objects.create(
+        buyer_reference=buyer_user.id, company_scope_reference=buyer_company.id,
+        buyer_entity_reference=buyer_user.entity_id, product=vendor_product,
+        device_reference=device.id, exported_at=timezone.now(),
+    )
     asset = MediaAsset.objects.create(
         asset_type="product_image",
         status="ready",

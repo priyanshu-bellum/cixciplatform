@@ -92,7 +92,7 @@ class TestMapPricingEnforcement:
             sku="TP-X-001",
             device_type=dt,
             manufacturer=mfr,
-            lifecycle_status="current",
+            lifecycle_status="available",
         )
         add_device_to_portfolio(buyer_user, dev.id)
 
@@ -111,6 +111,12 @@ class TestMapPricingEnforcement:
             device_reference=str(dev.id),
             is_compatible=True
         )
+
+        # These products have no governed category, so readiness is set directly:
+        # the tests are about MAP rules, not compatibility matching.
+        Product.objects.filter(id__in=[p_missing_map.id, p_violating_price.id, p_compliant.id]).update(compatibility_status="complete")
+        ProductCompatibilityAssertion.objects.filter(product_id__in=[p_missing_map.id, p_violating_price.id, p_compliant.id]).update(
+            is_compatible=True, match_status="Active")
 
         # Enforce MAP pricing now
         vendor.map_pricing_enforced = True

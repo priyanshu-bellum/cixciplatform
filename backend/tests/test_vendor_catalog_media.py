@@ -143,10 +143,11 @@ class TestProcessVendorProductImages:
         assert process_vendor_product_images(vendor_product, None, vendor_company.id, None) is False
 
     @patch("apps.integration.catalog_media.create_vendor_media_asset")
-    def test_processes_max_three_images(self, mock_create, vendor_product, vendor_company):
+    def test_processes_at_most_six_images(self, mock_create, vendor_product, vendor_company):
         from apps.integration.catalog_media import process_vendor_product_images
         mock_create.return_value = uuid.uuid4()
 
-        urls = [f"https://example.com/img{i}.jpg" for i in range(6)]
+        # Up to six vendor images are kept per product (raised from three in 6ea8fd1).
+        urls = [f"https://example.com/img{i}.jpg" for i in range(9)]
         process_vendor_product_images(vendor_product, urls, vendor_company.id, None)
-        assert mock_create.call_count == 3
+        assert mock_create.call_count == 6
