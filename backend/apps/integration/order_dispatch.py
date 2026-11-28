@@ -197,7 +197,9 @@ def process_supplier_dispatch(dispatch_id):
 def cancel_supplier_order(dispatch_id, *, actor=None):
     """Cancel an order via DELETE /orders/{po_number} — Balaji adapter only."""
     with transaction.atomic():
-        dispatch = SupplierOrderDispatch.objects.select_for_update().select_related(
+        # Lock only the dispatch row: PostgreSQL refuses FOR UPDATE across the
+        # optional profile join, which made every cancellation fail there.
+        dispatch = SupplierOrderDispatch.objects.select_for_update(of=('self',)).select_related(
             'profile__connection__vendor_company', 'profile__updated_by',
         ).get(pk=dispatch_id)
         if dispatch.status in ('cancelled', 'failed', 'configuration_required'):
