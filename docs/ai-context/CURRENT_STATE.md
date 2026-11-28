@@ -2,6 +2,11 @@
 
 Active task: TASK-019 — in_progress.
 
+Commit state (2026-11-28): TASK-020 to TASK-024 are committed locally on branch
+perf/compat-sync-and-audit-seeding as 3c1f8eb, eee846d, 3b3bd52, a1cf653 and
+f4fb534; nothing is pushed. Notes below that say "uncommitted" for these tasks
+predate those commits.
+
 TASK-024 (2026-11-28, completed, uncommitted): Missing Devices is backed by
 VendorDeviceMapping (catalog 0047, applied to the local copy only); adding or
 linking a device maps the declaring products, clears their review flag and is
