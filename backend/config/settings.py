@@ -151,6 +151,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "integration.vendor_catalog.dispatch", "schedule": 60.0,
         "options": {"queue": "vendor_catalog"},
     },
+    "retry_missing_vendor_images_hourly": {
+        "task": "integration.vendor_catalog.retry_images", "schedule": 3600.0,
+        "options": {"queue": "vendor_catalog"},
+    },
     "evaluate_vendor_slas_every_15_mins": {
         "task": "apps.fulfillment.tasks.evaluate_vendor_slas",
         "schedule": 900.0,

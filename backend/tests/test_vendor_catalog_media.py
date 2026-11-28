@@ -151,3 +151,67 @@ class TestProcessVendorProductImages:
         urls = [f"https://example.com/img{i}.jpg" for i in range(9)]
         process_vendor_product_images(vendor_product, urls, vendor_company.id, None)
         assert mock_create.call_count == 6
+
+
+@pytest.mark.django_db
+class TestVendorImageStorageAndRetry:
+    """ISSUE-014: no asset without a file, a lost file is restored, a failed download is retried."""
+
+    def _source(self, vendor_company, product, admin_user):
+        from apps.integration.catalog_config import default_catalog_config
+        from apps.integration.models import VendorCatalogConnection, VendorCatalogItem
+        connection = VendorCatalogConnection.objects.create(vendor_company=vendor_company, label="Images",
+            config=default_catalog_config(), updated_by=admin_user)
+        return VendorCatalogItem.objects.create(connection=connection, external_id="img-1", product=product,
+            payload={"id": "img-1", "images": ["https://cdn.example.test/a.jpg"]}, source_hash="h")
+
+    def test_no_asset_is_recorded_when_the_file_cannot_be_stored(self, vendor_product, vendor_company, settings, tmp_path):
+        from apps.integration import catalog_media
+        settings.MEDIA_ROOT = str(tmp_path)
+        fetched = {"https://cdn.example.test/a.jpg": (FAKE_JPEG, "a.jpg", "image/jpeg")}
+        with patch.object(catalog_media, "open", side_effect=OSError("disk full"), create=True):
+            assert catalog_media.create_vendor_media_asset(vendor_product.id, "https://cdn.example.test/a.jpg",
+                vendor_company.id, None, fetched=fetched) is None
+        assert not MediaAsset.objects.filter(owner_record_id=vendor_product.id).exists()
+
+    def test_a_lost_file_is_written_again_for_the_same_asset(self, vendor_product, vendor_company, settings, tmp_path):
+        import os
+        from apps.integration import catalog_media
+        settings.MEDIA_ROOT = str(tmp_path)
+        url = "https://cdn.example.test/a.jpg"
+        fetched = {url: (FAKE_JPEG, "a.jpg", "image/jpeg")}
+        assert catalog_media.process_vendor_product_images(vendor_product, [url], vendor_company.id, None, fetched=fetched)
+        asset = MediaAsset.objects.get(owner_record_id=vendor_product.id)
+        path = os.path.join(str(tmp_path), asset.storage_key)
+        os.remove(path)
+        vendor_product.refresh_from_db()
+        assert catalog_media.primary_file_missing(vendor_product)
+        assert catalog_media.process_vendor_product_images(vendor_product, [url], vendor_company.id, None, fetched=fetched)
+        assert os.path.isfile(path) and MediaAsset.objects.filter(owner_record_id=vendor_product.id).count() == 1
+
+    def test_cloud_storage_receives_the_file_the_proxy_redirects_to(self, vendor_product, vendor_company, settings):
+        from apps.integration import catalog_media
+        settings.USE_S3 = True
+        with patch("django.core.files.storage.default_storage.save", side_effect=lambda name, content: name) as save:
+            asset_id = catalog_media.create_vendor_media_asset(vendor_product.id, "https://cdn.example.test/a.jpg",
+                vendor_company.id, None, fetched={"https://cdn.example.test/a.jpg": (FAKE_JPEG, "a.jpg", "image/jpeg")})
+        asset = MediaAsset.objects.get(pk=asset_id)
+        assert save.call_args[0][0] == asset.storage_key and save.call_args[0][1].read() == FAKE_JPEG
+
+    def test_failed_download_is_retried_later_with_a_backoff(self, vendor_product, vendor_company, admin_user, settings, tmp_path):
+        from django.core.cache import cache
+        from apps.integration import catalog_sync
+        settings.MEDIA_ROOT = str(tmp_path)
+        settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "image-retry"}}
+        cache.clear()
+        self._source(vendor_company, vendor_product, admin_user)
+        with patch("apps.integration.catalog_media.download_vendor_image", side_effect=OSError("timeout")):
+            assert catalog_sync.retry_missing_vendor_images() == {"checked": 1, "attempted": 1, "linked": 0}
+        with patch("apps.integration.catalog_media.download_vendor_image", return_value=(FAKE_JPEG, "a.jpg", "image/jpeg")) as download:
+            # Inside the backoff window the product is left alone.
+            assert catalog_sync.retry_missing_vendor_images()["attempted"] == 0 and not download.called
+            cache.clear()
+            assert catalog_sync.retry_missing_vendor_images() == {"checked": 1, "attempted": 1, "linked": 1}
+        vendor_product.refresh_from_db()
+        assert vendor_product.primary_image_reference is not None
+        assert catalog_sync.retry_missing_vendor_images() == {"checked": 0, "attempted": 0, "linked": 0}

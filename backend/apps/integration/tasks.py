@@ -14,6 +14,12 @@ def dispatch_vendor_catalog_syncs():
     return dispatch_due_syncs()
 
 
+@shared_task(name='integration.vendor_catalog.retry_images', queue='vendor_catalog')
+def retry_vendor_images():
+    from .catalog_sync import retry_missing_vendor_images
+    return retry_missing_vendor_images()
+
+
 @shared_task(name='integration.vendor_commerce.dispatch_order', queue='vendor_commerce')
 def dispatch_supplier_order(dispatch_id):
     from .order_dispatch import process_supplier_dispatch

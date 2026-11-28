@@ -91,6 +91,40 @@ def prefetch_vendor_images(urls, workers=DOWNLOAD_WORKERS):
         return dict(zip(urls, pool.map(fetch, urls)))
 
 
+def _cloud_storage():
+    """Same switch the image proxy uses to decide where a stored file is read from."""
+    return bool(getattr(settings, "USE_S3", False) or getattr(settings, "USE_GCS", False))
+
+
+def file_is_stored(storage_key):
+    if not storage_key:
+        return False
+    if _cloud_storage():
+        from django.core.files.storage import default_storage
+        return default_storage.exists(storage_key)
+    return os.path.isfile(os.path.join(getattr(settings, "MEDIA_ROOT", "") or "", storage_key))
+
+
+def store_file(storage_key, data):
+    """Write image bytes where the proxy will read them. Returns the stored key, or '' on failure."""
+    try:
+        if _cloud_storage():
+            from django.core.files.base import ContentFile
+            from django.core.files.storage import default_storage
+            return default_storage.save(storage_key, ContentFile(data))
+        media_root = getattr(settings, "MEDIA_ROOT", "")
+        if not media_root:
+            return ""
+        full_path = os.path.join(media_root, storage_key)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, "wb") as dest:
+            dest.write(data)
+        return storage_key
+    except Exception as exc:
+        logger.warning("Failed to store vendor image %s: %s", storage_key, exc)
+        return ""
+
+
 def create_vendor_media_asset(product_id, image_url, vendor_company_id, actor_id, fetched=None):
     """Download a vendor image and create a MediaAsset linked to the product.
 
@@ -116,21 +150,21 @@ def create_vendor_media_asset(product_id, image_url, vendor_company_id, actor_id
         company_scope_reference=vendor_company_id,
     ).first()
     if existing:
+        # A record without its file shows a broken image; put the file back.
+        if not file_is_stored(existing.storage_key):
+            stored_key = store_file(existing.storage_key, data)
+            if not stored_key:
+                return None
+            if stored_key != existing.storage_key:
+                MediaAsset.objects.filter(pk=existing.pk).update(storage_key=stored_key)
         return existing.id
 
     asset_id = uuid.uuid4()
     ext = os.path.splitext(filename)[1] or ".jpg"
-    storage_key = f"{vendor_company_id}/product_image/{asset_id}/{filename}"
-
-    media_root = getattr(settings, "MEDIA_ROOT", "")
-    if media_root:
-        full_path = os.path.join(media_root, storage_key)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        try:
-            with open(full_path, "wb") as dest:
-                dest.write(data)
-        except Exception as exc:
-            logger.warning("Failed to write vendor image to disk: %s", exc)
+    storage_key = store_file(f"{vendor_company_id}/product_image/{asset_id}/{filename}", data)
+    if not storage_key:
+        # No asset is recorded for a file that was not stored; the retry picks it up.
+        return None
 
     try:
         from PIL import Image
@@ -163,6 +197,19 @@ def create_vendor_media_asset(product_id, image_url, vendor_company_id, actor_id
     return asset_id
 
 
+def primary_file_missing(product):
+    """True when the product's primary image record has no file (checked on local storage only).
+
+    Cloud storage is not probed per product: that would be one network call for
+    every product on every sync.
+    """
+    if _cloud_storage() or not product.primary_image_reference:
+        return False
+    from apps.media.models import MediaAsset
+    key = MediaAsset.objects.filter(pk=product.primary_image_reference).values_list("storage_key", flat=True).first()
+    return key is not None and not file_is_stored(key)
+
+
 def process_vendor_product_images(product, image_urls, vendor_company_id, actor_id, fetched=None):
     """Process image URLs for a vendor-sourced product.
 
@@ -175,7 +222,7 @@ def process_vendor_product_images(product, image_urls, vendor_company_id, actor_
     if not image_urls or not isinstance(image_urls, list):
         return False
 
-    if product.primary_image_reference:
+    if product.primary_image_reference and not primary_file_missing(product):
         return True
 
     media_refs = []

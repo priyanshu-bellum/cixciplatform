@@ -120,6 +120,43 @@ def _process_deferred_images(deferred_images):
                 pass
 
 
+IMAGE_RETRY_BACKOFF_SECONDS = 6 * 60 * 60
+
+
+def retry_missing_vendor_images(limit=200):
+    """Try again for vendor products that still have no primary image.
+
+    A failed download used to wait until the vendor changed the product. Each
+    product is attempted at most once per backoff window, from the image URLs
+    already stored with its source row; no provider API call is made.
+    """
+    from django.core.cache import cache
+    from .catalog_import import mapped_values
+    from .models import VendorCatalogItem
+    rows = (VendorCatalogItem.objects.filter(product__isnull=False, product__primary_image_reference__isnull=True,
+            connection__is_retired=False, is_listed=True)
+        .select_related("connection").order_by("last_seen_at", "pk"))
+    deferred, checked = [], 0
+    for item in rows.iterator(chunk_size=200):
+        if len(deferred) >= limit:
+            break
+        checked += 1
+        key = f"vendor-image-retry:{item.product_id}"
+        try:
+            fields, _ = mapped_values(item.payload, item.connection.config)
+        except (KeyError, TypeError):
+            continue
+        images = fields.get("images")
+        if not images or not isinstance(images, list) or not cache.add(key, 1, IMAGE_RETRY_BACKOFF_SECONDS):
+            continue
+        deferred.append((item.product_id, images, item.connection.vendor_company_id, item.connection.updated_by_id))
+    if deferred:
+        _process_deferred_images(deferred)
+    from apps.catalog.models import Product
+    linked = Product.objects.filter(pk__in=[row[0] for row in deferred], primary_image_reference__isnull=False).count()
+    return {"checked": checked, "attempted": len(deferred), "linked": linked}
+
+
 def test_catalog_connection(connection, actor):
     """Bounded authenticated preview, not a successful catalog import."""
     if (connection.is_retired or saved_integration_mode(connection.vendor_company) != 'api'
