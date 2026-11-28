@@ -415,6 +415,21 @@ known_issues: ["ISSUE-010"]
 ```
 
 ```yaml
+feature_id: INT-005
+feature_name: Buyer webhooks for order updates
+status: implemented
+description: Signed HTTPS push of shipment and delivery completion to a buyer company's endpoint, fed by the existing buyer update signals, with retries, delivery log and audit.
+frontend_files: ["frontend/src/pages/integration/BuyerWebhooksPanel.tsx", "frontend/src/pages/IntegrationPage.tsx"]
+backend_files: ["backend/apps/integration/buyer_webhooks.py", "backend/apps/integration/buyer_webhook_api.py", "backend/apps/fulfillment/tasks.py"]
+database_entities: ["integration.BuyerWebhookEndpoint", "integration.BuyerWebhookDelivery", "fulfillment.BuyerUpdateReadySignal"]
+api_endpoints: ["GET /api/v1/integration/buyer-webhooks/", "POST /api/v1/integration/buyer-webhooks/", "POST /api/v1/integration/buyer-webhooks/{pk}/test/"]
+dependencies: ["FUL-001", "TEN-001", "AUD-001"]
+business_rules: ["BR-TEN-001"]
+related_tests: ["backend/tests/test_buyer_webhooks.py"]
+known_issues: []
+```
+
+```yaml
 feature_id: ANA-001
 feature_name: Reporting metrics, summary aggregation and freshness
 status: partial

@@ -1,8 +1,55 @@
 # Persistent tasks
 
-Latest completion: TASK-025 (tenant scope, 401 responses, order image rule, green backend suite, bulk compatibility values).
+Latest completion: TASK-026 (PostgreSQL run, shipment packages, shared CSV progress, vendor image storage/retry, lazy buyer projections, buyer webhooks).
 Open follow-up: TASK-014 (provider mappings/images and remote test diagnostics).
 TASK-002–008 record earlier discoveries. IDs are permanent.
+
+## TASK-026 — Platform follow-ups: PostgreSQL run, packages, CSV progress, images, projections, buyer webhooks
+
+- Status: completed
+- Related features: INT-005 (new), INT-002, INT-003, INT-004, FUL-001, CMP-002, MED-001, CAT-001; BR-TEN-001.
+- PostgreSQL suite run (config.compatibility_test_settings, dedicated test database,
+  local copy never the target): found supplier order cancellation failing on
+  PostgreSQL only (FOR UPDATE across the optional profile join). Fixed with
+  select_for_update(of=("self",)).
+- Shipment packages: FulfillmentHandoff.additional_tracking (fulfillment 0012) keeps
+  the further tracking entries a vendor reports; shown to the buyer. Status still
+  follows the first number. Not decided by the owner: whether a multi-package
+  shipment is delivered when the first or when every package arrives.
+- CSV shipping imports: both endpoints move suborder, order and buyer signals through
+  fulfillment.tracking.sync_order_progress. The copied code wrote the tenant scope
+  id as the signal's buyer reference, raised no delivery signal and reopened
+  signals already dispatched. Row validation rules of the two imports still differ
+  and were not merged (owner decision needed; only the fulfillment endpoint is
+  used by the frontend).
+- Vendor images (ISSUE-014): stored through the configured cloud storage when
+  USE_S3/USE_GCS is on, local disk otherwise; no asset without a stored file; a
+  lost local file is restored; hourly retry task
+  integration.vendor_catalog.retry_images (six-hour backoff per product, uses
+  stored source rows, no provider call).
+- Buyer projections: a product save marks projections stale (one UPDATE) instead
+  of rebuilding every buyer's; rebuilt on next read.
+- Buyer webhooks (INT-005): integration.BuyerWebhookEndpoint/Delivery (integration
+  0011), /api/v1/integration/buyer-webhooks/, Integrations > Buyer Webhooks.
+  Events order.shipment_complete and order.delivery_complete come from the existing
+  BuyerUpdateReadySignal dispatch. Assumptions made, to be confirmed by the owner:
+  CIXCI admins set up endpoints (as with B2B API keys), one endpoint per buyer
+  company, correction signals are not sent.
+- catalog/api.py: mapping, import alert and missing device endpoints moved unchanged
+  to catalog/mapping_api.py (URL map identical).
+- Frontend: TelcoCellularPage hook-order bug fixed; mechanical lint cleanup
+  (eslint 819 to 733 errors; the rest are typing and component-structure rules).
+- Local only, not in Git (file is ignored): docker-compose.dev.yml worker now
+  listens on celery,vendor_catalog,vendor_commerce and a celery-beat service
+  exists, both behind the opt-in "workers" profile. Not started: the local copy
+  holds real provider credentials.
+- Verification: backend suite on SQLite 1,069 passed, 0 failed; on PostgreSQL 1,069 passed, 0 failed
+  (first run: 2 failed, the cancellation lock). Vendor Audit browser tests 15/15, tsc clean.
+  Migrations fulfillment 0012 and integration 0011 applied to the local copy only.
+- Not verified: a real buyer endpoint, cloud storage writes, a worker run, test or
+  live servers. Deploy needs migrate fulfillment, integration (and catalog 0047,
+  fulfillment 0011 from TASK-021/023 if not yet applied) plus worker and beat
+  restarts for the new tasks.
 
 ## TASK-025 — Fulfillment tenant scope, 401 responses and the failing-test baseline
 

@@ -38,6 +38,46 @@ service calls and conditional response redaction must be read in source.
 
 Frontend consumers (resource-path text matches; confirm action callers): no direct resource-path match; may be indirect or external.
 
+## apps.integration.buyer_webhook_api.BuyerWebhookViewSet
+
+Handler: [backend/apps/integration/buyer_webhook_api.py](../../../../backend/apps/integration/buyer_webhook_api.py). Declared queryset model: `integration.BuyerWebhookEndpoint`.
+
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
+
+Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
+
+Action capability map: `{}`.
+
+These are declarations, not a complete access proof: read custom permission,
+queryset and action checks in the handler and its mixins. Plain Django views may
+implement signature or session validation instead of DRF policies.
+
+Serializer: `apps.integration.buyer_webhook_api.EndpointSerializer` at [backend/apps/integration/buyer_webhook_api.py](../../../../backend/apps/integration/buyer_webhook_api.py).
+
+Serializer fields: `["id","company","company_name","url","is_active","events","created_at","updated_at"]`. Read-only fields: `["id","company","company_name","url","is_active","events","created_at","updated_at"]`. Excluded: `[]`. Validation methods: none declared.
+
+| Method | Endpoint | Action |
+|---|---|---|
+| GET | `/api/v1/integration/buyer-webhooks/` | `list` |
+| POST | `/api/v1/integration/buyer-webhooks/` | `create` |
+| DELETE | `/api/v1/integration/buyer-webhooks/{pk}/` | `destroy` |
+| GET | `/api/v1/integration/buyer-webhooks/{pk}/deliveries/` | `deliveries` |
+| POST | `/api/v1/integration/buyer-webhooks/{pk}/rotate-secret/` | `rotate_secret` |
+| POST | `/api/v1/integration/buyer-webhooks/{pk}/test/` | `test` |
+
+- `list`: `apps.integration.buyer_webhook_api.BuyerWebhookViewSet.list` in [backend/apps/integration/buyer_webhook_api.py](../../../../backend/apps/integration/buyer_webhook_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+- `create`: `apps.integration.buyer_webhook_api.BuyerWebhookViewSet.create` in [backend/apps/integration/buyer_webhook_api.py](../../../../backend/apps/integration/buyer_webhook_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+- `destroy`: `apps.integration.buyer_webhook_api.BuyerWebhookViewSet.destroy` in [backend/apps/integration/buyer_webhook_api.py](../../../../backend/apps/integration/buyer_webhook_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+- `deliveries`: `apps.integration.buyer_webhook_api.BuyerWebhookViewSet.deliveries` in [backend/apps/integration/buyer_webhook_api.py](../../../../backend/apps/integration/buyer_webhook_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+- `rotate_secret`: `apps.integration.buyer_webhook_api.BuyerWebhookViewSet.rotate_secret` in [backend/apps/integration/buyer_webhook_api.py](../../../../backend/apps/integration/buyer_webhook_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `signing_secret`. Local service imports: none declared.
+- `test`: `apps.integration.buyer_webhook_api.BuyerWebhookViewSet.test` in [backend/apps/integration/buyer_webhook_api.py](../../../../backend/apps/integration/buyer_webhook_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
+
+Request/response key extraction is static and partial; inherited CRUD uses the
+serializer above. Action-specific serializers, nested schemas, validations,
+service calls and conditional response redaction must be read in source.
+
+Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/pages/integration/BuyerWebhooksPanel.tsx](../../../../frontend/src/pages/integration/BuyerWebhooksPanel.tsx).
+
 ## apps.integration.catalog_api.VendorCatalogConnectionViewSet
 
 Handler: [backend/apps/integration/catalog_api.py](../../../../backend/apps/integration/catalog_api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.

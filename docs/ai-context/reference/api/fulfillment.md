@@ -20,7 +20,7 @@ implement signature or session validation instead of DRF policies.
 
 Serializer: `apps.fulfillment.api.BuyerShipmentSerializer` at [backend/apps/fulfillment/api.py](../../../../backend/apps/fulfillment/api.py).
 
-Serializer fields: `["id","order_id","routed_suborder_reference","buyer_order_number","vendor_name","vendor_company_reference","status","order_status","tracking_source","tracking_source_label","tracking","tracking_events","shipping_carrier","tracking_number","vendor_order_number","shipped_date","delivered_date","easypost_tracker_id","created_at","updated_at"]`. Read-only fields: `[]`. Excluded: `[]`. Validation methods: none declared.
+Serializer fields: `["id","order_id","routed_suborder_reference","buyer_order_number","vendor_name","vendor_company_reference","status","order_status","tracking_source","tracking_source_label","tracking","tracking_events","shipping_carrier","tracking_number","additional_tracking","vendor_order_number","shipped_date","delivered_date","easypost_tracker_id","created_at","updated_at"]`. Read-only fields: `[]`. Excluded: `[]`. Validation methods: none declared.
 
 | Method | Endpoint | Action |
 |---|---|---|
@@ -84,7 +84,7 @@ implement signature or session validation instead of DRF policies.
 
 Serializer: `apps.fulfillment.api.FulfillmentHandoffSerializer` at [backend/apps/fulfillment/api.py](../../../../backend/apps/fulfillment/api.py).
 
-Serializer fields: `["id","routed_suborder_reference","vendor_company_reference","company_scope_reference","status","tracking_source","tracking","delivery_evidence_reference","buyer_order_number","buyer_id","vendor_order","shipping_carrier","shipping_tracking_number","order_status","shipped_date","delivered_date","vendor_order_number","tracking_number","created_at","updated_at"]`. Read-only fields: `["id","created_at"]`. Excluded: `[]`. Validation methods: `validate_status`.
+Serializer fields: `["id","routed_suborder_reference","vendor_company_reference","company_scope_reference","status","tracking_source","tracking","delivery_evidence_reference","buyer_order_number","buyer_id","vendor_order","shipping_carrier","shipping_tracking_number","order_status","shipped_date","delivered_date","vendor_order_number","tracking_number","additional_tracking","created_at","updated_at"]`. Read-only fields: `["id","created_at","additional_tracking"]`. Excluded: `[]`. Validation methods: `validate_status`.
 
 | Method | Endpoint | Action |
 |---|---|---|

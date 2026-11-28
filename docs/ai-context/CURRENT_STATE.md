@@ -7,7 +7,10 @@ eee846d, 3b3bd52, a1cf653, f4fb534, 0df3689), pushed at the user's request. Note
 below that say "uncommitted" for these tasks predate those commits. TASK-025 is on
 local branch fix/tenant-scope-and-test-baseline, not pushed: backend suite 1,055
 passed, 0 failed (was 55 failed). It also fixes order acceptance for vendor JPEG
-products and adds bulk compatibility values in Vendor Audit.
+products and adds bulk compatibility values in Vendor Audit. TASK-026 is on the
+same branch, not pushed: PostgreSQL-only cancellation fix, shipment packages,
+shared CSV order progress, vendor image storage/retry, lazy buyer projections and
+buyer webhooks (migrations fulfillment 0012, integration 0011).
 
 TASK-024 (2026-11-28, completed, uncommitted): Missing Devices is backed by
 VendorDeviceMapping (catalog 0047, applied to the local copy only); adding or

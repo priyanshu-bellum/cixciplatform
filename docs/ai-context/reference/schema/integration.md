@@ -24,6 +24,57 @@ Constraints: `[["django.db.models.UniqueConstraint",[],{"name":"buyer_storefront
 
 Unique together: `[]`. Ordering: `[]`.
 
+## integration.BuyerWebhookDelivery
+
+Table: `integration_buyer_webhook_delivery`. Source: [backend/apps/integration/buyer_webhooks.py](../../../../backend/apps/integration/buyer_webhooks.py).
+
+| Field / column | Django type | Constraints / defaults | Relationship |
+|---|---|---|---|
+| `id` / `id` | `UUIDField` | `PK; unique; NOT NULL; length=32; default="uuid.uuid4 (callable; not evaluated)"` | `—` |
+| `endpoint` / `endpoint_id` | `ForeignKey` | `indexed; NOT NULL; default="<not set>"` | `integration.BuyerWebhookEndpoint; CASCADE; reverse=deliveries` |
+| `company` / `company_id` | `ForeignKey` | `indexed; NOT NULL; default="<not set>"` | `tenant.Company; PROTECT; reverse=+` |
+| `event_type` / `event_type` | `CharField` | `indexed; NOT NULL; length=100; default="<not set>"` | `—` |
+| `idempotency_key` / `idempotency_key` | `CharField` | `unique; NOT NULL; length=255; default="<not set>"` | `—` |
+| `payload` / `payload` | `JSONField` | `NOT NULL; default="builtins.dict (callable; not evaluated)"` | `—` |
+| `status` / `status` | `CharField` | `indexed; NOT NULL; length=20; default="pending"` | `—` |
+| `attempt_count` / `attempt_count` | `PositiveSmallIntegerField` | `NOT NULL; default=0` | `—` |
+| `next_retry_at` / `next_retry_at` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `last_response_code` / `last_response_code` | `PositiveSmallIntegerField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `last_error` / `last_error` | `CharField` | `NOT NULL; blank allowed; length=500; default="<not set>"` | `—` |
+| `delivered_at` / `delivered_at` | `DateTimeField` | `NULL; blank allowed; default="<not set>"` | `—` |
+| `created_at` / `created_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
+
+Choices (stored value → display label):
+
+- `status`: `[["pending","Pending"],["in_flight","In Flight"],["delivered","Delivered"],["failed","Failed"],["retrying","Retrying"]]`
+
+Indexes: `[["django.db.models.Index",[],{"name":"buyer_hook_due_idx","fields":["status","next_retry_at"]}],["django.db.models.Index",[],{"name":"buyer_hook_company_idx","fields":["company","created_at"]}]]`.
+
+Constraints: `[]`.
+
+Unique together: `[]`. Ordering: `["-created_at"]`.
+
+## integration.BuyerWebhookEndpoint
+
+Table: `integration_buyer_webhook_endpoint`. Source: [backend/apps/integration/buyer_webhooks.py](../../../../backend/apps/integration/buyer_webhooks.py).
+
+| Field / column | Django type | Constraints / defaults | Relationship |
+|---|---|---|---|
+| `id` / `id` | `UUIDField` | `PK; unique; NOT NULL; length=32; default="uuid.uuid4 (callable; not evaluated)"` | `—` |
+| `company` / `company_id` | `OneToOneField` | `unique; indexed; NOT NULL; default="<not set>"` | `tenant.Company; PROTECT; reverse=buyer_webhook_endpoint` |
+| `url` / `url` | `CharField` | `NOT NULL; length=1000; default="<not set>"` | `—` |
+| `encrypted_secret` / `encrypted_secret` | `TextField` | `NOT NULL; default="<not set>"` | `—` |
+| `is_active` / `is_active` | `BooleanField` | `NOT NULL; default=true` | `—` |
+| `updated_by` / `updated_by_id` | `ForeignKey` | `indexed; NULL; default="<not set>"` | `tenant.User; PROTECT; reverse=+` |
+| `created_at` / `created_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
+| `updated_at` / `updated_at` | `DateTimeField` | `NOT NULL; blank allowed; auto_now; default="<not set>"` | `—` |
+
+Indexes: `[]`.
+
+Constraints: `[]`.
+
+Unique together: `[]`. Ordering: `[]`.
+
 ## integration.CompanyAPIKey
 
 Table: `integration_company_api_key`. Source: [backend/apps/integration/models.py](../../../../backend/apps/integration/models.py).
@@ -540,3 +591,4 @@ Unique together: `[]`. Ordering: `[]`.
 - [backend/apps/integration/migrations/0008_outbound_webhook_delivery.py](../../../../backend/apps/integration/migrations/0008_outbound_webhook_delivery.py)
 - [backend/apps/integration/migrations/0009_outbound_signing_secret.py](../../../../backend/apps/integration/migrations/0009_outbound_signing_secret.py)
 - [backend/apps/integration/migrations/0010_vendor_finance_return_records.py](../../../../backend/apps/integration/migrations/0010_vendor_finance_return_records.py)
+- [backend/apps/integration/migrations/0011_buyer_webhooks.py](../../../../backend/apps/integration/migrations/0011_buyer_webhooks.py)

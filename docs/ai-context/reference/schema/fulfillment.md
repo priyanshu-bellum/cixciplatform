@@ -151,6 +151,7 @@ Table: `fulfillment_handoff`. Source: [backend/apps/fulfillment/models.py](../..
 | `vendor_order_number` / `vendor_order_number` | `CharField` | `NULL; blank allowed; length=255; default="<not set>"` | `—` |
 | `shipping_carrier` / `shipping_carrier` | `CharField` | `NULL; blank allowed; length=255; default="<not set>"` | `—` |
 | `tracking_number` / `tracking_number` | `CharField` | `NULL; blank allowed; length=255; default="<not set>"` | `—` |
+| `additional_tracking` / `additional_tracking` | `JSONField` | `NOT NULL; blank allowed; default="builtins.list (callable; not evaluated)"` | `—` |
 | `shipped_date` / `shipped_date` | `DateField` | `NULL; blank allowed; default="<not set>"` | `—` |
 | `delivered_date` / `delivered_date` | `DateField` | `NULL; blank allowed; default="<not set>"` | `—` |
 | `created_at` / `created_at` | `DateTimeField` | `NOT NULL; default="django.utils.timezone.now (callable; not evaluated)"` | `—` |
@@ -483,3 +484,4 @@ Unique together: `[]`. Ordering: `["-uploaded_at"]`.
 - [backend/apps/fulfillment/migrations/0009_add_buyer_shipment_indexes.py](../../../../backend/apps/fulfillment/migrations/0009_add_buyer_shipment_indexes.py)
 - [backend/apps/fulfillment/migrations/0010_add_easypost_tracker_id.py](../../../../backend/apps/fulfillment/migrations/0010_add_easypost_tracker_id.py)
 - [backend/apps/fulfillment/migrations/0011_carrier_tracking_provider.py](../../../../backend/apps/fulfillment/migrations/0011_carrier_tracking_provider.py)
+- [backend/apps/fulfillment/migrations/0012_handoff_additional_tracking.py](../../../../backend/apps/fulfillment/migrations/0012_handoff_additional_tracking.py)

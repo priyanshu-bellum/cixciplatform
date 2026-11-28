@@ -116,74 +116,6 @@ service calls and conditional response redaction must be read in source.
 
 Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/components/CompatibilityValuesManager.tsx](../../../../frontend/src/components/CompatibilityValuesManager.tsx), [frontend/src/components/VendorCatalogConfigEditor.tsx](../../../../frontend/src/components/VendorCatalogConfigEditor.tsx), [frontend/src/hooks/useCompatibilityOptions.ts](../../../../frontend/src/hooks/useCompatibilityOptions.ts), [frontend/src/pages/catalog/CatalogPage.tsx](../../../../frontend/src/pages/catalog/CatalogPage.tsx), [frontend/src/pages/catalog/dialogs/DropdownManagerDialog.tsx](../../../../frontend/src/pages/catalog/dialogs/DropdownManagerDialog.tsx), [frontend/src/pages/catalog/__tests__/VendorAuditTab.test.tsx](../../../../frontend/src/pages/catalog/__tests__/VendorAuditTab.test.tsx), [frontend/src/pages/DevicesPage.tsx](../../../../frontend/src/pages/DevicesPage.tsx).
 
-## apps.catalog.api.ImportAlertViewSet
-
-Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
-
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
-
-Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
-
-Action capability map: `{}`.
-
-These are declarations, not a complete access proof: read custom permission,
-queryset and action checks in the handler and its mixins. Plain Django views may
-implement signature or session validation instead of DRF policies.
-
-Serializer: `none` at framework/dynamic (inspect handler).
-
-| Method | Endpoint | Action |
-|---|---|---|
-| GET | `/api/v1/catalog/import-alerts/` | `list` |
-| POST | `/api/v1/catalog/import-alerts/{pk}/dismiss/` | `dismiss` |
-
-- `list`: `apps.catalog.api.ImportAlertViewSet.list` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `alerts`. Local service imports: `apps.notification.models.NotificationRequest`.
-- `dismiss`: `apps.catalog.api.ImportAlertViewSet.dismiss` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `dismissed`. Local service imports: `apps.notification.models.NotificationRequest`.
-
-Request/response key extraction is static and partial; inherited CRUD uses the
-serializer above. Action-specific serializers, nested schemas, validations,
-service calls and conditional response redaction must be read in source.
-
-Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/components/NotificationBell.tsx](../../../../frontend/src/components/NotificationBell.tsx), [frontend/src/pages/catalog/CatalogPage.tsx](../../../../frontend/src/pages/catalog/CatalogPage.tsx).
-
-## apps.catalog.api.MissingDeviceViewSet
-
-Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
-
-Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
-
-Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
-
-Action capability map: `{}`.
-
-These are declarations, not a complete access proof: read custom permission,
-queryset and action checks in the handler and its mixins. Plain Django views may
-implement signature or session validation instead of DRF policies.
-
-Serializer: `none` at framework/dynamic (inspect handler).
-
-| Method | Endpoint | Action |
-|---|---|---|
-| GET | `/api/v1/catalog/missing-devices/` | `list` |
-| POST | `/api/v1/catalog/missing-devices/add_device/` | `add_device` |
-| POST | `/api/v1/catalog/missing-devices/dismiss_device/` | `dismiss_device` |
-| POST | `/api/v1/catalog/missing-devices/link_device/` | `link_device` |
-| POST | `/api/v1/catalog/missing-devices/restore_device/` | `restore_device` |
-| GET | `/api/v1/catalog/missing-devices/{pk}/products/` | `products` |
-
-- `list`: `apps.catalog.api.MissingDeviceViewSet.list` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `search`, `status`, `vendor`. Direct Response dictionary keys: `affected_products`, `counts`, `device_types`, `devices`, `manufacturers`, `total`. Local service imports: `apps.devices.models.Device`, `apps.devices.models.DeviceType`, `apps.devices.models.Manufacturer`, `apps.tenant.models.Company`.
-- `add_device`: `apps.catalog.api.MissingDeviceViewSet.add_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `device_name`, `device_type_code`, `manufacturer_id`, `manufacturer_name`, `vendor_company_id`, `vendor_device_name`. Direct Response dictionary keys: `error`. Local service imports: `apps.devices.models.Device`, `apps.devices.models.DeviceType`, `apps.devices.models.Manufacturer`.
-- `dismiss_device`: `apps.catalog.api.MissingDeviceViewSet.dismiss_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `vendor_device_name`. Direct Response dictionary keys: `dismissed`, `error`. Local service imports: none declared.
-- `link_device`: `apps.catalog.api.MissingDeviceViewSet.link_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `device_id`. Direct Response dictionary keys: `error`. Local service imports: `apps.devices.models.Device`.
-- `restore_device`: `apps.catalog.api.MissingDeviceViewSet.restore_device` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `error`, `restored`. Local service imports: none declared.
-- `products`: `apps.catalog.api.MissingDeviceViewSet.products` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `count`, `error`, `products`. Local service imports: none declared.
-
-Request/response key extraction is static and partial; inherited CRUD uses the
-serializer above. Action-specific serializers, nested schemas, validations,
-service calls and conditional response redaction must be read in source.
-
-Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/pages/catalog/MissingDevicesTab.tsx](../../../../frontend/src/pages/catalog/MissingDevicesTab.tsx).
-
 ## apps.catalog.api.ProductViewSet
 
 Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `catalog.Product`.
@@ -269,9 +201,77 @@ service calls and conditional response redaction must be read in source.
 
 Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/pages/catalog/AllProductsTab.tsx](../../../../frontend/src/pages/catalog/AllProductsTab.tsx), [frontend/src/pages/catalog/CatalogPage.tsx](../../../../frontend/src/pages/catalog/CatalogPage.tsx), [frontend/src/pages/catalog/CompatibilityTab.tsx](../../../../frontend/src/pages/catalog/CompatibilityTab.tsx), [frontend/src/pages/catalog/dialogs/BatchRevalidateDialog.tsx](../../../../frontend/src/pages/catalog/dialogs/BatchRevalidateDialog.tsx), [frontend/src/pages/catalog/dialogs/BulkUploadDialog.tsx](../../../../frontend/src/pages/catalog/dialogs/BulkUploadDialog.tsx), [frontend/src/pages/catalog/dialogs/ExcludeDeviceDialog.tsx](../../../../frontend/src/pages/catalog/dialogs/ExcludeDeviceDialog.tsx), [frontend/src/pages/catalog/dialogs/ManageProductDialog.tsx](../../../../frontend/src/pages/catalog/dialogs/ManageProductDialog.tsx), [frontend/src/pages/catalog/dialogs/ProductFormDialog.tsx](../../../../frontend/src/pages/catalog/dialogs/ProductFormDialog.tsx), [frontend/src/pages/catalog/hooks/useCatalogBrandOptions.ts](../../../../frontend/src/pages/catalog/hooks/useCatalogBrandOptions.ts), [frontend/src/pages/catalog/VendorAuditCategoryDrawer.tsx](../../../../frontend/src/pages/catalog/VendorAuditCategoryDrawer.tsx), [frontend/src/pages/catalog/VendorAuditTab.tsx](../../../../frontend/src/pages/catalog/VendorAuditTab.tsx), [frontend/src/pages/catalog/__tests__/VendorAuditTab.test.tsx](../../../../frontend/src/pages/catalog/__tests__/VendorAuditTab.test.tsx), [frontend/src/pages/DashboardPage.tsx](../../../../frontend/src/pages/DashboardPage.tsx), [frontend/src/pages/DevicesPage.tsx](../../../../frontend/src/pages/DevicesPage.tsx), [frontend/src/pages/MediaPage.tsx](../../../../frontend/src/pages/MediaPage.tsx), [frontend/src/pages/TelcoCellularPage.tsx](../../../../frontend/src/pages/TelcoCellularPage.tsx).
 
-## apps.catalog.api.VendorCategoryMappingViewSet
+## apps.catalog.mapping_api.ImportAlertViewSet
 
-Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `catalog.VendorCategoryMapping`.
+Handler: [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
+
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
+
+Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
+
+Action capability map: `{}`.
+
+These are declarations, not a complete access proof: read custom permission,
+queryset and action checks in the handler and its mixins. Plain Django views may
+implement signature or session validation instead of DRF policies.
+
+Serializer: `none` at framework/dynamic (inspect handler).
+
+| Method | Endpoint | Action |
+|---|---|---|
+| GET | `/api/v1/catalog/import-alerts/` | `list` |
+| POST | `/api/v1/catalog/import-alerts/{pk}/dismiss/` | `dismiss` |
+
+- `list`: `apps.catalog.mapping_api.ImportAlertViewSet.list` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `alerts`. Local service imports: `apps.notification.models.NotificationRequest`.
+- `dismiss`: `apps.catalog.mapping_api.ImportAlertViewSet.dismiss` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `dismissed`. Local service imports: `apps.notification.models.NotificationRequest`.
+
+Request/response key extraction is static and partial; inherited CRUD uses the
+serializer above. Action-specific serializers, nested schemas, validations,
+service calls and conditional response redaction must be read in source.
+
+Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/components/NotificationBell.tsx](../../../../frontend/src/components/NotificationBell.tsx), [frontend/src/pages/catalog/CatalogPage.tsx](../../../../frontend/src/pages/catalog/CatalogPage.tsx).
+
+## apps.catalog.mapping_api.MissingDeviceViewSet
+
+Handler: [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Declared queryset model: `dynamic/undeclared; inspect handler`.
+
+Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
+
+Throttles: `rest_framework.throttling.AnonRateThrottle`, `rest_framework.throttling.UserRateThrottle`. Required capability: `none`.
+
+Action capability map: `{}`.
+
+These are declarations, not a complete access proof: read custom permission,
+queryset and action checks in the handler and its mixins. Plain Django views may
+implement signature or session validation instead of DRF policies.
+
+Serializer: `none` at framework/dynamic (inspect handler).
+
+| Method | Endpoint | Action |
+|---|---|---|
+| GET | `/api/v1/catalog/missing-devices/` | `list` |
+| POST | `/api/v1/catalog/missing-devices/add_device/` | `add_device` |
+| POST | `/api/v1/catalog/missing-devices/dismiss_device/` | `dismiss_device` |
+| POST | `/api/v1/catalog/missing-devices/link_device/` | `link_device` |
+| POST | `/api/v1/catalog/missing-devices/restore_device/` | `restore_device` |
+| GET | `/api/v1/catalog/missing-devices/{pk}/products/` | `products` |
+
+- `list`: `apps.catalog.mapping_api.MissingDeviceViewSet.list` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: `search`, `status`, `vendor`. Direct Response dictionary keys: `affected_products`, `counts`, `device_types`, `devices`, `manufacturers`, `total`. Local service imports: `apps.devices.models.Device`, `apps.devices.models.DeviceType`, `apps.devices.models.Manufacturer`, `apps.tenant.models.Company`.
+- `add_device`: `apps.catalog.mapping_api.MissingDeviceViewSet.add_device` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: `device_name`, `device_type_code`, `manufacturer_id`, `manufacturer_name`, `vendor_company_id`, `vendor_device_name`. Direct Response dictionary keys: `error`. Local service imports: `apps.devices.models.Device`, `apps.devices.models.DeviceType`, `apps.devices.models.Manufacturer`.
+- `dismiss_device`: `apps.catalog.mapping_api.MissingDeviceViewSet.dismiss_device` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: `vendor_device_name`. Direct Response dictionary keys: `dismissed`, `error`. Local service imports: none declared.
+- `link_device`: `apps.catalog.mapping_api.MissingDeviceViewSet.link_device` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: `device_id`. Direct Response dictionary keys: `error`. Local service imports: `apps.devices.models.Device`.
+- `restore_device`: `apps.catalog.mapping_api.MissingDeviceViewSet.restore_device` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `error`, `restored`. Local service imports: none declared.
+- `products`: `apps.catalog.mapping_api.MissingDeviceViewSet.products` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: none declared. Direct Response dictionary keys: `count`, `error`, `products`. Local service imports: none declared.
+
+Request/response key extraction is static and partial; inherited CRUD uses the
+serializer above. Action-specific serializers, nested schemas, validations,
+service calls and conditional response redaction must be read in source.
+
+Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/pages/catalog/MissingDevicesTab.tsx](../../../../frontend/src/pages/catalog/MissingDevicesTab.tsx).
+
+## apps.catalog.mapping_api.VendorCategoryMappingViewSet
+
+Handler: [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Declared queryset model: `catalog.VendorCategoryMapping`.
 
 Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
@@ -283,7 +283,7 @@ These are declarations, not a complete access proof: read custom permission,
 queryset and action checks in the handler and its mixins. Plain Django views may
 implement signature or session validation instead of DRF policies.
 
-Serializer: `apps.catalog.api.VendorCategoryMappingSerializer` at [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py).
+Serializer: `apps.catalog.mapping_api.VendorCategoryMappingSerializer` at [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py).
 
 Serializer fields: `["id","vendor_company_reference","vendor_company_name","vendor_category","cixci_category","cixci_category_reference","status","mapping_source","effective_date","created_at","updated_at","created_by","created_by_name","updated_by","updated_by_name","company_scope_reference"]`. Read-only fields: `["id","created_at","updated_at","company_scope_reference","cixci_category_reference"]`. Excluded: `[]`. Validation methods: `validate_cixci_category`.
 
@@ -299,7 +299,7 @@ Serializer fields: `["id","vendor_company_reference","vendor_company_name","vend
 
 - `list`: `rest_framework.mixins.ListModelMixin.list` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `create`: `rest_framework.mixins.CreateModelMixin.create` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
-- `bulk_create`: `apps.catalog.api.VendorCategoryMappingViewSet.bulk_create` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `mappings`. Direct Response dictionary keys: `created`, `error`, `errors`, `summary`. Local service imports: none declared.
+- `bulk_create`: `apps.catalog.mapping_api.VendorCategoryMappingViewSet.bulk_create` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: `mappings`. Direct Response dictionary keys: `created`, `error`, `errors`, `summary`. Local service imports: none declared.
 - `retrieve`: `rest_framework.mixins.RetrieveModelMixin.retrieve` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `update`: `rest_framework.mixins.UpdateModelMixin.update` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `partial_update`: `rest_framework.mixins.UpdateModelMixin.partial_update` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
@@ -311,9 +311,9 @@ service calls and conditional response redaction must be read in source.
 
 Frontend consumers (resource-path text matches; confirm action callers): [frontend/src/pages/catalog/dialogs/ProductFormDialog.tsx](../../../../frontend/src/pages/catalog/dialogs/ProductFormDialog.tsx).
 
-## apps.catalog.api.VendorColorMappingViewSet
+## apps.catalog.mapping_api.VendorColorMappingViewSet
 
-Handler: [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Declared queryset model: `catalog.VendorColorMapping`.
+Handler: [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Declared queryset model: `catalog.VendorColorMapping`.
 
 Declared permissions: `rest_framework.permissions.IsAuthenticated`. Authentication: `apps.integration.authentication.CompanyAPIKeyAuthentication`, `rest_framework_simplejwt.authentication.JWTAuthentication`, `rest_framework.authentication.SessionAuthentication`.
 
@@ -325,7 +325,7 @@ These are declarations, not a complete access proof: read custom permission,
 queryset and action checks in the handler and its mixins. Plain Django views may
 implement signature or session validation instead of DRF policies.
 
-Serializer: `apps.catalog.api.VendorColorMappingSerializer` at [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py).
+Serializer: `apps.catalog.mapping_api.VendorColorMappingSerializer` at [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py).
 
 Serializer fields: `["id","vendor_company_reference","vendor_company_name","vendor_color","system_color","status","affected_product_count","created_at","updated_at","created_by","created_by_name"]`. Read-only fields: `["id","created_at","updated_at"]`. Excluded: `[]`. Validation methods: none declared.
 
@@ -342,8 +342,8 @@ Serializer fields: `["id","vendor_company_reference","vendor_company_name","vend
 
 - `list`: `rest_framework.mixins.ListModelMixin.list` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `create`: `rest_framework.mixins.CreateModelMixin.create` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
-- `bulk_create`: `apps.catalog.api.VendorColorMappingViewSet.bulk_create` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `mappings`. Direct Response dictionary keys: `created`, `error`, `errors`, `summary`. Local service imports: none declared.
-- `unresolved`: `apps.catalog.api.VendorColorMappingViewSet.unresolved` in [backend/apps/catalog/api.py](../../../../backend/apps/catalog/api.py). Direct request/query keys: `vendor_company_reference`. Direct Response dictionary keys: `error`, `total_unresolved`, `unresolved`. Local service imports: none declared.
+- `bulk_create`: `apps.catalog.mapping_api.VendorColorMappingViewSet.bulk_create` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: `mappings`. Direct Response dictionary keys: `created`, `error`, `errors`, `summary`. Local service imports: none declared.
+- `unresolved`: `apps.catalog.mapping_api.VendorColorMappingViewSet.unresolved` in [backend/apps/catalog/mapping_api.py](../../../../backend/apps/catalog/mapping_api.py). Direct request/query keys: `vendor_company_reference`. Direct Response dictionary keys: `error`, `total_unresolved`, `unresolved`. Local service imports: none declared.
 - `retrieve`: `rest_framework.mixins.RetrieveModelMixin.retrieve` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `update`: `rest_framework.mixins.UpdateModelMixin.update` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.
 - `partial_update`: `rest_framework.mixins.UpdateModelMixin.partial_update` in framework/dynamic (inspect handler). Direct request/query keys: none declared. Direct Response dictionary keys: none declared. Local service imports: none declared.

@@ -236,3 +236,12 @@ chronologically with task, reason, files/features/contracts, verification and ri
   bulk-set-compatibility endpoint and dialog; four owner decisions applied to
   tests; backend suite 1,055 passed, 0 failed. New route:
   POST /api/v1/catalog/products/bulk-set-compatibility/ (CIXCI admin).
+- 2026-11-28 (TASK-026): supplier order cancellation fixed for PostgreSQL; shipment
+  packages kept (fulfillment 0012); both CSV shipping imports use
+  sync_order_progress; vendor images stored where served, never recorded without
+  a file, retried hourly; product save invalidates buyer projections instead of
+  rebuilding them; buyer webhooks (integration 0011, INT-005); catalog mapping
+  endpoints moved to catalog/mapping_api.py; Telco page hook order fixed.
+  New routes: /api/v1/integration/buyer-webhooks/ (+ rotate-secret, test,
+  deliveries). New tasks: integration.vendor_catalog.retry_images,
+  integration.buyer_webhooks.deliver, integration.buyer_webhooks.retry.
