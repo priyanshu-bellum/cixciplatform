@@ -52,6 +52,7 @@ import ConfirmDialog from '../components/feedback/ConfirmDialog'
 import { useAuthStore } from '../stores/authStore'
 import { Link } from 'react-router-dom'
 import CarrierTrackingPanel from './integration/CarrierTrackingPanel'
+import BuyerWebhooksPanel from './integration/BuyerWebhooksPanel'
 
 /* ── connector type chip colour mapping ── */
 const CONNECTOR_COLOR: Record<string, 'success' | 'info' | 'secondary' | 'default'> = {
@@ -64,7 +65,7 @@ const CONNECTOR_COLOR: Record<string, 'success' | 'info' | 'secondary' | 'defaul
   csv: 'default',
 }
 
-type TabValue = 'connections' | 'webhooks' | 'inbound' | 'api-keys' | 'commerce' | 'carrier-tracking'
+type TabValue = 'connections' | 'webhooks' | 'inbound' | 'api-keys' | 'commerce' | 'carrier-tracking' | 'buyer-webhooks'
 
 const ADAPTER_LABELS: Record<string, string> = {
   generic_json: 'Generic REST/JSON',
@@ -737,10 +738,12 @@ export default function IntegrationPage() {
         <Tab label="Inbound Receipts" value="inbound" />
         <Tab label="B2B API Keys" value="api-keys" />
         {user?.is_cixci_admin && <Tab label="Carrier Tracking" value="carrier-tracking" />}
+        {(user?.is_cixci_admin || user?.company_type === 'buyer') && <Tab label="Buyer Webhooks" value="buyer-webhooks" />}
       </Tabs>
 
       {/* ── Carrier Tracking Tab (EasyPost) ── */}
       {tab === 'carrier-tracking' && user?.is_cixci_admin && <CarrierTrackingPanel />}
+      {tab === 'buyer-webhooks' && <BuyerWebhooksPanel isAdmin={!!user?.is_cixci_admin} />}
 
       {/* ── Connections Tab ── */}
       {tab === 'connections' && (

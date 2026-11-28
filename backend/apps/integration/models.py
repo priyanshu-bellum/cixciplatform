@@ -291,5 +291,6 @@ class VendorCatalogBudget(models.Model):
 
 
 from .storefront_models import BuyerStorefront  # noqa: E402,F401
+from .buyer_webhooks import BuyerWebhookEndpoint, BuyerWebhookDelivery  # noqa: E402,F401
 from .commerce_models import VendorCommerceProfile, SupplierOrderDispatch, VendorWebhookReceipt, VendorCommercePollRun, VendorOutboundDelivery, VendorFinanceRecord, VendorReturnRecord  # noqa: E402,F401
 

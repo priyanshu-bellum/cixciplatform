@@ -4,6 +4,7 @@ from .catalog_api import VendorCatalogConnectionViewSet
 from .catalog_brands_api import BrandViewSet, VendorBrandRelationshipViewSet
 from .commerce_api import VendorCommerceProfileViewSet
 from .storefront_api import BuyerStorefrontViewSet
+from .buyer_webhook_api import BuyerWebhookViewSet
 from .webhook_receiver import WebhookReceiverView
 from .operations_api import DispatchViewSet, WebhookReceiptViewSet, PollRunViewSet
 from apps.catalog.offer_api import ExportMappingViewSet
@@ -14,6 +15,7 @@ router.register('catalog-brands', BrandViewSet, basename='catalog-brand')
 router.register('vendor-brand-relationships', VendorBrandRelationshipViewSet, basename='vendor-brand-relationship')
 router.register('buyer-storefronts', BuyerStorefrontViewSet, basename='buyer-storefront')
 router.register('buyer-export-mappings', ExportMappingViewSet, basename='buyer-export-mapping')
+router.register('buyer-webhooks', BuyerWebhookViewSet, basename='buyer-webhook')
 router.register('operations/dispatches', DispatchViewSet, basename='operations-dispatch')
 router.register('operations/webhook-receipts', WebhookReceiptViewSet, basename='operations-webhook-receipt')
 router.register('operations/poll-runs', PollRunViewSet, basename='operations-poll-run')

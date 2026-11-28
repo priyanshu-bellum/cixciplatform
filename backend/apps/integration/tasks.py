@@ -20,6 +20,18 @@ def retry_vendor_images():
     return retry_missing_vendor_images()
 
 
+@shared_task(name='integration.buyer_webhooks.deliver', queue='vendor_commerce')
+def deliver_buyer_webhook(delivery_id):
+    from .buyer_webhooks import process_delivery
+    return process_delivery(delivery_id)
+
+
+@shared_task(name='integration.buyer_webhooks.retry', queue='vendor_commerce')
+def retry_buyer_webhooks():
+    from .buyer_webhooks import retry_due
+    return retry_due()
+
+
 @shared_task(name='integration.vendor_commerce.dispatch_order', queue='vendor_commerce')
 def dispatch_supplier_order(dispatch_id):
     from .order_dispatch import process_supplier_dispatch

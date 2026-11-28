@@ -189,6 +189,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 120.0,
         "options": {"queue": "vendor_commerce"},
     },
+    "retry_buyer_webhooks_every_2_mins": {
+        "task": "integration.buyer_webhooks.retry",
+        "schedule": 120.0,
+        "options": {"queue": "vendor_commerce"},
+    },
     "dispatch_finance_syncs_every_hour": {
         "task": "integration.vendor_commerce.dispatch_finance_syncs",
         "schedule": 3600.0,

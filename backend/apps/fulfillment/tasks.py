@@ -188,6 +188,14 @@ def dispatch_buyer_signals():
             except Exception:
                 logger.warning("Notification service unavailable for signal %s", signal.pk)
 
+            # Same update, pushed to the buyer's own system when they registered a webhook.
+            try:
+                from apps.integration.buyer_webhooks import queue_buyer_event
+                queue_buyer_event(signal.company_scope_reference, f"order.{signal.update_kind}_complete", payload,
+                                  source_id=signal.pk)
+            except Exception:
+                logger.warning("Buyer webhook could not be queued for signal %s", signal.pk)
+
             BuyerUpdateReadySignal.objects.filter(pk=signal.pk).update(
                 status=BuyerSignalStatus.DISPATCHED,
                 dispatched_at=timezone.now(),
