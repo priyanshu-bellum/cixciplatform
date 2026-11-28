@@ -9,7 +9,7 @@ from html import unescape
 
 from django.core.exceptions import ValidationError
 
-from apps.devices.models import Device, DeviceType, Manufacturer
+from apps.devices.models import Device
 from apps.catalog.compatibility_contract import product_universal_types
 from .catalog_config import path_value
 
@@ -21,9 +21,13 @@ def normalized_name(value):
 class CatalogDeviceResolver:
     """Resolve a bounded feed page against one reusable canonical-device index."""
 
-    def __init__(self, config):
+    def __init__(self, config, vendor_company_id=None):
         self.config = config.get('compatibility', {})
+        self.vendor_company_id = vendor_company_id
         self._devices = None
+        self._vendor_names = None
+        # Names the last declaration() call could not find in the Device Catalog.
+        self.missing = []
 
     def _index(self):
         if self._devices is None:
@@ -41,47 +45,6 @@ class CatalogDeviceResolver:
             if hits:
                 return list(hits.values())
         return []
-
-    _MANUFACTURER_PREFIXES = [
-        'samsung', 'apple', 'google', 'motorola', 'oneplus',
-        'lg', 'nokia', 'sony', 'huawei', 'xiaomi', 'oppo',
-        'vivo', 'zte', 'tcl', 'alcatel', 'blu', 'cat',
-        'cricket', 'boost', 't-mobile', 'at&t', 'metro',
-    ]
-
-    def _auto_create_device(self, name):
-        """Auto-create a Device from an unresolved vendor name."""
-        mfr_name, device_name = None, name
-        lower = name.lower()
-        for prefix in self._MANUFACTURER_PREFIXES:
-            if lower.startswith(prefix + ' '):
-                mfr_name = name[:len(prefix)]
-                device_name = name[len(prefix):].strip()
-                break
-        if not mfr_name:
-            parts = name.split(None, 1)
-            if len(parts) == 2:
-                mfr_name, device_name = parts
-        if not mfr_name:
-            mfr_name = 'Unknown'
-        mfr, _ = Manufacturer.objects.get_or_create(
-            name__iexact=mfr_name,
-            defaults={'name': mfr_name, 'is_active': True},
-        )
-        phone_type = DeviceType.objects.filter(
-            code='phone', is_active=True,
-        ).first()
-        device = Device(
-            device_type=phone_type,
-            manufacturer=mfr,
-            name=device_name,
-            lifecycle_status='available',
-        )
-        device.save()
-        idx = self._index()
-        for label in {device.name, str(device), device.model_number} - {''}:
-            idx.setdefault(normalized_name(label), {})[str(device.pk)] = device
-        return device
 
     @staticmethod
     def _name_variations(n):
@@ -149,6 +112,7 @@ class CatalogDeviceResolver:
         if entries is None or len(entries) > 500:
             raise ValidationError('Supply declared device names, IDs or a bounded array of device references.')
         tokens = []
+        self.missing = []
         aliases = self.config.get('device_map', {})
         for entry in entries:
             manufacturer = ''
@@ -176,6 +140,16 @@ class CatalogDeviceResolver:
                 # up or auto-created as a device called "Universal".
                 tokens.append(token)
                 continue
+            # An admin's decision about this vendor's wording wins over name matching.
+            if self._vendor_names is None:
+                from apps.catalog.missing_devices import vendor_names
+                self._vendor_names = vendor_names(self.vendor_company_id)
+            known_names, dismissed_names = self._vendor_names
+            if normalized_name(token)[:255] in dismissed_names:
+                continue
+            if normalized_name(token)[:255] in known_names:
+                tokens.append(known_names[normalized_name(token)[:255]])
+                continue
             try:
                 uuid.UUID(token)
             except ValueError:
@@ -192,7 +166,11 @@ class CatalogDeviceResolver:
                 if candidates:
                     token = str(candidates[0].pk)
                 elif not manufacturer:
-                    token = str(self._auto_create_device(token).pk)
+                    # Never invent a device (or its type) from a vendor's text.
+                    # The known models are still mapped; this name goes to the
+                    # Missing Devices panel for an admin to add with the right type.
+                    self.missing.append(token)
+                    continue
             tokens.append(token)
         if len(tokens) == 1 and normalized_name(tokens[0]) == 'universal':
             types = self.config.get('universal_type_map', {}).get(category, [])

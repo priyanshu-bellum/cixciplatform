@@ -1256,5 +1256,35 @@ class VendorColorMapping(models.Model):
         return f"VendorColorMapping({self.vendor_color} → {self.system_color})"
 
 
+class VendorDeviceMapping(models.Model):
+    """
+    A device name exactly as a vendor writes it, and what CIXCI decided it means.
+
+    missing   – not in the Device Catalog; shown to admins in Missing Devices.
+    mapped    – an admin added or linked a canonical device; the vendor sync
+                reads this as an alias on every later run.
+    dismissed – the text is not a device; the sync ignores it.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vendor_company_reference = models.UUIDField(db_index=True, help_text="Vendor company ID")
+    vendor_device_name = models.CharField(max_length=255, help_text="Name as first seen in the vendor feed")
+    name_key = models.CharField(max_length=255, help_text="Normalized name used for matching")
+    status = models.CharField(max_length=20, default="missing", db_index=True)
+    device = models.ForeignKey("devices.Device", null=True, blank=True, on_delete=models.PROTECT, related_name="vendor_names")
+    product_ids = models.JSONField(default=list, blank=True, help_text="Products whose vendor source declared this name")
+    first_seen_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    resolved_by = models.UUIDField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "catalog_vendor_device_mapping"
+        constraints = [models.UniqueConstraint(fields=["vendor_company_reference", "name_key"], name="vendor_device_name_once")]
+        indexes = [models.Index(fields=["status", "last_seen_at"], name="vendor_device_status_idx")]
+
+    def __str__(self):
+        return f"VendorDeviceMapping({self.vendor_device_name} → {self.device_id or self.status})"
+
+
 from .offer_models import BuyerExportMapping  # noqa: E402,F401
 

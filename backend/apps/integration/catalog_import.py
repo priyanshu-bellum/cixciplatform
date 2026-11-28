@@ -159,7 +159,9 @@ def ingest_rows(connection, run, items, actor):
         color_mappings[vc.strip().casefold()] = sc
 
     counts = {"created_count": 0, "updated_count": 0, "unchanged_count": 0, "review_count": 0, "error_count": 0}
-    device_resolver = CatalogDeviceResolver(connection.config)
+    device_resolver = CatalogDeviceResolver(connection.config, connection.vendor_company_id)
+    # name → products that declared it; stored for the Missing Devices panel.
+    missing_products = {}
     # Controlled compatibility values are read once per page, not once per row.
     from apps.catalog.compatibility_values import value_catalog
     value_options = value_catalog()
@@ -309,9 +311,15 @@ def ingest_rows(connection, run, items, actor):
         if "[REDACTED]" in json.dumps(payload):
             errors.append({"code": "SENSITIVE_DATA_REMOVED", "field": "source"})
         compat_raw = fields.get('compatibility_declaration', '')
+        row_missing = []
         if compat_raw:
             try:
                 compat_raw = device_resolver.declaration(compat_raw, category=category, product=product)
+                if device_resolver.missing:
+                    # Known models are mapped now; the unknown ones wait for an admin.
+                    missing_device_names.update(device_resolver.missing)
+                    row_missing = list(device_resolver.missing)
+                    errors.append({"code": "MISSING_DEVICE_REVIEW", "field": "compatibility_declaration"})
             except (ValidationError, TypeError, AttributeError):
                 errors.append({"code": "COMPATIBILITY_REVIEW_REQUIRED", "field": "compatibility_declaration"})
                 if isinstance(compat_raw, str):
@@ -369,7 +377,7 @@ def ingest_rows(connection, run, items, actor):
         new_product = False
         identity_fatal = {"OFFER_ALREADY_MANAGED", "REQUIRED_FIELD", "REMOTE_ID_REQUIRED", "CONFLICTING_DUPLICATE", "CONFLICTING_SKU_IDENTITY", "SKU_CHANGE_REQUIRES_REVIEW", "BRAND_CHANGE_REQUIRES_REVIEW", "CATEGORY_MAPPING_CONFLICT"}
         compat_fatal = {"COMPATIBILITY_REVIEW_REQUIRED"}
-        informational = {"MEDIA_REVIEW_REQUIRED", "SENSITIVE_DATA_REMOVED", "SEO_PRODUCT_FACT_CONFLICT"}
+        informational = {"MEDIA_REVIEW_REQUIRED", "SENSITIVE_DATA_REMOVED", "SEO_PRODUCT_FACT_CONFLICT", "MISSING_DEVICE_REVIEW"}
         error_codes = {error["code"] for error in errors}
         fatal = bool(error_codes & identity_fatal)
         compat_only = not fatal and bool(error_codes & compat_fatal)
@@ -417,6 +425,8 @@ def ingest_rows(connection, run, items, actor):
         after = canonical_evidence(canonical or original_product)
         if before != after or old_hash != digest or old_config != connection.config_version or old_review != (source.review_required, source.review_errors):
             observations.append(source_observation(connection, run, actor, source, before, after, old_hash))
+        for missing_name in row_missing:
+            missing_products.setdefault(missing_name, set()).update([str(canonical.pk)] if canonical else [])
         if canonical:
             owners[canonical.pk] = source
             products[canonical.sku] = canonical
@@ -441,6 +451,10 @@ def ingest_rows(connection, run, items, actor):
                 [DynamicDropdownConfig(field_name="brand", value=name, display_name=name) for name in new_brands],
                 ignore_conflicts=True,
             )
+
+    if missing_products:
+        from apps.catalog.missing_devices import record_missing
+        record_missing(connection.vendor_company_id, missing_products)
 
     # Emit dashboard notifications for unresolved colors, categories, missing devices
     _emit_import_notifications(connection, unresolved_colors, unresolved_categories, missing_device_names)
@@ -497,7 +511,7 @@ def _emit_import_notifications(connection, unresolved_colors, unresolved_categor
             safe_payload_summary={
                 "vendor_company_id": str(vendor_id),
                 "connection_id": str(connection.pk),
-                "missing_devices": sorted(missing_device_names)[:50],
+                "missing_devices": sorted(missing_device_names)[:500],
                 "count": len(missing_device_names),
                 "message": f"{len(missing_device_names)} vendor device names not found in CIXCI Device Catalog — add these devices so cases/screen protectors can be matched",
             },
