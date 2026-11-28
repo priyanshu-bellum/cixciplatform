@@ -508,6 +508,7 @@ class OrderSerializer(serializers.ModelSerializer):
                 "suborder_status": sub.status,
                 "shipping_carrier": h.shipping_carrier if h else None,
                 "tracking_number": h.tracking_number if h else None,
+                "additional_tracking": (h.additional_tracking or []) if h else [],
                 "vendor_order_number": h.vendor_order_number if h else None,
                 "shipped_date": str(h.shipped_date) if h and h.shipped_date else None,
                 "delivered_date": str(h.delivered_date) if h and h.delivered_date else None,
@@ -1644,65 +1645,24 @@ class OrderViewSet(BuyerScopedQuerysetMixin, viewsets.ModelViewSet):
                 if op["delivered"]:
                     handoff.delivered_date = op["delivered"]
                     
+                if not handoff.tracking_source:
+                    handoff.tracking_source = "manual_csv"
                 if op["status"] == "applied":
-                    if op["delivered"]:
-                        handoff.status = "delivered"
-                        sub.status = RoutingStatus.DELIVERED
-                    else:
-                        handoff.status = "shipped"
-                        sub.status = RoutingStatus.SHIPPED
+                    handoff.status = "delivered" if op["delivered"] else "shipped"
                     handoff.save()
-                    sub.save()
                     from apps.fulfillment.tracking import ensure_tracker
                     ensure_tracker(handoff)
                 else: # review_required
                     handoff.status = op["issue_type"]
                     handoff.save()
-                    
+
                     sub.status = RoutingStatus.PROCESSING
                     sub.save()
-                    
-                # Transition parent Order to DELIVERED if all suborders are delivered, or SHIPPED if all shipped/delivered
-                order = sub.order
-                all_subs = list(order.routed_suborders.all())
-                if all_subs:
-                    all_delivered = all(s.status == RoutingStatus.DELIVERED for s in all_subs)
-                    all_shipped_or_delivered = all(s.status in [RoutingStatus.SHIPPED, RoutingStatus.DELIVERED] for s in all_subs)
-                    if all_delivered:
-                        order.status = RoutingStatus.DELIVERED
-                        order.save(update_fields=["status"])
-                    elif all_shipped_or_delivered:
-                        order.status = RoutingStatus.SHIPPED
-                        order.save(update_fields=["status"])
-                    
-                # Update BuyerUpdateReadySignal
-                expected_count = order.routed_suborders.count()
-                confirmed_count = order.routed_suborders.filter(
-                    status__in=[RoutingStatus.SHIPPED, RoutingStatus.DELIVERED]
-                ).count()
-                all_confirmed = (confirmed_count == expected_count)
-                
-                signal, _ = BuyerUpdateReadySignal.objects.get_or_create(
-                    order_reference=order.id,
-                    update_kind=BuyerUpdateKind.SHIPMENT,
-                    defaults={
-                        "buyer_reference": order.company_scope_reference,
-                        "company_scope_reference": order.company_scope_reference,
-                        "status": BuyerSignalStatus.PENDING,
-                        "expected_vendor_count": expected_count,
-                        "confirmed_vendor_count": confirmed_count,
-                        "all_vendors_confirmed": all_confirmed
-                    }
-                )
-                
-                signal.expected_vendor_count = expected_count
-                signal.confirmed_vendor_count = confirmed_count
-                signal.all_vendors_confirmed = all_confirmed
-                if all_confirmed:
-                    signal.status = BuyerSignalStatus.ELIGIBLE
-                else:
-                    signal.status = BuyerSignalStatus.HELD
-                signal.save()
+
+                # Suborder, order and buyer signals follow the shipment through the
+                # same service as the other shipping import, vendor API and carrier updates.
+                from apps.fulfillment.tracking import sync_order_progress
+                sync_order_progress(handoff)
                 
             # Log
             log_vendor_id = None

@@ -657,7 +657,37 @@ class TestVendorShippingImport:
         data["handoff"].refresh_from_db()
         assert data["handoff"].status in ("partially_shipped", "shipped")
 
+    @pytest.mark.parametrize("url", ["/api/v1/routing/orders/import-shipping/", "/api/v1/fulfillment/handoffs/import-shipping/"])
+    def test_both_csv_imports_move_the_order_and_buyer_signals_the_same_way(self, setup_data, url):
+        """One service owns order progress: the two CSV imports can no longer drift apart."""
+        from datetime import timedelta
+        data = setup_data
+        client = APIClient()
+        client.force_authenticate(user=data["admin_user"])
+        shipped = (timezone.now() - timedelta(days=2)).date().strftime("%m/%d/%Y")
+        delivered = (timezone.now() - timedelta(days=1)).date().strftime("%m/%d/%Y")
+        header = "Buyer,First Name,Last Name,Address 1,Address 2,City,State,Zip Code,Suborder,SKU,UPC,Quantity,Vendor Confirmation Number,Shipping Carrier,Shipping Tracking Number,Shipped Date,Delivered Date\n"
 
+        def upload(delivered_value):
+            row = f"Test Buyer Corp,John,Doe,123 Main St,,Austin,TX,78701,{data['suborder'].id},ACC-SKU-999,987654321098,5,VND-CONF-123,FedEx,TRK-987654,{shipped},{delivered_value}\n"
+            file = io.BytesIO((header + row).encode("utf-8"))
+            file.name = "shipping.csv"
+            return client.post(url, {"file": file, "confirm": "true"}, format="multipart")
 
+        response = upload("")
+        assert response.status_code == 200, response.data
+        shipment = BuyerUpdateReadySignal.objects.get(order_reference=data["order"].id, update_kind=BuyerUpdateKind.SHIPMENT)
+        # The signal belongs to the order's buyer, not to the tenant scope id.
+        assert shipment.buyer_reference == data["order"].buyer_reference and shipment.status == BuyerSignalStatus.ELIGIBLE
+        assert not BuyerUpdateReadySignal.objects.filter(order_reference=data["order"].id, update_kind=BuyerUpdateKind.DELIVERY).exists()
 
-
+        # The buyer was told about the shipment; the delivery upload must not tell them again.
+        BuyerUpdateReadySignal.objects.filter(pk=shipment.pk).update(status=BuyerSignalStatus.DISPATCHED)
+        response = upload(delivered)
+        assert response.status_code == 200, response.data
+        data["order"].refresh_from_db(); data["suborder"].refresh_from_db(); data["handoff"].refresh_from_db()
+        assert (data["handoff"].status, data["suborder"].status, data["order"].status) == ("delivered", RoutingStatus.DELIVERED, RoutingStatus.DELIVERED)
+        shipment.refresh_from_db()
+        assert shipment.status == BuyerSignalStatus.DISPATCHED
+        delivery = BuyerUpdateReadySignal.objects.get(order_reference=data["order"].id, update_kind=BuyerUpdateKind.DELIVERY)
+        assert delivery.status == BuyerSignalStatus.ELIGIBLE and delivery.buyer_reference == data["order"].buyer_reference

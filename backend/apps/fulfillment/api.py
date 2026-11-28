@@ -73,10 +73,10 @@ class FulfillmentHandoffSerializer(serializers.ModelSerializer):
             "buyer_order_number", "buyer_id", "vendor_order", "shipping_carrier",
             "shipping_tracking_number", "order_status", "shipped_date", "delivered_date",
             # Retained legacy/internal field names
-            "vendor_order_number", "tracking_number",
+            "vendor_order_number", "tracking_number", "additional_tracking",
             "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "additional_tracking"]
 
     def get_vendor_order(self, obj):
         """The order number assigned by the vendor or manufacturer."""
@@ -845,56 +845,10 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                 from .tracking import ensure_tracker
                 ensure_tracker(h)
 
-                # Also update RoutedSuborder status
-                if h.status == "delivered":
-                    sub.status = RoutingStatus.DELIVERED
-                elif h.status == "partially_shipped":
-                    sub.status = RoutingStatus.PARTIALLY_SHIPPED
-                elif h.status == "shipped":
-                    sub.status = RoutingStatus.SHIPPED
-                sub.save()
-
-                # Transition parent Order to DELIVERED if all suborders are delivered, or SHIPPED if all shipped/delivered
-                order = sub.order
-                all_subs = list(order.routed_suborders.all())
-                if all_subs:
-                    all_delivered = all(s.status == RoutingStatus.DELIVERED for s in all_subs)
-                    all_shipped_or_delivered = all(s.status in [RoutingStatus.SHIPPED, RoutingStatus.DELIVERED] for s in all_subs)
-                    if all_delivered:
-                        order.status = RoutingStatus.DELIVERED
-                        order.save(update_fields=["status"])
-                    elif all_shipped_or_delivered:
-                        order.status = RoutingStatus.SHIPPED
-                        order.save(update_fields=["status"])
-
-                # Update BuyerUpdateReadySignal
-                expected_count = order.routed_suborders.count()
-                confirmed_count = order.routed_suborders.filter(
-                    status__in=[RoutingStatus.SHIPPED, RoutingStatus.DELIVERED]
-                ).count()
-                all_confirmed = (confirmed_count == expected_count)
-                
-                signal, _ = BuyerUpdateReadySignal.objects.get_or_create(
-                    order_reference=order.id,
-                    update_kind=BuyerUpdateKind.SHIPMENT,
-                    defaults={
-                        "buyer_reference": order.company_scope_reference,
-                        "company_scope_reference": order.company_scope_reference,
-                        "status": BuyerSignalStatus.PENDING,
-                        "expected_vendor_count": expected_count,
-                        "confirmed_vendor_count": confirmed_count,
-                        "all_vendors_confirmed": all_confirmed
-                    }
-                )
-                
-                signal.expected_vendor_count = expected_count
-                signal.confirmed_vendor_count = confirmed_count
-                signal.all_vendors_confirmed = all_confirmed
-                if all_confirmed:
-                    signal.status = BuyerSignalStatus.ELIGIBLE
-                else:
-                    signal.status = BuyerSignalStatus.HELD
-                signal.save()
+                # Suborder, order and buyer signals follow the shipment through the
+                # same service as vendor API and carrier updates.
+                from .tracking import sync_order_progress
+                sync_order_progress(h)
 
             log_vendor_id = None
             log_scope_id = None
@@ -1824,7 +1778,7 @@ class BuyerShipmentSerializer(serializers.ModelSerializer):
             "buyer_order_number", "vendor_name", "vendor_company_reference",
             "status", "order_status", "tracking_source", "tracking_source_label",
             "tracking", "tracking_events",
-            "shipping_carrier", "tracking_number", "vendor_order_number",
+            "shipping_carrier", "tracking_number", "additional_tracking", "vendor_order_number",
             "shipped_date", "delivered_date", "easypost_tracker_id",
             "created_at", "updated_at",
         ]

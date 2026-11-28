@@ -99,6 +99,23 @@ def shipment_tracking(record, ship_cfg):
             path_value(first, ship_cfg.get('tracking_url_path', 'url')) if first else None, numbers[1:])
 
 
+def additional_packages(record, ship_cfg, primary):
+    """Every further tracking entry of a shipment, once each, as {number, carrier, url}."""
+    data = path_value(record, ship_cfg.get('tracking_path', 'tracking'))
+    packages, seen = [], {str(primary or '')}
+    for item in (data if isinstance(data, list) else []):
+        if not isinstance(item, dict):
+            continue
+        number = str(path_value(item, ship_cfg.get('tracking_number_path', 'number')) or '')[:255]
+        if not number or number in seen:
+            continue
+        seen.add(number)
+        url = str(path_value(item, ship_cfg.get('tracking_url_path', 'url')) or '')
+        packages.append({'number': number, 'carrier': str(path_value(item, ship_cfg.get('carrier_path', 'carrier')) or '')[:255],
+                         'url': url[:1000] if url.startswith(('https://', 'http://')) else ''})
+    return packages[:20]
+
+
 def apply_vendor_shipment(record, profile, ship_cfg, *, event_type=''):
     """Apply one vendor shipment observation (webhook event or poll row).
 
@@ -147,6 +164,12 @@ def apply_vendor_shipment(record, profile, ship_cfg, *, event_type=''):
             changed = True
         if carrier and carrier != handoff.shipping_carrier:
             handoff.shipping_carrier = str(carrier)[:255]
+            changed = True
+        packages = additional_packages(record, ship_cfg, tracking_number)
+        # An observation without further entries (e.g. a later status-only event)
+        # does not erase packages the vendor reported earlier.
+        if packages and packages != handoff.additional_tracking:
+            handoff.additional_tracking = packages
             changed = True
         if external_order and not handoff.vendor_order_number:
             handoff.vendor_order_number = str(external_order)[:255]

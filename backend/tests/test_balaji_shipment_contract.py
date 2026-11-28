@@ -134,3 +134,24 @@ def test_stored_event_can_be_read_back_for_support(world, settings):
     stored = json.loads(decrypt_payload(receipt))
     assert stored["data"]["shipment"]["shipment_number"] == "IF1234567"
     assert "IF1234567" not in receipt.encrypted_payload
+
+
+def test_every_package_of_a_shipment_reaches_the_buyer(world):
+    """Balaji sends tracking as an array; the further packages are kept and shown, not dropped."""
+    record = shipment(world)
+    record["tracking"] = [record["tracking"][0],
+        {"number": "1Z999AA10123456785", "carrier": "UPS", "url": "https://www.ups.com/track?tracknum=1Z999AA10123456785"},
+        {"number": "1Z999AA10123456785", "carrier": "UPS", "url": "https://www.ups.com/track"},
+        {"number": "9400100000000000000000", "carrier": "USPS", "url": "javascript:alert(1)"}]
+    assert post(world, "shipment.created", record, event_id="evt_multi").status_code == 200
+    handoff = world["handoff"]
+    handoff.refresh_from_db()
+    assert handoff.tracking_number == record["tracking"][0]["number"]
+    assert handoff.additional_tracking == [
+        {"number": "1Z999AA10123456785", "carrier": "UPS", "url": "https://www.ups.com/track?tracknum=1Z999AA10123456785"},
+        {"number": "9400100000000000000000", "carrier": "USPS", "url": ""}]
+
+    # A later event that lists only the first package keeps the others.
+    assert post(world, "shipment.delivered", shipment(world), event_id="evt_multi_delivered").status_code == 200
+    handoff.refresh_from_db()
+    assert handoff.status == "delivered" and len(handoff.additional_tracking) == 2

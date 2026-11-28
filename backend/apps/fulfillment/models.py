@@ -94,6 +94,10 @@ class FulfillmentHandoff(models.Model):
     vendor_order_number = models.CharField(max_length=255, blank=True, null=True)
     shipping_carrier = models.CharField(max_length=255, blank=True, null=True)
     tracking_number = models.CharField(max_length=255, blank=True, null=True)
+    # Further packages of the same shipment as the vendor reported them:
+    # [{"number", "carrier", "url"}]. Shown to the buyer; shipment status still
+    # follows the first tracking number.
+    additional_tracking = models.JSONField(default=list, blank=True)
     shipped_date = models.DateField(blank=True, null=True)
     delivered_date = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)

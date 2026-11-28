@@ -1428,6 +1428,12 @@ export default function OrdersPage() {
                             <Typography sx={{ ...detailValueSx, ...monoSx, fontSize: 11 }}>
                               {item.tracking_number || '—'}
                             </Typography>
+                            {(item.additional_tracking || []).map((extra: { number: string; carrier?: string; url?: string }) => (
+                              <Typography key={extra.number} sx={{ ...detailValueSx, ...monoSx, fontSize: 11 }}
+                                {...(extra.url ? { component: 'a', href: extra.url, target: '_blank', rel: 'noreferrer' } : {})}>
+                                {extra.number}{extra.carrier ? ` (${extra.carrier})` : ''}
+                              </Typography>
+                            ))}
                           </Box>
                           <Box>
                             <Typography sx={detailLabelSx}>Shipped</Typography>
