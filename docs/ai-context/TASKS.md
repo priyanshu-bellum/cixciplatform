@@ -1,8 +1,41 @@
 # Persistent tasks
 
-Latest completion: TASK-024 (Missing Devices resolve flow and page; TASK-023 no auto-created devices).
+Latest completion: TASK-024 (Missing Devices resolve flow and page). TASK-025 (tenant scope, 401, test baseline) is in progress.
 Open follow-up: TASK-014 (provider mappings/images and remote test diagnostics).
 TASK-002–008 record earlier discoveries. IDs are permanent.
+
+## TASK-025 — Fulfillment tenant scope, 401 responses and the failing-test baseline
+
+- Status: in_progress
+- Related features: FUL-001, TEN-001, AUTH-001, INT-002, CMP-002, MED-001; BR-TEN-001.
+- Tenant scope (fixed, reproduced first): handoffs, SLA evaluations, shipping and
+  return import logs and return requests were unfiltered for a non-admin user whose
+  company was not a vendor or buyer (or who had no entity); SLA policies and
+  overrides had no tenant filter at all; handoffs/debug-order read any purchase
+  order for any user with the list capability. All now return nothing outside the
+  owning vendor/buyer; debug-order is CIXCI admin only.
+- 401 vs 403 (fixed): SessionAuthentication was first in DRF's authenticator list
+  (af4cac6), so a missing or expired token returned 403 and the frontend's
+  refresh-on-401 never ran. Order is now API key, JWT, session.
+- Vendor sync (fixed): "Universal, <Type>" lost its declared type scope; an
+  approved feature value such as Lightning is no longer reported as a missing
+  device; two same-named catalog devices are never picked between (the name goes
+  to Missing Devices); a new offer that still needs review (MSRP, brand, category)
+  is created as draft instead of active, so later price/stock updates still apply.
+- Tests brought in line with decisions already recorded (JPEG accepted, proxy image
+  URLs, six vendor images, admin-only API keys, exported-products image list,
+  Missing Devices) and stale fixtures repaired (products whose readiness a save
+  recomputes, seed categories without eligible types).
+- Verification: full backend suite 1,041 passed/17 failed (was 996/55); every
+  remaining failure was already failing before this task. 6 new tenant-scope tests.
+- Remaining 17, not changed because each needs an owner decision or a rebuilt
+  scenario: 6 keyword-category tests for a function removed in faa2f8c
+  (ISSUE-015); 2 tests that want a renamed image rejected while 2 newer passing
+  tests want it accepted (ISSUE-016); 6 export/storefront/assortment tests whose
+  fixtures predate that contract (ISSUE-017); whole-file rollback vs partial CSV
+  import; conflicting compatibility evidence should create no product; one
+  SQLite-only JSON lookup. An attempt to mark these as expected failures was not
+  permitted and was not applied.
 
 ## TASK-024 — Missing Devices: durable vendor names and a complete resolve flow
 

@@ -221,3 +221,13 @@ chronologically with task, reason, files/features/contracts, verification and ri
   verification in TASK-024; rule BR-INT-003 unchanged.
 - Risk: add_device may create a manufacturer the admin types; the list imports
   names from earlier alerts on first load.
+
+## 2026-11-28 — TASK-025 — Tenant scope, 401 responses, failing-test baseline
+
+- Reason: user asked to continue with the remaining improvement list.
+- Files: fulfillment/api.py, config/settings.py, integration/catalog_compatibility.py,
+  integration/catalog_import.py; tests listed in TASK-025. No schema or dependency
+  change. Contract: unauthenticated or expired-token requests now answer 401.
+- Verification and the 17 tests left failing on purpose: see TASK-025.
+- Risk: clients that treated 403 as "not logged in" now receive 401; new vendor
+  offers with open review errors start as draft.
