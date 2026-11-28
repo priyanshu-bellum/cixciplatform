@@ -131,6 +131,11 @@ class TestCompanyAPIKeysApi:
             is_excluded=False
         )
 
+        # An export only carries media-ready products (Rule 25), so both get a
+        # ready, approved primary image.
+        from tests.assortment import give_ready_image
+        give_ready_image(p1); give_ready_image(p2)
+
         # 3. Requesting products as logged-in buyer admin returns BOTH accessories
         res = buyer_client.get("/api/v1/catalog/products/")
         assert res.status_code == 200

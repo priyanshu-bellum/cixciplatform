@@ -296,7 +296,7 @@ class TestVendorWriteIsolation:
 
 @pytest.mark.django_db
 class TestExportFiltering:
-    def test_export_excludes_media_incomplete_products(self, vendor_company, buyer_company):
+    def test_export_excludes_media_incomplete_products(self, vendor_company, buyer_company, buyer_user, buyer_assortment):
         from apps.catalog.tasks import process_buyer_export_job
         from apps.catalog.models import (
             BuyerProductExportJob, BuyerProductExportSelectionSnapshot,
@@ -306,12 +306,15 @@ class TestExportFiltering:
         ready.primary_image_reference = ready_asset.id
         ready.save()
         incomplete = _make_product(vendor_company, sku="INC-1", status="active")
+        # An export is revalidated against the requesting buyer's entity and
+        # compatible assortment, so both products are placed in it.
+        buyer_assortment(ready, incomplete)
 
         job = BuyerProductExportJob.objects.create(
-            buyer_reference=buyer_company.id,
+            buyer_reference=buyer_user.id,
             company_scope_reference=buyer_company.id,
-            buyer_entity_reference=buyer_company.id,
-            requested_by=buyer_company.id,
+            buyer_entity_reference=buyer_user.entity_id,
+            requested_by=buyer_user.id,
             format="API",
         )
         BuyerProductExportSelectionSnapshot.objects.create(
@@ -324,17 +327,18 @@ class TestExportFiltering:
         assert job.status == "completed"
         assert job.product_count == 1
 
-    def test_export_opt_in_includes_media_missing(self, vendor_company, buyer_company):
+    def test_export_opt_in_includes_media_missing(self, vendor_company, buyer_company, buyer_user, buyer_assortment):
         from apps.catalog.tasks import process_buyer_export_job
         from apps.catalog.models import (
             BuyerProductExportJob, BuyerProductExportSelectionSnapshot,
         )
         incomplete = _make_product(vendor_company, sku="INC-2", status="active")
+        buyer_assortment(incomplete)
         job = BuyerProductExportJob.objects.create(
-            buyer_reference=buyer_company.id,
+            buyer_reference=buyer_user.id,
             company_scope_reference=buyer_company.id,
-            buyer_entity_reference=buyer_company.id,
-            requested_by=buyer_company.id,
+            buyer_entity_reference=buyer_user.entity_id,
+            requested_by=buyer_user.id,
             format="API",
             include_media_missing=True,
         )

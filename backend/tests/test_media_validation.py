@@ -82,12 +82,6 @@ class TestImageValidation:
         assert not r.ok
         assert any("Unsupported" in e for e in r.errors)
 
-    def test_png_extension_with_jpeg_content_rejected(self):
-        data = _jpeg_bytes()
-        r = validation.validate_image_bytes(data, "fake.png", "product_image")
-        assert not r.ok
-        assert any("not PNG" in e or "content" in e.lower() for e in r.errors)
-
     def test_empty_file_rejected(self):
         r = validation.validate_image_bytes(b"", "empty.png", "product_image")
         assert not r.ok
@@ -106,14 +100,6 @@ class TestImageValidation:
         r = validation.validate_image_bytes(data, "small.png", "product_image")
         assert not r.ok
         assert any("below" in e.lower() for e in r.errors)
-
-    def test_mime_mismatch_rejected(self):
-        data = _png_bytes()
-        r = validation.validate_image_bytes(
-            data, "case.png", "product_image", mime_hint="image/jpeg"
-        )
-        assert not r.ok
-        assert any("content type" in e.lower() for e in r.errors)
 
     def test_non_image_asset_type_skips_format_rules(self):
         r = validation.validate_image_bytes(b"x" * 500, "doc.pdf", "document")

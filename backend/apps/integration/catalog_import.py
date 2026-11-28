@@ -390,7 +390,10 @@ def ingest_rows(connection, run, items, actor):
         compat_only = not fatal and bool(error_codes & compat_fatal)
         blocking_errors = [e for e in errors if e["code"] not in informational]
         if compat_only and valid and serializer is not None:
-            compat_fields = {"device_ids", "compatibility_update_type", "compatibility_declaration"}
+            # Held for review: neither the declared models nor the structured
+            # compatibility values of a conflicting source are applied, so the
+            # product cannot match a device on unreviewed evidence.
+            compat_fields = {"device_ids", "compatibility_update_type", "compatibility_declaration", *COMPATIBILITY_FIELDS}
             for field in compat_fields:
                 serializer.validated_data.pop(field, None)
         allow_save = (valid and not fatal

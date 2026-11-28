@@ -1093,10 +1093,16 @@ class ProductFilterSet(django_filters.FilterSet):
             value = [v.strip() for v in value.split(",") if v.strip()]
         if not value:
             return queryset
+        from django.db import connection
         from django.db.models import Q
         q = Q(color__in=value) | Q(system_color__in=value)
         for v in value:
-            q |= Q(system_colors__contains=[v])
+            if connection.features.supports_json_field_contains:
+                q |= Q(system_colors__contains=[v])
+            else:
+                # SQLite (local and test runs) has no JSON containment; match the
+                # quoted value in the stored list instead of failing the request.
+                q |= Q(system_colors__icontains='"' + v + '"')
         return queryset.filter(q)
 
     def filter_msrp_range(self, queryset, name, value):
@@ -3766,8 +3772,10 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
                 device_reference=selected_device, is_compatible=True, is_excluded=False,
             ).values_list("product_id", flat=True)}
             eligible_ids &= selected_ids
-        if any(value not in eligible_ids for value in product_ids):
-            raise ValidationError({"product_ids": "Selection contains products outside this entity's current eligible compatible assortment."})
+        # Named reasons first: a product hidden from the assortment because of a MAP
+        # rule or incomplete compatibility must be reported (and the MAP violation
+        # audited) as such, not as a generic "outside your assortment".
+        outside_assortment = any(value not in eligible_ids for value in product_ids)
         if product_ids:
             from apps.catalog.models import Product
             from apps.tenant.models import Company
@@ -3845,6 +3853,9 @@ class BuyerExportJobViewSet(BuyerScopedQuerysetMixin, viewsets.GenericViewSet):
                         status="failure"
                     )
                 raise ValidationError({"product_ids": [msg for prod, msg in violations]})
+
+        if outside_assortment:
+            raise ValidationError({"product_ids": "Selection contains products outside this entity's current eligible compatible assortment."})
 
         # Get portfolio snapshot reference
         from apps.devices.models import BuyerDevicePortfolioReference

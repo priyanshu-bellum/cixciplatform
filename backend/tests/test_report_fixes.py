@@ -60,6 +60,11 @@ class TestReportFixes:
 
     def test_bpe_052_vendor_wholesale_price_hidden_from_buyer(self):
         """BPE-052: Buyer product detail response hides vendor wholesale price fields."""
+        # A buyer reads only products in the compatible assortment of an active entity.
+        from tests.assortment import buyer_assortment_for
+        CompanyEntity.objects.filter(pk=self.buyer_entity.pk).update(status="active")
+        self.buyer_user.refresh_from_db()
+        buyer_assortment_for(self.buyer_user)(self.product)
         self.client.force_authenticate(user=self.buyer_user)
         res = self.client.get(f"/api/v1/catalog/products/{self.product.id}/")
         assert res.status_code == 200

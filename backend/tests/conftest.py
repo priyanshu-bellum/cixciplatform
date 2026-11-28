@@ -154,6 +154,15 @@ def buyer_user(buyer_entity, cap_factory):
     return user
 
 
+# ── Buyer assortment ──────────────────────────────────────────────────────────
+
+@pytest.fixture
+def buyer_assortment(buyer_user):
+    """``add(*products)`` places products in this buyer's compatible assortment (see tests/assortment.py)."""
+    from tests.assortment import buyer_assortment_for
+    return buyer_assortment_for(buyer_user)
+
+
 # ── API Clients ───────────────────────────────────────────────────────────────
 
 @pytest.fixture

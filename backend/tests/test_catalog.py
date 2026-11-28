@@ -737,7 +737,7 @@ class TestOutOfStockStatus:
 
 class TestGovernanceAndCompatibilityImport:
     @pytest.mark.django_db
-    def test_bulk_upload_rollback_on_error(self, admin_client, vendor_company):
+    def test_bulk_upload_keeps_valid_rows_and_reports_the_failed_one(self, admin_client, vendor_company):
         """Verify that any row error rolls back the entire bulk upload transaction."""
         import io
         from apps.catalog.models import Product, DynamicDropdownConfig
@@ -761,9 +761,10 @@ class TestGovernanceAndCompatibilityImport:
         )
         assert resp.status_code == 207
         assert resp.data["rows_failed"] == 1
-        # Transaction must have rolled back completely, so ROLLBACK-1 is NOT in the database
-        assert not Product.objects.filter(sku="ROLLBACK-1").exists()
-        assert Product.objects.count() == initial_count
+        # Owner decision 2026-11-28: valid rows are saved, the failed row is reported.
+        assert Product.objects.filter(sku="ROLLBACK-1").exists()
+        assert not Product.objects.filter(sku="ROLLBACK-2").exists()
+        assert Product.objects.count() == initial_count + 1
 
     @pytest.mark.django_db
     def test_bulk_upload_active_product_compatibility_update_type_restrictions(self, vendor_client, vendor_user):

@@ -560,7 +560,7 @@ def test_supplier_sync_preserves_saved_admin_category_override(feed, monkeypatch
     assert product.product_category == product.product_category_override == 'Admin governed category'
 
 
-def test_conflicting_source_compatibility_evidence_is_held_without_inventing_a_match(feed, monkeypatch):
+def test_conflicting_source_compatibility_evidence_is_reviewed_without_inventing_a_match(feed, monkeypatch):
     from apps.catalog.models import DynamicDropdownConfig
     from apps.devices.models import DeviceType
     kind = DeviceType.objects.create(name='Phone', code='phone', status='active')
@@ -573,7 +573,13 @@ def test_conflicting_source_compatibility_evidence_is_held_without_inventing_a_m
     run = request_sync(feed, feed.created_by); process_sync_page(run.id)
     source = VendorCatalogItem.objects.get()
     assert source.review_required and any(error['code']=='COMPATIBILITY_REVIEW_REQUIRED' for error in source.review_errors)
-    assert not Product.objects.exists()
+    # Owner decision 2026-11-28: the product is created and held for review; no
+    # compatibility is taken from the conflicting declaration.
+    product = Product.objects.get()
+    assert source.product_id == product.pk
+    assert product.compatibility_status == 'incomplete'
+    assert product.headphone_jack_compatibility in ('', 'Not Compatible')
+    assert not product.compatibility_assertions.filter(is_compatible=True).exists()
 
 
 @pytest.mark.parametrize('conflict', [False, True])

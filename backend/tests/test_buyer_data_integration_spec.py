@@ -291,11 +291,27 @@ class TestBuyerDataIntegrationSpec:
             upc="810099887766",
             color="Matte Black",
             vendor_wholesale_price_amount=decimal.Decimal("9.75"),
+            msrp=decimal.Decimal("24.99"),  # an export selection is order-bindable only with a priced product
+            selling_status="for_sale",
             vendor_company_reference=self.vendor_company.id,
             company_scope_reference=self.vendor_company.id,
             status=ProductStatus.ACTIVE,
             launch_date=timezone.now().date(),
         )
+        # An order line resolves only through the buyer's own export selection:
+        # the product is in the active entity's assortment and has been exported.
+        from tests.assortment import buyer_assortment_for, give_ready_image
+        from apps.catalog.offer_services import freeze_export_selection
+        give_ready_image(prod)  # only media-complete offers can be ordered
+        CompanyEntity.objects.filter(pk=self.buyer_entity.pk).update(status="active")
+        self.buyer_user.refresh_from_db()
+        buyer_assortment_for(self.buyer_user)(prod)
+        from django.db import transaction
+        with transaction.atomic():
+            selection = freeze_export_selection(product=prod, company=self.buyer_company, entity=self.buyer_entity, actor=self.buyer_user)
+        # The order below is dated 2026-09-16; a purchase must follow its export.
+        from datetime import datetime, timezone as dt_timezone
+        type(selection).objects.filter(pk=selection.pk).update(exported_at=datetime(2026, 9, 1, tzinfo=dt_timezone.utc))
 
         order_payload = {
             "vendor_id": str(self.vendor_company.id),
@@ -340,8 +356,10 @@ class TestBuyerDataIntegrationSpec:
         assert "2026-09-16" in created_data["order_date_time"]
         assert created_data["buyer_id"] == str(self.buyer_company.id)
         assert created_data["buyer_order_number"] == "BUYER-SPEC-ORD-001"
-        assert created_data["order_lines"][0]["unit_price_snapshot"] == 9.75
-        assert created_data["order_lines"][0]["line_total"] == 29.25
+        # Buyer price = vendor wholesale + standard 14% commission on MSRP (BR-PRC-001).
+        unit = decimal.Decimal("9.75") + decimal.Decimal("24.99") * decimal.Decimal("0.14")
+        assert decimal.Decimal(str(created_data["order_lines"][0]["unit_price_snapshot"])) == unit
+        assert decimal.Decimal(str(created_data["order_lines"][0]["line_total"])) == unit * 3
 
         # 2. Retrieve order via GET /api/v1/routing/orders/{id}/
         order_id = created_data["id"]

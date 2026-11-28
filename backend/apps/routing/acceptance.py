@@ -116,9 +116,11 @@ def accept_order(request, data):
     candidates = eligible_vendor_sources(Product.objects.filter(pk__in=[mapping.product_id for _,mapping,_,_ in accepted], status='active', selling_status='for_sale'))
     from django.conf import settings
     if getattr(settings, 'MEDIA_READINESS_ENFORCE_BUYER', True):
-        from apps.media.models import MediaAsset
-        candidates = candidates.filter(primary_image_reference__in=MediaAsset.objects.filter(status='ready', mime_type='image/png',
-            has_transparency=True, review_status='approved').values_list('pk',flat=True))
+        # The same image rule that makes a product visible and exportable. A
+        # stricter rule here (transparent PNG only) let buyers see and export
+        # vendor JPEG products that an order then refused.
+        from apps.media.readiness import valid_primary_asset_ids
+        candidates = candidates.filter(primary_image_reference__in=valid_primary_asset_ids())
     allowed = set(filter_buyer_regional_products(candidates, company.pk, entity.pk).values_list('pk',flat=True))
     if any(mapping.product_id not in allowed for _,mapping,_,_ in accepted):
         raise ValidationError({'order_lines':[{'line_reference':line['line_reference'],'code':'OFFER_NOT_ORDERABLE','detail':'An offer is inactive, held, media-incomplete or not eligible in this Buyer Entity region.'}
