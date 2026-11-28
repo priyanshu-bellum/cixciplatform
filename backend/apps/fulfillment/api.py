@@ -327,16 +327,23 @@ class FulfillmentHandoffViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         is_admin = getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
-        if not is_admin and user.entity:
-            company = user.entity.company
-            if company.company_type == "vendor":
+        if not is_admin:
+            # A user outside a vendor or buyer company has no tenant, so no rows.
+            company = user.entity.company if getattr(user, "entity", None) else None
+            if company is not None and company.company_type == "vendor":
                 qs = qs.filter(vendor_company_reference=company.id)
-            elif company.company_type == "buyer":
+            elif company is not None and company.company_type == "buyer":
                 qs = qs.filter(company_scope_reference=company.id)
+            else:
+                qs = qs.none()
         return qs
 
     @action(detail=False, methods=["get"], url_path="debug-order")
     def debug_order(self, request):
+        # Diagnostic read of any purchase order: CIXCI staff only.
+        if not getattr(request.user, "is_cixci_admin", False):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Admin only.")
         from apps.procurement.models import PurchaseOrderLine
         from apps.catalog.models import Product
         
@@ -961,12 +968,15 @@ class SLAEvaluationRecordViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet
         is_admin = getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
-        if not is_admin and user.entity:
-            company = user.entity.company
-            if company.company_type == "vendor":
+        if not is_admin:
+            # A user outside a vendor or buyer company has no tenant, so no rows.
+            company = user.entity.company if getattr(user, "entity", None) else None
+            if company is not None and company.company_type == "vendor":
                 qs = qs.filter(handoff__vendor_company_reference=company.id)
-            elif company.company_type == "buyer":
+            elif company is not None and company.company_type == "buyer":
                 qs = qs.filter(handoff__company_scope_reference=company.id)
+            else:
+                qs = qs.none()
         return qs
 
 
@@ -984,6 +994,17 @@ class SLAPolicyViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["vendor_company_reference", "status"]
 
+    def get_queryset(self):
+        # A vendor's response policy is that vendor's; other tenants do not see it.
+        user = self.request.user
+        qs = VendorFulfillmentResponseSLAPolicy.objects.all()
+        if getattr(user, "is_cixci_admin", False) or (getattr(user, "company", None) and user.company.company_type == "cixci_internal"):
+            return qs
+        company = user.entity.company if getattr(user, "entity", None) else None
+        if company is None or company.company_type != "vendor":
+            return qs.none()
+        return qs.filter(vendor_company_reference=company.id)
+
 
 class SLAOverrideViewSet(CheckAccessMixin, viewsets.ModelViewSet):
     """
@@ -999,6 +1020,16 @@ class SLAOverrideViewSet(CheckAccessMixin, viewsets.ModelViewSet):
         "create": "fulfillment.sla.override",
     }
     http_method_names = ["get", "post", "head", "options"]  # No PUT/PATCH/DELETE
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = SLAOverrideExcuseEvidence.objects.all()
+        if getattr(user, "is_cixci_admin", False) or (getattr(user, "company", None) and user.company.company_type == "cixci_internal"):
+            return qs
+        company = user.entity.company if getattr(user, "entity", None) else None
+        if company is None or company.company_type != "vendor":
+            return qs.none()
+        return qs.filter(sla_evaluation__handoff__vendor_company_reference=company.id)
 
 
 class BuyerUpdateSignalViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewSet):
@@ -1039,12 +1070,15 @@ class VendorShippingImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelVie
         is_admin = getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
-        if not is_admin and user.entity:
-            company = user.entity.company
-            if company.company_type == "vendor":
+        if not is_admin:
+            # A user outside a vendor or buyer company has no tenant, so no rows.
+            company = user.entity.company if getattr(user, "entity", None) else None
+            if company is not None and company.company_type == "vendor":
                 qs = qs.filter(vendor_company_reference=company.id)
-            elif company.company_type == "buyer":
+            elif company is not None and company.company_type == "buyer":
                 qs = qs.filter(company_scope_reference=company.id)
+            else:
+                qs = qs.none()
         return qs
 
 
@@ -1066,12 +1100,15 @@ class VendorReturnImportLogViewSet(CheckAccessMixin, viewsets.ReadOnlyModelViewS
         is_admin = getattr(user, "is_cixci_admin", False) or (
             hasattr(user, "company") and user.company and user.company.company_type == "cixci_internal"
         )
-        if not is_admin and user.entity:
-            company = user.entity.company
-            if company.company_type == "vendor":
+        if not is_admin:
+            # A user outside a vendor or buyer company has no tenant, so no rows.
+            company = user.entity.company if getattr(user, "entity", None) else None
+            if company is not None and company.company_type == "vendor":
                 qs = qs.filter(vendor_company_reference=company.id)
-            elif company.company_type == "buyer":
+            elif company is not None and company.company_type == "buyer":
                 qs = qs.filter(company_scope_reference=company.id)
+            else:
+                qs = qs.none()
         return qs
 
 
@@ -1113,6 +1150,10 @@ class ReturnRequestViewSet(CheckAccessMixin, viewsets.ModelViewSet):
                     qs = qs.filter(filter_q)
                 elif company.company_type == "buyer":
                     qs = qs.filter(buyer_reference=company.id)
+                else:
+                    qs = qs.none()
+            else:
+                qs = qs.none()
         return qs
 
     @action(detail=False, methods=["get"], url_path="export-csv")
